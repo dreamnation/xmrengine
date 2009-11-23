@@ -1,0 +1,13 @@
+<Addin id="Groupchat.Module" version="0.2">
+    <Runtime>
+        <Import assembly="XGroupchat.Module.dll"/>
+    </Runtime>
+
+    <Dependencies>
+        <Addin id="OpenSim" version="0.5" />
+    </Dependencies>
+
+    <Extension path = "/OpenSim/RegionModules">
+        <RegionModule id="GroupchatModule" type="Careminster.Modules.Groups.GroupchatModule" />
+    </Extension>
+</Addin>

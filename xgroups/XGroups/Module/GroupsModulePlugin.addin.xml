@@ -1,0 +1,13 @@
+<Addin id="Groups.Module" version="0.2">
+    <Runtime>
+        <Import assembly="XGroups.Module.dll"/>
+    </Runtime>
+
+    <Dependencies>
+        <Addin id="OpenSim" version="0.5" />
+    </Dependencies>
+
+    <Extension path = "/OpenSim/RegionModules">
+        <RegionModule id="GroupsModule" type="Careminster.Modules.Groups.GroupsModule" />
+    </Extension>
+</Addin>
