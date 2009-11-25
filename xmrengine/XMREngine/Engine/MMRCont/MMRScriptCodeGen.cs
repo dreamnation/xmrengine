@@ -44,9 +44,10 @@ namespace MMR {
 		private static TokenTypeBool tokenTypeBool = new TokenTypeBool (null);
 		private static Dictionary<string, string> implicitTypeCasts = null;
 
-		public static bool CodeGen (TokenScript tokenScript, string cSharpName, string binaryName)
+		public static bool CodeGen (TokenScript tokenScript, string binaryName)
 		{
 
+            string cSharpName = "/tmp/script";
 			/*
 			 * Set up static variables.
 			 */
