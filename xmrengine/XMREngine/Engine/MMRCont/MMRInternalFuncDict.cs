@@ -26,6 +26,12 @@ namespace MMR {
 			foreach (System.Reflection.MethodInfo ifaceMethod in ifaceMethods) {
 
 				/*
+				 * Only do ones that begin with lower-case letters...
+				 * as any others can't be referenced by scripts
+				 */
+				if ((ifaceMethod.Name[0] < 'a') || (ifaceMethod.Name[0] > 'z')) continue;
+
+				/*
 				 * Create a corresponding TokenDeclFunc struct.
 				 */
 				TokenDeclFunc declFunc = new TokenDeclFunc (null);
