@@ -532,7 +532,7 @@ namespace MMR
 				WriteOutput (0, "#pragma warning disable 219\n");
 				for (int i = 0; i < argDecl.types.Length; i ++) {
 					WriteOutput (argDecl, argDecl.types[i].typ.FullName.Replace("+", ".") + " __lcl_" + argDecl.names[i].val + " = (" +
-							argDecl.types[i].typ + ")__sw.ehArgs[" + i + "];");
+							argDecl.types[i].typ.FullName.Replace("+", ".") + ")__sw.ehArgs[" + i + "];");
 					AddVarDefinition (argDecl.types[i], argDecl.names[i].val);
 				}
 				WriteOutput (0, "#pragma warning restore 219\n");
@@ -1084,7 +1084,7 @@ namespace MMR
 			if (binOpStrings.ContainsKey (key)) {
 				BinOpStr binOpStr = binOpStrings[key];
 				CompRVal resultRVal = new CompRVal (TokenType.FromSysType (token.opcode, binOpStr.outtype));
-				WriteOutput (token, String.Format ("{0} {1} = ", binOpStr.outtype.ToString (), resultRVal.locstr));
+				WriteOutput (token, String.Format ("{0} {1} = ", binOpStr.outtype.FullName.Replace ("+", "."), resultRVal.locstr));
 				string fmt = binOpStr.format;
 				int whack = binOpStr.format.IndexOf ('#');
 				if (whack >= 0) {
@@ -1397,7 +1397,7 @@ namespace MMR
 			zRVal = GenerateFromRVal (rValRot.zRVal);
 			wRVal = GenerateFromRVal (rValRot.wRVal);
 			return new CompRVal (new TokenTypeRot (rValRot),
-					"new LSL_Rotation(" + StringWithCast (flToken, xRVal) + "," + StringWithCast (flToken, yRVal) + "," +
+					"new " + typeof(LSL_Rotation).FullName.Replace("+", ".") + "(" + StringWithCast (flToken, xRVal) + "," + StringWithCast (flToken, yRVal) + "," +
 					StringWithCast (flToken, zRVal) + "," + StringWithCast (flToken, wRVal) + ")");
 		}
 
@@ -1421,7 +1421,7 @@ namespace MMR
 			yRVal = GenerateFromRVal (rValVec.yRVal);
 			zRVal = GenerateFromRVal (rValVec.zRVal);
 			return new CompRVal (new TokenTypeVec (rValVec),
-					"new LSL_Vector(" + StringWithCast (flToken, xRVal) + "," +
+					"new " + typeof(LSL_Vector).FullName.Replace("+", ".") + "(" + StringWithCast (flToken, xRVal) + "," +
 					StringWithCast (flToken, yRVal) + "," + StringWithCast (flToken, zRVal) + ")");
 		}
 
