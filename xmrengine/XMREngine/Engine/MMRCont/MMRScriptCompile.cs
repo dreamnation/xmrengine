@@ -9,10 +9,16 @@
 
 using System;
 using System.IO;
+using System.Reflection;
+using log4net;
+using OpenMetaverse;
 
-namespace MMR {
-
-	public class ScriptCompile {
+namespace MMR
+{
+	public class ScriptCompile
+    {
+        private static readonly ILog m_log =
+            LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
 		/**
 		 * @brief Compile a script to produce a .DLL file.
@@ -26,41 +32,40 @@ namespace MMR {
 		 * @returns true: successful
 		 *         false: failure
 		 */
-		public static bool Compile (string scriptname, 
-		                            TokenErrorMessage errorMessage, 
-		                            string sourceName, 
-		                            string cSharpName, 
-		                            string binaryName, 
-		                            string source)
+		public static bool Compile (string source, 
+                                    string binaryName,
+                                    string assetID,
+                                    TokenErrorMessage errorMessage)
 		{
-			if (source == null) {
-				Console.WriteLine ("READING SOURCE FILE: " + sourceName);
-				FileStream sourceFile = File.OpenRead(sourceName);
-				StreamReader sourceReader = new StreamReader (sourceFile);
-				source = sourceReader.ReadToEnd();
-				sourceReader.Close ();
-			}
+			TokenBegin tokenBegin =
+                    TokenBegin.Construct(errorMessage, String.Empty, source);
 
-			Console.WriteLine ("TOKENIZING SOURCE FILE");
-			TokenBegin tokenBegin = TokenBegin.Construct (errorMessage, sourceName, source);
-			if (tokenBegin == null) {
-				Console.WriteLine ("TOKENIZING ERROR");
+			if (tokenBegin == null)
+            {
+				m_log.DebugFormat("[MMR]: Tokenizing error on {0}", assetID);
+
 				return false;
 			}
 
-			Console.WriteLine ("REDUCING SOURCE FILE");
-			TokenScript tokenScript = ScriptReduce.Reduce (tokenBegin);
-			if (tokenScript == null) {
-				Console.WriteLine ("REDUCTION ERROR");
+			TokenScript tokenScript = ScriptReduce.Reduce(tokenBegin);
+
+			if (tokenScript == null)
+            {
+				m_log.DebugFormat("[MMR]: Reducing error on {0}", assetID);
+
 				return false;
 			}
 
-			bool ok = ScriptCodeGen.CodeGen (tokenScript, scriptname, cSharpName, binaryName);
-			if (!ok) {
-				Console.WriteLine ("CODEGEN ERROR");
+			bool ok = ScriptCodeGen.CodeGen(tokenScript, String.Empty,
+                    "/tmp/script", binaryName);
+
+			if (!ok)
+            {
+				m_log.DebugFormat("[MMR]: Codegen error on {0}", assetID);
+
 				return false;
 			}
-			Console.WriteLine ("COMPILATION SUCCESSFUL");
+
 			return true;
 		}
 	}
