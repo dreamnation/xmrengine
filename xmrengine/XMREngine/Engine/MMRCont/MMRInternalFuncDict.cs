@@ -31,30 +31,34 @@ namespace MMR {
 				 */
 				if ((ifaceMethod.Name[0] < 'a') || (ifaceMethod.Name[0] > 'z')) continue;
 
-				///??? skip duplicates == overloading ???///
-				if (this.ContainsKey (ifaceMethod.Name)) continue;
+				try {
 
-				/*
-				 * Create a corresponding TokenDeclFunc struct.
-				 */
-				TokenDeclFunc declFunc = new TokenDeclFunc (null);
-				declFunc.retType = TokenType.FromSysType (null, ifaceMethod.ReturnType);
-				declFunc.funcName = new TokenName (null, ifaceMethod.Name);
-				System.Reflection.ParameterInfo[] parameters = ifaceMethod.GetParameters ();
-				TokenArgDecl argDecl = new TokenArgDecl (null);
-				argDecl.names = new TokenName[parameters.Length];
-				argDecl.types = new TokenType[parameters.Length];
-				for (int i = 0; i < parameters.Length; i++) {
-					System.Reflection.ParameterInfo param = parameters[i];
-					argDecl.names[i] = new TokenName (null, param.Name);
-					argDecl.types[i] = TokenType.FromSysType (null, param.ParameterType);
+					/*
+					 * Create a corresponding TokenDeclFunc struct.
+					 */
+					TokenDeclFunc declFunc = new TokenDeclFunc (null);
+					declFunc.retType = TokenType.FromSysType (null, ifaceMethod.ReturnType);
+					declFunc.funcName = new TokenName (null, ifaceMethod.Name);
+					System.Reflection.ParameterInfo[] parameters = ifaceMethod.GetParameters ();
+					TokenArgDecl argDecl = new TokenArgDecl (null);
+					argDecl.names = new TokenName[parameters.Length];
+					argDecl.types = new TokenType[parameters.Length];
+					for (int i = 0; i < parameters.Length; i++) {
+						System.Reflection.ParameterInfo param = parameters[i];
+						argDecl.names[i] = new TokenName (null, param.Name);
+						argDecl.types[i] = TokenType.FromSysType (null, param.ParameterType);
+					}
+					declFunc.argDecl = argDecl;
+
+					/*
+					 * Add the TokenDeclFunc struct to the dictionary.
+					 */
+					this.Add (declFunc.funcName.val, declFunc);
+				} catch (Exception) {
+
+					///??? IGNORE ANY THAT FAIL - LIKE UNRECOGNIZED TYPE ???///
+					///???                          and OVERLOADED NAMES ???///
 				}
-				declFunc.argDecl = argDecl;
-
-				/*
-				 * Add the TokenDeclFunc struct to the dictionary.
-				 */
-				this.Add (declFunc.funcName.val, declFunc);
 			}
 		}
 	}
