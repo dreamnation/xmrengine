@@ -1234,6 +1234,9 @@ namespace MMR
 			 * If calling a script-defined function, first arg is __sm to pass context along as it is static.
 			 */
 			if (isBEAPIFunc) {
+				if (declFunc.retType.lslBoxing == typeof (LSL_Float)) {
+					WriteOutput (call, "(float)");  // because LSL_Float.value is a 'double'
+				}
 				WriteOutput (call, "__sm.beAPI." + name + "(");
 				if (nargs > 0) {
 					OutputWithCast (declFunc.argDecl.types[0], argRVals[0]);
@@ -1242,7 +1245,17 @@ namespace MMR
 						OutputWithCast (declFunc.argDecl.types[i], argRVals[i]);
 					}
 				}
-				WriteOutput (call, ");");
+				WriteOutput (call, ")");
+
+				/*
+				 * Maybe we have to unbox the LSL-style boxed return value.
+				 * This converts things like LSL_Integer madness to int.
+				 */
+				if (declFunc.retType.lslBoxing != null) {
+					WriteOutput (call, ".value");
+				}
+
+				WriteOutput (call, ";");
 
 				/*
 				 * Also, we want to call CheckRun() after every backend call as
@@ -1471,16 +1484,33 @@ namespace MMR
 		}
 		private string StringWithCast (TokenType outType, CompRVal inRVal)
 		{
+			string result;
+
+			/*
+			 * First get inRVal converted to the type that outType says.
+			 */
 			string inName = inRVal.type.ToString();
 			string outName = outType.ToString();
-			if (inName == outName) return inRVal.locstr;
-			string key = inName + " " + outName;
-			if (!implicitTypeCasts.ContainsKey (key)) {
-				ErrorMsg (inRVal.type, "can't implicitly convert " + inName + " to " + outName);
-				return inRVal.locstr;
+			if (inName == outName) {
+				result = inRVal.locstr;
+			} else {
+				string key = inName + " " + outName;
+				if (!implicitTypeCasts.ContainsKey (key)) {
+					ErrorMsg (inRVal.type, "can't implicitly convert " + inName + " to " + outName);
+					return inRVal.locstr;
+				}
+				string fmt = implicitTypeCasts[key];
+				result = String.Format (fmt, inRVal.locstr);
 			}
-			string fmt = implicitTypeCasts[key];
-			return String.Format (fmt, inRVal.locstr);
+
+			/*
+			 * Now maybe we have to box it LSL style.
+			 * This converts things like 'int' to LSL_Integer.
+			 */
+			if (outType.lslBoxing != null) {
+				result = "new " + outType.lslBoxing.ToString () + "(" + result + ")";
+			}
+			return result;
 		}
 
 		/**
