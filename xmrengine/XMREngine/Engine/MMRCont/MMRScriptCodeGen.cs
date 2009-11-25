@@ -405,7 +405,7 @@ namespace MMR
             UTF8Encoding encoding = new UTF8Encoding();
             string text = encoding.GetString(objectFile.ToArray());
 
-            //m_log.Debug(text);
+            m_log.Debug(text);
 
             CompilerParameters parameters = new CompilerParameters();
 
@@ -1473,7 +1473,7 @@ namespace MMR
 			itc.Add ("integer float", "(float){0}");
 			itc.Add ("integer string", "{0}.ToString()");
 			itc.Add ("key bool", "({0}.val!=NULL_KEY.val)");
-			itc.Add ("key string", "{0}.val");
+			itc.Add ("key string", "{0}");
 			itc.Add ("list string", "{0}.ToString()");
 			itc.Add ("rotation string", "{0}.ToString()");
 			itc.Add ("vector string", "{0}.ToString()");
@@ -1741,7 +1741,7 @@ namespace MMR
 			DefineBinOpsInteger (bos);
 
 			// key : somethingelse
-			DefineBinOpsKeyX (bos, "key", "{1}.val");
+			DefineBinOpsKeyX (bos, "key", "{1}");
 			DefineBinOpsKeyX (bos, "string", "{1}");
 
 			// string : key
@@ -1842,8 +1842,8 @@ namespace MMR
 
 		private static void DefineBinOpsXKey (Dictionary<string, BinOpStr> bos, string x, string y)
 		{
-			bos.Add (x + "==key", new BinOpStr (typeof (bool), y + " == {1}.val"));
-			bos.Add (x + "!=key", new BinOpStr (typeof (bool), y + " != {1}.val"));
+			bos.Add (x + "==key", new BinOpStr (typeof (bool), y + " == {1}"));
+			bos.Add (x + "!=key", new BinOpStr (typeof (bool), y + " != {1}"));
 		}
 
 		private static void DefineBinOpsList (Dictionary<string, BinOpStr> bos)
