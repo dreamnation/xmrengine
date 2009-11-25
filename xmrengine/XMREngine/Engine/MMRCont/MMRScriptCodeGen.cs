@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using System.Reflection;
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 using LSL_Float = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLFloat;
@@ -15,6 +16,9 @@ using LSL_List = OpenSim.Region.ScriptEngine.Shared.LSL_Types.list;
 using LSL_Rotation = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Quaternion;
 using LSL_String = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
 using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
+using log4net;
+using Microsoft.CSharp;
+using System.CodeDom.Compiler;
 
 
 /**
@@ -22,17 +26,18 @@ using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
  * The single script token contains a tokenized and textured version of the whole script file.
  */
 
-namespace MMR {
+namespace MMR
+{
 
-	public class ScriptCodeGen {
-		private const string cSharpCompile = "gmcs";
-		private const string cSharpCmdLine = "-debug -target:library -reference:{0} -reference:../monosrc/mcs/class/lib/net_2_0/Mono.Tasklets.dll -out:";
-
-		///private const cSharpCompile = "e:\\windows\\microsoft.net\\framework64\\v3.5\\csc.exe";
-		///private const cSharpCmdLine = "/target:library /reference:{0} /out:";
+	public class ScriptCodeGen
+    {
+        private static readonly ILog m_log =
+            LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
 		public const int CALL_FRAME_MEMUSE = 64;
 		public const int STRING_LEN_TO_MEMUSE = 2;
+
+        private static CSharpCodeProvider CSCodeProvider = new CSharpCodeProvider();
 
 		/*
 		 * Static tables that there only needs to be one copy of for all.
@@ -47,7 +52,6 @@ namespace MMR {
 		public static bool CodeGen (TokenScript tokenScript, string binaryName)
 		{
 
-            string cSharpName = "/tmp/script";
 			/*
 			 * Set up static variables.
 			 */
@@ -118,7 +122,7 @@ namespace MMR {
 			/*
 			 * Run compiler such that it has a 'this' context for convenience.
 			 */
-			ScriptCodeGen sc = new ScriptCodeGen (tokenScript, cSharpName, binaryName);
+			ScriptCodeGen sc = new ScriptCodeGen (tokenScript, binaryName);
 			return sc.exitCode == 0;
 		}
 
@@ -126,7 +130,7 @@ namespace MMR {
 		 * There is one set of these variables for each script being compiled.
 		 */
 		private bool youveAnError = false;
-		private FileStream objectFile;
+		private MemoryStream objectFile;
 		private TextWriter objectWriter;
 		private int exitCode = 0;
 		private int nStates = 0;
@@ -139,10 +143,8 @@ namespace MMR {
 		private Stack<Dictionary<string, TokenType>> scriptVariablesStack = null;
 		private Dictionary<string, TokenType> scriptInstanceVariables = null;
 
-		private ScriptCodeGen (TokenScript tokenScript, string cSharpName, string binaryName)
+		private ScriptCodeGen (TokenScript tokenScript, string binaryName)
 		{
-			Console.WriteLine ("CREATING .CS FILE: " + cSharpName);
-
 			/*
 			 * Set up dictionary to translate function names to their declaration.
 			 * We only do top-level functions so this doesn't need to be a stack.
@@ -173,13 +175,7 @@ namespace MMR {
 			scriptVariablesStack = new Stack<Dictionary<string, TokenType>> ();
 			scriptInstanceVariables = PushVarDefnBlock ();
 
-			/*
-			 * Basic things to set up file header.
-			 */
-			if (File.Exists (cSharpName)) {
-				File.Delete (cSharpName);
-			}
-			objectFile   = File.Create (cSharpName);
+			objectFile   = new MemoryStream();
 			objectWriter = new StreamWriter (objectFile);
 
 			/*
@@ -395,7 +391,8 @@ namespace MMR {
 			 * End of the ScriptModule class definition.
 			 */
 			WriteOutput (0, "}");
-			objectWriter.Close ();
+            objectWriter.Flush();
+			objectWriter.Close();
 
 			/*
 			 * Check for error and abort if so.
@@ -405,24 +402,48 @@ namespace MMR {
 				return;
 			}
 
-			/*
-			 * Write it to disk.
-			 */
-			Console.WriteLine ("COMPILE TO .DLL: " + binaryName);
-			System.Diagnostics.Process mcsCommand = new System.Diagnostics.Process ();
-			mcsCommand.StartInfo.Arguments = String.Format (cSharpCmdLine, System.Diagnostics.Process.GetCurrentProcess ().MainModule.FileName) +
-			                                  binaryName + " " + cSharpName;
-			mcsCommand.StartInfo.CreateNoWindow = true;
-			mcsCommand.StartInfo.ErrorDialog = false;
-			mcsCommand.StartInfo.FileName = cSharpCompile;
-			mcsCommand.StartInfo.UseShellExecute = false;
-			mcsCommand.StartInfo.RedirectStandardOutput = true;
-			mcsCommand.Start ();
-			Console.WriteLine (mcsCommand.StandardOutput.ReadToEnd ());
-			mcsCommand.WaitForExit ();
-			exitCode = mcsCommand.ExitCode;
-			Console.WriteLine ("CSC exit code " + exitCode.ToString ());
-			if (exitCode != 0) Console.WriteLine (">> WE'VE AN ERROR !!");
+            UTF8Encoding encoding = new UTF8Encoding();
+            string text = encoding.GetString(objectFile.ToArray());
+
+            m_log.Debug(text);
+
+            CompilerParameters parameters = new CompilerParameters();
+
+            parameters.IncludeDebugInformation = true;
+
+            string rootPath =
+                Path.GetDirectoryName(AppDomain.CurrentDomain.BaseDirectory);
+            
+            parameters.ReferencedAssemblies.Add(Path.Combine(rootPath,
+                "OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll"));
+            parameters.ReferencedAssemblies.Add(Path.Combine(rootPath,
+                "OpenSim.Region.ScriptEngine.Shared.dll"));
+            parameters.ReferencedAssemblies.Add(Path.Combine(rootPath,
+                "OpenSim.Region.ScriptEngine.XMREngine.Engine.MMRCont.dll"));
+            parameters.ReferencedAssemblies.Add(Path.Combine(rootPath,
+                "Mono.Tasklets.dll"));
+
+            parameters.GenerateExecutable = false;
+            parameters.OutputAssembly = binaryName;
+
+            CompilerResults results;
+
+            try
+            {
+                lock(CSCodeProvider)
+                {
+                    results =
+                            CSCodeProvider.CompileAssemblyFromSource(parameters,
+                            text);
+                }
+
+                if (results.Errors.Count > 0)
+                    exitCode = 1;
+            }
+            catch
+            {
+                exitCode = 1;
+            }
 		}
 
 		/**
