@@ -1,0 +1,28 @@
+   <Project name="OpenSim.Region.ScriptEngine.XMREngine.Engine.MMRCont" path="addon-modules/XMREngine/Engine/MMRCont" type="Library">
+     <Configuration name="Debug">
+       <Options>
+         <OutputPath>../../../../bin/</OutputPath>
+       </Options>
+     </Configuration>
+     <Configuration name="Release">
+       <Options>
+         <OutputPath>../../../../bin/</OutputPath>
+       </Options>
+     </Configuration>
+
+     <ReferencePath>../../../../bin/</ReferencePath>
+     <Reference name="System" localCopy="false"/>
+     <Reference name="System.Xml"/>
+     <Reference name="System.Runtime.Remoting"/>
+     <Reference name="OpenMetaverseTypes.dll"/>
+     <Reference name="OpenSim.Framework.dll"/>
+     <Reference name="OpenSim.Region.ScriptEngine.Shared"/>
+     <Reference name="OpenSim.Region.ScriptEngine.Shared.Api.Runtime"/>
+     <Reference name="Mono.Tasklets" />
+     <Reference name="Nini.dll" />
+     <Reference name="log4net.dll"/>
+
+     <Files>
+       <Match pattern="*.cs" recurse="true"/>
+     </Files>
+   </Project>
