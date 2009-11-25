@@ -23,7 +23,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     [Extension(Path = "/OpenSim/RegionModules", NodeName = "RegionModule", Id = "XMREngine")]
     public class XMREngine : INonSharedRegionModule
     {
-        XMREngine()
+        public XMREngine()
         {
         }
 

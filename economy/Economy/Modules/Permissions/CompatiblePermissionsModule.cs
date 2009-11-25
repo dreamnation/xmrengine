@@ -113,6 +113,9 @@ namespace Careminster.Modules.Permissions
 
         public void RegionLoaded(Scene scene)
         {
+            if (!m_Enabled)
+                return;
+
             m_friendsModule = m_Scene.RequestModuleInterface<IFriendsModule>();
 
             if (m_friendsModule == null)
