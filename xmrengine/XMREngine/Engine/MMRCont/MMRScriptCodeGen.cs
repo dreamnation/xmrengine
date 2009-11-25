@@ -444,7 +444,7 @@ namespace MMR
                         if (CompErr.IsWarning)
                             continue;
 
-                        m_log.DebugFormat("[MMR]: ({0},{1}]) Error: {3}",
+                        m_log.DebugFormat("[MMR]: ({0},{1}]) Error: {2}",
                                 CompErr.Line, CompErr.Column,
                                 CompErr.ErrorText);
 
