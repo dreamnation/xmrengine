@@ -31,6 +31,9 @@ namespace MMR {
 				 */
 				if ((ifaceMethod.Name[0] < 'a') || (ifaceMethod.Name[0] > 'z')) continue;
 
+				///??? skip duplicates == overloading ???///
+				if (this.ContainsKey (ifaceMethod.Name)) continue;
+
 				/*
 				 * Create a corresponding TokenDeclFunc struct.
 				 */
