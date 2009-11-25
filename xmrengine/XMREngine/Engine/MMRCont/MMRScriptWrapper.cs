@@ -7,6 +7,7 @@ using Mono.Tasklets;
 using System;
 using System.IO;
 using System.Reflection;
+using System.Runtime.Remoting;
 using LSL_Float = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLFloat;
 using LSL_Integer = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLInteger;
 using LSL_Key = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
@@ -28,7 +29,7 @@ namespace MMR {
 	/*
 	 * All scripts must inherit from this class.
 	 */
-	public abstract class ScriptWrapper : IDisposable {
+	public abstract class ScriptWrapper : MarshalByRefObject, IDisposable {
 
 		public int stateCode = 0;                 // state the script is in (0 = 'default')
 		public ScriptEventCode eventCode = ScriptEventCode.None;
@@ -45,7 +46,6 @@ namespace MMR {
 		/*
 		 * Info about the script DLL itself as a whole.
 		 */
-		public string scriptName;
 		public string scriptDLLName;
 
 		/*
@@ -141,7 +141,7 @@ namespace MMR {
 		 * Caller should call StartEventHandler() or MigrateInEventHandler() next.
 		 * If calling StartEventHandler(), use ScriptEventCode.state_entry with no args.
 		 */
-		public static ScriptWrapper CreateScriptInstance (string scriptname, string dllName)
+		public static ScriptWrapper CreateScriptInstance (string dllName)
 		{
 			Assembly scriptAssembly;
 			ScriptEventHandler[,] scriptEventHandlerTable;
@@ -155,11 +155,11 @@ namespace MMR {
 			}
 
 			/*
-			 * Look for a public class definition called "ScriptModule_<scriptname>".
+			 * Look for a public class definition called "ScriptModule".
 			 */
-			Type scriptModule = scriptAssembly.GetType ("ScriptModule_" + scriptname);
+			Type scriptModule = scriptAssembly.GetType ("ScriptModule");
 			if (scriptModule == null) {
-				throw new Exception (dllName + " has no ScriptModule_" + scriptname + " class");
+				throw new Exception (dllName + " has no ScriptModule class");
 			}
 
 			/*
@@ -190,7 +190,6 @@ namespace MMR {
 			/*
 			 * Save important things we want to remember, like where its event handlers are.
 			 */
-			scriptWrapper.scriptName              = scriptname;
 			scriptWrapper.scriptDLLName           = dllName;
 			scriptWrapper.scriptEventHandlerTable = scriptEventHandlerTable;
 
@@ -233,7 +232,6 @@ namespace MMR {
 				this.stateCode = 12345678;
 				this.eventCode = ScriptEventCode.Garbage;
 				this.ehArgs = null;
-				this.scriptName = null;
 				this.scriptDLLName = null;
 				this.scriptEventHandlerTable = null;
 				this.migrateInStream = null;
