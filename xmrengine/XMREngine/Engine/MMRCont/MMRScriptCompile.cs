@@ -38,7 +38,7 @@ namespace MMR
                         TokenBegin.Construct(errorMessage, source);
 
             if (tokenBegin == null)
-                {
+            {
                 m_log.DebugFormat("[MMR]: Tokenizing error on {0}", assetID);
 
                 return false;
@@ -47,7 +47,7 @@ namespace MMR
             TokenScript tokenScript = ScriptReduce.Reduce(tokenBegin);
 
             if (tokenScript == null)
-                {
+            {
                 m_log.DebugFormat("[MMR]: Reducing error on {0}", assetID);
 
                 return false;
@@ -57,7 +57,7 @@ namespace MMR
                         "/tmp/script", binaryName);
 
             if (!ok)
-                {
+            {
                 m_log.DebugFormat("[MMR]: Codegen error on {0}", assetID);
 
                 return false;
