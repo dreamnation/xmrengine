@@ -1472,7 +1472,7 @@ namespace MMR
 			itc.Add ("integer bool", "({0}!=0)");
 			itc.Add ("integer float", "(float){0}");
 			itc.Add ("integer string", "{0}.ToString()");
-			itc.Add ("key bool", "({0}.val!=NULL_KEY.val)");
+			itc.Add ("key bool", "({0}!=NULL_KEY)");
 			itc.Add ("key string", "{0}");
 			itc.Add ("list string", "{0}.ToString()");
 			itc.Add ("rotation string", "{0}.ToString()");
@@ -1696,7 +1696,7 @@ namespace MMR
 			Dictionary<string, BinOpStr> bos = new Dictionary<string, BinOpStr> ();
 
 			string[] booltypes = new string[] { "bool", "float", "integer", "key", "list", "string" };
-			string[] boolcasts = new string[] { "{0}", "({0}!=0.0)", "({0}!=0)", "({0}.val!=NULL_KEY.val)", "(!{0}.IsEmpty())", "({0}!=\"\")" };
+			string[] boolcasts = new string[] { "{0}", "({0}!=0.0)", "({0}!=0)", "({0}!=NULL_KEY.val)", "(!{0}.IsEmpty())", "({0}!=\"\")" };
 
 			/*
 			 * Get the && and || all out of the way...
@@ -1836,8 +1836,8 @@ namespace MMR
 
 		private static void DefineBinOpsKeyX (Dictionary<string, BinOpStr> bos, string x, string y)
 		{
-			bos.Add ("key==" + x, new BinOpStr (typeof (bool), "{0}.val == " + y));
-			bos.Add ("key!=" + x, new BinOpStr (typeof (bool), "{0}.val != " + y));
+			bos.Add ("key==" + x, new BinOpStr (typeof (bool), "{0} == " + y));
+			bos.Add ("key!=" + x, new BinOpStr (typeof (bool), "{0} != " + y));
 		}
 
 		private static void DefineBinOpsXKey (Dictionary<string, BinOpStr> bos, string x, string y)
