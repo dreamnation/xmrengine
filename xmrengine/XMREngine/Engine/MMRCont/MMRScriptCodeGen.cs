@@ -441,14 +441,15 @@ namespace MMR
                 {
                     foreach (CompilerError CompErr in results.Errors)
                     {
-                        string severity = CompErr.IsWarning ? "Warning" : "Error";
-                        string errtext = CompErr.ErrorText;
+                        if (CompErr.IsWarning)
+                            continue;
 
-                        m_log.DebugFormat("[MMR]: ({0},{1}]) {2}: {3}",
+                        m_log.DebugFormat("[MMR]: ({0},{1}]) Error: {3}",
                                 CompErr.Line, CompErr.Column,
-                                severity, errtext);
+                                CompErr.ErrorText);
+
+                        exitCode = 1;
                     }
-                    exitCode = 1;
                 }
             }
             catch
