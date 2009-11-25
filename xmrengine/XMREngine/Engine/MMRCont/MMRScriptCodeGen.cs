@@ -1926,7 +1926,7 @@ namespace MMR
 				}
 				if (inRVal.type is TokenTypeVec) {
 					CompRVal outRVal = new CompRVal (inRVal.type);
-					WriteOutput (opcode, "LSL_Vector " + outRVal.locstr + " = new LSL_Vector(-" + inRVal.locstr + ".x,-" +
+					WriteOutput (opcode, "OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3 " + outRVal.locstr + " = new OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3(-" + inRVal.locstr + ".x,-" +
 							inRVal.locstr + ".y,-" + inRVal.locstr + ".z);");
 					return outRVal;
 				}
