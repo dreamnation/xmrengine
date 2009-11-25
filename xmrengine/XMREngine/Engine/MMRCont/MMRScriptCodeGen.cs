@@ -207,7 +207,7 @@ namespace MMR
 			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclVar> kvp in tokenScript.vars) {
 				TokenDeclVar declVar = kvp.Value;
 				AddVarDefinition (declVar.type, declVar.name.val);
-				WriteOutput (declVar, "private " + declVar.type.typ.FullName.Replace("+", ".") + " __gbl_" + declVar.name.val + ";");
+				WriteOutput (declVar, "private " + TypeName(declVar.type) + " __gbl_" + declVar.name.val + ";");
 				nGlobals ++;
 			}
 
@@ -352,7 +352,7 @@ namespace MMR
 			WriteOutput (0, "public override void MigrateScriptIn (System.IO.Stream stream, Mono.Tasklets.MMRContRecvObj recvObj) {");
 			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclVar> kvp in tokenScript.vars) {
 				TokenDeclVar declVar = kvp.Value;
-				WriteOutput (0, "__gbl_" + declVar.name.val + " = (" + declVar.type.typ.FullName.Replace("+", ".") + ")recvObj (stream);");
+				WriteOutput (0, "__gbl_" + declVar.name.val + " = (" + TypeName(declVar.type) + ")recvObj (stream);");
 			}
 			WriteOutput (0, "}");
 
@@ -529,8 +529,8 @@ namespace MMR
 				// warning CS0219: The variable `__lcl_change' is assigned but its value is never used
 				WriteOutput (0, "#pragma warning disable 219\n");
 				for (int i = 0; i < argDecl.types.Length; i ++) {
-					WriteOutput (argDecl, argDecl.types[i].typ.FullName.Replace("+", ".") + " __lcl_" + argDecl.names[i].val + " = (" +
-							argDecl.types[i].typ.FullName.Replace("+", ".") + ")__sw.ehArgs[" + i + "];");
+					WriteOutput (argDecl, TypeName(argDecl.types[i]) + " __lcl_" + argDecl.names[i].val + " = (" +
+							TypeName(argDecl.types[i]) + ")__sw.ehArgs[" + i + "];");
 					AddVarDefinition (argDecl.types[i], argDecl.names[i].val);
 				}
 				WriteOutput (0, "#pragma warning restore 219\n");
@@ -573,14 +573,14 @@ namespace MMR
 			if (declFunc.retType.typ == typeof (void)) {
 				WriteOutput (declFunc, "void");
 			} else {
-				WriteOutput (declFunc, declFunc.retType.typ.FullName.Replace("+", "."));
+				WriteOutput (declFunc, TypeName(declFunc.retType));
 			}
 			WriteOutput (declFunc, " __fun_");
 			WriteOutput (declFunc, name);
 			WriteOutput (declFunc, "(" + smClassName + " __sm");
 			if (argDecl.types.Length > 0) {
 				for (int i = 0; i < argDecl.types.Length; i ++) {
-					WriteOutput (argDecl, "," + argDecl.types[i].typ.FullName.Replace("+", ".") + " __lcl_" + argDecl.names[i].val);
+					WriteOutput (argDecl, "," + TypeName(argDecl.types[i]) + " __lcl_" + argDecl.names[i].val);
 					AddVarDefinition (argDecl.types[i], argDecl.names[i].val);
 				}
 			}
@@ -614,7 +614,7 @@ namespace MMR
 			 * Set up a local variable to capture return value.
 			 */
 			if (!(declFunc.retType is TokenTypeVoid)) {
-				WriteOutput (declFunc, declFunc.retType.typ.FullName.Replace("+", ".") + " __retval = " + DefaultValue (declFunc.retType) + ";");
+				WriteOutput (declFunc, TypeName(declFunc.retType) + " __retval = " + DefaultValue (declFunc.retType) + ";");
 			}
 
 			/*
@@ -703,7 +703,7 @@ namespace MMR
 				} else if (seenStatements) {
 					TokenDeclVar declVar = (TokenDeclVar)t;
 					declVar.preDefd = true;
-					WriteOutput (declVar, declVar.type.typ.FullName.Replace("+", ".") + " __lcl_" + declVar.name.val + " = " + DefaultValue (declVar.type) + ";");
+					WriteOutput (declVar, TypeName(declVar.type) + " __lcl_" + declVar.name.val + " = " + DefaultValue (declVar.type) + ";");
 				}
 			}
 
@@ -940,7 +940,7 @@ namespace MMR
 				 */
 				CompRVal rVal = GenerateFromRVal (declVar.init);
 				if (!declVar.preDefd) {
-					WriteOutput (declVar, declVar.type.typ.FullName.Replace("+", ".") + " ");
+					WriteOutput (declVar, TypeName(declVar.type) + " ");
 				}
 				WriteOutput (declVar, "__lcl_" + declVar.name.val);
 				WriteOutput (declVar, " = " + StringWithCast (declVar.type, rVal) + ";");
@@ -951,7 +951,7 @@ namespace MMR
 				 * Scripts have paths that don't initialize variables.
 				 * So initialize them with something so C# compiler doesn't complain.
 				 */
-				WriteOutput (declVar, declVar.type.typ.FullName.Replace("+", ".") + " __lcl_" + declVar.name.val + " = " + DefaultValue (declVar.type) + ";");
+				WriteOutput (declVar, TypeName(declVar.type) + " __lcl_" + declVar.name.val + " = " + DefaultValue (declVar.type) + ";");
 			}
 
 			/*
@@ -1082,7 +1082,7 @@ namespace MMR
 			if (binOpStrings.ContainsKey (key)) {
 				BinOpStr binOpStr = binOpStrings[key];
 				CompRVal resultRVal = new CompRVal (TokenType.FromSysType (token.opcode, binOpStr.outtype));
-				WriteOutput (token, String.Format ("{0} {1} = ", binOpStr.outtype.FullName.Replace ("+", "."), resultRVal.locstr));
+				WriteOutput (token, String.Format ("{0} {1} = ", TypeName(binOpStr.outtype), resultRVal.locstr));
 				string fmt = binOpStr.format;
 				int whack = binOpStr.format.IndexOf ('#');
 				if (whack >= 0) {
@@ -1161,7 +1161,7 @@ namespace MMR
 		{
 			CompLVal lVal = GenerateFromLVal (asnPost.lVal);
 			CompRVal rVal = new CompRVal (lVal.type);
-			WriteOutput (asnPost, lVal.type.typ.FullName.Replace("+", ".") + " " + rVal.locstr + " = " + lVal.locstr + " " + asnPost.postfix.ToString () + ";");
+			WriteOutput (asnPost, TypeName(lVal.type) + " " + rVal.locstr + " = " + lVal.locstr + " " + asnPost.postfix.ToString () + ";");
 			return rVal;
 		}
 
@@ -1172,7 +1172,7 @@ namespace MMR
 		{
 			CompLVal lVal = GenerateFromLVal (asnPre.lVal);
 			CompRVal rVal = new CompRVal (lVal.type);
-			WriteOutput (asnPre, lVal.type.typ.FullName.Replace("+", ".") + " " + rVal.locstr + " = " + asnPre.prefix.ToString () + " " + lVal.locstr + ";");
+			WriteOutput (asnPre, TypeName(lVal.type) + " " + rVal.locstr + " = " + asnPre.prefix.ToString () + " " + lVal.locstr + ";");
 			return rVal;
 		}
 
@@ -1235,7 +1235,7 @@ namespace MMR
 			 */
 			retRVal = new CompRVal (declFunc.retType);
 			if (!(declFunc.retType is TokenTypeVoid)) {
-				WriteOutput (call, declFunc.retType.typ.FullName.Replace("+", ".") + " " + retRVal.locstr + " = ");
+				WriteOutput (call, TypeName(declFunc.retType) + " " + retRVal.locstr + " = ");
 			}
 
 			/*
@@ -1312,7 +1312,7 @@ namespace MMR
 			}
 
 			CompRVal outRVal = new CompRVal (outType);
-			WriteOutput (cast, outType.typ.FullName.Replace("+", ".") + " " + outRVal.locstr + " = (" + outType.typ.FullName.Replace("+", ".") + ")" + inRVal.locstr + ";");
+			WriteOutput (cast, TypeName(outType) + " " + outRVal.locstr + " = (" + TypeName(outType) + ")" + inRVal.locstr + ";");
 			return outRVal;
 		}
 
@@ -1338,12 +1338,18 @@ namespace MMR
 		 */
 		private CompRVal GenerateFromRValList (TokenRValList rValList)
 		{
-			CompRVal compRVal = new CompRVal (new TokenTypeList (rValList.rVal));
-			WriteOutput (rValList, typeof (LSL_List).FullName.Replace("+", ".") + " " + compRVal.locstr + " = new " + typeof (LSL_List).FullName.Replace("+", ".") + "();");
+			string arrayLocstr = "__tmp_" + ScriptCodeGen.GetTempNo ();
+			WriteOutput (rValList, "object[] " + arrayLocstr + " = new object[" + rValList.nItems + "];");
+			int i = 0;
 			for (TokenRVal val = rValList.rVal; val != null; val = (TokenRVal)val.nextToken) {
 				CompRVal eRVal = GenerateFromRVal (val);
-				WriteOutput (val, compRVal.locstr + " += " + eRVal.locstr + ";");
+				WriteOutput (val, arrayLocstr + "[" + i + "] = (object)" + eRVal.locstr + ";");
+				i ++;
 			}
+
+			CompRVal compRVal = new CompRVal (new TokenTypeList (rValList.rVal));
+			WriteOutput (rValList, TypeName(typeof(LSL_List)) + " " + compRVal.locstr + " = new " + 
+			                       TypeName(typeof(LSL_List)) + "(" + arrayLocstr + ");");
 			return compRVal;
 		}
 
@@ -1395,7 +1401,7 @@ namespace MMR
 			zRVal = GenerateFromRVal (rValRot.zRVal);
 			wRVal = GenerateFromRVal (rValRot.wRVal);
 			return new CompRVal (new TokenTypeRot (rValRot),
-					"new " + typeof(LSL_Rotation).FullName.Replace("+", ".") + "(" + StringWithCast (flToken, xRVal) + "," + StringWithCast (flToken, yRVal) + "," +
+					"new " + TypeName(typeof(LSL_Rotation)) + "(" + StringWithCast (flToken, xRVal) + "," + StringWithCast (flToken, yRVal) + "," +
 					StringWithCast (flToken, zRVal) + "," + StringWithCast (flToken, wRVal) + ")");
 		}
 
@@ -1419,7 +1425,7 @@ namespace MMR
 			yRVal = GenerateFromRVal (rValVec.yRVal);
 			zRVal = GenerateFromRVal (rValVec.zRVal);
 			return new CompRVal (new TokenTypeVec (rValVec),
-					"new " + typeof(LSL_Vector).FullName.Replace("+", ".") + "(" + StringWithCast (flToken, xRVal) + "," +
+					"new " + TypeName(typeof(LSL_Vector)) + "(" + StringWithCast (flToken, xRVal) + "," +
 					StringWithCast (flToken, yRVal) + "," + StringWithCast (flToken, zRVal) + ")");
 		}
 
@@ -1474,7 +1480,7 @@ namespace MMR
 
 			// EXPLICIT type casts (an * is on the end of the key)
 			itc.Add ("float integer*", "(int){0}");
-			itc.Add ("string key*", "new " + typeof(LSL_Key).FullName.Replace("+", ".") + "({0})");
+			itc.Add ("string key*", "new " + TypeName(typeof(LSL_Key)) + "({0})");
 
 			return itc;
 		}
@@ -1517,7 +1523,7 @@ namespace MMR
 			 * This converts things like 'int' to LSL_Integer.
 			 */
 			if (outType.lslBoxing != null) {
-				result = "new " + outType.lslBoxing.FullName.Replace("+", ".") + "(" + result + ")";
+				result = "new " + TypeName(outType.lslBoxing) + "(" + result + ")";
 			}
 			return result;
 		}
@@ -1842,8 +1848,32 @@ namespace MMR
 
 		private static void DefineBinOpsList (Dictionary<string, BinOpStr> bos)
 		{
-			bos.Add ("list==list", new BinOpStr (typeof (bool), "{0}.EqualsList({1})"));
-			bos.Add ("list!=list", new BinOpStr (typeof (bool), "!{0}.EqualsList({1})"));
+			BinOpStr add    = new BinOpStr (typeof (LSL_List), "{0}+{1}");
+			bos.Add ("list+float",     add);
+			bos.Add ("list+integer",   add);
+			bos.Add ("list+key",       add);
+			bos.Add ("list+rotation",  add);
+			bos.Add ("list+string",    add);
+			bos.Add ("list+vector",    add);
+
+			BinOpStr revadd = new BinOpStr (typeof (LSL_List), "new " + TypeName(typeof(LSL_List)) + "((object){0})+{1}");
+			bos.Add ("float+list",     revadd);
+			bos.Add ("integer+list",   revadd);
+			bos.Add ("key+list",       revadd);
+			bos.Add ("rotation+list",  revadd);
+			bos.Add ("string+list",    revadd);
+			bos.Add ("vector+list",    revadd);
+
+			BinOpStr addto  = new BinOpStr (typeof (LSL_List), "{0}.Add((object){1})");
+			bos.Add ("list+=float",    addto);
+			bos.Add ("list+=integer",  addto);
+			bos.Add ("list+=key",      addto);
+			bos.Add ("list+=rotation", addto);
+			bos.Add ("list+=string",   addto);
+			bos.Add ("list+=vector",   addto);
+
+			bos.Add ("list==list",     new BinOpStr (typeof (bool), "{0}=={1}"));
+			bos.Add ("list!=list",     new BinOpStr (typeof (bool), "{0}!={1}"));
 		}
 
 		private static void DefineBinOpsRotation (Dictionary<string, BinOpStr> bos)
@@ -1915,18 +1945,20 @@ namespace MMR
 			if (opcode is TokenKwSub) {
 				if ((inRVal.type is TokenTypeFloat) || (inRVal.type is TokenTypeInt)) {
 					CompRVal outRVal = new CompRVal (inRVal.type);
-					WriteOutput (opcode, inRVal.type.typ.FullName.Replace("+", ".") + " " + outRVal.locstr + " = -" + inRVal.locstr + ";");
+					WriteOutput (opcode, TypeName(inRVal.type) + " " + outRVal.locstr + " = -" + inRVal.locstr + ";");
 					return outRVal;
 				}
 				if (inRVal.type is TokenTypeRot) {
 					CompRVal outRVal = new CompRVal (inRVal.type);
-					WriteOutput (opcode, "LSL_Rotation " + outRVal.locstr + " = new LSL_Rotation(-" + inRVal.locstr + ".x,-" +
+					WriteOutput (opcode, TypeName(typeof(LSL_Rotation)) + " " + outRVal.locstr + " = new " +
+					                     TypeName(typeof(LSL_Rotation)) + "(-" + inRVal.locstr + ".x,-" +
 							inRVal.locstr + ".y,-" + inRVal.locstr + ".z,-" + inRVal.locstr + ".w);");
 					return outRVal;
 				}
 				if (inRVal.type is TokenTypeVec) {
 					CompRVal outRVal = new CompRVal (inRVal.type);
-					WriteOutput (opcode, "LSL_Vector " + outRVal.locstr + " = new LSL_Vector(-" + inRVal.locstr + ".x,-" +
+					WriteOutput (opcode, TypeName(typeof(LSL_Vector)) + " " + outRVal.locstr + " = new " +
+					                     TypeName(typeof(LSL_Vector)) + "(-" + inRVal.locstr + ".x,-" +
 							inRVal.locstr + ".y,-" + inRVal.locstr + ".z);");
 					return outRVal;
 				}
@@ -1940,7 +1972,7 @@ namespace MMR
 			if (opcode is TokenKwTilde) {
 				if (inRVal.type is TokenTypeInt) {
 					CompRVal outRVal = new CompRVal (inRVal.type);
-					WriteOutput (opcode, inRVal.type.typ.FullName.Replace("+", ".") + " " + outRVal.locstr + " = ~" + inRVal.locstr + ";");
+					WriteOutput (opcode, TypeName(inRVal.type) + " " + outRVal.locstr + " = ~" + inRVal.locstr + ";");
 					return outRVal;
 				}
 				ErrorMsg (opcode, "can't complement " + inRVal.type.ToString ());
@@ -1957,6 +1989,18 @@ namespace MMR
 			}
 
 			throw new Exception ("unhandled opcode " + opcode.ToString ());
+		}
+
+		/**
+		 * @brief get type name string suitable for output to C# file.
+		 */
+		private static string TypeName(TokenType tokenType)
+		{
+			return TypeName(tokenType.typ);
+		}
+		private static string TypeName(Type type)
+		{
+			return type.FullName.Replace("+", ".");
 		}
 
 		/**
@@ -2053,18 +2097,6 @@ namespace MMR
 		{
 			token.ErrorMsg (message);
 			youveAnError = true;
-		}
-
-		/**
-		 * @brief contains left-hand operand and corresponding binary operator.
-		 *        right-hand operand is at nextBO.rVal.
-		 */
-		private class BinaryOp {
-			public BinaryOp nextBO;  // next in list (null if first)
-			public BinaryOp prevBO;  // prev in list (null if last)
-			public CompRVal rVal;    // operand
-			public Token opcode;     // opcode token (null if last)
-			public int preced;       // precedence (0 if last)
 		}
 
 		/**

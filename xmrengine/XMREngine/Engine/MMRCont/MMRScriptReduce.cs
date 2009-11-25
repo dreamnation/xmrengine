@@ -1014,7 +1014,7 @@ namespace MMR {
 				} else {
 					TokenRVal rValAll = ParseRVal (ref token, typeof (TokenKwBrkClose));
 					if (rValAll == null) return null;
-					SplitCommaRVals (rValAll, out rValList.rVal);
+					rValList.nItems = SplitCommaRVals (rValAll, out rValList.rVal);
 				}
 				return rValList;
 			}
@@ -1425,6 +1425,7 @@ namespace MMR {
 	public class TokenRValList : TokenRVal {
 
 		public TokenRVal rVal;  // null-terminated list of TokenRVal objects
+		public int nItems;
 
 		public TokenRValList (Token original) : base (original) { }
 	}
