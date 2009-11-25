@@ -17,10 +17,9 @@ using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
  * Usage:
  *
  *	emsg = some function to output error messages to
- *	file = name of source file
  *	source = string containing entire source file
  *
- *	TokenBegin tokenBegin = TokenBegin.Construct (emsg, file, source);
+ *	TokenBegin tokenBegin = TokenBegin.Construct (emsg, source);
  *
  *	tokenBegin = null: tokenizing error
  *	             else: first (dummy) token in file
@@ -45,7 +44,6 @@ namespace MMR {
 
 		// used for error message printing
 		public TokenErrorMessage emsg;
-		public string file;
 		public int line;
 		public int posn;
 
@@ -55,14 +53,12 @@ namespace MMR {
 		/**
 		 * @brief construct a token coming directly from a source file
 		 * @param emsg = object that error messages get sent to
-		 * @param file = source file name string
 		 * @param line = source file line number
 		 * @param posn = token's position within that source line
 		 */
-		public Token (TokenErrorMessage emsg, string file, int line, int posn)
+		public Token (TokenErrorMessage emsg, int line, int posn)
 		{
 			this.emsg = emsg;
-			this.file = file;
 			this.line = line;
 			this.posn = posn;
 		}
@@ -75,7 +71,6 @@ namespace MMR {
 		{
 			if (original != null) {
 				this.emsg = original.emsg;
-				this.file = original.file;
 				this.line = original.line;
 				this.posn = original.posn;
 			}
@@ -129,26 +124,25 @@ namespace MMR {
 		 * @brief convert a source file in the form of a string
 		 *        to a list of raw tokens
 		 * @param emsg   = where to output messages to
-		 * @param file   = source filename
 		 * @param source = whole source file contents
 		 * @returns null: conversion error, message already output
 		 *          else: list of tokens, starting with TokenBegin, ending with TokenEnd.
 		 */
-		public static TokenBegin Construct (TokenErrorMessage emsg, string file, string source)
+		public static TokenBegin Construct (TokenErrorMessage emsg, string source)
 		{
 			BuildDelimeters();
 			BuildKeywords();
 
-			TokenBegin tokenBegin = new TokenBegin (emsg, file, 0, 0);
+			TokenBegin tokenBegin = new TokenBegin (emsg, 0, 0);
 			tokenBegin.lastToken  = tokenBegin;
 			tokenBegin.source     = source;
 			tokenBegin.Tokenize ();
 			if (tokenBegin.youveAnError) return null;
-			tokenBegin.AppendToken (new TokenEnd (emsg, file, ++ tokenBegin.lineNo, 0));
+			tokenBegin.AppendToken (new TokenEnd (emsg, ++ tokenBegin.lineNo, 0));
 			return tokenBegin;
 		}
 
-		private TokenBegin (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
+		private TokenBegin (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn) { }
 
 		public override string ToString() { return "BOF"; }
 
@@ -230,7 +224,7 @@ namespace MMR {
 							backslash = false;
 						}
 					}
-					AppendToken (new TokenStr (emsg, file, lineNo, i - eolIdx, source.Substring (i + 1, j - i - 1)));
+					AppendToken (new TokenStr (emsg, lineNo, i - eolIdx, source.Substring (i + 1, j - i - 1)));
 					i = j;
 					continue;
 				}
@@ -250,10 +244,10 @@ namespace MMR {
 					}
 					string name = source.Substring (i, j - i);
 					if (keywords.ContainsKey (name)) {
-						Object[] args = new Object[] { emsg, file, lineNo, i - eolIdx };
+						Object[] args = new Object[] { emsg, lineNo, i - eolIdx };
 						AppendToken ((Token)keywords[name].Invoke (args));
 					} else {
-						AppendToken (new TokenName (emsg, file, lineNo, i - eolIdx, name));
+						AppendToken (new TokenName (emsg, lineNo, i - eolIdx, name));
 					}
 					i = -- j;
 	                continue;
@@ -271,7 +265,7 @@ namespace MMR {
 						if ((i + len <= source.Length) && (source.Substring (i, len).Equals (delims[j].str))) break;
 					}
 					if (j < delims.Length) {
-						Object[] args = { emsg, file, lineNo, i - eolIdx };
+						Object[] args = { emsg, lineNo, i - eolIdx };
 	                    Token kwToken = (Token)delims[j].ctorInfo.Invoke (args);
 						AppendToken (kwToken);
 						i += -- len;
@@ -392,7 +386,7 @@ namespace MMR {
 				}
 			}
 			if (!error) {
-				AppendToken (new TokenFloat (emsg, file, lineNo, i - eolIdx, f));
+				AppendToken (new TokenFloat (emsg, lineNo, i - eolIdx, f));
 			}
 			return j;
 		}
@@ -427,7 +421,7 @@ namespace MMR {
 				break;
 			}
 			if (!error) {
-				AppendToken (new TokenInt (emsg, file, lineNo, i - eolIdx, mantissa));
+				AppendToken (new TokenInt (emsg, lineNo, i - eolIdx, mantissa));
 			}
 			return j;
 		}
@@ -454,7 +448,7 @@ namespace MMR {
 		 */
 		private void TokenError (int i, string message)
 		{
-			Token temp = new Token (this.emsg, this.file, this.lineNo, i - this.eolIdx);
+			Token temp = new Token (this.emsg, this.lineNo, i - this.eolIdx);
 			temp.ErrorMsg (message);
 			youveAnError = true;
 		}
@@ -464,8 +458,8 @@ namespace MMR {
 		 * @param tokenType = token's type
 		 * @returns token's constructor
 		 */
-		private static Type[] constrTypes = new Type[4] {
-			typeof (TokenErrorMessage), typeof (string), typeof (int), typeof (int)
+		private static Type[] constrTypes = new Type[] {
+			typeof (TokenErrorMessage), typeof (int), typeof (int)
 		};
 
 		private static System.Reflection.ConstructorInfo GetTokenCtor (Type tokenType)
@@ -583,7 +577,7 @@ namespace MMR {
 
 	public class TokenFloat : Token {
 		public double val;
-		public TokenFloat (TokenErrorMessage emsg, string file, int line, int posn, double val) : base (emsg, file, line, posn)
+		public TokenFloat (TokenErrorMessage emsg, int line, int posn, double val) : base (emsg, line, posn)
 		{
 			this.val = val;
 		}
@@ -598,7 +592,7 @@ namespace MMR {
 
 	public class TokenInt : Token {
 		public int val;
-		public TokenInt (TokenErrorMessage emsg, string file, int line, int posn, int val) : base (emsg, file, line, posn)
+		public TokenInt (TokenErrorMessage emsg, int line, int posn, int val) : base (emsg, line, posn)
 		{
 			this.val = val;
 	    }
@@ -610,7 +604,7 @@ namespace MMR {
 
 	public class TokenName : Token {
 		public string val;
-		public TokenName (TokenErrorMessage emsg, string file, int line, int posn, string val) : base (emsg, file, line, posn)
+		public TokenName (TokenErrorMessage emsg, int line, int posn, string val) : base (emsg, line, posn)
 		{
 			this.val = val;
 	    }
@@ -626,7 +620,7 @@ namespace MMR {
 
 	public class TokenStr : Token {
 		public string val;
-		public TokenStr (TokenErrorMessage emsg, string file, int line, int posn, string val) : base (emsg, file, line, posn)
+		public TokenStr (TokenErrorMessage emsg, int line, int posn, string val) : base (emsg, line, posn)
 		{
 			this.val = val;
 	    }
@@ -649,68 +643,68 @@ namespace MMR {
 	/*
 	 * This one marks the end-of-file.
 	 */
-	public class TokenEnd : Token { public TokenEnd(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "EOF"; } }
+	public class TokenEnd : Token { public TokenEnd(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "EOF"; } }
 
 	/*
 	 * Various keywords and delimeters.
 	 */
-	public class TokenKwAsnLSh : Token { public TokenKwAsnLSh(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "<<="; } }
-	public class TokenKwAsnRSh : Token { public TokenKwAsnRSh(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return ">>="; } }
-	public class TokenKwCmpLE : Token { public TokenKwCmpLE(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "<="; } }
-	public class TokenKwCmpGE : Token { public TokenKwCmpGE(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return ">="; } }
-	public class TokenKwCmpEQ : Token { public TokenKwCmpEQ (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { } public override string ToString () { return "=="; } }
-	public class TokenKwCmpNE : Token { public TokenKwCmpNE (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { } public override string ToString () { return "!="; } }
-	public class TokenKwIncr : Token { public TokenKwIncr (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { } public override string ToString () { return "++"; } }
-	public class TokenKwDecr : Token { public TokenKwDecr(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "--"; } }
-	public class TokenKwAndAnd : Token { public TokenKwAndAnd(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "&&"; } }
-	public class TokenKwOrOr : Token { public TokenKwOrOr(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "||"; } }
-	public class TokenKwAsnAdd : Token { public TokenKwAsnAdd(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "+="; } }
-	public class TokenKwAsnAnd : Token { public TokenKwAsnAnd (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { } public override string ToString () { return "&="; } }
-	public class TokenKwAsnSub : Token { public TokenKwAsnSub (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { } public override string ToString () { return "-="; } }
-	public class TokenKwAsnMul : Token { public TokenKwAsnMul(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "*="; } }
-	public class TokenKwAsnDiv : Token { public TokenKwAsnDiv(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "/="; } }
-	public class TokenKwAsnMod : Token { public TokenKwAsnMod(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "%="; } }
-	public class TokenKwAsnOr : Token { public TokenKwAsnOr (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { } public override string ToString () { return "|="; } }
-	public class TokenKwAsnXor : Token { public TokenKwAsnXor (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { } public override string ToString () { return "^="; } }
-	public class TokenKwLSh : Token { public TokenKwLSh (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { } public override string ToString () { return "<<"; } }
-	public class TokenKwRSh : Token { public TokenKwRSh(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return ">>"; } }
-	public class TokenKwTilde : Token { public TokenKwTilde(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "~"; } }
-	public class TokenKwExclam : Token { public TokenKwExclam(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "!"; } }
-	public class TokenKwAt : Token { public TokenKwAt(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "@"; } }
-	public class TokenKwMod : Token { public TokenKwMod(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "%"; } }
-	public class TokenKwXor : Token { public TokenKwXor(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "^"; } }
-	public class TokenKwAnd : Token { public TokenKwAnd(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "&"; } }
-	public class TokenKwMul : Token { public TokenKwMul(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "*"; } }
-	public class TokenKwParOpen : Token { public TokenKwParOpen(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "("; } }
-	public class TokenKwParClose : Token { public TokenKwParClose(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return ")"; } }
-	public class TokenKwSub : Token { public TokenKwSub(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "-"; } }
-	public class TokenKwAdd : Token { public TokenKwAdd(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "+"; } }
-	public class TokenKwAssign : Token { public TokenKwAssign(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "="; } }
-	public class TokenKwBrcOpen : Token { public TokenKwBrcOpen(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "{"; } }
-	public class TokenKwBrcClose : Token { public TokenKwBrcClose(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "}"; } }
-	public class TokenKwBrkOpen : Token { public TokenKwBrkOpen(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "["; } }
-	public class TokenKwBrkClose : Token { public TokenKwBrkClose(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "]"; } }
-	public class TokenKwSemi : Token { public TokenKwSemi(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return ";"; } }
-	public class TokenKwColon : Token { public TokenKwColon(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return ":"; } }
-	public class TokenKwCmpLT : Token { public TokenKwCmpLT(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "<"; } }
-	public class TokenKwCmpGT : Token { public TokenKwCmpGT(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return ">"; } }
-	public class TokenKwComma : Token { public TokenKwComma(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return ","; } }
-	public class TokenKwDot : Token { public TokenKwDot(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "."; } }
-	public class TokenKwQMark : Token { public TokenKwQMark(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "?"; } }
-	public class TokenKwDiv : Token { public TokenKwDiv(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "/"; } }
-	public class TokenKwOr : Token { public TokenKwOr(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "|"; } }
+	public class TokenKwAsnLSh : Token { public TokenKwAsnLSh(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "<<="; } }
+	public class TokenKwAsnRSh : Token { public TokenKwAsnRSh(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return ">>="; } }
+	public class TokenKwCmpLE : Token { public TokenKwCmpLE(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "<="; } }
+	public class TokenKwCmpGE : Token { public TokenKwCmpGE(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return ">="; } }
+	public class TokenKwCmpEQ : Token { public TokenKwCmpEQ (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn) { } public override string ToString () { return "=="; } }
+	public class TokenKwCmpNE : Token { public TokenKwCmpNE (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn) { } public override string ToString () { return "!="; } }
+	public class TokenKwIncr : Token { public TokenKwIncr (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn) { } public override string ToString () { return "++"; } }
+	public class TokenKwDecr : Token { public TokenKwDecr(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "--"; } }
+	public class TokenKwAndAnd : Token { public TokenKwAndAnd(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "&&"; } }
+	public class TokenKwOrOr : Token { public TokenKwOrOr(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "||"; } }
+	public class TokenKwAsnAdd : Token { public TokenKwAsnAdd(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "+="; } }
+	public class TokenKwAsnAnd : Token { public TokenKwAsnAnd (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn) { } public override string ToString () { return "&="; } }
+	public class TokenKwAsnSub : Token { public TokenKwAsnSub (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn) { } public override string ToString () { return "-="; } }
+	public class TokenKwAsnMul : Token { public TokenKwAsnMul(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "*="; } }
+	public class TokenKwAsnDiv : Token { public TokenKwAsnDiv(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "/="; } }
+	public class TokenKwAsnMod : Token { public TokenKwAsnMod(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "%="; } }
+	public class TokenKwAsnOr : Token { public TokenKwAsnOr (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn) { } public override string ToString () { return "|="; } }
+	public class TokenKwAsnXor : Token { public TokenKwAsnXor (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn) { } public override string ToString () { return "^="; } }
+	public class TokenKwLSh : Token { public TokenKwLSh (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn) { } public override string ToString () { return "<<"; } }
+	public class TokenKwRSh : Token { public TokenKwRSh(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return ">>"; } }
+	public class TokenKwTilde : Token { public TokenKwTilde(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "~"; } }
+	public class TokenKwExclam : Token { public TokenKwExclam(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "!"; } }
+	public class TokenKwAt : Token { public TokenKwAt(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "@"; } }
+	public class TokenKwMod : Token { public TokenKwMod(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "%"; } }
+	public class TokenKwXor : Token { public TokenKwXor(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "^"; } }
+	public class TokenKwAnd : Token { public TokenKwAnd(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "&"; } }
+	public class TokenKwMul : Token { public TokenKwMul(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "*"; } }
+	public class TokenKwParOpen : Token { public TokenKwParOpen(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "("; } }
+	public class TokenKwParClose : Token { public TokenKwParClose(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return ")"; } }
+	public class TokenKwSub : Token { public TokenKwSub(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "-"; } }
+	public class TokenKwAdd : Token { public TokenKwAdd(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "+"; } }
+	public class TokenKwAssign : Token { public TokenKwAssign(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "="; } }
+	public class TokenKwBrcOpen : Token { public TokenKwBrcOpen(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "{"; } }
+	public class TokenKwBrcClose : Token { public TokenKwBrcClose(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "}"; } }
+	public class TokenKwBrkOpen : Token { public TokenKwBrkOpen(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "["; } }
+	public class TokenKwBrkClose : Token { public TokenKwBrkClose(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "]"; } }
+	public class TokenKwSemi : Token { public TokenKwSemi(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return ";"; } }
+	public class TokenKwColon : Token { public TokenKwColon(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return ":"; } }
+	public class TokenKwCmpLT : Token { public TokenKwCmpLT(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "<"; } }
+	public class TokenKwCmpGT : Token { public TokenKwCmpGT(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return ">"; } }
+	public class TokenKwComma : Token { public TokenKwComma(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return ","; } }
+	public class TokenKwDot : Token { public TokenKwDot(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "."; } }
+	public class TokenKwQMark : Token { public TokenKwQMark(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "?"; } }
+	public class TokenKwDiv : Token { public TokenKwDiv(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "/"; } }
+	public class TokenKwOr : Token { public TokenKwOr(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "|"; } }
 
-	public class TokenKwBreak : Token { public TokenKwBreak (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { } public override string ToString () { return "break"; } }
-	public class TokenKwCont : Token { public TokenKwCont (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { } public override string ToString () { return "continue"; } }
-	public class TokenKwDefault : Token { public TokenKwDefault(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "default"; } }
-	public class TokenKwDo : Token { public TokenKwDo(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "do"; } }
-	public class TokenKwElse : Token { public TokenKwElse (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { } public override string ToString () { return "else"; } }
-	public class TokenKwFor : Token { public TokenKwFor (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { } public override string ToString () { return "for"; } }
-	public class TokenKwIf : Token { public TokenKwIf(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "if"; } }
-	public class TokenKwJump : Token { public TokenKwJump (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { } public override string ToString () { return "jump"; } }
-	public class TokenKwRet : Token { public TokenKwRet (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { } public override string ToString () { return "return"; } }
-	public class TokenKwState : Token { public TokenKwState (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { } public override string ToString () { return "state"; } }
-	public class TokenKwWhile : Token { public TokenKwWhile(TokenErrorMessage emsg, string file, int line, int posn) : base(emsg, file, line, posn) { } public override string ToString() { return "while"; } }
+	public class TokenKwBreak : Token { public TokenKwBreak (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn) { } public override string ToString () { return "break"; } }
+	public class TokenKwCont : Token { public TokenKwCont (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn) { } public override string ToString () { return "continue"; } }
+	public class TokenKwDefault : Token { public TokenKwDefault(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "default"; } }
+	public class TokenKwDo : Token { public TokenKwDo(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "do"; } }
+	public class TokenKwElse : Token { public TokenKwElse (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn) { } public override string ToString () { return "else"; } }
+	public class TokenKwFor : Token { public TokenKwFor (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn) { } public override string ToString () { return "for"; } }
+	public class TokenKwIf : Token { public TokenKwIf(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "if"; } }
+	public class TokenKwJump : Token { public TokenKwJump (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn) { } public override string ToString () { return "jump"; } }
+	public class TokenKwRet : Token { public TokenKwRet (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn) { } public override string ToString () { return "return"; } }
+	public class TokenKwState : Token { public TokenKwState (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn) { } public override string ToString () { return "state"; } }
+	public class TokenKwWhile : Token { public TokenKwWhile(TokenErrorMessage emsg, int line, int posn) : base(emsg, line, posn) { } public override string ToString() { return "while"; } }
 
 	/*
 	 * Various datatypes.
@@ -718,7 +712,7 @@ namespace MMR {
 	public class TokenType : Token {
 		public System.Type typ;
 
-		public TokenType (TokenErrorMessage emsg, string file, int line, int posn, System.Type typ) : base (emsg, file, line, posn)
+		public TokenType (TokenErrorMessage emsg, int line, int posn, System.Type typ) : base (emsg, line, posn)
 		{
 			this.typ = typ;
 		}
@@ -761,42 +755,42 @@ namespace MMR {
 		public override string ToString () { return "bool"; }
 	}
 	public class TokenTypeFloat : TokenType {
-		public TokenTypeFloat (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn, typeof (float)) { }
+		public TokenTypeFloat (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn, typeof (float)) { }
 		public TokenTypeFloat (Token original) : base (original, typeof (float)) { }
 		public override string ToString () { return "float"; }
 	}
 	public class TokenTypeInt : TokenType {
-		public TokenTypeInt (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn, typeof (int)) { }
+		public TokenTypeInt (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn, typeof (int)) { }
 		public TokenTypeInt (Token original) : base (original, typeof (int)) { }
 		public override string ToString () { return "integer"; }
 	}
 	public class TokenTypeKey : TokenType {
-		public TokenTypeKey (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn, typeof (LSL_Key)) { }
+		public TokenTypeKey (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn, typeof (LSL_Key)) { }
 		public TokenTypeKey (Token original) : base (original, typeof (LSL_Key)) { }
 		public override string ToString () { return "key"; }
 	}
 	public class TokenTypeList : TokenType {
-		public TokenTypeList (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn, typeof (LSL_List)) { }
+		public TokenTypeList (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn, typeof (LSL_List)) { }
 		public TokenTypeList (Token original) : base (original, typeof (LSL_List)) { }
 		public override string ToString () { return "list"; }
 	}
 	public class TokenTypeRot : TokenType {
-		public TokenTypeRot (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn, typeof (LSL_Rotation)) { }
+		public TokenTypeRot (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn, typeof (LSL_Rotation)) { }
 		public TokenTypeRot (Token original) : base (original, typeof (LSL_Rotation)) { }
 		public override string ToString () { return "rotation"; }
 	}
 	public class TokenTypeStr : TokenType {
-		public TokenTypeStr (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn, typeof (string)) { }
+		public TokenTypeStr (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn, typeof (string)) { }
 		public TokenTypeStr (Token original) : base (original, typeof (string)) { }
 		public override string ToString () { return "string"; }
 	}
 	public class TokenTypeVec : TokenType {
-		public TokenTypeVec (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn, typeof (LSL_Vector)) { } 
+		public TokenTypeVec (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn, typeof (LSL_Vector)) { } 
 		public TokenTypeVec (Token original) : base (original, typeof (LSL_Vector)) { }
 		public override string ToString () { return "vector"; }
 	}
 	public class TokenTypeVoid : TokenType {
-		public TokenTypeVoid (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn, typeof (void)) { }
+		public TokenTypeVoid (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn, typeof (void)) { }
 		public TokenTypeVoid (Token original) : base (original, typeof (void)) { }
 		public override string ToString () { return "void"; }
 	}
