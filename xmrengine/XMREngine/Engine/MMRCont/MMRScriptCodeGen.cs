@@ -1218,14 +1218,21 @@ namespace MMR {
 						OutputWithCast (declFunc.argDecl.types[i], argRVals[i]);
 					}
 				}
+				WriteOutput (call, ");");
+
+				/*
+				 * Also, we want to call CheckRun() after every backend call as
+				 * the backend call may have set flags for CheckRun() to process.
+				 */
+				WriteOutput (call, "__sm.continuation.CheckRun();");
 			} else {
 				WriteOutput (call, "__fun_" + name + "(__sm");
 				for (i = 0; i < nargs; i ++) {
 					WriteOutput (call, ",");
 					OutputWithCast (declFunc.argDecl.types[i], argRVals[i]);
 				}
+				WriteOutput (call, ");");
 			}
-			WriteOutput (call, ");");
 			return retRVal;
 		}
 
