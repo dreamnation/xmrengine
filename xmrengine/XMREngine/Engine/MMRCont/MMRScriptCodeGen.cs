@@ -440,7 +440,18 @@ namespace MMR
                 }
 
                 if (results.Errors.Count > 0)
+                {
+                    foreach (CompilerError CompErr in results.Errors)
+                    {
+                        string severity = CompErr.IsWarning ? "Warning" : "Error";
+                        string errtext = CompErr.ErrorText;
+
+                        m_log.DebugFormat("[MMR]: ({0},{1}]) {2}: {3}",
+                                CompErr.Line, CompErr.Column,
+                                severity, errtext);
+                    }
                     exitCode = 1;
+                }
             }
             catch
             {
