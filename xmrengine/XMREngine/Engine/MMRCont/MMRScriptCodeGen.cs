@@ -1884,13 +1884,13 @@ namespace MMR
 
 		private static void DefineBinOpsRotationX (Dictionary<string, BinOpStr> bos, string x, string y)
 		{
-			bos.Add ("rotation*" + x, new BinOpStr (typeof (LSL_Rotation), "{0}.CreateMul(" + y + ")"));
-			bos.Add ("rotation/" + x, new BinOpStr (typeof (LSL_Rotation), "{0}.CreateDiv(" + y + ")"));
+			bos.Add ("rotation*" + x, new BinOpStr (typeof (LSL_Rotation), "{0} * " + y));
+			bos.Add ("rotation/" + x, new BinOpStr (typeof (LSL_Rotation), "{0} / " + y));
 		}
 
 		private static void DefineBinOpsXRotation (Dictionary<string, BinOpStr> bos, string x, string y)
 		{
-			bos.Add (x + "*rotation", new BinOpStr (typeof (LSL_Rotation), "{1}.CreateMul(" + y + ")"));
+			bos.Add (x + "*rotation", new BinOpStr (typeof (LSL_Rotation), "{1} * " + y));
 		}
 
 		private static void DefineBinOpsString (Dictionary<string, BinOpStr> bos)
@@ -1908,20 +1908,20 @@ namespace MMR
 		{
 			bos.Add ("vector==vector", new BinOpStr (typeof (bool), "{0}.EqualsVec({1})"));
 			bos.Add ("vector!=vector", new BinOpStr (typeof (bool), "!{0}.EqualsVec({1})"));
-			bos.Add ("vector*vector", new BinOpStr (typeof (float), "{0}.DotBy({1})"));
-			bos.Add ("vector%vector", new BinOpStr (typeof (LSL_Vector), "{0}.CreateCross({1})"));
-			bos.Add ("vector*rotation", new BinOpStr (typeof (LSL_Vector), "{0}.CreateRot({1})"));
+			bos.Add ("vector*vector", new BinOpStr (typeof (float), "{0} * {1}"));
+			bos.Add ("vector%vector", new BinOpStr (typeof (LSL_Vector), "{0} % {1}"));
+			bos.Add ("vector*rotation", new BinOpStr (typeof (LSL_Vector), "{0}  * {1}"));
 		}
 
 		private static void DefineBinOpsVectorX (Dictionary<string, BinOpStr> bos, string x, string y)
 		{
-			bos.Add ("vector*" + x, new BinOpStr (typeof (LSL_Vector), "{0}.CreateMul(" + y + ")"));
-			bos.Add ("vector/" + x, new BinOpStr (typeof (LSL_Vector), "{0}.CreateDiv(" + y + ")"));
+			bos.Add ("vector*" + x, new BinOpStr (typeof (LSL_Vector), "{0} * " + y));
+			bos.Add ("vector/" + x, new BinOpStr (typeof (LSL_Vector), "{0} / " + y));
 		}
 
 		private static void DefineBinOpsXVector (Dictionary<string, BinOpStr> bos, string x, string y)
 		{
-			bos.Add (x + "*vector", new BinOpStr (typeof (LSL_Vector), "{1}.CreateMul(" + y + ")"));
+			bos.Add (x + "*vector", new BinOpStr (typeof (LSL_Vector), "{1} * " + y));
 		}
 
 		private class BinOpStr {
