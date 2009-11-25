@@ -44,7 +44,7 @@ namespace MMR {
 		private static TokenTypeBool tokenTypeBool = new TokenTypeBool (null);
 		private static Dictionary<string, string> implicitTypeCasts = null;
 
-		public static bool CodeGen (TokenScript tokenScript, string scriptname, string cSharpName, string binaryName)
+		public static bool CodeGen (TokenScript tokenScript, string cSharpName, string binaryName)
 		{
 
 			/*
@@ -117,7 +117,7 @@ namespace MMR {
 			/*
 			 * Run compiler such that it has a 'this' context for convenience.
 			 */
-			ScriptCodeGen sc = new ScriptCodeGen (tokenScript, scriptname, cSharpName, binaryName);
+			ScriptCodeGen sc = new ScriptCodeGen (tokenScript, cSharpName, binaryName);
 			return sc.exitCode == 0;
 		}
 
@@ -138,7 +138,7 @@ namespace MMR {
 		private Stack<Dictionary<string, TokenType>> scriptVariablesStack = null;
 		private Dictionary<string, TokenType> scriptInstanceVariables = null;
 
-		private ScriptCodeGen (TokenScript tokenScript, string scriptname, string cSharpName, string binaryName)
+		private ScriptCodeGen (TokenScript tokenScript, string cSharpName, string binaryName)
 		{
 			Console.WriteLine ("CREATING .CS FILE: " + cSharpName);
 
@@ -186,7 +186,7 @@ namespace MMR {
 			 * Note we don't put any 'using' statements to avoid nasty tricks,
 			 * so we must use complete names when referencing classes.
 			 */
-			smClassName  = "ScriptModule_" + scriptname;
+			smClassName  = "ScriptModule";
 			WriteOutput (0, "public class " + smClassName + " : MMR.ScriptWrapper {");
 
 			/*
@@ -391,7 +391,7 @@ namespace MMR {
 			WriteOutput (0, "}");
 
 			/*
-			 * End of the ScriptModule_<scriptname> class definition.
+			 * End of the ScriptModule class definition.
 			 */
 			WriteOutput (0, "}");
 			objectWriter.Close ();

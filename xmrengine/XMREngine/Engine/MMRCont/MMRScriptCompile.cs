@@ -53,7 +53,7 @@ namespace MMR
                 return false;
             }
 
-            bool ok = ScriptCodeGen.CodeGen(tokenScript, String.Empty,
+            bool ok = ScriptCodeGen.CodeGen(tokenScript,
                         "/tmp/script", binaryName);
 
             if (!ok)
