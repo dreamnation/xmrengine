@@ -6,6 +6,8 @@ using LSL_Rotation = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Quaternion;
 using LSL_String = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
 using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
 
+using OpenSim.Region.ScriptEngine.Interfaces;
+
 /***************************************************\
  *  COPYRIGHT 2009, Mike Rieker, Beverly, MA, USA  *
  *  All rights reserved.                           *

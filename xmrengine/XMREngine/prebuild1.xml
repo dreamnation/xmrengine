@@ -18,6 +18,7 @@
      <Reference name="OpenSim.Framework.dll"/>
      <Reference name="OpenSim.Region.ScriptEngine.Shared"/>
      <Reference name="OpenSim.Region.ScriptEngine.Shared.Api.Runtime"/>
+     <Reference name="OpenSim.Region.ScriptEngine.Interfaces"/>
      <Reference name="Mono.Tasklets" />
      <Reference name="Nini.dll" />
      <Reference name="log4net.dll"/>

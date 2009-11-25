@@ -7,13 +7,17 @@
 
 
 using System;
+using System.IO;
 using System.Runtime.Remoting;
 using OpenSim.Framework;
+using OpenSim.Framework.Console;
 using OpenSim.Region.Framework.Scenes;
 using OpenSim.Region.Framework.Interfaces;
 using OpenSim.Region.ScriptEngine.Interfaces;
 using Nini.Config;
 using Mono.Addins;
+using MMR;
+using OpenMetaverse;
 
 [assembly: Addin("XMREngine", "0.1")]
 [assembly: AddinDependency("OpenSim", "0.5")]
@@ -39,6 +43,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void Initialise(IConfigSource config)
         {
+            MainConsole.Instance.Commands.AddCommand("xmr", false,
+                    "xmr test",
+                    "xmr test",
+                    "Run current xmr test",
+                    RunTest);
         }
 
         public void AddRegion(Scene scene)
@@ -55,6 +64,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void Close()
         {
+        }
+
+        private void RunTest(string module, string[] args)
+        {
+            if (args.Length < 3)
+                return;
+
+            string source = args[2];
+
+            MainConsole.Instance.Output(String.Format("Compiling {0}", source));
+
+            FileStream fs = new FileStream(source, FileMode.Open, FileAccess.Read);
+            StreamReader tr = new StreamReader(fs);
+
+            string text = tr.ReadToEnd();
+
+            tr.Close();
+            fs.Close();
+
+            ScriptCompile.Compile(text, "/tmp/assem.dll", UUID.Zero.ToString(),
+                    null);
         }
     }
 }

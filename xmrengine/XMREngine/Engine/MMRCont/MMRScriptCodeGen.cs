@@ -422,6 +422,8 @@ namespace MMR
                 "OpenSim.Region.ScriptEngine.XMREngine.Engine.MMRCont.dll"));
             parameters.ReferencedAssemblies.Add(Path.Combine(rootPath,
                 "Mono.Tasklets.dll"));
+            parameters.ReferencedAssemblies.Add(Path.Combine(rootPath,
+                " OpenSim.Region.ScriptEngine.Interfaces"));
 
             parameters.GenerateExecutable = false;
             parameters.OutputAssembly = binaryName;
