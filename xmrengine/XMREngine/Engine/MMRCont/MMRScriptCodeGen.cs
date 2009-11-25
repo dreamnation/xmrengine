@@ -232,7 +232,7 @@ namespace MMR
 						CompRVal rVal = GenerateFromRVal (declVar.init);
 						WriteOutput (declVar, "__sm.__gbl_" + declVar.name.val + " = " + StringWithCast (declVar.type, rVal) + ";");
 						if (declVar.type is TokenTypeList) {
-							WriteOutput (declVar, "__sm.memUsage += __sm.__gbl_" + declVar.name.val + ".dynamicSize;");
+							WriteOutput (declVar, "__sm.memUsage += __sm.__gbl_" + declVar.name.val + ".Size;");
 						}
 						if (declVar.type is TokenTypeStr) {
 							WriteOutput (declVar, "__sm.memUsage += __sm.__gbl_" + declVar.name.val + ".Length * " + STRING_LEN_TO_MEMUSE + ";");
@@ -405,7 +405,7 @@ namespace MMR
             UTF8Encoding encoding = new UTF8Encoding();
             string text = encoding.GetString(objectFile.ToArray());
 
-            m_log.Debug(text);
+            //m_log.Debug(text);
 
             CompilerParameters parameters = new CompilerParameters();
 
@@ -420,10 +420,8 @@ namespace MMR
                 "OpenSim.Region.ScriptEngine.Shared.dll"));
             parameters.ReferencedAssemblies.Add(Path.Combine(rootPath,
                 "OpenSim.Region.ScriptEngine.XMREngine.Engine.MMRCont.dll"));
-            parameters.ReferencedAssemblies.Add(Path.Combine(rootPath,
-                "Mono.Tasklets.dll"));
-            parameters.ReferencedAssemblies.Add(Path.Combine(rootPath,
-                " OpenSim.Region.ScriptEngine.Interfaces"));
+
+            parameters.ReferencedAssemblies.Add("Mono.Tasklets.dll");
 
             parameters.GenerateExecutable = false;
             parameters.OutputAssembly = binaryName;
@@ -1344,7 +1342,7 @@ namespace MMR
 			WriteOutput (rValList, typeof (LSL_List).FullName.Replace("+", ".") + " " + compRVal.locstr + " = new " + typeof (LSL_List).FullName.Replace("+", ".") + "();");
 			for (TokenRVal val = rValList.rVal; val != null; val = (TokenRVal)val.nextToken) {
 				CompRVal eRVal = GenerateFromRVal (val);
-				WriteOutput (val, compRVal.locstr + ".AddLast((object)" + eRVal.locstr + ");");
+				WriteOutput (val, compRVal.locstr + " += " + eRVal.locstr + ";");
 			}
 			return compRVal;
 		}
