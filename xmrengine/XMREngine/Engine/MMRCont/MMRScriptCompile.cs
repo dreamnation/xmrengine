@@ -22,13 +22,10 @@ namespace MMR
 
 		/**
 		 * @brief Compile a script to produce a .DLL file.
-		 * @param scriptname = name of the script (unique per script)
-		 * @param errorMessage = where to write error messages to
-		 * @param sourceName = where to read script source from
-		 * @param cSharpName = where to write temporary C# equivalent to
+		 * @param source = 'source' contains the whole script source
 		 * @param binaryName = where to write .DLL file to
-		 * @param source = null: read source from sourceName
-		 *                 else: 'source' contains the whole script source
+		 * @param assetID = the script asset ID, for error messages
+		 * @param errorMessage = where to write error messages to
 		 * @returns true: successful
 		 *         false: failure
 		 */
@@ -38,7 +35,7 @@ namespace MMR
                                     TokenErrorMessage errorMessage)
 		{
 			TokenBegin tokenBegin =
-                    TokenBegin.Construct(errorMessage, String.Empty, source);
+                    TokenBegin.Construct(errorMessage, source);
 
 			if (tokenBegin == null)
             {
