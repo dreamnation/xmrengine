@@ -3,4 +3,4 @@ rm -f OpenSim.Region.ScriptEngine.*.dll
 ln -s ~/opensim/bin/OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll
 ln -s ~/opensim/bin/OpenSim.Region.ScriptEngine.Shared.dll
 ln -s ~/opensim/bin/OpenSim.Region.ScriptEngine.XMREngine.Engine.MMRCont.dll
-mono --debug scripttest.exe flightassist
+WRITEMLTFILEDIR=mltfiles ../../../../../../monosrc/mono/mono/mini/mono --debug scripttest.exe flightassist

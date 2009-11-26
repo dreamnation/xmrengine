@@ -72,13 +72,10 @@ namespace MMR {
 		/*
 		 * Set to perform migration.
 		 */
-		public Stream migrateInStream;   // null: normal start at event handler's entrypoint
-		                                 // else: restore position in event handler from stream and resume
-		public Stream migrateOutStream;  // null: continue executing event handler
-		                                 // else: write position of event handler to stream and exit
-
-		public MMRContSendObj originalSendObj;
-		public MMRContRecvObj originalRecvObj;
+		public Stream       migrateInStream;   // null: normal start at event handler's entrypoint
+		public BinaryReader migrateInReader;   // else: restore position in event handler from stream and resume
+		public Stream       migrateOutStream;  // null: continue executing event handler
+		public BinaryWriter migrateOutWriter;  // else: write position of event handler to stream and exit
 
 		/*
 		 * The subsArray[] is used by continuations to say which object references
@@ -202,11 +199,11 @@ namespace MMR {
 			scriptWrapper.continuation.scriptWrapper = scriptWrapper;
 
 			/*
-			 * We need to intervene to serialize null pointers.
+			 * We do our own object serialization.
+			 * It avoids null pointer refs and is much more efficient because we
+			 * have a limited number of types to deal with.
 			 */
-			scriptWrapper.originalSendObj = scriptWrapper.continuation.sendObj;
 			scriptWrapper.continuation.sendObj = scriptWrapper.SendObjInterceptor;
-			scriptWrapper.originalRecvObj = scriptWrapper.continuation.recvObj;
 			scriptWrapper.continuation.recvObj = scriptWrapper.RecvObjInterceptor;
 
 			/*
@@ -234,10 +231,10 @@ namespace MMR {
 				this.ehArgs = null;
 				this.scriptDLLName = null;
 				this.scriptEventHandlerTable = null;
-				this.migrateInStream = null;
+				this.migrateInStream  = null;
+				this.migrateInReader  = null;
 				this.migrateOutStream = null;
-				this.originalSendObj = null;
-				this.originalRecvObj = null;
+				this.migrateOutWriter = null;
 				this.subsArray = null;
 			}
 		}
@@ -326,7 +323,9 @@ namespace MMR {
 					 * We are starting from beginning of event handler, no migration streams.
 					 */
 					this.migrateInStream  = null;
+					this.migrateInReader  = null;
 					this.migrateOutStream = null;
+					this.migrateOutWriter = null;
 
 					/*
 					 * This calls Main() below directly, and returns when Main() calls Suspend()
@@ -388,7 +387,9 @@ namespace MMR {
 					 * And we aren't doing any outbound migration on it.
 					 */
 					this.migrateInStream  = stream;
+					this.migrateInReader  = new BinaryReader (stream);
 					this.migrateOutStream = null;
+					this.migrateOutWriter = null;
 
 					/*
 					 * This calls Main() below directly, and returns when Main() calls Suspend()
@@ -477,6 +478,14 @@ namespace MMR {
 			lock (microthread) {
 
 				/*
+				 * The script microthread should be at its Suspend() call within
+				 * CheckRun(), unless it has exited.  Tell CheckRun() that it 
+				 * should migrate the script out then unwind.
+				 */
+				this.migrateOutStream = stream;
+				this.migrateOutWriter = new BinaryWriter (stream);
+
+				/*
 				 * Write the basic information out to the stream:
 				 *    state, event, eventhandler args, script's globals.
 				 */
@@ -487,13 +496,6 @@ namespace MMR {
 				this.continuation.sendObj (stream, this.memLimit);
 				this.continuation.sendObj (stream, this.ehArgs);
 				this.MigrateScriptOut (stream, this.continuation.sendObj);
-
-				/*
-				 * The script microthread should be at its Suspend() call within
-				 * CheckRun(), unless it has exited.  Tell CheckRun() that it 
-				 * should migrate the script out then unwind.
-				 */
-				this.migrateOutStream = stream;
 
 				/*
 				 * Resume the microthread to actually write the network stream.
@@ -509,9 +511,30 @@ namespace MMR {
 				 */
 				written = (this.migrateOutStream == null);
 				this.migrateOutStream = null;
+				this.migrateOutWriter = null;
 			}
 
 			return written;
+		}
+
+		/**
+		 * @brief types of data we serialize
+		 */
+		private enum Ser : byte {
+			NULL,
+			EVENTCODE,
+			LSLFLOAT,
+			LSLINT,
+			LSLKEY,
+			LSLLIST,
+			LSLROT,
+			LSLSTR,
+			LSLVEC,
+			OBJARRAY,
+			SYSDOUB,
+			SYSFLOAT,
+			SYSINT,
+			SYSSTR
 		}
 
 		/**
@@ -524,23 +547,122 @@ namespace MMR {
 		private void SendObjInterceptor (Stream stream, object graph)
 		{
 			if (graph == null) {
-				stream.WriteByte (1);
+				this.migrateOutWriter.Write ((byte)Ser.NULL);
+			} else if (graph is ScriptEventCode) {
+				this.migrateOutWriter.Write ((byte)Ser.EVENTCODE);
+				this.migrateOutWriter.Write ((int)graph);
+			} else if (graph is LSL_Float) {
+				this.migrateOutWriter.Write ((byte)Ser.LSLFLOAT);
+				this.migrateOutWriter.Write ((float)graph);
+			} else if (graph is LSL_Integer) {
+				this.migrateOutWriter.Write ((byte)Ser.LSLINT);
+				this.migrateOutWriter.Write ((int)graph);
+			} else if (graph is LSL_Key) {
+				this.migrateOutWriter.Write ((byte)Ser.LSLKEY);
+				LSL_Key key = (LSL_Key)graph;
+				SendObjInterceptor (stream, key.m_string);  // m_string can be null
+			} else if (graph is LSL_List) {
+				this.migrateOutWriter.Write ((byte)Ser.LSLLIST);
+				LSL_List list = (LSL_List)graph;
+				SendObjInterceptor (stream, list.Data);
+			} else if (graph is LSL_Rotation) {
+				this.migrateOutWriter.Write ((byte)Ser.LSLROT);
+				this.migrateOutWriter.Write ((double)((LSL_Rotation)graph).x);
+				this.migrateOutWriter.Write ((double)((LSL_Rotation)graph).y);
+				this.migrateOutWriter.Write ((double)((LSL_Rotation)graph).z);
+				this.migrateOutWriter.Write ((double)((LSL_Rotation)graph).s);
+			} else if (graph is LSL_String) {
+				this.migrateOutWriter.Write ((byte)Ser.LSLSTR);
+				LSL_String str = (LSL_String)graph;
+				SendObjInterceptor (stream, str.m_string);  // m_string can be null
+			} else if (graph is LSL_Vector) {
+				this.migrateOutWriter.Write ((byte)Ser.LSLVEC);
+				this.migrateOutWriter.Write ((double)((LSL_Vector)graph).x);
+				this.migrateOutWriter.Write ((double)((LSL_Vector)graph).y);
+				this.migrateOutWriter.Write ((double)((LSL_Vector)graph).z);
+			} else if (graph is object[]) {
+				this.migrateOutWriter.Write ((byte)Ser.OBJARRAY);
+				object[] array = (object[])graph;
+				int len = array.Length;
+				this.migrateOutWriter.Write (len);
+				for (int i = 0; i < len; i ++) {
+					SendObjInterceptor (stream, array[i]);
+				}
+			} else if (graph is double) {
+				this.migrateOutWriter.Write ((byte)Ser.SYSDOUB);
+				this.migrateOutWriter.Write ((double)graph);
+			} else if (graph is float) {
+				this.migrateOutWriter.Write ((byte)Ser.SYSFLOAT);
+				this.migrateOutWriter.Write ((float)graph);
+			} else if (graph is int) {
+				this.migrateOutWriter.Write ((byte)Ser.SYSINT);
+				this.migrateOutWriter.Write ((int)graph);
+			} else if (graph is string) {
+				this.migrateOutWriter.Write ((byte)Ser.SYSSTR);
+				this.migrateOutWriter.Write ((string)graph);
 			} else {
-				stream.WriteByte (2);
-				this.originalSendObj (stream, graph);
+				throw new Exception ("unhandled class " + graph.GetType().ToString());
 			}
 		}
 
 		private object RecvObjInterceptor (Stream stream)
 		{
-			int code = stream.ReadByte ();
+			Ser code = (Ser)this.migrateInReader.ReadByte ();
 			switch (code) {
-				case 1: {
+				case Ser.NULL: {
 					return null;
 				}
-				case 2: {
-					object graph = this.originalRecvObj (stream);
-					return graph;
+				case Ser.EVENTCODE: {
+					return (ScriptEventCode)this.migrateInReader.ReadInt32 ();
+				}
+				case Ser.LSLFLOAT: {
+					return new LSL_Float (this.migrateInReader.ReadSingle ());
+				}
+				case Ser.LSLINT: {
+					return new LSL_Integer (this.migrateInReader.ReadInt32 ());
+				}
+				case Ser.LSLKEY: {
+					return new LSL_Key ((string)RecvObjInterceptor (stream));
+				}
+				case Ser.LSLLIST: {
+					object[] array = (object[])RecvObjInterceptor (stream);
+					return new LSL_List (array);
+				}
+				case Ser.LSLROT: {
+					double x = this.migrateInReader.ReadDouble ();
+					double y = this.migrateInReader.ReadDouble ();
+					double z = this.migrateInReader.ReadDouble ();
+					double s = this.migrateInReader.ReadDouble ();
+					return new LSL_Rotation (x, y, z, s);
+				}
+				case Ser.LSLSTR: {
+					return new LSL_String ((string)RecvObjInterceptor (stream));
+				}
+				case Ser.LSLVEC: {
+					double x = this.migrateInReader.ReadDouble ();
+					double y = this.migrateInReader.ReadDouble ();
+					double z = this.migrateInReader.ReadDouble ();
+					return new LSL_Vector (x, y, z);
+				}
+				case Ser.OBJARRAY: {
+					int len = this.migrateInReader.ReadInt32 ();
+					object[] array = new object[len];
+					for (int i = 0; i < len; i ++) {
+						array[i] = RecvObjInterceptor (stream);
+					}
+					return array;
+				}
+				case Ser.SYSDOUB: {
+					return this.migrateInReader.ReadDouble ();
+				}
+				case Ser.SYSFLOAT: {
+					return this.migrateInReader.ReadSingle ();
+				}
+				case Ser.SYSINT: {
+					return this.migrateInReader.ReadInt32 ();
+				}
+				case Ser.SYSSTR: {
+					return this.migrateInReader.ReadString ();
 				}
 				default: throw new Exception ("bad stream code " + code.ToString ());
 			}
@@ -720,6 +842,7 @@ namespace MMR {
 						 */
 						scriptWrapper.eventCode = ScriptEventCode.None;
 						scriptWrapper.migrateOutStream = null;
+						scriptWrapper.migrateOutWriter = null;
 						throw new GetMeOutOfThisScript ();
 					}
 
@@ -729,6 +852,7 @@ namespace MMR {
 					 * quickly.
 					 */
 					scriptWrapper.migrateInStream   = null;
+					scriptWrapper.migrateInReader   = null;
 					scriptWrapper.suspendOnCheckRun = true;
 				}
 
