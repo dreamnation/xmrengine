@@ -73,6 +73,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             m_Scene = scene;
 
+            AppDomain.CurrentDomain.AssemblyResolve +=
+                    OnAssemblyResolve;
+
             m_ScriptBasePath = m_Config.GetString("ScriptBasePath",
                     Path.Combine(".", "ScriptData"));
             m_ScriptBasePath = Path.Combine(m_ScriptBasePath,
@@ -268,6 +271,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             return PostObjectEvent(part.LocalId, new EventParams(name, lsl_p, new DetectParams[0]));
+        }
+
+        public Assembly OnAssemblyResolve(object sender,
+                                          ResolveEventArgs args)
+        {
+            if (!(sender is System.AppDomain))
+                return null;
+
+            string[] pathList = new string[] {"bin", m_ScriptBasePath};
+
+            string assemblyName = args.Name;
+            if (assemblyName.IndexOf(",") != -1)
+                assemblyName = args.Name.Substring(0, args.Name.IndexOf(","));
+
+            foreach (string s in pathList)
+            {
+                string path = Path.Combine(Directory.GetCurrentDirectory(),
+                                           Path.Combine(s, assemblyName))+".dll";
+
+                if (File.Exists(path))
+                    return Assembly.LoadFrom(path);
+            }
+
+            return null;
         }
     }
 }

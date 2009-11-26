@@ -2151,6 +2151,5 @@ namespace MMR
 			this.type = type;
 			this.locstr = locstr;
 		}
-
 	}
 }
