@@ -112,7 +112,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             fs.Close();
 
             ScriptCompile.Compile(text, "/tmp/assem.dll", UUID.Zero.ToString(),
-                    ErrorHandler);
+                    String.Empty, ErrorHandler);
         }
 
         private void ErrorHandler(Token token, string message)
@@ -208,11 +208,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public IScriptApi GetApi(UUID itemID, string name)
         {
             return null;
-        }
-
-        public string GetAssemblyName(UUID itemID)
-        {
-            return Path.Combine(m_ScriptBasePath, itemID.ToString() + ".dll");
         }
 
         public string GetXMLState(UUID itemID)

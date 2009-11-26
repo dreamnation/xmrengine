@@ -63,7 +63,7 @@ namespace MMR {
 			sourceReader.Close ();
 
 			Console.WriteLine ("compiling " + sourceName);
-			if (!MMR.ScriptCompile.Compile (source, binaryName, scriptname, ErrorMessage)) goto alldone;
+			if (!MMR.ScriptCompile.Compile (source, binaryName, scriptname, String.Empty, ErrorMessage)) goto alldone;
 			Console.WriteLine ("compilation successful");
 
 			//

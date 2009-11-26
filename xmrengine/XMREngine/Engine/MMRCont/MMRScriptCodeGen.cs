@@ -48,7 +48,8 @@ namespace MMR
 		private static TokenTypeBool tokenTypeBool = new TokenTypeBool (null);
 		private static Dictionary<string, string> implicitTypeCasts = null;
 
-		public static bool CodeGen (TokenScript tokenScript, string binaryName)
+		public static bool CodeGen (TokenScript tokenScript, string binaryName,
+                string debugFileName)
 		{
 
 			/*
@@ -89,7 +90,8 @@ namespace MMR
 			/*
 			 * Run compiler such that it has a 'this' context for convenience.
 			 */
-			ScriptCodeGen sc = new ScriptCodeGen (tokenScript, binaryName);
+			ScriptCodeGen sc = new ScriptCodeGen (tokenScript, binaryName,
+                    debugFileName);
 			return sc.exitCode == 0;
 		}
 
