@@ -24,6 +24,6 @@
      <Reference name="log4net.dll"/>
 
      <Files>
-       <Match pattern="*.cs" recurse="true"/>
+       <Match pattern="*.cs" recurse="false"/>
      </Files>
    </Project>

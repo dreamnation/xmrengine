@@ -110,7 +110,7 @@ namespace MMR
 		private Stack<Dictionary<string, TokenType>> scriptVariablesStack = null;
 		private Dictionary<string, TokenType> scriptInstanceVariables = null;
 
-		private ScriptCodeGen (TokenScript tokenScript, string binaryName)
+		private ScriptCodeGen (TokenScript tokenScript, string binaryName, string debugFileName)
 		{
 			/*
 			 * Set up dictionary to translate function names to their declaration.

@@ -32,6 +32,7 @@ namespace MMR
         public static bool Compile (string source, 
                                     string binaryName,
                                     string assetID,
+                                    string debugFileName,
                                     TokenErrorMessage errorMessage)
         {
             TokenBegin tokenBegin =
@@ -53,14 +54,11 @@ namespace MMR
                 return false;
             }
 
-            bool ok = ScriptCodeGen.CodeGen(tokenScript, binaryName);
+            bool ok = ScriptCodeGen.CodeGen(tokenScript, binaryName,
+                    debugFileName);
 
             if (!ok)
-            {
-                m_log.DebugFormat("[MMR]: Codegen error on {0}", assetID);
-
                 return false;
-            }
 
             return true;
         }
