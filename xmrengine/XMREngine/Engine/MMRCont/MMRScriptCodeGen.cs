@@ -372,7 +372,7 @@ namespace MMR
             UTF8Encoding encoding = new UTF8Encoding();
             string text = encoding.GetString(objectFile.ToArray());
 
-            m_log.Debug(text);
+            // m_log.Debug(text);
 
             CompilerParameters parameters = new CompilerParameters();
 
