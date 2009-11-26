@@ -44,45 +44,12 @@ namespace MMR
 		 */
 		public static Dictionary<string, TokenDeclFunc> beAPIFunctions = null;
 
-		private static Dictionary<string, int> arithPrecedTable = null;
 		private static Dictionary<string, BinOpStr> binOpStrings = null;
 		private static TokenTypeBool tokenTypeBool = new TokenTypeBool (null);
 		private static Dictionary<string, string> implicitTypeCasts = null;
 
 		public static bool CodeGen (TokenScript tokenScript, string binaryName)
 		{
-
-			/*
-			 * Set up static variables.
-			 */
-			if (arithPrecedTable == null) {
-
-				/*
-				 * Convert an arithmetic binary operator to its precedence.
-				 */
-				Dictionary<string, int> apt = new Dictionary<string, int> ();
-				// http://wiki.secondlife.com/w/index.php?title=LSL_Operators&curid=3817&diff=339462&oldid=293743
-				apt.Add ("&&", 100);
-				apt.Add ("||", 120);
-				apt.Add ("|", 140);
-				apt.Add ("^", 160);
-				apt.Add ("&", 180);
-				apt.Add ("==", 200);
-				apt.Add ("!=", 220);
-				apt.Add ("<", 240);
-				apt.Add ("<=", 240);
-				apt.Add (">", 240);
-				apt.Add (">=", 240);
-				apt.Add (">>", 260);
-				apt.Add ("<<", 260);
-				apt.Add ("+", 280);
-				apt.Add ("-", 300);
-				apt.Add ("*", 320);
-				apt.Add ("/", 320);
-				apt.Add ("%", 320);
-				//MB()
-				arithPrecedTable = apt;
-			}
 
 			/*
 			 * This is a table of methods that take two operands and an operator
@@ -1082,6 +1049,26 @@ namespace MMR
 			 */
 			if (binOpStrings.ContainsKey (key)) {
 				BinOpStr binOpStr = binOpStrings[key];
+
+				/*
+				 * If table contained an explicit assignment type like +=, output the statement without
+				 * casting the L-value, then return the L-value as the resultant value.
+				 *
+				 * Make sure we don't include such things as ==, >=, etc.
+				 * Nothing like +=, -=, %=, etc, generate a boolean, only the comparisons.
+				 */
+				if ((binOpStr.outtype != typeof(bool)) && opcodeIndex.EndsWith ("=")) {
+					WriteOutput (token, String.Format (binOpStr.format, left.locstr, right.locstr));
+					WriteOutput (token, ";");
+					return left;
+				}
+
+				/*
+				 * It's the form result = left binop right.
+				 * Create a temp for the result.
+				 * Output a statement to perform the computation.
+				 * Return location of temporary as location of result of computation.
+				 */
 				CompRVal resultRVal = new CompRVal (TokenType.FromSysType (token.opcode, binOpStr.outtype));
 				WriteOutput (token, String.Format ("{0} {1} = ", TypeName(binOpStr.outtype), resultRVal.locstr));
 				string fmt = binOpStr.format;
@@ -1118,8 +1105,18 @@ namespace MMR
 			if (opcodeIndex.EndsWith ("=")) {
 				key = leftIndex + opcodeIndex.Substring (0, opcodeIndex.Length - 1) + rightIndex;
 				if (binOpStrings.ContainsKey (key)) {
+
+					/*
+					 * Now we know for something like %= that left%right is legal for the types given.
+					 * We can only actually process it if the resultant type is of the left type.
+					 * So for example, we can't do float += list, as float + list gives a list.
+					 */
 					BinOpStr binOpStr = binOpStrings[key];
 					if (binOpStr.outtype == left.type.typ) {
+
+						/*
+						 * Types are ok, see if the '=' form is allowed...
+						 */
 						int whack = binOpStr.format.IndexOf ('#');
 						if (whack >= 0) {
 							if (leftLVal == null) {
@@ -1507,9 +1504,7 @@ namespace MMR
 			 */
 			string inName = inRVal.type.ToString();
 			string outName = outType.ToString();
-			if (inName == outName) {
-				result = inRVal.locstr;
-			} else {
+			if (inName != outName) {
 				string key = inName + " " + outName;
 				if (!implicitTypeCasts.ContainsKey (key)) {
 					ErrorMsg (inRVal.type, "can't implicitly convert " + inName + " to " + outName);
@@ -1517,6 +1512,10 @@ namespace MMR
 				}
 				string fmt = implicitTypeCasts[key];
 				result = String.Format (fmt, inRVal.locstr);
+			} else if (inName == "float") {
+				result = "(float)" + inRVal.locstr;
+			} else {
+				result = inRVal.locstr;
 			}
 
 			/*
@@ -1717,22 +1716,22 @@ namespace MMR
 			 */
 
 			// boolean : somethingelse
-			DefineBinOpsBoolX (bos, "bool", "{1}");
-			DefineBinOpsBoolX (bos, "float", "({1} != 0.0)");
+			DefineBinOpsBoolX (bos, "bool",    "{1}");
+			DefineBinOpsBoolX (bos, "float",   "({1} != 0.0)");
 			DefineBinOpsBoolX (bos, "integer", "({1} != 0)");
-			DefineBinOpsBoolX (bos, "key", "({1} != NULL_KEY.val)");
-			DefineBinOpsBoolX (bos, "list", "!{1}.IsEmpty()");
-			DefineBinOpsBoolX (bos, "string", "({1} != \"\")");
+			DefineBinOpsBoolX (bos, "key",     "({1} != NULL_KEY.val)");
+			DefineBinOpsBoolX (bos, "list",    "!{1}.IsEmpty()");
+			DefineBinOpsBoolX (bos, "string",  "({1} != \"\")");
 
 			// somethingelse : boolean
-			DefineBinOpsXBool (bos, "float", "({0} != 0.0)");
+			DefineBinOpsXBool (bos, "float",   "({0} != 0.0)");
 			DefineBinOpsXBool (bos, "integer", "({0} != 0)");
-			DefineBinOpsXBool (bos, "key", "({0} != NULL_KEY.val)");
-			DefineBinOpsXBool (bos, "list", "!{0}.IsEmpty()");
-			DefineBinOpsXBool (bos, "string", "({0} != \"\")");
+			DefineBinOpsXBool (bos, "key",     "({0} != NULL_KEY.val)");
+			DefineBinOpsXBool (bos, "list",    "!{0}.IsEmpty()");
+			DefineBinOpsXBool (bos, "string",  "({0} != \"\")");
 
 			// float : somethingelse
-			DefineBinOpsFloatX (bos, "float", "{1}");
+			DefineBinOpsFloatX (bos, "float",   "(float){1}");
 			DefineBinOpsFloatX (bos, "integer", "(float){1}");
 
 			// integer : float
@@ -1753,9 +1752,9 @@ namespace MMR
 
 			// things with rotations
 			DefineBinOpsRotation (bos);
-			DefineBinOpsRotationX (bos, "float", "{1}");
+			DefineBinOpsRotationX (bos, "float",   "(float){1}");
 			DefineBinOpsRotationX (bos, "integer", "(float){1}");
-			DefineBinOpsXRotation (bos, "float", "{0}");
+			DefineBinOpsXRotation (bos, "float",   "(float){0}");
 			DefineBinOpsXRotation (bos, "integer", "(float){0}");
 
 			// things with strings
@@ -1763,9 +1762,9 @@ namespace MMR
 
 			// things with vectors
 			DefineBinOpsVector (bos);
-			DefineBinOpsVectorX (bos, "float", "{1}");
+			DefineBinOpsVectorX (bos, "float",   "(float){1}");
 			DefineBinOpsVectorX (bos, "integer", "(float){1}");
-			DefineBinOpsXVector (bos, "float", "{0}");
+			DefineBinOpsXVector (bos, "float",   "(float){0}");
 			DefineBinOpsXVector (bos, "integer", "(float){0}");
 
 			return bos;
@@ -1773,66 +1772,70 @@ namespace MMR
 
 		private static void DefineBinOpsBoolX (Dictionary<string, BinOpStr> bos, string x, string y)
 		{
-			bos.Add ("bool|" + x, new BinOpStr (typeof (bool), "{0} |# " + y));
-			bos.Add ("bool^" + x, new BinOpStr (typeof (bool), "{0} ^# " + y));
-			bos.Add ("bool&" + x, new BinOpStr (typeof (bool), "{0} &# " + y));
+			bos.Add ("bool|"  + x, new BinOpStr (typeof (bool), "{0} |# " + y));
+			bos.Add ("bool^"  + x, new BinOpStr (typeof (bool), "{0} ^# " + y));
+			bos.Add ("bool&"  + x, new BinOpStr (typeof (bool), "{0} &# " + y));
 			bos.Add ("bool==" + x, new BinOpStr (typeof (bool), "{0} == " + y));
 			bos.Add ("bool!=" + x, new BinOpStr (typeof (bool), "{0} != " + y));
 		}
 
 		private static void DefineBinOpsXBool (Dictionary<string, BinOpStr> bos, string x, string y)
 		{
-			bos.Add (x + "|bool", new BinOpStr (typeof (bool), y + " |# {1}"));
-			bos.Add (x + "^bool", new BinOpStr (typeof (bool), y + " ^# {1}"));
-			bos.Add (x + "&bool", new BinOpStr (typeof (bool), y + " &# {1}"));
+			bos.Add (x + "|bool",  new BinOpStr (typeof (bool), y + " |# {1}"));
+			bos.Add (x + "^bool",  new BinOpStr (typeof (bool), y + " ^# {1}"));
+			bos.Add (x + "&bool",  new BinOpStr (typeof (bool), y + " &# {1}"));
 			bos.Add (x + "==bool", new BinOpStr (typeof (bool), y + " == {1}"));
 			bos.Add (x + "!=bool", new BinOpStr (typeof (bool), y + " != {1}"));
 		}
 
 		private static void DefineBinOpsFloatX (Dictionary<string, BinOpStr> bos, string x, string y)
 		{
-			bos.Add ("float==" + x, new BinOpStr (typeof (bool), "{0} == " + y));
-			bos.Add ("float!=" + x, new BinOpStr (typeof (bool), "{0} != " + y));
-			bos.Add ("float<" + x, new BinOpStr (typeof (bool), "{0} < " + y));
-			bos.Add ("float<=" + x, new BinOpStr (typeof (bool), "{0} <= " + y));
-			bos.Add ("float>" + x, new BinOpStr (typeof (bool), "{0} > " + y));
-			bos.Add ("float>=" + x, new BinOpStr (typeof (bool), "{0} >= " + y));
-			bos.Add ("float+" + x, new BinOpStr (typeof (float), "{0} +# " + y));
-			bos.Add ("float-" + x, new BinOpStr (typeof (float), "{0} -# " + y));
-			bos.Add ("float*" + x, new BinOpStr (typeof (float), "{0} *# " + y));
-			bos.Add ("float/" + x, new BinOpStr (typeof (float), "{0} /# " + y));
+			bos.Add ("float==" + x, new BinOpStr (typeof (bool),  "(float){0} == " + y));
+			bos.Add ("float!=" + x, new BinOpStr (typeof (bool),  "(float){0} != " + y));
+			bos.Add ("float<"  + x, new BinOpStr (typeof (bool),  "(float){0} <  " + y));
+			bos.Add ("float<=" + x, new BinOpStr (typeof (bool),  "(float){0} <= " + y));
+			bos.Add ("float>"  + x, new BinOpStr (typeof (bool),  "(float){0} >  " + y));
+			bos.Add ("float>=" + x, new BinOpStr (typeof (bool),  "(float){0} >= " + y));
+			bos.Add ("float+"  + x, new BinOpStr (typeof (float), "(float){0} +  " + y));
+			bos.Add ("float-"  + x, new BinOpStr (typeof (float), "(float){0} -  " + y));
+			bos.Add ("float*"  + x, new BinOpStr (typeof (float), "(float){0} *  " + y));
+			bos.Add ("float/"  + x, new BinOpStr (typeof (float), "(float){0} /  " + y));
+			bos.Add ("float+=" + x, new BinOpStr (typeof (float), "{0} += " + y));
+			bos.Add ("float-=" + x, new BinOpStr (typeof (float), "{0} -= " + y));
+			bos.Add ("float*=" + x, new BinOpStr (typeof (float), "{0} *= " + y));
+			bos.Add ("float/=" + x, new BinOpStr (typeof (float), "{0} /= " + y));
 		}
 
 		private static void DefineBinOpsXFloat (Dictionary<string, BinOpStr> bos, string x, string y)
 		{
-			bos.Add (x + "==float", new BinOpStr (typeof (bool), y + " == {1}"));
-			bos.Add (x + "!=float", new BinOpStr (typeof (bool), y + " != {1}"));
-			bos.Add (x + "<float", new BinOpStr (typeof (bool), y + " < {1}"));
-			bos.Add (x + "<=float", new BinOpStr (typeof (bool), y + " <= {1}"));
-			bos.Add (x + ">float", new BinOpStr (typeof (bool), y + " > {1}"));
-			bos.Add (x + ">=float", new BinOpStr (typeof (bool), y + " >= {1}"));
-			bos.Add (x + "+float", new BinOpStr (typeof (float), y + " +# {1}"));
-			bos.Add (x + "-float", new BinOpStr (typeof (float), y + " -# {1}"));
-			bos.Add (x + "*float", new BinOpStr (typeof (float), y + " *# {1}"));
-			bos.Add (x + "/float", new BinOpStr (typeof (float), y + " /# {1}"));
+			bos.Add (x + "==float", new BinOpStr (typeof (bool),  y + " == (float){1}"));
+			bos.Add (x + "!=float", new BinOpStr (typeof (bool),  y + " != (float){1}"));
+			bos.Add (x + "<float",  new BinOpStr (typeof (bool),  y + " <  (float){1}"));
+			bos.Add (x + "<=float", new BinOpStr (typeof (bool),  y + " <= (float){1}"));
+			bos.Add (x + ">float",  new BinOpStr (typeof (bool),  y + " >  (float){1}"));
+			bos.Add (x + ">=float", new BinOpStr (typeof (bool),  y + " >= (float){1}"));
+			bos.Add (x + "+float",  new BinOpStr (typeof (float), y + " +# (float){1}"));
+			bos.Add (x + "-float",  new BinOpStr (typeof (float), y + " -# (float){1}"));
+			bos.Add (x + "*float",  new BinOpStr (typeof (float), y + " *# (float){1}"));
+			bos.Add (x + "/float",  new BinOpStr (typeof (float), y + " /# (float){1}"));
 		}
 
 		private static void DefineBinOpsInteger (Dictionary<string, BinOpStr> bos)
 		{
-			bos.Add ("integer|integer", new BinOpStr (typeof (int), "{0} |# {1}"));
-			bos.Add ("integer^integer", new BinOpStr (typeof (int), "{0} ^# {1}"));
-			bos.Add ("integer&integer", new BinOpStr (typeof (int), "{0} &# {1}"));
+			bos.Add ("integer|integer",  new BinOpStr (typeof (int),  "{0} |# {1}"));
+			bos.Add ("integer^integer",  new BinOpStr (typeof (int),  "{0} ^# {1}"));
+			bos.Add ("integer&integer",  new BinOpStr (typeof (int),  "{0} &# {1}"));
 			bos.Add ("integer==integer", new BinOpStr (typeof (bool), "{0} == {1}"));
 			bos.Add ("integer!=integer", new BinOpStr (typeof (bool), "{0} != {1}"));
-			bos.Add ("integer<integer", new BinOpStr (typeof (bool), "{0} < {1}"));
+			bos.Add ("integer<integer",  new BinOpStr (typeof (bool), "{0} <  {1}"));
 			bos.Add ("integer<=integer", new BinOpStr (typeof (bool), "{0} <= {1}"));
-			bos.Add ("integer>integer", new BinOpStr (typeof (bool), "{0} > {1}"));
+			bos.Add ("integer>integer",  new BinOpStr (typeof (bool), "{0} >  {1}"));
 			bos.Add ("integer>=integer", new BinOpStr (typeof (bool), "{0} >= {1}"));
-			bos.Add ("integer+integer", new BinOpStr (typeof (int), "{0} +# {1}"));
-			bos.Add ("integer-integer", new BinOpStr (typeof (int), "{0} -# {1}"));
-			bos.Add ("integer*integer", new BinOpStr (typeof (int), "{0} *# {1}"));
-			bos.Add ("integer/integer", new BinOpStr (typeof (int), "{0} /# {1}"));
-			bos.Add ("integer%integer", new BinOpStr (typeof (int), "{0} %# {1}"));
+			bos.Add ("integer+integer",  new BinOpStr (typeof (int),  "{0} +# {1}"));
+			bos.Add ("integer-integer",  new BinOpStr (typeof (int),  "{0} -# {1}"));
+			bos.Add ("integer*integer",  new BinOpStr (typeof (int),  "{0} *# {1}"));
+			bos.Add ("integer/integer",  new BinOpStr (typeof (int),  "{0} /# {1}"));
+			bos.Add ("integer%integer",  new BinOpStr (typeof (int),  "{0} %# {1}"));
 		}
 
 		private static void DefineBinOpsKeyX (Dictionary<string, BinOpStr> bos, string x, string y)
@@ -1850,7 +1853,7 @@ namespace MMR
 		private static void DefineBinOpsList (Dictionary<string, BinOpStr> bos)
 		{
 			BinOpStr add    = new BinOpStr (typeof (LSL_List), "{0}+{1}");
-			bos.Add ("list+float",     add);
+			bos.Add ("list+float",     new BinOpStr (typeof (LSL_List), "{0}+(float){1}"));
 			bos.Add ("list+integer",   add);
 			bos.Add ("list+key",       add);
 			bos.Add ("list+rotation",  add);
@@ -1858,7 +1861,7 @@ namespace MMR
 			bos.Add ("list+vector",    add);
 
 			BinOpStr revadd = new BinOpStr (typeof (LSL_List), "new " + TypeName(typeof(LSL_List)) + "((object){0})+{1}");
-			bos.Add ("float+list",     revadd);
+			bos.Add ("float+list",     new BinOpStr (typeof (LSL_List), "new " + TypeName(typeof(LSL_List)) + "((object)(float){0})+{1}"));
 			bos.Add ("integer+list",   revadd);
 			bos.Add ("key+list",       revadd);
 			bos.Add ("rotation+list",  revadd);
@@ -1866,7 +1869,7 @@ namespace MMR
 			bos.Add ("vector+list",    revadd);
 
 			BinOpStr addto  = new BinOpStr (typeof (LSL_List), "{0}.Add((object){1})");
-			bos.Add ("list+=float",    addto);
+			bos.Add ("list+=float",    new BinOpStr (typeof (LSL_List), "{0}.Add((object)(float){1})"));
 			bos.Add ("list+=integer",  addto);
 			bos.Add ("list+=key",      addto);
 			bos.Add ("list+=rotation", addto);
@@ -1896,22 +1899,22 @@ namespace MMR
 
 		private static void DefineBinOpsString (Dictionary<string, BinOpStr> bos)
 		{
-			bos.Add ("string==string", new BinOpStr (typeof (bool), "{0} == {1}"));
-			bos.Add ("string!=string", new BinOpStr (typeof (bool), "{0} != {1}"));
-			bos.Add ("string<string", new BinOpStr (typeof (bool), "{0} < {1}"));
-			bos.Add ("string<=string", new BinOpStr (typeof (bool), "{0} <= {1}"));
-			bos.Add ("string>string", new BinOpStr (typeof (bool), "{0} > {1}"));
-			bos.Add ("string>=string", new BinOpStr (typeof (bool), "{0} >= {1}"));
-			bos.Add ("string+string", new BinOpStr (typeof (string), "{0} +# {1}"));
+			bos.Add ("string==string", new BinOpStr (typeof (bool),   "{0} == {1}"));
+			bos.Add ("string!=string", new BinOpStr (typeof (bool),   "{0} != {1}"));
+			bos.Add ("string<string",  new BinOpStr (typeof (bool),   "{0} <  {1}"));
+			bos.Add ("string<=string", new BinOpStr (typeof (bool),   "{0} <= {1}"));
+			bos.Add ("string>string",  new BinOpStr (typeof (bool),   "{0} >  {1}"));
+			bos.Add ("string>=string", new BinOpStr (typeof (bool),   "{0} >= {1}"));
+			bos.Add ("string+string",  new BinOpStr (typeof (string), "{0} +# {1}"));
 		}
 
 		private static void DefineBinOpsVector (Dictionary<string, BinOpStr> bos)
 		{
-			bos.Add ("vector==vector", new BinOpStr (typeof (bool), "{0}.EqualsVec({1})"));
-			bos.Add ("vector!=vector", new BinOpStr (typeof (bool), "!{0}.EqualsVec({1})"));
-			bos.Add ("vector*vector", new BinOpStr (typeof (float), "{0} * {1}"));
-			bos.Add ("vector%vector", new BinOpStr (typeof (LSL_Vector), "{0} % {1}"));
-			bos.Add ("vector*rotation", new BinOpStr (typeof (LSL_Vector), "{0}  * {1}"));
+			bos.Add ("vector==vector",  new BinOpStr (typeof (bool),       "{0}.EqualsVec({1})"));
+			bos.Add ("vector!=vector",  new BinOpStr (typeof (bool),       "!{0}.EqualsVec({1})"));
+			bos.Add ("vector*vector",   new BinOpStr (typeof (float),      "{0} * {1}"));
+			bos.Add ("vector%vector",   new BinOpStr (typeof (LSL_Vector), "{0} % {1}"));
+			bos.Add ("vector*rotation", new BinOpStr (typeof (LSL_Vector), "{0} * {1}"));
 		}
 
 		private static void DefineBinOpsVectorX (Dictionary<string, BinOpStr> bos, string x, string y)
@@ -1952,15 +1955,15 @@ namespace MMR
 				if (inRVal.type is TokenTypeRot) {
 					CompRVal outRVal = new CompRVal (inRVal.type);
 					WriteOutput (opcode, TypeName(typeof(LSL_Rotation)) + " " + outRVal.locstr + " = new " +
-					                     TypeName(typeof(LSL_Rotation)) + "(-" + inRVal.locstr + ".x,-" +
-							inRVal.locstr + ".y,-" + inRVal.locstr + ".z,-" + inRVal.locstr + ".w);");
+					                     TypeName(typeof(LSL_Rotation)) + "(-(float)" + inRVal.locstr + ".x,-(float)" +
+							inRVal.locstr + ".y,-(float)" + inRVal.locstr + ".z,-(float)" + inRVal.locstr + ".w);");
 					return outRVal;
 				}
 				if (inRVal.type is TokenTypeVec) {
 					CompRVal outRVal = new CompRVal (inRVal.type);
 					WriteOutput (opcode, TypeName(typeof(LSL_Vector)) + " " + outRVal.locstr + " = new " +
-					                     TypeName(typeof(LSL_Vector)) + "(-" + inRVal.locstr + ".x,-" +
-							inRVal.locstr + ".y,-" + inRVal.locstr + ".z);");
+					                     TypeName(typeof(LSL_Vector)) + "(-(float)" + inRVal.locstr + ".x,-(float)" +
+							inRVal.locstr + ".y,-(float)" + inRVal.locstr + ".z);");
 					return outRVal;
 				}
 				ErrorMsg (opcode, "can't negate " + inRVal.type.ToString ());
@@ -2062,7 +2065,7 @@ namespace MMR
 			if (i > j) {
 				if (atBegOfLine) {
 					lineNoTrans.AddLast (sourceLineNo);
-					objectWriter.Write ("/*{0,5}*/ ", sourceLineNo);
+					objectWriter.Write ("/*{0,5}:{1,5}*/ ", outputLineNo, sourceLineNo);
 					objectWriter.Write ("".PadLeft (indentLevel));
 				}
 				objectWriter.Write (text.Substring (j, i - j));
@@ -2079,7 +2082,7 @@ namespace MMR
 		{
 			if (atBegOfLine && (line.TrimStart (' ')[0] != '#')) {
 				lineNoTrans.AddLast (sourceLineNo);
-				objectWriter.Write ("/*{0,5}*/ ", sourceLineNo);
+				objectWriter.Write ("/*{0,5}:{1,5}*/ ", outputLineNo, sourceLineNo);
 				if (line.EndsWith (":;") && (indentLevel >= 3)) {
 					objectWriter.Write ("".PadLeft (indentLevel - 3));
 				} else {
