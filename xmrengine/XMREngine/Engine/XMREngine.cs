@@ -10,6 +10,7 @@ using System;
 using System.IO;
 using System.Runtime.Remoting;
 using System.Reflection;
+using System.Collections.Generic;
 using OpenSim.Framework;
 using OpenSim.Framework.Console;
 using OpenSim.Region.Framework.Scenes;
@@ -38,6 +39,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private IConfigSource m_ConfigSource;
         private IConfig m_Config;
         private string m_ScriptBasePath;
+        private bool m_Enabled = false;
 
         public XMREngine()
         {
@@ -62,6 +64,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             else
                 m_Config = config.Configs["XMREngine"];
 
+            m_Enabled = m_Config.GetBoolean("Enabled", false);
+
+            if (!m_Enabled)
+                return;
+
+            m_log.Info("[XMREngine]: Enabled");
+
             MainConsole.Instance.Commands.AddCommand("xmr", false,
                     "xmr test",
                     "xmr test",
@@ -71,6 +80,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void AddRegion(Scene scene)
         {
+            if (!m_Enabled)
+                return;
+
             m_Scene = scene;
 
             AppDomain.CurrentDomain.AssemblyResolve +=
@@ -80,14 +92,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     Path.Combine(".", "ScriptData"));
             m_ScriptBasePath = Path.Combine(m_ScriptBasePath,
                     scene.RegionInfo.RegionID.ToString());
+
+            m_Scene.EventManager.OnRezScript += OnRezScript;
         }
 
         public void RemoveRegion(Scene scene)
         {
+            if (!m_Enabled)
+                return;
+
         }
 
         public void RegionLoaded(Scene scene)
         {
+            if (!m_Enabled)
+                return;
+
         }
 
         public void Close()
@@ -215,6 +235,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return String.Empty;
         }
 
+        public void SetXMLState(UUID itemID, string xml)
+        {
+        }
+
         public bool CanBeDeleted(UUID itemID)
         {
             return true;
@@ -222,6 +246,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public bool PostScriptEvent(UUID itemID, string name, Object[] p)
         {
+            if (!m_Enabled)
+                return false;
+
             Object[] lsl_p = new Object[p.Length];
             for (int i = 0; i < p.Length ; i++)
             {
@@ -244,6 +271,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public bool PostObjectEvent(UUID itemID, string name, Object[] p)
         {
+            if (!m_Enabled)
+                return false;
+
             SceneObjectPart part = m_Scene.GetSceneObjectPart(itemID);
             if (part == null)
                 return false;
@@ -290,6 +320,69 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             return null;
+        }
+
+        public void OnRezScript(uint localID, UUID itemID, string script,
+                int startParam, bool postOnRez, string engine, int stateSource)
+        {
+            if (script.StartsWith("//MRM:"))
+                return;
+
+            List<IScriptModule> engines =
+                    new List<IScriptModule>(
+                    m_Scene.RequestModuleInterfaces<IScriptModule>());
+
+            List<string> names = new List<string>();
+            foreach (IScriptModule m in engines)
+                names.Add(m.ScriptEngineName);
+
+            int lineEnd = script.IndexOf('\n');
+
+            if (lineEnd > 1)
+            {
+                string firstline = script.Substring(0, lineEnd).Trim();
+
+                int colon = firstline.IndexOf(':');
+                if (firstline.Length > 2 && firstline.Substring(0, 2) == "//" &&
+                        colon != -1)
+                {
+                    string engineName = firstline.Substring(2, colon-2);
+
+                    if (names.Contains(engineName))
+                    {
+                        engine = engineName;
+                        script = "//" + script.Substring(script.IndexOf(':')+1);
+                    }
+                    else
+                    {
+                        if (engine == ScriptEngineName)
+                        {
+                            SceneObjectPart part =
+                                    m_Scene.GetSceneObjectPart(localID);
+
+                            TaskInventoryItem item =
+                                    part.Inventory.GetInventoryItem(itemID);
+
+                            ScenePresence presence =
+                                    m_Scene.GetScenePresence(item.OwnerID);
+
+                            if (presence != null)
+                            {
+                                presence.ControllingClient.SendAgentAlertMessage(
+                                        "Selected engine unavailable. "+
+                                        "Running script on "+
+                                        ScriptEngineName,
+                                        false);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (engine != ScriptEngineName)
+                return;
+
+            m_log.DebugFormat("[XMREngine]: Compiling script {0}", itemID.ToString());
         }
     }
 }
