@@ -1050,12 +1050,25 @@ namespace MMR
 			if (binOpStrings.ContainsKey (key)) {
 				BinOpStr binOpStr = binOpStrings[key];
 
+				/*
+				 * If table contained an explicit assignment type like +=, output the statement without
+				 * casting the L-value, then return the L-value as the resultant value.
+				 *
+				 * Make sure we don't include such things as ==, >=, etc.
+				 * Nothing like +=, -=, %=, etc, generate a boolean, only the comparisons.
+				 */
 				if ((binOpStr.outtype != typeof(bool)) && opcodeIndex.EndsWith ("=")) {
 					WriteOutput (token, String.Format (binOpStr.format, left.locstr, right.locstr));
 					WriteOutput (token, ";");
 					return left;
 				}
 
+				/*
+				 * It's the form result = left binop right.
+				 * Create a temp for the result.
+				 * Output a statement to perform the computation.
+				 * Return location of temporary as location of result of computation.
+				 */
 				CompRVal resultRVal = new CompRVal (TokenType.FromSysType (token.opcode, binOpStr.outtype));
 				WriteOutput (token, String.Format ("{0} {1} = ", TypeName(binOpStr.outtype), resultRVal.locstr));
 				string fmt = binOpStr.format;
@@ -1092,8 +1105,18 @@ namespace MMR
 			if (opcodeIndex.EndsWith ("=")) {
 				key = leftIndex + opcodeIndex.Substring (0, opcodeIndex.Length - 1) + rightIndex;
 				if (binOpStrings.ContainsKey (key)) {
+
+					/*
+					 * Now we know for something like %= that left%right is legal for the types given.
+					 * We can only actually process it if the resultant type is of the left type.
+					 * So for example, we can't do float += list, as float + list gives a list.
+					 */
 					BinOpStr binOpStr = binOpStrings[key];
 					if (binOpStr.outtype == left.type.typ) {
+
+						/*
+						 * Types are ok, see if the '=' form is allowed...
+						 */
 						int whack = binOpStr.format.IndexOf ('#');
 						if (whack >= 0) {
 							if (leftLVal == null) {
