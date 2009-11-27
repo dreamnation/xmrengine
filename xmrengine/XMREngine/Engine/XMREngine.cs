@@ -9,19 +9,23 @@
 using System;
 using System.IO;
 using System.Runtime.Remoting;
+using System.Runtime.Remoting.Lifetime;
 using System.Reflection;
 using System.Collections.Generic;
+using System.Security.Policy;
 using OpenSim.Framework;
 using OpenSim.Framework.Console;
 using OpenSim.Region.Framework.Scenes;
 using OpenSim.Region.Framework.Interfaces;
 using OpenSim.Region.ScriptEngine.Interfaces;
 using OpenSim.Region.ScriptEngine.Shared;
+using OpenSim.Region.ScriptEngine.Shared.Api;
 using Nini.Config;
 using Mono.Addins;
-using MMR;
 using OpenMetaverse;
 using log4net;
+using OpenSim.Region.ScriptEngine.XMREngine.Loader;
+using MMR;
 
 [assembly: Addin("XMREngine", "0.1")]
 [assembly: AddinDependency("OpenSim", "0.5")]
@@ -40,6 +44,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private IConfig m_Config;
         private string m_ScriptBasePath;
         private bool m_Enabled = false;
+        private Object m_CompileLock = new Object();
+        private XMRSched m_Scheduler = null;
+        private AssemblyResolver m_AssemblyResolver = null;
+        private Dictionary<UUID, XMRInstance> m_Instances =
+                new Dictionary<UUID, XMRInstance>();
+        private Dictionary<UUID, int> m_Assemblies =
+                new Dictionary<UUID, int>();
+        private Dictionary<UUID, AppDomain> m_AppDomains =
+                new Dictionary<UUID, AppDomain>();
 
         public XMREngine()
         {
@@ -85,13 +98,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             m_Scene = scene;
 
+            m_Scene.RegisterModuleInterface<IScriptModule>(this);
+
             AppDomain.CurrentDomain.AssemblyResolve +=
-                    OnAssemblyResolve;
+                    m_AssemblyResolver.OnAssemblyResolve;
 
             m_ScriptBasePath = m_Config.GetString("ScriptBasePath",
                     Path.Combine(".", "ScriptData"));
             m_ScriptBasePath = Path.Combine(m_ScriptBasePath,
                     scene.RegionInfo.RegionID.ToString());
+
+            m_AssemblyResolver = new AssemblyResolver(m_ScriptBasePath);
+
+            Directory.CreateDirectory(m_ScriptBasePath);
 
             m_Scene.EventManager.OnRezScript += OnRezScript;
         }
@@ -101,6 +120,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (!m_Enabled)
                 return;
 
+            if (m_Scheduler != null)
+                m_Scheduler.Stop();
+            m_Scheduler = null;
+
+            m_Scene.EventManager.OnRezScript -= OnRezScript;
+            m_Scene.EventManager.OnRemoveScript -= OnRemoveScript;
+            m_Scene.EventManager.OnScriptReset -= OnScriptReset;
+            m_Scene.EventManager.OnStartScript -= OnStartScript;
+            m_Scene.EventManager.OnStopScript -= OnStopScript;
+            m_Scene.EventManager.OnGetScriptRunning -= OnGetScriptRunning;
+            m_Scene.EventManager.OnShutdown -= OnShutdown;
+
+            m_Enabled = false;
+            m_Scene = null;
         }
 
         public void RegionLoaded(Scene scene)
@@ -108,6 +141,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (!m_Enabled)
                 return;
 
+            m_Scene.EventManager.OnRemoveScript += OnRemoveScript;
+            m_Scene.EventManager.OnScriptReset += OnScriptReset;
+            m_Scene.EventManager.OnStartScript += OnStartScript;
+            m_Scene.EventManager.OnStopScript += OnStopScript;
+            m_Scene.EventManager.OnGetScriptRunning += OnGetScriptRunning;
+            m_Scene.EventManager.OnShutdown += OnShutdown;
+
+            m_Scheduler = new XMRSched();
+
+            /////////////// Test
         }
 
         public void Close()
@@ -119,20 +162,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (args.Length < 3)
                 return;
 
-            string source = args[2];
-
-            MainConsole.Instance.Output(String.Format("Compiling {0}", source));
-
-            FileStream fs = new FileStream(source, FileMode.Open, FileAccess.Read);
-            StreamReader tr = new StreamReader(fs);
-
-            string text = tr.ReadToEnd();
-
-            tr.Close();
-            fs.Close();
-
-            ScriptCompile.Compile(text, "/tmp/assem.dll", UUID.Zero.ToString(),
-                    String.Empty, ErrorHandler);
+            switch(args[2])
+            {
+            case "gc":
+                GC.Collect();
+                break;
+            }
         }
 
         private void ErrorHandler(Token token, string message)
@@ -298,30 +333,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return PostObjectEvent(part.LocalId, new EventParams(name, lsl_p, new DetectParams[0]));
         }
 
-        public Assembly OnAssemblyResolve(object sender,
-                                          ResolveEventArgs args)
-        {
-            if (!(sender is System.AppDomain))
-                return null;
-
-            string[] pathList = new string[] {"bin", m_ScriptBasePath};
-
-            string assemblyName = args.Name;
-            if (assemblyName.IndexOf(",") != -1)
-                assemblyName = args.Name.Substring(0, args.Name.IndexOf(","));
-
-            foreach (string s in pathList)
-            {
-                string path = Path.Combine(Directory.GetCurrentDirectory(),
-                                           Path.Combine(s, assemblyName))+".dll";
-
-                if (File.Exists(path))
-                    return Assembly.LoadFrom(path);
-            }
-
-            return null;
-        }
-
         public void OnRezScript(uint localID, UUID itemID, string script,
                 int startParam, bool postOnRez, string engine, int stateSource)
         {
@@ -335,6 +346,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             List<string> names = new List<string>();
             foreach (IScriptModule m in engines)
                 names.Add(m.ScriptEngineName);
+
+            SceneObjectPart part =
+                    m_Scene.GetSceneObjectPart(localID);
+
+            TaskInventoryItem item =
+                    part.Inventory.GetInventoryItem(itemID);
 
             int lineEnd = script.IndexOf('\n');
 
@@ -357,12 +374,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     {
                         if (engine == ScriptEngineName)
                         {
-                            SceneObjectPart part =
-                                    m_Scene.GetSceneObjectPart(localID);
-
-                            TaskInventoryItem item =
-                                    part.Inventory.GetInventoryItem(itemID);
-
                             ScenePresence presence =
                                     m_Scene.GetScenePresence(item.OwnerID);
 
@@ -382,7 +393,163 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (engine != ScriptEngineName)
                 return;
 
-            m_log.DebugFormat("[XMREngine]: Compiling script {0}", itemID.ToString());
+            m_log.DebugFormat("[XMREngine]: Running script {0}, asset {1}",
+                    item.Name, item.AssetID);
+
+            string outputName = Path.Combine(m_ScriptBasePath,
+                    item.AssetID.ToString() + ".dll");
+
+            lock (m_CompileLock)
+            {
+                if (!File.Exists(outputName))
+                {
+                    if (script == String.Empty)
+                    {
+                        m_log.ErrorFormat("[XMREngine]: Compile of asset {0} was requested but source text is not present and no assembly was found", item.AssetID.ToString());
+                        return;
+                    }
+
+                    m_log.DebugFormat("[XMREngine]: Compiling script {0}",
+                            item.AssetID);
+
+                    ScriptCompile.Compile(script, outputName,
+                            UUID.Zero.ToString(), String.Empty, ErrorHandler);
+
+                    if (!File.Exists(outputName))
+                        return;
+                }
+            }
+
+            lock (m_Assemblies)
+            {
+                if (m_Assemblies.ContainsKey(item.AssetID))
+                {
+                    m_Assemblies[item.AssetID]++;
+                }
+                else
+                {
+                    m_Assemblies[item.AssetID] = 1;
+
+                    AppDomainSetup appSetup = new AppDomainSetup();
+                    Evidence baseEvidence = AppDomain.CurrentDomain.Evidence;
+                    Evidence evidence = new Evidence(baseEvidence);
+
+                    m_AppDomains[item.AssetID] = AppDomain.CreateDomain(
+                            m_Scene.RegionInfo.RegionID.ToString(),
+                            evidence, appSetup);
+            
+                    m_AppDomains[item.AssetID].AssemblyResolve +=
+                            m_AssemblyResolver.OnAssemblyResolve;
+
+                }
+            }
+
+            XMRLoader loader =
+                    (XMRLoader)m_AppDomains[item.AssetID].
+                    CreateInstanceAndUnwrap(
+                    "OpenSim.Region.ScriptEngine.XMREngine.Loader",
+                    "OpenSim.Region.ScriptEngine.XMREngine.Loader.XMRLoader");
+
+            lock (m_Instances)
+            {
+                m_Instances[itemID] = new XMRInstance(loader);
+            }
+        }
+
+        public void OnRemoveScript(uint localID, UUID itemID)
+        {
+            SceneObjectPart part =
+                    m_Scene.GetSceneObjectPart(localID);
+
+            TaskInventoryItem item =
+                    part.Inventory.GetInventoryItem(itemID);
+
+            lock (m_Instances)
+            {
+                if (m_Instances.ContainsKey(itemID))
+                {
+                    m_Instances[itemID].Dispose();
+                    m_Instances.Remove(itemID);
+                }
+            }
+
+            lock (m_Assemblies)
+            {
+                if (!m_Assemblies.ContainsKey(item.AssetID))
+                    return;
+
+                m_Assemblies[item.AssetID]--;
+
+                if (m_Assemblies[item.AssetID] < 1)
+                {
+                    AppDomain.Unload(m_AppDomains[item.AssetID]);
+                    m_AppDomains.Remove(item.AssetID);
+
+                    m_Assemblies.Remove(item.AssetID);
+
+                    string assemblyPath = Path.Combine(m_ScriptBasePath,
+                            item.AssetID + ".dll");
+
+                    File.Delete(assemblyPath);
+                    File.Delete(assemblyPath + ".mdb");
+                }
+            }
+        }
+
+        public void OnScriptReset(uint localID, UUID itemID)
+        {
+        }
+
+        public void OnStartScript(uint localID, UUID itemID)
+        {
+        }
+
+        public void OnStopScript(uint localID, UUID itemID)
+        {
+        }
+
+        public void OnGetScriptRunning(IClientAPI controllingClient,
+                UUID objectID, UUID itemID)
+        {
+        }
+
+        public void OnShutdown()
+        {
+        }
+    }
+
+    [Serializable]
+    public class AssemblyResolver
+    {
+        private string m_ScriptBasePath;
+
+        public AssemblyResolver(string path)
+        {
+            m_ScriptBasePath = path;
+        }
+
+        public Assembly OnAssemblyResolve(object sender,
+                                          ResolveEventArgs args)
+        {
+            if (!(sender is System.AppDomain))
+                return null;
+
+            string[] pathList = new string[] {"bin", m_ScriptBasePath};
+
+            string assemblyName = args.Name;
+            if (assemblyName.IndexOf(",") != -1)
+                assemblyName = args.Name.Substring(0, args.Name.IndexOf(","));
+
+            foreach (string s in pathList)
+            {
+                string path = Path.Combine(Directory.GetCurrentDirectory(),
+                                           Path.Combine(s, assemblyName))+".dll";
+
+                if (File.Exists(path))
+                    return Assembly.LoadFrom(path);
+            }
+
+            return null;
         }
     }
 }
