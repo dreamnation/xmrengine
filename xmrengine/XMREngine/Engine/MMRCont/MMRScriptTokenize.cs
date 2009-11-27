@@ -759,7 +759,6 @@ namespace MMR {
             if (typ == typeof (LSL_Vector))   return  72;
             if (typ == typeof (float))        return   8;
             if (typ == typeof (int))          return   8;
-            if (typ == typeof (LSL_Key))      return 120;
             if (typ == typeof (string))       return  40;
             if (typ == typeof (double))       return   8;
             if (typ == typeof (bool))         return   8;
@@ -786,8 +785,8 @@ namespace MMR {
         public override string ToString () { return "integer"; }
     }
     public class TokenTypeKey : TokenType {
-        public TokenTypeKey (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn, typeof (LSL_Key)) { }
-        public TokenTypeKey (Token original) : base (original, typeof (LSL_Key)) { }
+        public TokenTypeKey (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn, typeof (string)) { }
+        public TokenTypeKey (Token original) : base (original, typeof (string)) { }
         public override string ToString () { return "key"; }
     }
     public class TokenTypeList : TokenType {

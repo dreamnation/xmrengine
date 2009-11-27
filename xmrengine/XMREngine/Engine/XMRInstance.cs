@@ -16,6 +16,13 @@ using OpenSim.Region.ScriptEngine.Shared.Api;
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 using OpenSim.Region.ScriptEngine.XMREngine.Loader;
 using OpenSim.Region.Framework.Scenes;
+using LSL_Float = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLFloat;
+using LSL_Integer = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLInteger;
+using LSL_Key = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
+using LSL_List = OpenSim.Region.ScriptEngine.Shared.LSL_Types.list;
+using LSL_Rotation = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Quaternion;
+using LSL_String = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
+using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
 
 // This class exists in the main app domain
 //
@@ -150,6 +157,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void PostEvent(EventParams evt)
         {
+            for (int i = 0 ; i < evt.Params.Length ; i++)
+            {
+                if (evt.Params[i] is LSL_Integer)
+                    evt.Params[i] = (int)((LSL_Integer)evt.Params[i]);
+                else if (evt.Params[i] is LSL_Float)
+                    evt.Params[i] = (float)((LSL_Float)evt.Params[i]);
+                else if (evt.Params[i] is LSL_String)
+                    evt.Params[i] = (string)((LSL_String)evt.Params[i]);
+                else if (evt.Params[i] is LSL_Key)
+                    evt.Params[i] = (string)((LSL_Key)evt.Params[i]);
+            }
+
             lock (m_RunLock)
             {
                 if (!m_Running)
