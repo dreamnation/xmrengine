@@ -13,6 +13,7 @@ using System.Collections.Generic;
 using OpenSim.Region.ScriptEngine.Interfaces;
 using OpenSim.Region.ScriptEngine.Shared;
 using OpenSim.Region.ScriptEngine.Shared.Api;
+using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 using OpenSim.Region.ScriptEngine.XMREngine.Loader;
 using OpenSim.Region.Framework.Scenes;
 
@@ -36,6 +37,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private bool m_TimerQueued = false;
         private Queue<EventParams> m_EventQueue = new Queue<EventParams>();
         private DetectParams[] m_DetectParams = null;
+        private DateTime m_Suspend = new DateTime(0);
+        private bool m_Reset = false;
 
         private Dictionary<string,IScriptApi> m_Apis =
                 new Dictionary<string,IScriptApi>();
@@ -70,6 +73,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 lock (m_RunLock)
                 {
                     m_Running = value;
+
+                    if (!m_Running)
+                        m_EventQueue.Clear();
 
                     CheckRunStatus();
                 }
@@ -114,7 +120,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             foreach (string api in am.GetApis())
             {
-                m_Apis[api] = am.CreateApi(api);
+                if (api != "LSL")
+                    m_Apis[api] = am.CreateApi(api);
+                else
+                    m_Apis[api] = new XMRLSL_Api();
+
                 m_Apis[api].Initialize(m_Engine, m_Part, m_LocalID, m_ItemID);
                 m_Loader.InitApi(api, m_Apis[api]);
             }
@@ -140,6 +150,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             lock (m_RunLock)
             {
+                if (!m_Running)
+                    return;
+
                 if (evt.EventName == "timer")
                 {
                     if (m_TimerQueued)
@@ -160,11 +173,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if (!m_Scheduled)
                     return;
 
+                if (m_Suspend > DateTime.UtcNow)
+                    return;
+
                 if (!m_IsIdle)
                 {
                     m_IsIdle = m_Loader.RunOne();
                     if (m_IsIdle)
                         m_DetectParams = null;
+
+                    if (m_Reset)
+                    {
+                        m_Reset = false;
+                        Reset();
+                    }
                 }
                 else
                 {
@@ -197,6 +219,91 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 return null;
 
             return m_DetectParams[number];
+        }
+
+        public void Suspend(int ms)
+        {
+            m_Suspend = DateTime.UtcNow + TimeSpan.FromMilliseconds(ms);
+        }
+
+        public void ApiReset()
+        {
+            m_Reset = true;
+        }
+
+        public void Reset()
+        {
+            ReleaseControls();
+
+            SceneObjectPart part=m_Engine.World.GetSceneObjectPart(m_LocalID);
+            part.Inventory.GetInventoryItem(m_ItemID).PermsMask = 0;
+            part.Inventory.GetInventoryItem(m_ItemID).PermsGranter = UUID.Zero;
+            AsyncCommandManager.RemoveScript(m_Engine, m_LocalID, m_ItemID);
+
+            m_EventQueue.Clear();
+            m_DetectParams = null;
+
+            m_Loader.Reset();
+
+            PostEvent(new EventParams("state_entry", new Object[0], new DetectParams[0]));
+        }
+
+        private void ReleaseControls()
+        {
+            SceneObjectPart part = m_Engine.World.GetSceneObjectPart(m_LocalID);
+
+            if (part != null)
+            {
+                int permsMask;
+                UUID permsGranter;
+                part.TaskInventory.LockItemsForRead(true);
+                if (!part.TaskInventory.ContainsKey(m_ItemID))
+                {
+                    part.TaskInventory.LockItemsForRead(false);
+                    return;
+                }
+                permsGranter = part.TaskInventory[m_ItemID].PermsGranter;
+                permsMask = part.TaskInventory[m_ItemID].PermsMask;
+                part.TaskInventory.LockItemsForRead(false);
+
+                if ((permsMask & ScriptBaseClass.PERMISSION_TAKE_CONTROLS) != 0)
+                {
+                    ScenePresence presence = m_Engine.World.GetScenePresence(permsGranter);
+                    if (presence != null)
+                        presence.UnRegisterControlEventsToScript(m_LocalID, m_ItemID);
+                }
+            }
+        }
+    }
+
+    public class XMRLSL_Api : LSL_Api
+    {
+        protected override void ScriptSleep(int delay)
+        {
+            if (m_ScriptEngine is XMREngine)
+            {
+                XMREngine e = (XMREngine)m_ScriptEngine;
+
+                e.Suspend(m_itemID, delay);
+            }
+            else
+            {
+                base.ScriptSleep(delay);
+            }
+        }
+
+        public override void llSleep(double sec)
+        {
+            if (m_ScriptEngine is XMREngine)
+            {
+                XMREngine e = (XMREngine)m_ScriptEngine;
+
+                e.Suspend(m_itemID, (int)(sec * 1000.0));
+            }
+            else
+            {
+                base.llSleep(sec);
+            }
         }
     }
 }

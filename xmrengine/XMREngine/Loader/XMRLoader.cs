@@ -20,6 +20,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
         private ScriptBaseClass m_ScriptBase;
         private int m_Renew = 10;
         private ScriptWrapper m_Wrapper = null;
+        private string m_DllName;
 
         public override Object InitializeLifetimeService()
         {
@@ -68,6 +69,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
 
         public bool Load(string dllName)
         {
+            m_DllName = dllName;
+
             try
             {
                 m_Wrapper = ScriptWrapper.CreateScriptInstance(dllName);
@@ -95,6 +98,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
         public bool RunOne()
         {
             return m_Wrapper.ResumeEventHandler();
+        }
+
+        public void Reset()
+        {
+            m_Wrapper.Dispose();
+            m_Wrapper = null;
+
+            Load(m_DllName);
         }
     }
 }

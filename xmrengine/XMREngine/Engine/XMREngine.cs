@@ -289,10 +289,34 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void ApiResetScript(UUID itemID)
         {
+            XMRInstance instance = null;
+
+            lock (m_Instances)
+            {
+                if (!m_Instances.ContainsKey(itemID))
+                    return;
+
+                instance = m_Instances[itemID];
+            }
+
+            instance.ApiReset();
         }
 
         public void ResetScript(UUID itemID)
         {
+            XMRInstance instance = null;
+
+            lock (m_Instances)
+            {
+                if (!m_Instances.ContainsKey(itemID))
+                    return;
+
+                instance = m_Instances[itemID];
+            }
+
+            instance.Suspend();
+            instance.Reset();
+            instance.Resume();
         }
 
         public IConfig Config
@@ -584,6 +608,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void OnScriptReset(uint localID, UUID itemID)
         {
+            ResetScript(itemID);
         }
 
         public void OnStartScript(uint localID, UUID itemID)
@@ -661,6 +686,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             foreach (XMRInstance ins in instances)
                 if (ins != null)
                     ins.RunOne();
+        }
+
+        public void Suspend(UUID itemID, int ms)
+        {
+            XMRInstance instance = null;
+
+            lock (m_Instances)
+            {
+                if (!m_Instances.ContainsKey(itemID))
+                    return;
+
+                instance = m_Instances[itemID];
+
+            }
+
+            instance.Suspend(ms);
         }
     }
 
