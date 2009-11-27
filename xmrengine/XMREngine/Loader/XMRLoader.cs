@@ -17,8 +17,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
 {
     public class XMRLoader : MarshalByRefObject, IDisposable, ISponsor
     {
-        ScriptBaseClass m_ScriptBase;
+        private ScriptBaseClass m_ScriptBase;
         private int m_Renew = 10;
+        private ScriptWrapper m_Wrapper = null;
 
         public override Object InitializeLifetimeService()
         {
@@ -43,6 +44,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
 
         public void Dispose()
         {
+            if (m_Wrapper != null)
+                m_Wrapper.Dispose();
+            m_Wrapper = null;
+
             ILease lease = (ILease)GetLifetimeService();
 
             lease.Unregister(this);
@@ -54,6 +59,42 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
             if (m_Renew == 0)
                 lease.Unregister(this);
             return TimeSpan.FromSeconds(m_Renew);
+        }
+
+        public void InitApi(string name, IScriptApi api)
+        {
+            m_ScriptBase.InitApi(name, api);
+        }
+
+        public bool Load(string dllName)
+        {
+            try
+            {
+                m_Wrapper = ScriptWrapper.CreateScriptInstance(dllName);
+            }
+            catch (Exception e)
+            {
+                System.Console.WriteLine("[XMREngine]: Error loading script\n" + e.ToString());
+                return false;
+            }
+
+            if (m_Wrapper == null)
+                return false;
+
+            m_Wrapper.beAPI = m_ScriptBase;
+            m_Wrapper.alwaysSuspend = true;
+
+            return true;
+        }
+
+        public void PostEvent(string eventName, Object[] args)
+        {
+            m_Wrapper.StartEventHandler(eventName, args);
+        }
+
+        public bool RunOne()
+        {
+            return m_Wrapper.ResumeEventHandler();
         }
     }
 }

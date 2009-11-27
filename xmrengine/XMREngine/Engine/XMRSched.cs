@@ -18,10 +18,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         private bool m_RunIt = true;
         private Thread m_Thread = null;
+        private XMREngine m_Engine = null;
 
-        public XMRSched()
+        public XMRSched(XMREngine engine)
         {
+            m_Engine = engine;
             m_Thread = new Thread(Run);
+            m_Thread.Priority = ThreadPriority.BelowNormal;
             m_Thread.Start();
         }
 
@@ -31,6 +34,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             m_Thread.Join();
             m_Thread = null;
+            m_Engine = null;
         }
 
         public void Run()
@@ -39,7 +43,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             while (m_RunIt)
             {
-                Thread.Sleep(100);
+                m_Engine.RunOneCycle();
+                Thread.Sleep(10);
             }
         }
     }

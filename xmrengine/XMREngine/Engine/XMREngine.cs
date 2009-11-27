@@ -20,6 +20,8 @@ using OpenSim.Region.Framework.Interfaces;
 using OpenSim.Region.ScriptEngine.Interfaces;
 using OpenSim.Region.ScriptEngine.Shared;
 using OpenSim.Region.ScriptEngine.Shared.Api;
+using OpenMetaverse.StructuredData;
+using OpenSim.Region.CoreModules.Framework.EventQueue;
 using Nini.Config;
 using Mono.Addins;
 using OpenMetaverse;
@@ -46,6 +48,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private bool m_Enabled = false;
         private Object m_CompileLock = new Object();
         private XMRSched m_Scheduler = null;
+        private XMREvents m_Events = null;
         private AssemblyResolver m_AssemblyResolver = null;
         private Dictionary<UUID, XMRInstance> m_Instances =
                 new Dictionary<UUID, XMRInstance>();
@@ -53,6 +56,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 new Dictionary<UUID, int>();
         private Dictionary<UUID, AppDomain> m_AppDomains =
                 new Dictionary<UUID, AppDomain>();
+        private Dictionary<UUID, List<UUID>> m_Objects =
+                new Dictionary<UUID, List<UUID>>();
+        private Dictionary<UUID, UUID> m_Partmap =
+                new Dictionary<UUID, UUID>();
 
         public XMREngine()
         {
@@ -124,6 +131,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 m_Scheduler.Stop();
             m_Scheduler = null;
 
+            m_Events = null;
+
             m_Scene.EventManager.OnRezScript -= OnRezScript;
             m_Scene.EventManager.OnRemoveScript -= OnRemoveScript;
             m_Scene.EventManager.OnScriptReset -= OnScriptReset;
@@ -148,7 +157,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_Scene.EventManager.OnGetScriptRunning += OnGetScriptRunning;
             m_Scene.EventManager.OnShutdown += OnShutdown;
 
-            m_Scheduler = new XMRSched();
+            m_Scheduler = new XMRSched(this);
+            m_Events = new XMREvents(this);
 
             /////////////// Test
         }
@@ -198,17 +208,57 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public bool PostScriptEvent(UUID itemID, EventParams parms)
         {
-            return false;
+            XMRInstance instance = null;
+
+            lock (m_Instances)
+            {
+                if (!m_Instances.ContainsKey(itemID))
+                    return false;
+
+                instance = m_Instances[itemID];
+            }
+
+            instance.PostEvent(parms);
+
+            return true;
         }
 
         public bool PostObjectEvent(uint localID, EventParams parms)
         {
-            return false;
+            SceneObjectPart part = m_Scene.GetSceneObjectPart(localID);
+
+            if (part == null)
+                return false;
+
+            if (!m_Objects.ContainsKey(part.UUID))
+                return false;
+
+            List<UUID> l = m_Objects[part.UUID];
+
+            bool success = false;
+
+            foreach (UUID id in l)
+            {
+                if (PostScriptEvent(id, parms))
+                    success = true;
+            }
+                
+            return success;
         }
 
         public DetectParams GetDetectParams(UUID item, int number)
         {
-            return null;
+            XMRInstance instance = null;
+
+            lock (m_Instances)
+            {
+                if (!m_Instances.ContainsKey(item))
+                    return null;
+
+                instance = m_Instances[item];
+            }
+
+            return instance.GetDetectParams(number);
         }
 
         public void SetMinEventDelay(UUID itemID, double delay)
@@ -287,16 +337,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Object[] lsl_p = new Object[p.Length];
             for (int i = 0; i < p.Length ; i++)
             {
-                if (p[i] is int)
-                    lsl_p[i] = new LSL_Types.LSLInteger((int)p[i]);
-                else if (p[i] is string)
-                    lsl_p[i] = new LSL_Types.LSLString((string)p[i]);
-                else if (p[i] is Vector3)
+                if (p[i] is Vector3)
                     lsl_p[i] = new LSL_Types.Vector3(((Vector3)p[i]).X, ((Vector3)p[i]).Y, ((Vector3)p[i]).Z);
                 else if (p[i] is Quaternion)
                     lsl_p[i] = new LSL_Types.Quaternion(((Quaternion)p[i]).X, ((Quaternion)p[i]).Y, ((Quaternion)p[i]).Z, ((Quaternion)p[i]).W);
-                else if (p[i] is float)
-                    lsl_p[i] = new LSL_Types.LSLFloat((float)p[i]);
                 else
                     lsl_p[i] = p[i];
             }
@@ -316,16 +360,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Object[] lsl_p = new Object[p.Length];
             for (int i = 0; i < p.Length ; i++)
             {
-                if (p[i] is int)
-                    lsl_p[i] = new LSL_Types.LSLInteger((int)p[i]);
-                else if (p[i] is string)
-                    lsl_p[i] = new LSL_Types.LSLString((string)p[i]);
-                else if (p[i] is Vector3)
+                if (p[i] is Vector3)
                     lsl_p[i] = new LSL_Types.Vector3(((Vector3)p[i]).X, ((Vector3)p[i]).Y, ((Vector3)p[i]).Z);
                 else if (p[i] is Quaternion)
                     lsl_p[i] = new LSL_Types.Quaternion(((Quaternion)p[i]).X, ((Quaternion)p[i]).Y, ((Quaternion)p[i]).Z, ((Quaternion)p[i]).W);
-                else if (p[i] is float)
-                    lsl_p[i] = new LSL_Types.LSLFloat((float)p[i]);
                 else
                     lsl_p[i] = p[i];
             }
@@ -442,6 +480,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                             m_AssemblyResolver.OnAssemblyResolve;
 
                 }
+                m_log.DebugFormat("[XMREngine]: Script loaded, asset count {0}",
+                        m_Assemblies[item.AssetID]);
             }
 
             XMRLoader loader =
@@ -452,7 +492,34 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             lock (m_Instances)
             {
-                m_Instances[itemID] = new XMRInstance(loader);
+                try
+                {
+                    m_Instances[itemID] = new XMRInstance(loader, this, part,
+                            part.LocalId, itemID, outputName);
+
+                    m_Instances[itemID].PostEvent(new EventParams("state_entry", new Object[0], new DetectParams[0]));
+
+                    List<UUID> l;
+
+                    if (m_Objects.ContainsKey(part.UUID))
+                    {
+                        l = m_Objects[part.UUID];
+                    }
+                    else
+                    {
+                        l = new List<UUID>();
+                        m_Objects[part.UUID] = l;
+                    }
+
+                    if (!l.Contains(itemID))
+                        l.Add(itemID);
+
+                    m_Partmap[itemID] = part.UUID;
+                }
+                catch
+                {
+                    m_log.Error("[XMREngine]: Script load failed, restart region");
+                }
             }
         }
 
@@ -461,17 +528,34 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             SceneObjectPart part =
                     m_Scene.GetSceneObjectPart(localID);
 
-            TaskInventoryItem item =
-                    part.Inventory.GetInventoryItem(itemID);
-
             lock (m_Instances)
             {
                 if (m_Instances.ContainsKey(itemID))
                 {
+                    m_Instances[itemID].Suspend();
+
                     m_Instances[itemID].Dispose();
                     m_Instances.Remove(itemID);
+
+                    if (m_Objects.ContainsKey(part.UUID))
+                    {
+                        List<UUID> l = m_Objects[part.UUID];
+                        l.Remove(itemID);
+                        if (l.Count == 0)
+                        {
+                            m_Objects.Remove(part.UUID);
+                        }
+                    }
+                    m_Partmap.Remove(itemID);
+                }
+                else
+                {
+                    return;
                 }
             }
+
+            TaskInventoryItem item =
+                    part.Inventory.GetInventoryItem(itemID);
 
             lock (m_Assemblies)
             {
@@ -480,8 +564,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                 m_Assemblies[item.AssetID]--;
 
+                m_log.DebugFormat("[XMREngine]: Unloading script, asset count now {0}", m_Assemblies[item.AssetID]);
                 if (m_Assemblies[item.AssetID] < 1)
                 {
+                    m_log.Debug("[XMREngine]: Unloading app domain");
                     AppDomain.Unload(m_AppDomains[item.AssetID]);
                     m_AppDomains.Remove(item.AssetID);
 
@@ -502,19 +588,79 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void OnStartScript(uint localID, UUID itemID)
         {
+            XMRInstance instance = null;
+
+            lock (m_Instances)
+            {
+                if (!m_Instances.ContainsKey(itemID))
+                    return;
+
+                instance = m_Instances[itemID];
+            }
+
+            instance.Running = true;
         }
 
         public void OnStopScript(uint localID, UUID itemID)
         {
+            XMRInstance instance = null;
+
+            lock (m_Instances)
+            {
+                if (!m_Instances.ContainsKey(itemID))
+                    return;
+
+            }
+
+            instance = m_Instances[itemID];
+
+            instance.Running = false;
         }
 
         public void OnGetScriptRunning(IClientAPI controllingClient,
                 UUID objectID, UUID itemID)
         {
+            XMRInstance instance = null;
+
+            lock (m_Instances)
+            {
+                if (!m_Instances.ContainsKey(itemID))
+                    return;
+
+                instance = m_Instances[itemID];
+
+            }
+
+            IEventQueue eq = World.RequestModuleInterface<IEventQueue>();
+            if (eq == null)
+            {
+                controllingClient.SendScriptRunningReply(objectID, itemID,
+                        instance.Running);
+            }
+            else
+            {
+                eq.Enqueue(EventQueueHelper.ScriptRunningReplyEvent(objectID,
+                        itemID, instance.Running, true),
+                        controllingClient.AgentId);
+            }
         }
 
         public void OnShutdown()
         {
+        }
+
+        public void RunOneCycle()
+        {
+            List<XMRInstance> instances = null;
+
+            lock (m_Instances)
+            {
+                instances = new List<XMRInstance>(m_Instances.Values);
+            }
+
+            foreach (XMRInstance ins in instances)
+                if (ins != null)
+                    ins.RunOne();
         }
     }
 
