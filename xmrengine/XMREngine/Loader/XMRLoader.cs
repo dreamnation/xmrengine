@@ -15,6 +15,39 @@ using MMR;
 
 namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
 {
+    [Flags]
+    public enum scriptEvents : int
+    {
+        None = 0,
+        attach = 1,
+        collision = 16,
+        collision_end = 32,
+        collision_start = 64,
+        control = 128,
+        dataserver = 256,
+        email = 512,
+        http_response = 1024,
+        land_collision = 2048,
+        land_collision_end = 4096,
+        land_collision_start = 8192,
+        at_target = 16384,
+        listen = 32768,
+        money = 65536,
+        moving_end = 131072,
+        moving_start = 262144,
+        not_at_rot_target = 524288,
+        not_at_target = 1048576,
+        remote_data = 8388608,
+        run_time_permissions = 268435456,
+        state_entry = 1073741824,
+        state_exit = 2,
+        timer = 4,
+        touch = 8,
+        touch_end = 536870912,
+        touch_start = 2097152,
+        object_rez = 4194304
+    }
+
     public class XMRLoader : MarshalByRefObject, IDisposable, ISponsor
     {
         private ScriptBaseClass m_ScriptBase;
@@ -106,6 +139,43 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
             m_Wrapper = null;
 
             Load(m_DllName);
+        }
+
+        public int StateCode
+        {
+            get { return m_Wrapper.stateCode; }
+        }
+
+        public int GetStateEventFlags(int stateCode)
+        {
+            if (stateCode < 0 || stateCode >= m_Wrapper.scriptEventHandlerTable.GetLength(0))
+                return 0;
+
+            int code = 0;
+
+            ScriptEventHandler h;
+
+            for (int i = 0 ; i < m_Wrapper.scriptEventHandlerTable.GetLength(1) ; i++ )
+            {
+                h = m_Wrapper.scriptEventHandlerTable[stateCode, i];
+
+                if (h != null)
+                {
+                    ScriptEventCode c = (ScriptEventCode)i;
+                    string eventName = c.ToString();
+
+                    try
+                    {
+                        scriptEvents scriptEventFlag = (scriptEvents)Enum.Parse(typeof(scriptEvents), eventName);
+                        code |= (int)scriptEventFlag;
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+
+            return code;
         }
     }
 }

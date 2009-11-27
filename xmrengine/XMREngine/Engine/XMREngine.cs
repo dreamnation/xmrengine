@@ -274,13 +274,36 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         //
         public void SetScriptState(UUID itemID, bool state)
         {
+            XMRInstance instance = null;
+
+            lock (m_Instances)
+            {
+                if (!m_Instances.ContainsKey(itemID))
+                    return;
+
+                instance = m_Instances[itemID];
+
+            }
+
+            instance.Running = state;
         }
 
         // Control display of the "running" checkbox
         //
         public bool GetScriptState(UUID itemID)
         {
-            return false;
+            XMRInstance instance = null;
+
+            lock (m_Instances)
+            {
+                if (!m_Instances.ContainsKey(itemID))
+                    return false;
+
+                instance = m_Instances[itemID];
+
+            }
+
+            return instance.Running;
         }
 
         public void SetState(UUID itemID, string newState)
@@ -346,11 +369,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void SetXMLState(UUID itemID, string xml)
         {
-        }
-
-        public bool CanBeDeleted(UUID itemID)
-        {
-            return true;
         }
 
         public bool PostScriptEvent(UUID itemID, string name, Object[] p)
@@ -474,8 +492,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_log.DebugFormat("[XMREngine]: Compiling script {0}",
                             item.AssetID);
 
+                    string debugFileName = String.Empty;
+
+                    if (m_Config.GetBoolean("WriteScriptSourceToDebugFile", false))
+                        debugFileName = "/tmp/" + item.AssetID.ToString() + ".lsl";
+
                     ScriptCompile.Compile(script, outputName,
-                            UUID.Zero.ToString(), String.Empty, ErrorHandler);
+                            UUID.Zero.ToString(), debugFileName, ErrorHandler);
 
                     if (!File.Exists(outputName))
                         return;
@@ -702,6 +725,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             instance.Suspend(ms);
+        }
+
+        public void Die(UUID itemID)
+        {
+            XMRInstance instance = null;
+
+            lock (m_Instances)
+            {
+                if (!m_Instances.ContainsKey(itemID))
+                    return;
+
+                instance = m_Instances[itemID];
+
+            }
+
+            instance.Die();
         }
     }
 

@@ -39,6 +39,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private DetectParams[] m_DetectParams = null;
         private DateTime m_Suspend = new DateTime(0);
         private bool m_Reset = false;
+        private bool m_Die = false;
+        private int m_StateCode = 0;
 
         private Dictionary<string,IScriptApi> m_Apis =
                 new Dictionary<string,IScriptApi>();
@@ -135,12 +137,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 throw new Exception("Error loading script");
             }
 
-            m_Part.SetScriptEvents(m_ItemID, 8); // TODO (Touch)
+            m_Part.SetScriptEvents(m_ItemID, m_Loader.GetStateEventFlags(0));
         }
 
         public void Dispose()
         {
-            m_Part.SetScriptEvents(m_ItemID, 0);
+            m_Part.RemoveScriptEvents(m_ItemID);
             AsyncCommandManager.RemoveScript(m_Engine, m_LocalID, m_ItemID);
             m_Loader.Dispose();
             m_Loader = null;
@@ -186,6 +188,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     {
                         m_Reset = false;
                         Reset();
+                    }
+
+                    if (m_Die)
+                    {
+                        Monitor.Exit(m_RunLock);
+                        m_Engine.World.DeleteSceneObject(m_Part.ParentGroup, false);
+                        return;
+                    }
+
+                    if (m_Loader.StateCode != m_StateCode)
+                    {
+                        m_StateCode = m_Loader.StateCode;
+                        m_Part.SetScriptEvents(m_ItemID,
+                                m_Loader.GetStateEventFlags(m_StateCode));
                     }
                 }
                 else
@@ -248,6 +264,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             PostEvent(new EventParams("state_entry", new Object[0], new DetectParams[0]));
         }
 
+        public void Die()
+        {
+            m_Die = true;
+        }
+
         private void ReleaseControls()
         {
             SceneObjectPart part = m_Engine.World.GetSceneObjectPart(m_LocalID);
@@ -303,6 +324,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             else
             {
                 base.llSleep(sec);
+            }
+        }
+
+        public override void llDie()
+        {
+            if (m_ScriptEngine is XMREngine)
+            {
+                XMREngine e = (XMREngine)m_ScriptEngine;
+
+                e.Die(m_itemID);
+            }
+            else
+            {
+                base.llDie();
             }
         }
     }

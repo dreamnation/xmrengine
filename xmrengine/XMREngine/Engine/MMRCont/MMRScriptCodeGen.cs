@@ -374,6 +374,17 @@ namespace MMR
             UTF8Encoding encoding = new UTF8Encoding();
             string text = encoding.GetString(objectFile.ToArray());
 
+            if (debugFileName != String.Empty)
+            {
+                FileStream dfs = File.Create(debugFileName);
+                StreamWriter dsw = new StreamWriter(dfs);
+
+                dsw.Write(text);
+
+                dsw.Close();
+                dfs.Close();
+            }
+
             // m_log.Debug(text);
 
             CompilerParameters parameters = new CompilerParameters();
