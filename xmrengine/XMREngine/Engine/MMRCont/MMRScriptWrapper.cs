@@ -356,6 +356,14 @@ namespace MMR {
 				}
 
 				/*
+				 * Set up to migrate state in from the network stream.
+				 */
+				this.migrateInStream  = stream;
+				this.migrateInReader  = new BinaryReader (stream);
+				this.migrateOutStream = null;
+				this.migrateOutWriter = null;
+
+				/*
 				 * Read current state code and event code from stream.
 				 * And it also marks us busy (by setting this.eventCode) so we can't be
 				 * started again and this event lost.
@@ -382,20 +390,17 @@ namespace MMR {
 				if (this.eventCode != ScriptEventCode.None) {
 
 					/*
-					 * We aren't starting the event handler from the beginning,
-					 * we are going to read where we left off from the stream.
-					 * And we aren't doing any outbound migration on it.
-					 */
-					this.migrateInStream  = stream;
-					this.migrateInReader  = new BinaryReader (stream);
-					this.migrateOutStream = null;
-					this.migrateOutWriter = null;
-
-					/*
 					 * This calls Main() below directly, and returns when Main() calls Suspend()
 					 * or when Main() returns, whichever occurs first.  It should return quickly.
 					 */
 					microthread.Start ();
+				} else {
+
+					/*
+					 * Clear out migration state as we are idle, ready to accept new event.
+					 */
+					this.migrateInStream = null;
+					this.migrateInReader = null;
 				}
 			}
 		}

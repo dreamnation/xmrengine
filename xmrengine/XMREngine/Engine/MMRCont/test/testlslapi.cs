@@ -2049,8 +2049,11 @@ public class TestLSLAPI : ILSL_Api, IScriptApi {
 
 		/*
 		 * Do a switch before returning for fun.
+		 * COMMENTED OUT because script is compiled with a CheckRun()
+		 * call after every ll API call so the ll API calls don't have
+		 * to all be marked with MMContableAttribute().
 		 */
-		this.scriptWrapper.continuation.CheckRun ();
+		///this.scriptWrapper.continuation.CheckRun ();
 
 		return retvalu;
 	}
