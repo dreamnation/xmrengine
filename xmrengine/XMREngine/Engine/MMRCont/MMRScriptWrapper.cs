@@ -76,6 +76,7 @@ namespace MMR {
 		public BinaryReader migrateInReader;   // else: restore position in event handler from stream and resume
 		public Stream       migrateOutStream;  // null: continue executing event handler
 		public BinaryWriter migrateOutWriter;  // else: write position of event handler to stream and exit
+		public bool         migrateComplete;   // false: migration in progress; true: migration complete
 
 		/*
 		 * The subsArray[] is used by continuations to say which object references
@@ -393,15 +394,17 @@ namespace MMR {
 					 * This calls Main() below directly, and returns when Main() calls Suspend()
 					 * or when Main() returns, whichever occurs first.  It should return quickly.
 					 */
+					this.migrateComplete = false;
 					microthread.Start ();
-				} else {
-
-					/*
-					 * Clear out migration state as we are idle, ready to accept new event.
-					 */
-					this.migrateInStream = null;
-					this.migrateInReader = null;
+					if (!this.migrateComplete) throw new Exception ("migrate in did not complete");
 				}
+
+				/*
+				 * Clear out migration state.
+				 */
+				//this.migrateInReader.Dispose ();  // moron thing doesn't compile
+				this.migrateInStream = null;
+				this.migrateInReader = null;
 			}
 		}
 
@@ -480,41 +483,52 @@ namespace MMR {
 			 * It may take a while for the script to actually suspend.
 			 */
 			this.suspendOnCheckRun = true;
-			lock (microthread) {
+			lock (this.microthread) {
 
 				/*
 				 * The script microthread should be at its Suspend() call within
 				 * CheckRun(), unless it has exited.  Tell CheckRun() that it 
-				 * should migrate the script out then unwind.
+				 * should migrate the script out then suspend.
 				 */
 				this.migrateOutStream = stream;
 				this.migrateOutWriter = new BinaryWriter (stream);
+				this.migrateInStream  = null;
+				this.migrateInReader  = null;
 
 				/*
 				 * Write the basic information out to the stream:
 				 *    state, event, eventhandler args, script's globals.
 				 */
 				stream.WriteByte (migrationVersion);
-				this.continuation.sendObj (stream, this.stateCode);
-				this.continuation.sendObj (stream, this.eventCode);
-				this.continuation.sendObj (stream, this.memUsage);
-				this.continuation.sendObj (stream, this.memLimit);
-				this.continuation.sendObj (stream, this.ehArgs);
-				this.MigrateScriptOut (stream, this.continuation.sendObj);
+				this.SendObjInterceptor (stream, this.stateCode);
+				this.SendObjInterceptor (stream, this.eventCode);
+				this.SendObjInterceptor (stream, this.memUsage);
+				this.SendObjInterceptor (stream, this.memLimit);
+				this.SendObjInterceptor (stream, this.ehArgs);
+				this.MigrateScriptOut (stream, this.SendObjInterceptor);
+
+				/*
+				 * Tell caller whether we are actually writing a suspended or idle state out.
+				 * SUSPENDED state is with a stack and which eventCode it was processing.
+				 * IDLE state is without a stack and ScriptEventCode.None indicating it was idle.
+				 */
+				written = (this.eventCode != ScriptEventCode.None);
 
 				/*
 				 * Resume the microthread to actually write the network stream.
-				 * When it finishes it will unwind its stack and return here.
+				 * When it finishes it will suspend, causing the microthreading
+				 * to return here.
 				 */
-				while (eventCode != ScriptEventCode.None) {
-					microthread.Resume ();
+				if (written) {
+					this.migrateComplete = false;
+					this.microthread.Resume ();
+					if (!this.migrateComplete) throw new Exception ("migrate out did not complete");
 				}
 
 				/*
-				 * If it actually wrote instead of simply exiting, it will have
-				 * cleared this.migrateOutStream.
+				 * No longer migrating.
 				 */
-				written = (this.migrateOutStream == null);
+				//this.migrateOutWriter.Dispose ();  // moron thing doesn't compile
 				this.migrateOutStream = null;
 				this.migrateOutWriter = null;
 			}
@@ -717,14 +731,7 @@ namespace MMR {
 				                                            scriptWrapper.subsArray);
 			}
 
-			/*
-			 * If CheckRun() sees that MigrateOutEventHandler() has been called,
-			 * it writes the stack contents to the stream then throws a
-			 * GetMeOutOfThisScript() which unwinds us to this point.
-			 */
-			if ((except != null) && !(except is GetMeOutOfThisScript)) {
-				throw except;
-			}
+			if (except != null) throw except;
 		}
 	}
 
@@ -811,53 +818,41 @@ namespace MMR {
 			/*
 			 * Make sure script isn't hogging too much memory.
 			 */
-			if (scriptWrapper.memUsage > scriptWrapper.memLimit) {
-				throw new Exception ("memory usage " + scriptWrapper.memUsage.ToString () + 
-				                     " exceeds limit " + scriptWrapper.memLimit.ToString ());
+			int mu = scriptWrapper.memUsage;
+			int ml = scriptWrapper.memLimit;
+			if (mu > ml) {
+				throw new Exception ("memory usage " + mu + " exceeds limit " + ml);
 			}
 
 			while (scriptWrapper.suspendOnCheckRun || (scriptWrapper.migrateOutStream != null)) {
 
 				/*
 				 * See if MigrateOutEventHandler() has been called.
-				 * If so, dump our stack to the stream and unwind via exception.
-				 * If, on return from Save(), migrateOutStream is null, it means
-				 * this is the restore code on the receiving end, in which case we
-				 * want to simply return to resume where we left off.
+				 * If so, dump our stack to the stream then suspend.
 				 */
 				if (scriptWrapper.migrateOutStream != null) {
 
 					/*
 					 * Puque our stack to the output stream.
+					 * But otherwise, our state remains intact.
 					 */
 					scriptWrapper.subsArray[(int)ScriptWrapper.SubsArray.BEAPI] = scriptWrapper.beAPI;
 					this.Save (scriptWrapper.migrateOutStream, scriptWrapper.subsArray);
 
 					/*
-					 * See if this is during MigrateOutEventHandler() or
-					 * during MigrateInEventHandler().
+					 * We return here under two circumstances:
+					 *  1) the script state has been written out to the migrateOutStream
+					 *  2) the script state has been read in from the migrateOutStream
 					 */
-					if (scriptWrapper.migrateOutStream != null) {
-
-						/*
-						 * Migrating out, unwind stack to Main().
-						 * We also say script has completed because we 
-						 * don't want this microthread to run again as 
-						 * it will be all unwound.
-						 */
-						scriptWrapper.eventCode = ScriptEventCode.None;
-						scriptWrapper.migrateOutStream = null;
-						scriptWrapper.migrateOutWriter = null;
-						throw new GetMeOutOfThisScript ();
-					}
+					scriptWrapper.migrateComplete = true;
 
 					/*
-					 * This is on the receiving end from MigrateInEventHandler().
-					 * Suspend right away so MigrateInEventHandler() will return 
-					 * quickly.
+					 * Suspend immediately.
+					 * If we were migrating out, the MMRUThread.Suspend() call below will return
+					 *    to the microthread.Resume() call within MigrateOutEventHandler().
+					 * If we were migrating in, the MMRUThread.Suspend() call below will return
+					 *    to the microthread.Start() call within MigrateInEventHandler().
 					 */
-					scriptWrapper.migrateInStream   = null;
-					scriptWrapper.migrateInReader   = null;
 					scriptWrapper.suspendOnCheckRun = true;
 				}
 
