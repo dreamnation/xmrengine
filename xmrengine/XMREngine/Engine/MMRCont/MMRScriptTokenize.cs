@@ -39,6 +39,9 @@ namespace MMR {
      * @brief base class for all tokens
      */
     public class Token {
+	public static readonly int MAX_NAME_LEN = 255;
+	public static readonly int MAX_STRING_LEN = 4096;
+
         public Token nextToken;
         public Token prevToken;
 
@@ -224,7 +227,11 @@ namespace MMR {
                             backslash = false;
                         }
                     }
-                    AppendToken (new TokenStr (emsg, lineNo, i - eolIdx, source.Substring (i + 1, j - i - 1)));
+                    if (j - i > MAX_STRING_LEN) {
+                        TokenError (i, "string too long, max " + MAX_STRING_LEN);
+                    } else {
+                        AppendToken (new TokenStr (emsg, lineNo, i - eolIdx, source.Substring (i + 1, j - i - 1)));
+                    }
                     i = j;
                     continue;
                 }
@@ -242,12 +249,16 @@ namespace MMR {
                         if (c >= '0' && c <= '9') continue;
                         if (c != '_') break;
                     }
-                    string name = source.Substring (i, j - i);
-                    if (keywords.ContainsKey (name)) {
-                        Object[] args = new Object[] { emsg, lineNo, i - eolIdx };
-                        AppendToken ((Token)keywords[name].Invoke (args));
+                    if (j - i > MAX_NAME_LEN) {
+                        TokenError (i, "name too long, max " + MAX_NAME_LEN);
                     } else {
-                        AppendToken (new TokenName (emsg, lineNo, i - eolIdx, name));
+                        string name = source.Substring (i, j - i);
+                        if (keywords.ContainsKey (name)) {
+                            Object[] args = new Object[] { emsg, lineNo, i - eolIdx };
+                            AppendToken ((Token)keywords[name].Invoke (args));
+                        } else {
+                            AppendToken (new TokenName (emsg, lineNo, i - eolIdx, name));
+                        }
                     }
                     i = -- j;
                     continue;
