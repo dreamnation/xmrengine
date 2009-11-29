@@ -55,6 +55,7 @@ namespace MMR {
 			}
 			string scriptname = args[0];
 			string sourceName = scriptname + ".lsl";
+			string cSharpName = scriptname + "_script_temp.cs";
 			string binaryName = scriptname + "_script_temp.dll";
 
 			FileStream sourceFile = File.OpenRead (sourceName);
@@ -63,7 +64,7 @@ namespace MMR {
 			sourceReader.Close ();
 
 			Console.WriteLine ("compiling " + sourceName);
-			if (!MMR.ScriptCompile.Compile (source, binaryName, scriptname, String.Empty, ErrorMessage)) goto alldone;
+			if (!MMR.ScriptCompile.Compile (source, binaryName, scriptname, cSharpName, ErrorMessage)) goto alldone;
 			Console.WriteLine ("compilation successful");
 
 			//
