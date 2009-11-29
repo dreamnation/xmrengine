@@ -161,6 +161,21 @@ namespace MMR {
 			}
 
 			/*
+			 * Look for a "public static const int" field called "compiledVersion",
+			 * and make sure it matches COMPILED_VERSION so we know we aren't dealing
+			 * with an .DLL that we can't support.
+			 */
+			FieldInfo cvField = scriptModule.GetField (ScriptCodeGen.COMPILED_VERSION_NAME);
+			if (cvField == null) {
+				throw new Exception (dllName + " has no compiledVersion field");
+			}
+			int cvValue = (int)cvField.GetValue (null);
+			if (cvValue != ScriptCodeGen.COMPILED_VERSION_VALUE) {
+				throw new Exception (dllName + " compiled version " + cvValue.ToString () +
+				                     ", but require " + ScriptCodeGen.COMPILED_VERSION_VALUE.ToString ());
+			}
+
+			/*
 			 * Look for a public static method in that class called "GetScriptEventHandlerTable".
 			 */
 			MethodInfo gseht = scriptModule.GetMethod ("GetScriptEventHandlerTable");

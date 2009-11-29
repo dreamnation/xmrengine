@@ -34,8 +34,11 @@ namespace MMR
         private static readonly ILog m_log =
             LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
-		public const int CALL_FRAME_MEMUSE = 64;
-		public const int STRING_LEN_TO_MEMUSE = 2;
+		public static readonly string COMPILED_VERSION_NAME = "XMRCompiledVersion";
+		public static readonly int COMPILED_VERSION_VALUE = 1;
+
+		public static readonly int CALL_FRAME_MEMUSE = 64;
+		public static readonly int STRING_LEN_TO_MEMUSE = 2;
 
         private static CSharpCodeProvider CSCodeProvider = new CSharpCodeProvider();
 
@@ -154,6 +157,13 @@ namespace MMR
 			 */
 			smClassName  = "ScriptModule";
 			WriteOutput (0, "public class " + smClassName + " : MMR.ScriptWrapper {");
+
+			/*
+			 * Write out COMPILED_VERSION.  This is used by ScriptWrapper to determine if the
+			 * compilation is suitable for it to use.  If it sees the wrong version, it will
+			 * recompile the script so it has the correct version.
+			 */
+			WriteOutput (0, "public static readonly int " + COMPILED_VERSION_NAME + " = " + COMPILED_VERSION_VALUE.ToString () + ";");
 
 			/*
 			 * Put script defined functions in 'scriptFunctions' dictionary so any calls
