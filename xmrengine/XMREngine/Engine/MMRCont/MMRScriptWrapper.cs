@@ -42,6 +42,7 @@ namespace MMR {
 		public object[] ehArgs;                   // event handler argument array
 		public int memUsage = 0;                  // script's current memory usage
 		public int memLimit = 100000;             // CheckRun() throws exception if memUsage > memLimit
+		public bool stateChanged = false;         // script sets this if/when it executes a 'state' statement
 
 		/*
 		 * Info about the script DLL itself as a whole.
@@ -783,10 +784,10 @@ namespace MMR {
 			 * We do not have to check for null 'seh' here because
 			 * StartEventHandler() already checked the table entry.
 			 */
+			scriptWrapper.stateChanged = false;
 			oldStateCode = scriptWrapper.stateCode;
 			seh = scriptWrapper.scriptEventHandlerTable[oldStateCode,(int)scriptWrapper.eventCode];
 			seh (scriptWrapper);
-			newStateCode = scriptWrapper.stateCode;
 
 			scriptWrapper.ehArgs = null;  // we are done with them and no args for
 			                              // exit_state()/enter_state() anyway
@@ -800,19 +801,20 @@ namespace MMR {
 			/*
 			 * If event handler changed state, call exit_state() on the old state,
 			 * change the state, then call enter_state() on the new state.
-			 *
-			 * Note that we ignore any state transition requested by exit_state()/enter_state().
-			 * ??? should we throw an exception if they change in scriptWrapper.stateCode ???
 			 */
-			if (newStateCode != oldStateCode) {
+			if (scriptWrapper.stateChanged) {
+				scriptWrapper.stateChanged = false;
+				newStateCode = scriptWrapper.stateCode;
+
 				scriptWrapper.stateCode = oldStateCode;
 				seh = scriptWrapper.scriptEventHandlerTable[oldStateCode,(int)ScriptEventCode.state_exit];
 				if (seh != null) seh (scriptWrapper);
-				if (scriptWrapper.stateCode != oldStateCode) throw new Exception ("state_exit() transitioned state");
+				if (scriptWrapper.stateChanged) throw new Exception ("state_exit() transitioned state");
+
 				scriptWrapper.stateCode = newStateCode;
 				seh = scriptWrapper.scriptEventHandlerTable[newStateCode,(int)ScriptEventCode.state_entry];
 				if (seh != null) seh (scriptWrapper);
-				if (scriptWrapper.stateCode != newStateCode) throw new Exception ("state_entry() transitioned state");
+				if (scriptWrapper.stateChanged) throw new Exception ("state_entry() transitioned state");
 			}
 
 			/*
@@ -829,6 +831,14 @@ namespace MMR {
 		public void CheckRun ()
 		{
 			scriptWrapper.suspendOnCheckRun |= scriptWrapper.alwaysSuspend;
+
+			/*
+			 * We should never try to stop with stateChanged as once stateChanged is set to true,
+			 * the compiled script functions all return directly out without calling CheckRun().
+			 *
+			 * Thus any checkpoint/restart save/resume code can assume stateChanged = false.
+			 */
+			if (scriptWrapper.stateChanged) throw new Exception ("CheckRun() called with stateChanged set");
 
 			/*
 			 * Make sure script isn't hogging too much memory.

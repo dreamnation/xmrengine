@@ -41,6 +41,15 @@ animate(integer start) {
     
     
 }
+
+integer change_to_dead_state ()
+{
+   llSay (0, "changing to dead state");
+   state dead;
+   llSay (1, "never executes this");
+   return 99;
+}
+
 default
 {
   state_entry() {
@@ -56,6 +65,9 @@ default
        llSay (i, "never say die");
        -- i;
     }
+
+    integer j = change_to_dead_state ();
+    llSay (j, "I say, this doesn't ever execute!");
 
   }
   run_time_permissions(integer p) {
@@ -125,6 +137,14 @@ default
     }
 }
 
+state dead {
+   state_entry()
+   {
+      llSay (0, "we're dead!");
+   }
+}
+
+
 /**TEST
 state_entry() {
    llSitTarget(<0,0,0>, <0,0,0,1>);
@@ -142,5 +162,8 @@ state_entry() {
    llSay (2, "never say die");
    llSay (1, "never say die");
 
-} : default
+   llSay (0, "changing to dead state");
+   llSay (0, "we're dead!");
+
+} : dead
 TEST**/

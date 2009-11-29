@@ -561,7 +561,7 @@ namespace MMR
 			 * Output function header.
 			 * We splice in <smClassName> __sm as the first argument as all our functions are static.
 			 */
-			if (declFunc.retType.typ == typeof (void)) {
+			if (declFunc.retType is TokenTypeVoid) {
 				WriteOutput (declFunc, "void");
 			} else {
 				WriteOutput (declFunc, TypeName(declFunc.retType));
@@ -614,7 +614,7 @@ namespace MMR
 			GenerateStmtBlock (declFunc.body, true);
 
 			/*
-			 * All return statements goto __Return so we can do mem use epilog.
+			 * All return statements 'goto __Return' so we can do mem use epilog.
 			 */
 			WriteOutput (declFunc.body.closebr, "__Return:;");
 			GenMemUseBlockEpilog (declFunc.body, true);
@@ -868,39 +868,41 @@ namespace MMR
 				CompRVal rVal = GenerateFromRVal (retStmt.rVal);
 				WriteOutput (retStmt, "__retval = " + StringWithCast (curDeclFunc.retType, rVal) + ";");
 			} else {
-				if ((curDeclFunc.retType != null) && !(curDeclFunc.retType is TokenTypeVoid)) {
+				if (!(curDeclFunc.retType is TokenTypeVoid)) {
 					ErrorMsg (retStmt, "function requires return value type " + curDeclFunc.retType.ToString ());
 				}
 			}
 
 			/*
-			 * If returning from an inner block, pop memory usage for all but the outermost block.
+			 * Goto function epilog.
 			 */
-			for (TokenStmtBlock stmtBlock = curStmtBlock; stmtBlock.outerStmtBlock != null; stmtBlock = stmtBlock.outerStmtBlock) {
-				GenMemUseBlockEpilog (stmtBlock, false);
-			}
-
-			/*
-			 * Now we can jump to the common epilog where it will pop memory usage for the outermost block.
-			 */
-			WriteOutput (retStmt, "goto __Return;");
+			OutputGotoReturn (retStmt);
 		}
 
 		/**
 		 * @brief generate code for a 'state' statement that transitions state.
-		 * It sets the 'stateCode' variable in ScriptWrapper then performs a 'return (void);' statement.
+		 * It sets the new state then returns.
 		 */
 		private void GenerateStmtState (TokenStmtState stateStmt)
 		{
+
+			/*
+			 * Set new state value and set the global 'stateChanged' flag.
+			 */
 			if (stateStmt.state == null) {
-				WriteOutput (stateStmt, "__sm.stateCode = 0;");
+				WriteOutput (stateStmt, "__sm.stateCode = 0;");  // default state
 			} else if (!stateIndices.ContainsKey (stateStmt.state.val)) {
 				ErrorMsg (stateStmt, "undefined state " + stateStmt.state.val);
 			} else {
 				int index = stateIndices[stateStmt.state.val];
 				WriteOutput (stateStmt, "__sm.stateCode = " + index + ";");
 			}
-			GenerateStmtRet (new TokenStmtRet (stateStmt));
+			WriteOutput (stateStmt, "__sm.stateChanged = true;");
+
+			/*
+			 * Goto function epilog.
+			 */
+			OutputGotoReturn (stateStmt);
 		}
 
 		/**
@@ -1230,9 +1232,9 @@ namespace MMR
 			} else {
 				ErrorMsg (call, "undefined function " + name);
 				declFunc = new TokenDeclFunc (call);
-				declFunc.retType = new TokenTypeVoid (call);
+				declFunc.retType  = new TokenTypeVoid (call);
 				declFunc.funcName = new TokenName (call, name);
-				declFunc.argDecl = new TokenArgDecl (call);
+				declFunc.argDecl  = new TokenArgDecl (call);
 				declFunc.argDecl.types = new TokenType[0];
 				declFunc.argDecl.names = new TokenName[0];
 			}
@@ -1306,6 +1308,13 @@ namespace MMR
 					OutputWithCast (declFunc.argDecl.types[i], argRVals[i]);
 				}
 				WriteOutput (call, ");");
+
+				/*
+				 * Also, unwind out if the inner function changed state.
+				 */
+				WriteOutput (call, "if (__sm.stateChanged) {");
+				OutputGotoReturn (call);
+				WriteOutput (call, "}");
 			}
 			return retRVal;
 		}
@@ -1437,6 +1446,27 @@ namespace MMR
 			return new CompRVal (new TokenTypeVec (rValVec),
 					"new " + TypeName(typeof(LSL_Vector)) + "(" + StringWithCast (flToken, xRVal) + "," +
 					StringWithCast (flToken, yRVal) + "," + StringWithCast (flToken, zRVal) + ")");
+		}
+
+		/**
+		 * @brief output the "goto __Return;" statement that jumps to the function epilog.
+		 * @param stmt = source statement that's causing the return to happen
+		 * Note that __retval has already been updated with return value, if any.
+		 */
+		private void OutputGotoReturn (Token stmt)
+		{
+
+			/*
+			 * If returning from an inner block, pop memory usage for all but the outermost block.
+			 */
+			for (TokenStmtBlock stmtBlock = curStmtBlock; stmtBlock.outerStmtBlock != null; stmtBlock = stmtBlock.outerStmtBlock) {
+				GenMemUseBlockEpilog (stmtBlock, false);
+			}
+
+			/*
+			 * Now we can jump to the common epilog where it will pop memory usage for the outermost block.
+			 */
+			WriteOutput (stmt, "goto __Return;");
 		}
 
 		/**
