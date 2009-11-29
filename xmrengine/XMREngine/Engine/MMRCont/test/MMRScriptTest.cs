@@ -371,7 +371,7 @@ namespace MMR {
 
 		public static void ErrorMessage (Token token, string message)
 		{
-			Console.WriteLine ("Error at {1}.{2}: {3}", token.line, token.posn, message);
+			Console.WriteLine ("Error at {0}.{1}: {2}", token.line, token.posn, message);
 		}
 	}
 }

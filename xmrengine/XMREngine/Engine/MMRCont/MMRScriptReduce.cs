@@ -924,6 +924,7 @@ namespace MMR {
 			 */
 			if ((token is TokenKwIncr) || (token is TokenKwDecr)) {
 				TokenRValAsnPre asnPre = new TokenRValAsnPre (token);
+				asnPre.prefix = token;
 				token = token.nextToken;
 				asnPre.lVal = ParseLVal (ref token);
 				if (asnPre.lVal == null) return null;
@@ -1044,6 +1045,7 @@ namespace MMR {
 			if ((token is TokenKwIncr) || (token is TokenKwDecr)) {
 				TokenRValAsnPost asnPost = new TokenRValAsnPost (token);
 				asnPost.lVal = lVal;
+				asnPost.postfix = token;
 				token = token.nextToken;
 				return asnPost;
 			}

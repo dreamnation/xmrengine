@@ -46,7 +46,7 @@ namespace MMR
 
 		private static Dictionary<string, BinOpStr> binOpStrings = null;
 		private static TokenTypeBool tokenTypeBool = new TokenTypeBool (null);
-		private static Dictionary<string, string> implicitTypeCasts = null;
+		private static Dictionary<string, string> legalTypeCasts = null;
 
 		public static bool CodeGen (TokenScript tokenScript, string binaryName,
                 string debugFileName)
@@ -80,10 +80,10 @@ namespace MMR
 			}
 			//MB()
 
-			if (implicitTypeCasts == null) {
-				Dictionary<string, string> itc = CreateImplicitTypeCasts ();
+			if (legalTypeCasts == null) {
+				Dictionary<string, string> ltc = CreateLegalTypeCasts ();
 				//MB()
-				implicitTypeCasts = itc;
+				legalTypeCasts = ltc;
 			}
 			//MB()
 
@@ -746,12 +746,13 @@ namespace MMR
 			string lbl = GetTempNo ();
 
 			string breakLabel = "__ForBrk_" + lbl;
-			string contLabel = "__ForTop_" + lbl;
+			string loopLabel = "__ForTop_" + lbl;
+			string contLabel = "__ForBot_" + lbl;
 
 			if (forStmt.initStmt != null) {
 				GenerateStmt (forStmt.initStmt);
 			}
-			WriteOutput (forStmt, contLabel + ":;");
+			WriteOutput (forStmt, loopLabel + ":;");
 			WriteOutput (forStmt, "__sm.continuation.CheckRun();");
 			if (forStmt.testRVal != null) {
 				CompRVal testRVal = GenerateFromRVal (forStmt.testRVal);
@@ -762,6 +763,10 @@ namespace MMR
 				}
 			}
 			GenerateStmt (forStmt.bodyStmt);
+			WriteOutput (forStmt, contLabel + ":;");
+			if (forStmt.incrRVal != null) {
+				GenerateFromRVal (forStmt.incrRVal);
+			}
 			WriteOutput (forStmt, "goto " + contLabel + ";");
 			WriteOutput (forStmt, breakLabel + ":;");
 		}
@@ -1301,29 +1306,11 @@ namespace MMR
 		{
 			CompRVal inRVal = GenerateFromRVal (cast.rVal);
 			TokenType outType = cast.castTo;
-			string inName = inRVal.type.ToString ();
-			string outName = outType.ToString ();
-			string key = inName + " " + outName;
 
-			if (inName == outName) return inRVal;
-
-			/*
-			 * They can do any implicit typecast explicitly.
-			 */
-			if (!implicitTypeCasts.ContainsKey (key)) {
-
-				/*
-				 * Check for allowed explicit typecasts.
-				 */
-				key += "*";
-				if (!implicitTypeCasts.ContainsKey (key)) {
-					ErrorMsg (cast, "can't convert from " + inName + " to " + outName);
-					return inRVal;
-				}
-			}
+			if (inRVal.type == outType) return inRVal;
 
 			CompRVal outRVal = new CompRVal (outType);
-			WriteOutput (cast, TypeName(outType) + " " + outRVal.locstr + " = (" + TypeName(outType) + ")" + inRVal.locstr + ";");
+			WriteOutput (cast, TypeName(outType) + " " + outRVal.locstr + " = " + StringWithCast (outType, inRVal, true) + ";");
 			return outRVal;
 		}
 
@@ -1466,39 +1453,42 @@ namespace MMR
 		}
 
 		/**
-		 * @brief create a dictionary of allowed IMPLICIT type casts.
-		 * Also defines what EXPLICIT type casts are allowed in addition to the IMPLICIT ones.
-		 * Key is of the form <oldtype> <newtype>
-		 * Value is a format string to convert the old value to new value
+		 * @brief create a dictionary of legal type casts.
+		 * Defines what EXPLICIT type casts are allowed in addition to the IMPLICIT ones.
+		 * Key is of the form <oldtype> <newtype> for IMPLICIT casting.
+		 * Key is of the form <oldtype>*<newtype> for EXPLICIT casting.
+		 * Value is a format string to convert the old value to new value.
 		 */
-		private static Dictionary<string, string> CreateImplicitTypeCasts ()
+		private static Dictionary<string, string> CreateLegalTypeCasts ()
 		{
-			Dictionary<string, string> itc = new Dictionary<string, string> ();
+			Dictionary<string, string> ltc = new Dictionary<string, string> ();
 
 			// IMPLICIT type casts
-			itc.Add ("bool integer", "({0}?1:0)");
-			itc.Add ("bool string", "({0}?\"true\":\"false\")");
-			itc.Add ("float bool", "({0}!=0.0)");
-			itc.Add ("float string", "{0}.ToString()");
-			itc.Add ("integer bool", "({0}!=0)");
-			itc.Add ("integer float", "(float){0}");
-			itc.Add ("integer string", "{0}.ToString()");
-			itc.Add ("key bool", "({0}!=NULL_KEY)");
-			itc.Add ("key string", "{0}");
-			itc.Add ("list string", "{0}.ToString()");
-			itc.Add ("rotation string", "{0}.ToString()");
-			itc.Add ("vector string", "{0}.ToString()");
+			ltc.Add ("bool integer", "({0}?1:0)");
+			ltc.Add ("bool string", "({0}?\"true\":\"false\")");
+			ltc.Add ("float bool", "({0}!=0.0)");
+			ltc.Add ("float string", "{0}.ToString()");
+			ltc.Add ("integer bool", "({0}!=0)");
+			ltc.Add ("integer float", "(float){0}");
+			ltc.Add ("integer string", "{0}.ToString()");
+			ltc.Add ("key bool", "({0}!=NULL_KEY)");
+			ltc.Add ("key string", "{0}");
+			ltc.Add ("list string", "{0}.ToString()");
+			ltc.Add ("rotation string", "{0}.ToString()");
+			ltc.Add ("vector string", "{0}.ToString()");
 
 			// EXPLICIT type casts (an * is on the end of the key)
-			itc.Add ("float integer*", "(int){0}");
-			itc.Add ("string key*", "new " + TypeName(typeof(LSL_Key)) + "({0})");
+			ltc.Add ("float*integer", "(int){0}");
+			ltc.Add ("string*key", "new " + TypeName(typeof(LSL_Key)) + "({0})");
 
-			return itc;
+			return ltc;
 		}
 
 		/**
 		 * @brief output an implicit cast to cast the 'inRVal' to the 'outType'.
 		 * If inRVal is already the correct type, output it as is.
+		 * @param explicitAllowed = false: only allow implicit casts
+		 *                           true: accept implicit and explicit casts
 		 */
 		private void OutputWithCastToBool (CompRVal inRVal)
 		{
@@ -1510,6 +1500,10 @@ namespace MMR
 		}
 		private string StringWithCast (TokenType outType, CompRVal inRVal)
 		{
+			return StringWithCast (outType, inRVal, false);
+		}
+		private string StringWithCast (TokenType outType, CompRVal inRVal, bool explicitAllowed)
+		{
 			string result;
 
 			/*
@@ -1518,16 +1512,43 @@ namespace MMR
 			string inName = inRVal.type.ToString();
 			string outName = outType.ToString();
 			if (inName != outName) {
+
+				/*
+				 * Different types, see if we allow implicit casting.
+				 */
 				string key = inName + " " + outName;
-				if (!implicitTypeCasts.ContainsKey (key)) {
-					ErrorMsg (inRVal.type, "can't implicitly convert " + inName + " to " + outName);
-					return inRVal.locstr;
+				if (!legalTypeCasts.ContainsKey (key)) {
+
+					/*
+					 * See if we even know how to cast explicitly.
+					 */
+					key = inName + "*" + outName;
+					bool explicitExists = legalTypeCasts.ContainsKey (key);
+					string qualif = explicitExists ? " implicitly" : "";
+					if (!explicitAllowed || !explicitExists) {
+						qualif = " implicitly";
+						if (!explicitExists) qualif = "";
+						ErrorMsg (inRVal.type, "cannot" + qualif + " convert " + inName + " to " + outName);
+						return inRVal.locstr;
+					}
 				}
-				string fmt = implicitTypeCasts[key];
+
+				/*
+				 * Cast is allowed, generate code.
+				 */
+				string fmt = legalTypeCasts[key];
 				result = String.Format (fmt, inRVal.locstr);
 			} else if (inName == "float") {
+
+				/*
+				 * If both claim to be float, output cast anyway in case one is really a double in disguise.
+				 */
 				result = "(float)" + inRVal.locstr;
 			} else {
+
+				/*
+				 * All others just output without any casting at all.
+				 */
 				result = inRVal.locstr;
 			}
 
