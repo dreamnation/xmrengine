@@ -767,7 +767,7 @@ namespace MMR
 			if (forStmt.incrRVal != null) {
 				GenerateFromRVal (forStmt.incrRVal);
 			}
-			WriteOutput (forStmt, "goto " + contLabel + ";");
+			WriteOutput (forStmt, "goto " + loopLabel + ";");
 			WriteOutput (forStmt, breakLabel + ":;");
 		}
 
@@ -907,7 +907,9 @@ namespace MMR
 			WriteOutput (whileStmt, "__sm.continuation.CheckRun();");
 			CompRVal testRVal = GenerateFromRVal (whileStmt.testRVal);
 			if (testRVal != null) {
-				WriteOutput (whileStmt.testRVal, "if (!" + testRVal.locstr + ") goto " + breakLabel + ";");
+				WriteOutput (whileStmt.testRVal, "if (!");
+				OutputWithCastToBool (testRVal);
+				WriteOutput (whileStmt.testRVal, ") goto " + breakLabel + ";");
 			}
 			GenerateStmt (whileStmt.bodyStmt);
 			WriteOutput (whileStmt, "goto " + contLabel + ";");
