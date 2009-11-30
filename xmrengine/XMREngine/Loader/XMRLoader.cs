@@ -6,6 +6,7 @@
 //
 
 using System;
+using System.IO;
 using System.Runtime.Remoting;
 using System.Runtime.Remoting.Lifetime;
 using OpenSim.Region.ScriptEngine.Shared.Api.Runtime;
@@ -176,6 +177,40 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
             }
 
             return code;
+        }
+
+        public Byte[] GetSnapshot()
+        {
+            MemoryStream ms = new MemoryStream();
+
+            bool suspended = m_Wrapper.MigrateOutEventHandler(ms);
+
+            Byte[] data = ms.ToArray();
+
+            ms.Close();
+
+            Array.Resize(ref data, data.Length+1);
+            if (suspended)
+                data[data.Length-1] = 1;
+            else
+                data[data.Length-1] = 0;
+
+            return data;
+        }
+
+        public bool RestoreSnapshot(Byte[] data)
+        {
+            bool suspended = data[data.Length-1] == 1 ? true : false;
+
+            MemoryStream ms = new MemoryStream();
+
+            ms.Write(data, 0, data.Length-1);
+
+            m_Wrapper.MigrateInEventHandler(ms);
+
+            ms.Close();
+
+            return suspended;
         }
     }
 }

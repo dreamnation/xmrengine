@@ -184,6 +184,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             case "gc":
                 GC.Collect();
                 break;
+            case "backup":
+                foreach (XMRInstance ins in m_Instances.Values)
+                {
+                    Byte[] data = ins.GetSnapshot();
+                    FileStream fs = File.Create("/tmp/test.dump");
+                    fs.Write(data, 0, data.Length);
+                    fs.Close();
+                }
+                break;
             }
         }
 

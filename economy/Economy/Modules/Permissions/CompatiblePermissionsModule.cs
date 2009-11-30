@@ -15,6 +15,7 @@ using OpenSim.Framework;
 using OpenSim.Region.Framework.Interfaces;
 using OpenSim.Framework.Communications.Cache;
 using OpenSim.Region.Framework.Scenes;
+using OpenSim.Services.Interfaces;
 using Mono.Addins;
 
 namespace Careminster.Modules.Permissions
@@ -603,15 +604,9 @@ namespace Careminster.Modules.Permissions
 
                 if (objectID == UUID.Zero) // User inventory
                 {
-                    CachedUserInfo userInfo =
-                            scene.CommsManager.UserProfileCacheService.GetUserDetails(user);
-                    if (userInfo == null)
-                        return false;
-
-                    if (userInfo.RootFolder == null)
-                        return false;
-
-                    InventoryItemBase assetRequestItem = userInfo.RootFolder.FindItem(notecard);
+                    IInventoryService invService = m_Scene.InventoryService;
+                    InventoryItemBase assetRequestItem = new InventoryItemBase(notecard, user);
+                    assetRequestItem = invService.GetItem(assetRequestItem);
                     if (assetRequestItem == null) // Library item
                     {
                         assetRequestItem = scene.CommsManager.UserProfileCacheService.LibraryRoot.FindItem(notecard);
@@ -899,15 +894,9 @@ namespace Careminster.Modules.Permissions
 
             if (objectID == UUID.Zero) // User inventory
             {
-                CachedUserInfo userInfo =
-                        scene.CommsManager.UserProfileCacheService.GetUserDetails(user);
-                if (userInfo == null)
-                    return false;
-
-                if (userInfo.RootFolder == null)
-                    return false;
-
-                InventoryItemBase assetRequestItem = userInfo.RootFolder.FindItem(script);
+                IInventoryService invService = m_Scene.InventoryService;
+                InventoryItemBase assetRequestItem = new InventoryItemBase(script, user);
+                assetRequestItem = invService.GetItem(assetRequestItem);
                 if (assetRequestItem == null) // Library item
                 {
                     assetRequestItem = scene.CommsManager.UserProfileCacheService.LibraryRoot.FindItem(script);
@@ -977,15 +966,10 @@ namespace Careminster.Modules.Permissions
 
             if (objectID == UUID.Zero) // User inventory
             {
-                CachedUserInfo userInfo =
-                        scene.CommsManager.UserProfileCacheService.GetUserDetails(user);
-                if (userInfo == null)
-                    return false;
+                IInventoryService invService = m_Scene.InventoryService;
+                InventoryItemBase assetRequestItem = new InventoryItemBase(notecard, user);
+                assetRequestItem = invService.GetItem(assetRequestItem);
 
-                if (userInfo.RootFolder == null)
-                    return false;
-
-                InventoryItemBase assetRequestItem = userInfo.RootFolder.FindItem(notecard);
                 if (assetRequestItem == null) // Library item
                 {
                     assetRequestItem = scene.CommsManager.UserProfileCacheService.LibraryRoot.FindItem(notecard);

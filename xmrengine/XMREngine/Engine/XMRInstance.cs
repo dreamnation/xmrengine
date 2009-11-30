@@ -149,10 +149,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void Dispose()
         {
-            m_Part.RemoveScriptEvents(m_ItemID);
-            AsyncCommandManager.RemoveScript(m_Engine, m_LocalID, m_ItemID);
-            m_Loader.Dispose();
-            m_Loader = null;
+            lock (m_RunLock)
+            {
+                m_Part.RemoveScriptEvents(m_ItemID);
+                AsyncCommandManager.RemoveScript(m_Engine, m_LocalID, m_ItemID);
+                m_Loader.Dispose();
+                m_Loader = null;
+            }
         }
 
         public void PostEvent(EventParams evt)
@@ -313,6 +316,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         presence.UnRegisterControlEventsToScript(m_LocalID, m_ItemID);
                 }
             }
+        }
+
+        public Byte[] GetSnapshot()
+        {
+            lock (m_RunLock)
+            {
+                return m_Loader.GetSnapshot();
+            }
+        }
+
+        public void RestoreSnapshot(Byte[] data)
+        {
+            m_IsIdle = !m_Loader.RestoreSnapshot(data);
+
+            if (!m_IsIdle)
+                CheckRunStatus();
         }
     }
 

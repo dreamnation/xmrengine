@@ -26,6 +26,7 @@
      <Reference name="OpenSim.Framework.Servers.HttpServer"/>
      <Reference name="OpenSim.Framework.Statistics"/>
      <Reference name="OpenSim.Framework.Communications"/>
+     <Reference name="OpenSim.Services.Interfaces"/>
      <Reference name="OpenSim.Region.Physics.Manager"/>
      <Reference name="System.Data" />
      <Reference name="Mono.Addins" />
