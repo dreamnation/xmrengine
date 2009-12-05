@@ -276,6 +276,13 @@ namespace MMR {
 			}
 
 			/*
+			 * Must have a default state to start in.
+			 */
+			if (!errors && (tokenScript.defaultState == null)) {
+				ErrorMsg (tokenScript, "no default state defined");
+			}
+
+			/*
 			 * If any error messages were written out, set return value to null.
 			 */
 			if (errors) tokenScript = null;
