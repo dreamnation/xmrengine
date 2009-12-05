@@ -1505,23 +1505,26 @@ namespace MMR
 		{
 			Dictionary<string, string> ltc = new Dictionary<string, string> ();
 
-			// IMPLICIT type casts
-			ltc.Add ("bool integer", "({0}?1:0)");
-			ltc.Add ("bool string", "({0}?\"true\":\"false\")");
-			ltc.Add ("float bool", "({0}!=0.0)");
-			ltc.Add ("float string", "{0}.ToString()");
-			ltc.Add ("integer bool", "({0}!=0)");
-			ltc.Add ("integer float", "(float){0}");
-			ltc.Add ("integer string", "{0}.ToString()");
-			ltc.Add ("key bool", "({0}!=NULL_KEY)");
-			ltc.Add ("key string", "{0}");
-			ltc.Add ("list string", "{0}.ToString()");
-			ltc.Add ("rotation string", "{0}.ToString()");
-			ltc.Add ("vector string", "{0}.ToString()");
+			// IMPLICIT type casts (a space is in middle of the key)
+			ltc.Add ("bool float",      "({0}?1f:0f)");
+			ltc.Add ("bool integer",    "({0}?1:0)");
+			ltc.Add ("float bool",      "({0}!=0.0)");
+			ltc.Add ("float integer",   "((int){0})");
+			ltc.Add ("integer bool",    "({0}!=0)");
+			ltc.Add ("integer float",   "((float){0})");
+			ltc.Add ("key bool",        "({0}!=NULL_KEY)");
+			ltc.Add ("key string",      "{0}");
+			ltc.Add ("string bool",     "({0}!=\"\")");
+			ltc.Add ("string key",      "new " + TypeName(typeof(LSL_Key)) + "({0})");
 
-			// EXPLICIT type casts (an * is on the end of the key)
-			ltc.Add ("float*integer", "(int){0}");
-			ltc.Add ("string*key", "new " + TypeName(typeof(LSL_Key)) + "({0})");
+			// EXPLICIT type casts (an * is in middle of the key)
+			ltc.Add ("bool*string",     "({0}?\"true\":\"false\")");
+			ltc.Add ("float*string",    "{0}.ToString()");
+			ltc.Add ("integer*string",  "{0}.ToString()");
+			ltc.Add ("list*string",     "{0}.ToString()");
+			ltc.Add ("rotation*string", "{0}.ToString()");
+			ltc.Add ("vector*string",   "{0}.ToString()");
+			ltc.Add ("float*integer",   "((int){0})");
 
 			return ltc;
 		}
