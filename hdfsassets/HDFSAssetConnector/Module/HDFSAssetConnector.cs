@@ -46,6 +46,7 @@ namespace Careminster
         protected int m_HdfsReplication = 1;
         protected string m_FsckProgram;
         protected IAssetService m_FallbackService;
+        protected int m_getCount = 0;
 
         private Object m_hdfsLock = new Object();
 
@@ -161,9 +162,12 @@ namespace Careminster
 
         private AssetBase Get(string id, out string sha)
         {
+        try
+        {
+        m_getCount++;
             string hash = string.Empty;
 
-            m_log.DebugFormat("[DEBUG]: Asset request for {0}", id);
+            m_log.DebugFormat("[DEBUG]: Asset request for {0}, depth {1}", id, m_getCount);
             int startTime = System.Environment.TickCount;
             AssetMetadata metadata = m_DataConnector.Get(id, out hash);
 
@@ -211,6 +215,11 @@ namespace Careminster
                 Environment.Exit(1);
                 return null;
             }
+        }
+        finally
+        {
+            m_getCount--;
+        }
         }
 
         public AssetMetadata GetMetadata(string id)
