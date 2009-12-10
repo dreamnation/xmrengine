@@ -47,7 +47,7 @@ namespace Careminster
         protected string m_FsckProgram;
         protected IAssetService m_FallbackService;
 
-        private Object hdfsLock = new Object();
+        private Object m_hdfsLock = new Object();
 
         public HDFSAssetConnector(IConfigSource config) : base(config)
         {
@@ -240,14 +240,17 @@ namespace Careminster
 
             byte[] buf = new byte[size];
 
-            int fd = HdfsClient.Open(ToCString(HashToFile(hash)), 0, 3);
-            if (fd == 0) // Not there
+            lock (m_hdfsLock)
             {
-                throw new Exception("Error opening HDFS file");
-            }
+                int fd = HdfsClient.Open(ToCString(HashToFile(hash)), 0, 3);
+                if (fd == 0) // Not there
+                {
+                    throw new Exception("Error opening HDFS file");
+                }
 
-            HdfsClient.Read(fd, buf, size);
-            HdfsClient.Close(fd);
+                HdfsClient.Read(fd, buf, size);
+                HdfsClient.Close(fd);
+            }
 
             return buf;
         }
@@ -259,13 +262,13 @@ namespace Careminster
 
         private string Store(AssetBase asset, bool force)
         {
-            lock (hdfsLock)
-            {
-                int tickCount = Environment.TickCount;
-                string hash = GetSHA1Hash(asset.Data);
-                string s = HashToFile(hash);
-                int hdfsFile = 0;
+            int tickCount = Environment.TickCount;
+            string hash = GetSHA1Hash(asset.Data);
+            string s = HashToFile(hash);
+            int hdfsFile = 0;
 
+            lock (m_hdfsLock)
+            {
                 if (!force)
                 {
                     hdfsFile = HdfsClient.Open(ToCString(s), 0, m_HdfsReplication);
@@ -301,30 +304,30 @@ namespace Careminster
                 }
 
                 HdfsClient.Close(hdfsFile);
-
-                if (asset.ID == string.Empty)
-                {
-                    if (asset.FullID == UUID.Zero)
-                    {
-                        asset.FullID = UUID.Random();
-                    }
-                    asset.ID = asset.FullID.ToString();
-                }
-                else if (asset.FullID == UUID.Zero)
-                {
-                    UUID uuid = UUID.Zero;
-                    if (UUID.TryParse(asset.ID, out uuid))
-                    {
-                        asset.FullID = uuid;
-                    }
-                    else
-                    {
-                        asset.FullID = UUID.Random();
-                    }
-                }
-                m_DataConnector.Store(asset.Metadata, hash);
-                return asset.ID;
             }
+
+            if (asset.ID == string.Empty)
+            {
+                if (asset.FullID == UUID.Zero)
+                {
+                    asset.FullID = UUID.Random();
+                }
+                asset.ID = asset.FullID.ToString();
+            }
+            else if (asset.FullID == UUID.Zero)
+            {
+                UUID uuid = UUID.Zero;
+                if (UUID.TryParse(asset.ID, out uuid))
+                {
+                    asset.FullID = uuid;
+                }
+                else
+                {
+                    asset.FullID = UUID.Random();
+                }
+            }
+            m_DataConnector.Store(asset.Metadata, hash);
+            return asset.ID;
         }
 
         public bool UpdateContent(string id, byte[] data)
