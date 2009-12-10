@@ -112,7 +112,7 @@ namespace Careminster
             if (!reader.Read())
             {
                 reader.Close();
-                cmd.Dispose();
+                FreeCommand(cmd);
                 return null;
             }
             
@@ -130,17 +130,22 @@ namespace Careminster
             meta.CreationDate = Util.ToDateTime(Convert.ToInt32(reader["create_time"]));
 
             reader.Close();
-            cmd.Connection.Close();
-            cmd.Dispose();
-
-            cmd = m_Connection.CreateCommand();
 
             cmd.CommandText = "update hdfsassets set access_time = UNIX_TIMESTAMP() where id = ?id";
-            cmd.Parameters.AddWithValue("?id", id);
 
-            ExecuteNonQuery(cmd);
+            cmd.ExecuteNonQuery();
+
+            FreeCommand(cmd);
 
             return meta;
+        }
+
+        protected void FreeCommand(MySqlCommand cmd)
+        {
+            MySqlConnection c = cmd.Connection;
+            cmd.Dispose();
+            c.Close();
+            c.Dispose();
         }
 
         public void Store(AssetMetadata meta, string hash)
