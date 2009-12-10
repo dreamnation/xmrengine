@@ -163,7 +163,6 @@ namespace Careminster
         {
             string hash = string.Empty;
 
-            m_log.DebugFormat("[DEBUG]: Asset request for {0}", id);
             int startTime = System.Environment.TickCount;
             AssetMetadata metadata = m_DataConnector.Get(id, out hash);
 
@@ -198,10 +197,6 @@ namespace Careminster
                 if (newAsset.Data.Length == 0)
                 {
                     m_log.InfoFormat("[ASSET]: Asset {0}, hash {1} not found in HDFS", id, hash);
-                }
-                else
-                {
-                    m_log.DebugFormat("[DEBUG]: Asset {0} retrieved in {1}s", id, (float)(System.Environment.TickCount - startTime) / 1000.0);
                 }
                 return newAsset;
             }
