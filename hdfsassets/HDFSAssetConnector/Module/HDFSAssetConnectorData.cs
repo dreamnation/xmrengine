@@ -23,6 +23,7 @@ namespace Careminster
 
         protected MySqlConnection m_Connection = null;
         protected string m_ConnectionString;
+        protected Object m_connLock = new Object();
 
         public HDFSAssetConnectorData(string connectionString)
         {
@@ -53,66 +54,47 @@ namespace Careminster
         private IDataReader ExecuteReader(MySqlCommand c)
         {
             IDataReader r = null;
-            bool errorSeen = false;
+            MySqlConnection connection = (MySqlConnection) ((ICloneable)m_Connection).Clone();
+            connection.Open();
+            c.Connection = connection;
 
-            while (true)
-            {
-                try
-                {
-                    r = c.ExecuteReader();
-                }
-                catch (MySqlException)
-                {
-                    System.Threading.Thread.Sleep(500);
-
-                    m_Connection.Close();
-                    m_Connection = (MySqlConnection) ((ICloneable)m_Connection).Clone();
-                    m_Connection.Open();
-                    c.Connection = m_Connection;
-
-                    if (!errorSeen)
-                    {
-                        errorSeen = true;
-                        continue;
-                    }
-                    throw;
-                }
-
-                break;
-            }
+            r = c.ExecuteReader();
 
             return r;
         }
 
         private void ExecuteNonQuery(MySqlCommand c)
         {
-            bool errorSeen = false;
-
-            while (true)
+            lock (m_connLock)
             {
-                try
-                {
-                    c.ExecuteNonQuery();
-                }
-                catch (MySqlException)
-                {
-                    System.Threading.Thread.Sleep(500);
+                bool errorSeen = false;
 
-                    m_Connection.Close();
-                    m_Connection = (MySqlConnection) ((ICloneable)m_Connection).Clone();
-                    m_Connection.Open();
-                    c.Connection = m_Connection;
-
-                    if (!errorSeen)
+                while (true)
+                {
+                    try
                     {
-                        errorSeen = true;
-                        continue;
+                        c.ExecuteNonQuery();
                     }
-                    m_log.ErrorFormat("[HDFSASSETS] MySQL command: {0}", c.CommandText);
-                    throw;
-                }
+                    catch (MySqlException)
+                    {
+                        System.Threading.Thread.Sleep(500);
 
-                break;
+                        m_Connection.Close();
+                        m_Connection = (MySqlConnection) ((ICloneable)m_Connection).Clone();
+                        m_Connection.Open();
+                        c.Connection = m_Connection;
+
+                        if (!errorSeen)
+                        {
+                            errorSeen = true;
+                            continue;
+                        }
+                        m_log.ErrorFormat("[HDFSASSETS] MySQL command: {0}", c.CommandText);
+                        throw;
+                    }
+
+                    break;
+                }
             }
         }
 
@@ -120,7 +102,7 @@ namespace Careminster
         {
             hash = String.Empty;
 
-            MySqlCommand cmd = m_Connection.CreateCommand();
+            MySqlCommand cmd = new MySqlCommand();
 
             cmd.CommandText = "select id, name, description, type, hash, create_time from hdfsassets where id = ?id";
             cmd.Parameters.AddWithValue("?id", id);
@@ -148,12 +130,15 @@ namespace Careminster
             meta.CreationDate = Util.ToDateTime(Convert.ToInt32(reader["create_time"]));
 
             reader.Close();
+            cmd.Connection.Close();
+            cmd.Dispose();
+
+            cmd = m_Connection.CreateCommand();
 
             cmd.CommandText = "update hdfsassets set access_time = UNIX_TIMESTAMP() where id = ?id";
+            cmd.Parameters.AddWithValue("?id", id);
 
             ExecuteNonQuery(cmd);
-
-            cmd.Dispose();
 
             return meta;
         }
