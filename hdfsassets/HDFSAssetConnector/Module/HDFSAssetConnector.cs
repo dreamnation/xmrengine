@@ -246,17 +246,14 @@ namespace Careminster
 
             byte[] buf = new byte[size];
 
-            lock (m_hdfsLock)
+            int fd = HdfsClient.Open(ToCString(HashToFile(hash)), 0, 3);
+            if (fd == 0) // Not there
             {
-                int fd = HdfsClient.Open(ToCString(HashToFile(hash)), 0, 3);
-                if (fd == 0) // Not there
-                {
-                    throw new Exception("Error opening HDFS file");
-                }
-
-                HdfsClient.Read(fd, buf, size);
-                HdfsClient.Close(fd);
+                throw new Exception("Error opening HDFS file");
             }
+
+            HdfsClient.Read(fd, buf, size);
+            HdfsClient.Close(fd);
 
             return buf;
         }

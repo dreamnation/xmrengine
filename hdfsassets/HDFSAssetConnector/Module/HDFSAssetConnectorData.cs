@@ -23,7 +23,6 @@ namespace Careminster
 
         protected MySqlConnection m_Connection = null;
         protected string m_ConnectionString;
-        protected Object m_connLock = new Object();
 
         public HDFSAssetConnectorData(string connectionString)
         {
@@ -65,37 +64,12 @@ namespace Careminster
 
         private void ExecuteNonQuery(MySqlCommand c)
         {
-            lock (m_connLock)
-            {
-                bool errorSeen = false;
+            IDataReader r = null;
+            MySqlConnection connection = (MySqlConnection) ((ICloneable)m_Connection).Clone();
+            connection.Open();
+            c.Connection = connection;
 
-                while (true)
-                {
-                    try
-                    {
-                        c.ExecuteNonQuery();
-                    }
-                    catch (MySqlException)
-                    {
-                        System.Threading.Thread.Sleep(500);
-
-                        m_Connection.Close();
-                        m_Connection = (MySqlConnection) ((ICloneable)m_Connection).Clone();
-                        m_Connection.Open();
-                        c.Connection = m_Connection;
-
-                        if (!errorSeen)
-                        {
-                            errorSeen = true;
-                            continue;
-                        }
-                        m_log.ErrorFormat("[HDFSASSETS] MySQL command: {0}", c.CommandText);
-                        throw;
-                    }
-
-                    break;
-                }
-            }
+            c.ExecuteNonQuery();
         }
 
         public AssetMetadata Get(string id, out string hash)
@@ -130,15 +104,13 @@ namespace Careminster
             meta.CreationDate = Util.ToDateTime(Convert.ToInt32(reader["create_time"]));
 
             reader.Close();
-            cmd.Connection.Close();
-            cmd.Dispose();
-
-            cmd = m_Connection.CreateCommand();
 
             cmd.CommandText = "update hdfsassets set access_time = UNIX_TIMESTAMP() where id = ?id";
-            cmd.Parameters.AddWithValue("?id", id);
 
             ExecuteNonQuery(cmd);
+
+            cmd.Connection.Close();
+            cmd.Dispose();
 
             return meta;
         }
@@ -162,6 +134,7 @@ namespace Careminster
 
                 ExecuteNonQuery(cmd);
 
+                cmd.Connection.Close();
                 cmd.Dispose();
 
                 return;
@@ -172,6 +145,7 @@ namespace Careminster
             ExecuteNonQuery(cmd);
 
             cmd.Dispose();
+            cmd.Connection.Close();
         }
 
         public int Count()
@@ -203,6 +177,7 @@ namespace Careminster
             ExecuteNonQuery(cmd);
 
             cmd.Dispose();
+            cmd.Connection.Close();
         }
 
         public void Import(string conn, string table, int start, int count, bool force, StoreDelegate store)
