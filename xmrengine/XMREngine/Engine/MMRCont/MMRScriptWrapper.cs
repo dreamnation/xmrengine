@@ -569,7 +569,8 @@ namespace MMR {
 			SYSDOUB,
 			SYSFLOAT,
 			SYSINT,
-			SYSSTR
+			SYSSTR,
+			XMRARRAY
 		}
 
 		/**
@@ -615,6 +616,9 @@ namespace MMR {
 				this.migrateOutWriter.Write ((double)((LSL_Vector)graph).x);
 				this.migrateOutWriter.Write ((double)((LSL_Vector)graph).y);
 				this.migrateOutWriter.Write ((double)((LSL_Vector)graph).z);
+			} else if (graph is XMR_Array) {
+				this.migrateOutWriter.Write ((byte)Ser.XMRARRAY);
+				((XMR_Array)graph).SendArrayObj (this.SendObjInterceptor, stream);
 			} else if (graph is object[]) {
 				this.migrateOutWriter.Write ((byte)Ser.OBJARRAY);
 				object[] array = (object[])graph;
@@ -698,6 +702,11 @@ namespace MMR {
 				}
 				case Ser.SYSSTR: {
 					return this.migrateInReader.ReadString ();
+				}
+				case Ser.XMRARRAY: {
+					XMR_Array array = new XMR_Array ();
+					array.RecvArrayObj (this.RecvObjInterceptor, stream);
+					return array;
 				}
 				default: throw new Exception ("bad stream code " + code.ToString ());
 			}

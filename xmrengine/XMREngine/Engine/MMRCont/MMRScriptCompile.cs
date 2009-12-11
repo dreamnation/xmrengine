@@ -20,6 +20,16 @@ namespace MMR
         private static readonly ILog m_log =
             LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
+	///??? temp haxxor ???///
+        public static bool Compile (string source, 
+                                    string binaryName,
+                                    string assetID,
+                                    TokenErrorMessage errorMessage)
+	{
+		throw new Exception ("COMPILE BARFO!!");
+		return Compile (source, binaryName, assetID, "", errorMessage);
+	}
+
         /**
          * @brief Compile a script to produce a .DLL file.
          * @param source = 'source' contains the whole script source
@@ -35,6 +45,8 @@ namespace MMR
                                     string debugFileName,
                                     TokenErrorMessage errorMessage)
         {
+            Console.WriteLine ("MMR.ScriptCompile.Compile*: {0}", source);
+
             TokenBegin tokenBegin =
                         TokenBegin.Construct(errorMessage, source);
 

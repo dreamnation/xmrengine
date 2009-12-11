@@ -50,6 +50,8 @@ integer change_to_dead_state ()
    return 99;
 }
 
+XMROption arrays;
+
 default
 {
   state_entry() {
@@ -65,6 +67,37 @@ default
        llSay (i, "never say die");
        -- i;
     }
+
+    array ar;
+    ar[0] = 5;
+    ar[1] = "astring";
+    ar[2] = <1,2,3>;
+    ar["phony"] = "bologna";
+    ar[3] = <4,5,6,7>;
+    ar[4] = 3.5;
+
+    for (i = 0; i < 5; i ++) {
+        llSay (i, "ar[i]=" + (string)ar[i]);
+    }
+
+    ar[3] = undef;
+
+    object k;
+    object v;
+    foreach (k,v in ar) {
+        llSay (0, (string)k + " => " + (string)v);
+        if (v is float)    llSay (1, "float");
+        if (v is integer)  llSay (1, "integer");
+     ///   if (v is key)      llSay (1, "key");
+        if (v is rotation) llSay (1, "rotation");
+        if (v is string)   llSay (1, "string");
+        if (v is undef)    llSay (1, "undef");
+        if (v is vector)   llSay (1, "vector");
+    }
+
+    llSay (2, (string)(ar[3] is undef));
+    llSay (2, (string)(ar[4] is undef));
+    llSay (2, (string)(ar[5] is undef));
 
     integer j = change_to_dead_state ();
     llSay (j, "I say, this doesn't ever execute!");
@@ -161,6 +194,27 @@ state_entry() {
    llSay (3, "never say die");
    llSay (2, "never say die");
    llSay (1, "never say die");
+
+   llSay (0, "ar[i]=5");
+   llSay (1, "ar[i]=astring");
+   llSay (2, "ar[i]=<1.000000,2.000000,3.000000>");
+   llSay (3, "ar[i]=<4.000000,5.000000,6.000000,7.000000>");
+   llSay (4, "ar[i]=3.5");
+
+   llSay (0, "0 => 5");
+   llSay (1, "integer");
+   llSay (0, "1 => astring");
+   llSay (1, "string");
+   llSay (0, "2 => <1.000000,2.000000,3.000000>");
+   llSay (1, "vector");
+   llSay (0, "phony => bologna");
+   llSay (1, "string");
+   llSay (0, "4 => 3.5");
+   llSay (1, "float");
+
+   llSay (2, "true");
+   llSay (2, "false");
+   llSay (2, "true");
 
    llSay (0, "changing to dead state");
    llSay (0, "we're dead!");

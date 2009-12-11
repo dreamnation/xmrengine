@@ -44,7 +44,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             while (m_RunIt)
             {
                 m_Engine.RunOneCycle();
-                Thread.Sleep(10);
+                ///Thread.Sleep(10);
             }
         }
     }

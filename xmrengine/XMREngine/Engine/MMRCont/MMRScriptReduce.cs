@@ -373,16 +373,17 @@ namespace MMR {
 			/*
 			 * Statements that begin with a specific keyword.
 			 */
-			if (token is TokenKwAt)      return ParseStmtLabel (ref token);
-			if (token is TokenKwBrcOpen) return ParseStmtBlock (ref token);
-			if (token is TokenKwDo)      return ParseStmtDo    (ref token);
-			if (token is TokenKwFor)     return ParseStmtFor   (ref token);
-			if (token is TokenKwIf)      return ParseStmtIf    (ref token);
-			if (token is TokenKwJump)    return ParseStmtJump  (ref token);
-			if (token is TokenKwRet)     return ParseStmtRet   (ref token);
-			if (token is TokenKwSemi)    return ParseStmtNull  (ref token);
-			if (token is TokenKwState)   return ParseStmtState (ref token);
-			if (token is TokenKwWhile)   return ParseStmtWhile (ref token);
+			if (token is TokenKwAt)      return ParseStmtLabel   (ref token);
+			if (token is TokenKwBrcOpen) return ParseStmtBlock   (ref token);
+			if (token is TokenKwDo)      return ParseStmtDo      (ref token);
+			if (token is TokenKwFor)     return ParseStmtFor     (ref token);
+			if (token is TokenKwForEach) return ParseStmtForEach (ref token);
+			if (token is TokenKwIf)      return ParseStmtIf      (ref token);
+			if (token is TokenKwJump)    return ParseStmtJump    (ref token);
+			if (token is TokenKwRet)     return ParseStmtRet     (ref token);
+			if (token is TokenKwSemi)    return ParseStmtNull    (ref token);
+			if (token is TokenKwState)   return ParseStmtState   (ref token);
+			if (token is TokenKwWhile)   return ParseStmtWhile   (ref token);
 
 			/*
 			 * Try to parse anything else as an expression, possibly calling
@@ -552,6 +553,60 @@ namespace MMR {
 			}
 			tokenStmtFor.bodyStmt = ParseStmt (ref token);
 			return tokenStmtFor.bodyStmt != null;
+		}
+
+		/**
+		 * @brief parse a foreach statement
+		 * @param token = points to 'foreach' keyword token
+		 * @returns null: parse error
+		 *          else: pointer to encapsulated foreach statement token
+		 *          token = advanced just past for body statement
+		 */
+		private TokenStmt ParseStmtForEach (ref Token token)
+		{
+
+			/*
+			 * Create encapsulating token and skip past 'foreach ('
+			 */
+			TokenStmtForEach tokenStmtForEach = new TokenStmtForEach (token);
+			token = token.nextToken;
+			if (!(token is TokenKwParOpen)) {
+				ErrorMsg (token, "foreach must be followed by (");
+				return null;
+			}
+			token = token.nextToken;
+
+			if (token is TokenName) {
+				tokenStmtForEach.keyLVal = new TokenLValName ((TokenName)token);
+				token = token.nextToken;
+			}
+			if (!(token is TokenKwComma)) {
+				ErrorMsg (token, "expecting comma");
+				token = SkipPastSemi (token);
+				return null;
+			}
+			token = token.nextToken;
+			if (token is TokenName) {
+				tokenStmtForEach.valLVal = new TokenLValName ((TokenName)token);
+				token = token.nextToken;
+			}
+			if (!(token is TokenKwIn)) {
+				ErrorMsg (token, "expecting 'in'");
+				token = SkipPastSemi (token);
+				return null;
+			}
+			token = token.nextToken;
+			tokenStmtForEach.arrayLVal = ParseLVal (ref token);
+			if (tokenStmtForEach.arrayLVal == null) return null;
+			if (!(token is TokenKwParClose)) {
+				ErrorMsg (token, "expecting )");
+				token = SkipPastSemi (token);
+				return null;
+			}
+			token = token.nextToken;
+			tokenStmtForEach.bodyStmt = ParseStmt (ref token);
+			if (tokenStmtForEach.bodyStmt == null) return null;
+			return tokenStmtForEach;
 		}
 
 		private TokenStmtIf ParseStmtIf (ref Token token)
@@ -811,6 +866,33 @@ namespace MMR {
 			while (token.GetType () != termTokenType) {
 
 				/*
+				 * Special form:
+				 *   <operand> is <typeexp>
+				 */
+				if (token is TokenKwIs) {
+					TokenRValIsType tokenRValIsType = new TokenRValIsType (token);
+					token = token.nextToken;
+
+					/*
+					 * Parse the <typeexp>.
+					 */
+					tokenRValIsType.typeExp = ParseTypeExp (ref token);
+					if (tokenRValIsType.typeExp == null) return null;
+
+					/*
+					 * Replace top operand with result of <operand> is <typeexp>
+					 */
+					tokenRValIsType.rValExp   = operands;
+					tokenRValIsType.nextToken = operands.nextToken;
+					operands = tokenRValIsType;
+
+					/*
+					 * token points just past <typeexp> so see if it is another operator.
+					 */
+					continue;
+				}
+
+				/*
 				 * Peek at next operator.
 				 */
 				BinOp binOp = GetOperator (ref token);
@@ -858,6 +940,62 @@ namespace MMR {
 			if (operands.prevToken != null) throw new Exception ("too many operands");
 			token = token.nextToken;
 			return operands;
+		}
+
+		private TokenTypeExp ParseTypeExp (ref Token token)
+		{
+			TokenTypeExp leftOperand = GetTypeExp (ref token);
+			if (leftOperand == null) return null;
+
+			while ((token is TokenKwAnd) || (token is TokenKwOr)) {
+				Token typeBinOp = token;
+				token = token.nextToken;
+				TokenTypeExp rightOperand = GetTypeExp (ref token);
+				if (rightOperand == null) return null;
+				TokenTypeExpBinOp typeExpBinOp = new TokenTypeExpBinOp (typeBinOp);
+				typeExpBinOp.leftOp  = leftOperand;
+				typeExpBinOp.binOp   = typeBinOp;
+				typeExpBinOp.rightOp = rightOperand;
+				leftOperand = typeExpBinOp;
+			}
+			return leftOperand;
+		}
+
+		private TokenTypeExp GetTypeExp (ref Token token)
+		{
+			if (token is TokenKwTilde) {
+				TokenTypeExpNot typeExpNot = new TokenTypeExpNot (token);
+				token = token.nextToken;
+				typeExpNot.typeExp = GetTypeExp (ref token);
+				if (typeExpNot.typeExp == null) return null;
+				return typeExpNot;
+			}
+			if (token is TokenKwParOpen) {
+				TokenTypeExpPar typeExpPar = new TokenTypeExpPar (token);
+				token = token.nextToken;
+				typeExpPar.typeExp = GetTypeExp (ref token);
+				if (typeExpPar.typeExp == null) return null;
+				if (!(token is TokenKwParClose)) {
+					ErrorMsg (token, "expected close parenthesis");
+					token = SkipPastSemi (token);
+					return null;
+				}
+				return typeExpPar;
+			}
+			if (token is TokenKwUndef) {
+				TokenTypeExpUndef typeExpUndef = new TokenTypeExpUndef (token);
+				token = token.nextToken;
+				return typeExpUndef;
+			}
+			if (token is TokenType) {
+				TokenTypeExpType typeExpType = new TokenTypeExpType (token);
+				typeExpType.typeToken = (TokenType)token;
+				token = token.nextToken;
+				return typeExpType;
+			}
+			ErrorMsg (token, "expected type");
+			token = SkipPastSemi (token);
+			return null;
 		}
 
 		/**
@@ -975,6 +1113,11 @@ namespace MMR {
 				TokenRValStr rValStr = new TokenRValStr ((TokenStr)token);
 				token = token.nextToken;
 				return rValStr;
+			}
+			if (token is TokenKwUndef) {
+				TokenRValUndef rValUndef = new TokenRValUndef ((TokenKwUndef)token);
+				token = token.nextToken;
+				return rValUndef;
 			}
 
 			/*
@@ -1139,14 +1282,13 @@ namespace MMR {
 		}
 
 		/**
-		 * @brief parse a L-value, ie, something that can be use on left side of '='
+		 * @brief parse a L-value, ie, something that can be used on left side of '='
 		 * @param token = points to first token to check
 		 * @returns encapsulation of L-value expression
 		 *          token = advanced past L-value expression
 		 */
 		private TokenLVal ParseLVal (ref Token token)
 		{
-
 			/*
 			 * L-values always start with a name
 			 */
@@ -1155,26 +1297,50 @@ namespace MMR {
 				token = SkipPastSemi (token);
 				return null;
 			}
-			TokenLValName tokenLValName = new TokenLValName ((TokenName)token);
+			TokenLVal tokenLVal = new TokenLValName ((TokenName)token);
 			token = token.nextToken;
 
-			/*
-			 * They may be followed by .fieldname
-			 */
-			if (token is TokenKwDot) {
-				TokenLValField tokenLValField = new TokenLValField (token);
-				token = token.nextToken;
-				if (!(token is TokenName)) {
-					ErrorMsg (token, "invalid field name");
-					token = SkipPastSemi (token);
-					return null;
+			while (true) {
+
+				/*
+				 * They may be followed by .fieldname
+				 */
+				if (token is TokenKwDot) {
+					TokenLValField tokenLValField = new TokenLValField (token);
+					token = token.nextToken;
+					if (!(token is TokenName)) {
+						ErrorMsg (token, "invalid field name");
+						token = SkipPastSemi (token);
+						return null;
+					}
+					tokenLValField.baseLVal = tokenLVal;
+					tokenLValField.field = (TokenName)token;
+					tokenLVal = tokenLValField;
+					token = token.nextToken;
+					continue;
 				}
-				tokenLValField.baseLVal = tokenLValName;
-				tokenLValField.field = (TokenName)token;
-				token = token.nextToken;
-				return tokenLValField;
+
+				/*
+				 * They may be followed by [subscript]
+				 */
+				if (token is TokenKwBrkOpen) {
+					TokenLValArEle tokenLValArEle = new TokenLValArEle (token);
+					token = token.nextToken;
+					tokenLValArEle.subRVal = ParseRVal (ref token, typeof (TokenKwBrkClose));
+					if (tokenLValArEle.subRVal == null) {
+						ErrorMsg (tokenLValArEle, "invalid subscript");
+						return null;
+					}
+					tokenLValArEle.baseLVal = tokenLVal;
+					tokenLVal = tokenLValArEle;
+					continue;
+				}
+
+				/*
+				 * No modifier we recognize, done parsing.
+				 */
+				return tokenLVal;
 			}
-			return tokenLValName;
 		}
 
 		/**
@@ -1306,6 +1472,21 @@ namespace MMR {
 	}
 
 	/**
+	 * @brief an element of an L-value array is an L-value
+	 */
+	public class TokenLValArEle : TokenLVal {
+		public TokenLVal baseLVal;
+		public TokenRVal subRVal;
+
+		public TokenLValArEle (Token original) : base (original) { }
+
+		public override string ToString ()
+		{
+			return base.ToString ();
+		}
+	}
+
+	/**
 	 * @brief a field within an L-value struct is an L-value
 	 */
 	public class TokenLValField : TokenLVal {
@@ -1337,8 +1518,6 @@ namespace MMR {
 		}
 	}
 
-	/// at some point if we allow arrays, array elements would be TokenLValAE or something like that ///
-	
 	/**
 	 * @brief any expression that can go on right side of "="
 	 */
@@ -1426,6 +1605,16 @@ namespace MMR {
 		{
 			this.inToken = (TokenInt)original;
 		}
+	}
+
+	/**
+	 * @brief encapsulation of <rval> is <typeexp>
+	 */
+	public class TokenRValIsType : TokenRVal {
+		public TokenRVal    rValExp;
+		public TokenTypeExp typeExp;
+
+		public TokenRValIsType (Token original) : base (original) { }
 	}
 
 	/**
@@ -1537,6 +1726,13 @@ namespace MMR {
 		{
 			this.strToken = (TokenStr)original;
 		}
+	}
+
+	/**
+	 * @brief the 'undef' keyword is being used as a value in an expression.
+	 */
+	public class TokenRValUndef : TokenRVal {
+		public TokenRValUndef (Token original) : base (original) { }
 	}
 
 	/**
@@ -1699,6 +1895,19 @@ namespace MMR {
 		public TokenStmtFor (Token original) : base (original) { }
 	}
 
+	/**
+	 * @brief "foreach" statement
+	 */
+	public class TokenStmtForEach : TokenStmt {
+
+		public TokenLVal keyLVal;
+		public TokenLVal valLVal;
+		public TokenLVal arrayLVal;
+		public TokenStmt bodyStmt;  // there is always a body statement, though it may be a null statement
+
+		public TokenStmtForEach (Token original) : base (original) { }
+	}
+
 	public class TokenStmtIf : TokenStmt {
 
 		public TokenRVal testRVal;
@@ -1758,4 +1967,40 @@ namespace MMR {
 		public TokenStmtWhile (Token original) : base (original) { }
 	}
 
+	/**
+	 * @brief type expressions (right-hand of 'is' keyword).
+	 */
+	public class TokenTypeExp : Token {
+		public TokenTypeExp (Token original) : base (original) { }
+	}
+
+	public class TokenTypeExpBinOp : TokenTypeExp {
+		public TokenTypeExp leftOp;
+		public Token        binOp;
+		public TokenTypeExp rightOp;
+
+		public TokenTypeExpBinOp (Token original) : base (original) { }
+	}
+
+	public class TokenTypeExpNot : TokenTypeExp {
+		public TokenTypeExp typeExp;
+
+		public TokenTypeExpNot (Token original) : base (original) { }
+	}
+
+	public class TokenTypeExpPar : TokenTypeExp {
+		public TokenTypeExp typeExp;
+
+		public TokenTypeExpPar (Token original) : base (original) { }
+	}
+
+	public class TokenTypeExpType : TokenTypeExp {
+		public TokenType typeToken;
+
+		public TokenTypeExpType (Token original) : base (original) { }
+	}
+
+	public class TokenTypeExpUndef : TokenTypeExp {
+		public TokenTypeExpUndef (Token original) : base (original) { }
+	}
 }

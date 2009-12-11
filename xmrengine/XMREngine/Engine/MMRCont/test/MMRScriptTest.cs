@@ -225,9 +225,14 @@ namespace MMR {
 					return false;
 				}
 				token = token.nextToken;
-				if (!(token is TokenKwBrcOpen)) {
-					token.ErrorMsg ("expected open brace");
-					return false;
+				testLSLAPI.doCompares = false;
+				if (!(token is TokenKwMul)) {
+					if (!(token is TokenKwBrcOpen)) {
+						token.ErrorMsg ("expected asterisk or open brace");
+						return false;
+					}
+					testLSLAPI.doCompares = true;
+					token = token.nextToken;
 				}
 
 				/*
@@ -237,7 +242,7 @@ namespace MMR {
 				 * it advances testLSLAPI.token to the next call.
 				 */
 				Console.WriteLine ("{0}.{1}: Sending event {2}", eventNameToken.line, eventNameToken.posn, eventName);
-				testLSLAPI.token = token.nextToken;
+				testLSLAPI.token = token;
 				ScriptEventCode sec = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), eventName);
 				try {
 					scriptWrapper.StartEventHandler (sec, ehArgs);
@@ -257,7 +262,7 @@ namespace MMR {
 				 * It should be pointed at a closing brace meaning we expect no further calls.
 				 */
 				token = testLSLAPI.token;
-				if (!(token is TokenKwBrcClose)) {
+				if (testLSLAPI.doCompares && !(token is TokenKwBrcClose)) {
 					token.ErrorMsg ("expected close brace");
 					return false;
 				}

@@ -30,9 +30,9 @@ namespace MMR
 {
 
 	public class ScriptCodeGen
-    {
-        private static readonly ILog m_log =
-            LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+	{
+		private static readonly ILog m_log =
+			LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
 		public static readonly string COMPILED_VERSION_NAME = "XMRCompiledVersion";
 		public static readonly int COMPILED_VERSION_VALUE = 1;
@@ -40,7 +40,7 @@ namespace MMR
 		public static readonly int CALL_FRAME_MEMUSE = 64;
 		public static readonly int STRING_LEN_TO_MEMUSE = 2;
 
-        private static CSharpCodeProvider CSCodeProvider = new CSharpCodeProvider();
+		private static CSharpCodeProvider CSCodeProvider = new CSharpCodeProvider();
 
 		/*
 		 * Static tables that there only needs to be one copy of for all.
@@ -52,7 +52,7 @@ namespace MMR
 		private static Dictionary<string, string> legalTypeCasts = null;
 
 		public static bool CodeGen (TokenScript tokenScript, string binaryName,
-                string debugFileName)
+				string debugFileName)
 		{
 
 			/*
@@ -94,7 +94,7 @@ namespace MMR
 			 * Run compiler such that it has a 'this' context for convenience.
 			 */
 			ScriptCodeGen sc = new ScriptCodeGen (tokenScript, binaryName,
-                    debugFileName);
+					debugFileName);
 			return sc.exitCode == 0;
 		}
 
@@ -634,16 +634,17 @@ namespace MMR
 		 */
 		private void GenerateStmt (TokenStmt stmt)
 		{
-			if (stmt is TokenStmtBlock) { GenerateStmtBlock ((TokenStmtBlock)stmt, false); return; }
-			if (stmt is TokenStmtRVal)  { GenerateFromRVal  (((TokenStmtRVal)stmt).rVal);  return; }
-			if (stmt is TokenStmtDo)    { GenerateStmtDo    ((TokenStmtDo)stmt);           return; }
-			if (stmt is TokenStmtFor)   { GenerateStmtFor   ((TokenStmtFor)stmt);          return; }
-			if (stmt is TokenStmtIf)    { GenerateStmtIf    ((TokenStmtIf)stmt);           return; }
-			if (stmt is TokenStmtJump)  { GenerateStmtJump  ((TokenStmtJump)stmt);         return; }
-			if (stmt is TokenStmtLabel) { GenerateStmtLabel ((TokenStmtLabel)stmt);        return; }
-			if (stmt is TokenStmtRet)   { GenerateStmtRet   ((TokenStmtRet)stmt);          return; }
-			if (stmt is TokenStmtState) { GenerateStmtState ((TokenStmtState)stmt);        return; }
-			if (stmt is TokenStmtWhile) { GenerateStmtWhile ((TokenStmtWhile)stmt);        return; }
+			if (stmt is TokenStmtBlock)   { GenerateStmtBlock   ((TokenStmtBlock)stmt, false); return; }
+			if (stmt is TokenStmtRVal)    { GenerateFromRVal    (((TokenStmtRVal)stmt).rVal);  return; }
+			if (stmt is TokenStmtDo)      { GenerateStmtDo      ((TokenStmtDo)stmt);           return; }
+			if (stmt is TokenStmtFor)     { GenerateStmtFor     ((TokenStmtFor)stmt);          return; }
+			if (stmt is TokenStmtForEach) { GenerateStmtForEach ((TokenStmtForEach)stmt);      return; }
+			if (stmt is TokenStmtIf)      { GenerateStmtIf      ((TokenStmtIf)stmt);           return; }
+			if (stmt is TokenStmtJump)    { GenerateStmtJump    ((TokenStmtJump)stmt);         return; }
+			if (stmt is TokenStmtLabel)   { GenerateStmtLabel   ((TokenStmtLabel)stmt);        return; }
+			if (stmt is TokenStmtRet)     { GenerateStmtRet     ((TokenStmtRet)stmt);          return; }
+			if (stmt is TokenStmtState)   { GenerateStmtState   ((TokenStmtState)stmt);        return; }
+			if (stmt is TokenStmtWhile)   { GenerateStmtWhile   ((TokenStmtWhile)stmt);        return; }
 			throw new Exception ("unknown TokenStmt type " + stmt.GetType ().ToString ());
 		}
 
@@ -757,7 +758,6 @@ namespace MMR
 
 			string breakLabel = "__ForBrk_" + lbl;
 			string loopLabel = "__ForTop_" + lbl;
-			string contLabel = "__ForBot_" + lbl;
 
 			if (forStmt.initStmt != null) {
 				GenerateStmt (forStmt.initStmt);
@@ -773,12 +773,56 @@ namespace MMR
 				}
 			}
 			GenerateStmt (forStmt.bodyStmt);
-			WriteOutput (forStmt, contLabel + ":;");
 			if (forStmt.incrRVal != null) {
 				GenerateFromRVal (forStmt.incrRVal);
 			}
 			WriteOutput (forStmt, "goto " + loopLabel + ";");
 			WriteOutput (forStmt, breakLabel + ":;");
+		}
+
+		private void GenerateStmtForEach (TokenStmtForEach forEachStmt)
+		{
+			string lbl = GetTempNo ();
+			CompLVal keyLVal   = null;
+			CompLVal valLVal   = null;
+			CompLVal arrayLVal = GenerateFromLVal (forEachStmt.arrayLVal);
+
+			if (forEachStmt.keyLVal != null) {
+				keyLVal = GenerateFromLVal (forEachStmt.keyLVal);
+				if (!(keyLVal.type is TokenTypeObject)) {
+					ErrorMsg (forEachStmt.arrayLVal, "must be object");
+				}
+			}
+			if (forEachStmt.valLVal != null) {
+				valLVal = GenerateFromLVal (forEachStmt.valLVal);
+				if (!(valLVal.type is TokenTypeObject)) {
+					ErrorMsg (forEachStmt.arrayLVal, "must be object");
+				}
+			}
+			if (!(arrayLVal.type is TokenTypeArray)) {
+				ErrorMsg (forEachStmt.arrayLVal, "must be an array");
+			}
+
+			string doneLabel = "__ForBrk_" + lbl;
+			string loopLabel = "__ForTop_" + lbl;
+			string indexVar  = "__ForIdx_" + lbl;
+			string objectVar = "__ForObj_" + lbl;
+
+			WriteOutput (forEachStmt, "int " + indexVar + " = 0;");
+			if ((keyLVal == null) || (valLVal == null)) {
+				WriteOutput (forEachStmt, "object " + indexVar + ";");
+			}
+			WriteOutput (forEachStmt, loopLabel + ":;");
+			WriteOutput (forEachStmt, indexVar + " = " + arrayLVal.locstr + ".ForEach(" + indexVar + ", ref ");
+			WriteOutput (forEachStmt, (keyLVal == null) ? objectVar : keyLVal.locstr);
+			WriteOutput (forEachStmt, ", ref ");
+			WriteOutput (forEachStmt, (valLVal == null) ? objectVar : valLVal.locstr);
+			WriteOutput (forEachStmt, ");");
+			WriteOutput (forEachStmt, "if (" + indexVar + " < 0) goto " + doneLabel + ";");
+			WriteOutput (forEachStmt, "__sm.continuation.CheckRun();");
+			GenerateStmt (forEachStmt.bodyStmt);
+			WriteOutput (forEachStmt, "goto " + loopLabel + ";");
+			WriteOutput (forEachStmt, doneLabel + ":;");
 		}
 
 		private void GenerateStmtIf (TokenStmtIf ifStmt)
@@ -965,9 +1009,40 @@ namespace MMR
 		 */
 		private CompLVal GenerateFromLVal (TokenLVal lVal)
 		{
+			if (lVal is TokenLValArEle) return GenerateFromLValArEle ((TokenLValArEle)lVal);
 			if (lVal is TokenLValField) return GenerateFromLValField ((TokenLValField)lVal);
-			if (lVal is TokenLValName) return GenerateFromLValName ((TokenLValName)lVal);
+			if (lVal is TokenLValName)  return GenerateFromLValName  ((TokenLValName)lVal);
 			throw new Exception ("bad lval class");
+		}
+
+		/**
+		 * @brief we have an L-value token that is an element within an array.
+		 * @returns a CompLVal giving the type and location of the element of the array.
+		 */
+		private CompLVal GenerateFromLValArEle (TokenLValArEle lVal)
+		{
+			/*
+			 * Compute subscript before rest of lVal in case of multiple subscripts.
+			 */
+			CompRVal subRVal = GenerateFromRVal (lVal.subRVal);
+
+			/*
+			 * Compute location of array itself.
+			 */
+			CompLVal baseLVal = GenerateFromLVal (lVal.baseLVal);
+
+			/*
+			 * It better be an array!
+			 */
+			if (!(baseLVal.type is TokenTypeArray)) {
+				ErrorMsg (lVal, "taking subscript of non-array");
+				return baseLVal;
+			}
+
+			/*
+			 * Ok, generate reference.
+			 */
+			return new CompLVal (new TokenTypeObject (lVal), "((" + baseLVal.locstr + ")[" + subRVal.locstr + "])");
 		}
 
 		/**
@@ -1033,6 +1108,7 @@ namespace MMR
 			if (rVal is TokenRValCast)     return GenerateFromRValCast    ((TokenRValCast)rVal);
 			if (rVal is TokenRValFloat)    return GenerateFromRValFloat   ((TokenRValFloat)rVal);
 			if (rVal is TokenRValInt)      return GenerateFromRValInt     ((TokenRValInt)rVal);
+			if (rVal is TokenRValIsType)   return GenerateFromRValIsType  ((TokenRValIsType)rVal);
 			if (rVal is TokenRValList)     return GenerateFromRValList    ((TokenRValList)rVal);
 			if (rVal is TokenRValConst)    return ((TokenRValConst)rVal).val.rVal;
 			if (rVal is TokenRValLVal)     return GenerateFromRValLVal    ((TokenRValLVal)rVal);
@@ -1041,6 +1117,7 @@ namespace MMR
 			if (rVal is TokenRValParen)    return GenerateFromRValParen   ((TokenRValParen)rVal);
 			if (rVal is TokenRValRot)      return GenerateFromRValRot     ((TokenRValRot)rVal);
 			if (rVal is TokenRValStr)      return GenerateFromRValStr     ((TokenRValStr)rVal);
+			if (rVal is TokenRValUndef)    return GenerateFromRValUndef   ((TokenRValUndef)rVal);
 			if (rVal is TokenRValVec)      return GenerateFromRValVec     ((TokenRValVec)rVal);
 			throw new Exception ("bad rval class " + rVal.GetType ().ToString ());
 		}
@@ -1433,6 +1510,18 @@ namespace MMR
 		}
 
 		/**
+		 * @brief 'undefined' constant.
+		 *        If this constant gets written to an array element, it will delete that element from the array.
+		 *        If the script retrieves an element by key that is not defined, it will get this value.
+		 *        This value can be stored in and retrieved from variables of type 'object'.
+		 *        It is a runtime error to cast this value to any type, eg, we don't allow string variables to be null pointers.
+		 */
+		private CompRVal GenerateFromRValUndef (TokenRValUndef rValUndef)
+		{
+			return new CompRVal (new TokenTypeObject (rValUndef), "null");
+		}
+
+		/**
 		 * @brief create a vector object from the x,y,z value expressions.
 		 */
 		private CompRVal GenerateFromRValVec (TokenRValVec rValVec)
@@ -1446,6 +1535,44 @@ namespace MMR
 			return new CompRVal (new TokenTypeVec (rValVec),
 					"new " + TypeName(typeof(LSL_Vector)) + "(" + StringWithCast (flToken, xRVal) + "," +
 					StringWithCast (flToken, yRVal) + "," + StringWithCast (flToken, zRVal) + ")");
+		}
+
+		/**
+		 * @brief Generate code to process an <rVal> is <type> expression, and produce a boolean value.
+		 */
+		private CompRVal GenerateFromRValIsType (TokenRValIsType rValIsType)
+		{
+			CompRVal rValExp = GenerateFromRVal (rValIsType.rValExp);
+			CompRVal rValRet = new CompRVal (tokenTypeBool, "(" + CheckTypeIsExp (rValExp, rValIsType.typeExp) + ")");
+			return rValRet;
+		}
+
+		private string CheckTypeIsExp (CompRVal rValExp, TokenTypeExp typeExp)
+		{
+			if (typeExp is TokenTypeExpBinOp) {
+				return CheckTypeIsExp (rValExp, ((TokenTypeExpBinOp)typeExp).leftOp) + 
+				       " " + ((TokenTypeExpBinOp)typeExp).binOp.ToString () + 
+				       ((TokenTypeExpBinOp)typeExp).binOp.ToString () + " " +
+				       CheckTypeIsExp (rValExp, ((TokenTypeExpBinOp)typeExp).rightOp);
+			}
+
+			if (typeExp is TokenTypeExpNot) {
+				return "!(" + CheckTypeIsExp (rValExp, ((TokenTypeExpNot)typeExp).typeExp) + ")";
+			}
+
+			if (typeExp is TokenTypeExpPar) {
+				return "(" + CheckTypeIsExp (rValExp, ((TokenTypeExpPar)typeExp).typeExp) + ")";
+			}
+
+			if (typeExp is TokenTypeExpType) {
+				return "(" + rValExp.locstr + " is " + TypeName (((TokenTypeExpType)typeExp).typeToken.typ) + ")";
+			}
+
+			if (typeExp is TokenTypeExpUndef) {
+				return "(" + rValExp.locstr + " == null)";
+			}
+
+			throw new Exception ("unknown type expression");
 		}
 
 		/**
@@ -1476,11 +1603,14 @@ namespace MMR
 		 */
 		private string DefaultValue (TokenType type)
 		{
+			if (type is TokenTypeArray) {
+				return "new " + TypeName (typeof (XMR_Array)) + "()";
+			}
 			if (type is TokenTypeKey) {
 				return "MMR.ScriptConst.lslconst_NULL_KEY";
 			}
 			if (type is TokenTypeList) {
-				return "new LSL_List ()";
+				return "new " + TypeName (typeof (LSL_List)) + "()";
 			}
 			if (type is TokenTypeRot) {
 				return "MMR.ScriptConst.lslconst_ZERO_ROTATION";
@@ -1506,25 +1636,41 @@ namespace MMR
 			Dictionary<string, string> ltc = new Dictionary<string, string> ();
 
 			// IMPLICIT type casts (a space is in middle of the key)
+			ltc.Add ("array object",    "((object){0})");
 			ltc.Add ("bool float",      "({0}?1f:0f)");
 			ltc.Add ("bool integer",    "({0}?1:0)");
 			ltc.Add ("float bool",      "({0}!=0.0)");
 			ltc.Add ("float integer",   "((int){0})");
+			ltc.Add ("float object",    "((object){0})");
 			ltc.Add ("integer bool",    "({0}!=0)");
 			ltc.Add ("integer float",   "((float){0})");
+			ltc.Add ("integer object",  "((object){0})");
 			ltc.Add ("key bool",        "({0}!=NULL_KEY)");
+			ltc.Add ("key object",      "((object){0})");
 			ltc.Add ("key string",      "{0}");
+			ltc.Add ("list object",     "((object){0})");
+			ltc.Add ("object array",    "(" + TypeName(typeof(XMR_Array))    + "){0}");
+			ltc.Add ("object float",    "(" + TypeName(typeof(float))        + "){0}");
+			ltc.Add ("object integer",  "(" + TypeName(typeof(int))          + "){0}");
+			ltc.Add ("object key",      "(" + TypeName(typeof(LSL_Key))      + "){0}");
+			ltc.Add ("object list",     "(" + TypeName(typeof(LSL_List))     + "){0}");
+			ltc.Add ("object rotation", "(" + TypeName(typeof(LSL_Rotation)) + "){0}");
+			ltc.Add ("object vector",   "(" + TypeName(typeof(LSL_Vector))   + "){0}");
+			ltc.Add ("rotation object", "((object){0})");
 			ltc.Add ("string bool",     "({0}!=\"\")");
 			ltc.Add ("string key",      "new " + TypeName(typeof(LSL_Key)) + "({0})");
+			ltc.Add ("string object",   "((object){0})");
+			ltc.Add ("string vector",   "((object){0})");
+			ltc.Add ("vector object",   "((object){0})");
 
 			// EXPLICIT type casts (an * is in middle of the key)
 			ltc.Add ("bool*string",     "({0}?\"true\":\"false\")");
 			ltc.Add ("float*string",    "{0}.ToString()");
 			ltc.Add ("integer*string",  "{0}.ToString()");
 			ltc.Add ("list*string",     "{0}.ToString()");
+			ltc.Add ("object*string",   "{0}.ToString()");
 			ltc.Add ("rotation*string", "{0}.ToString()");
 			ltc.Add ("vector*string",   "{0}.ToString()");
-			ltc.Add ("float*integer",   "((int){0})");
 
 			return ltc;
 		}
@@ -2229,6 +2375,183 @@ namespace MMR
 		{
 			this.type = type;
 			this.locstr = locstr;
+		}
+	}
+
+	/**
+	 * @brief Array objects.
+	 */
+	public class XMR_Array {
+		private bool enumrValid;                              // true: enumr set to return array[arrayValid]
+		                                                      // false: array[0..arrayValid-1] is all there is
+		private Dictionary<object, object> dnary = new Dictionary<object, object> ();
+		private Dictionary<object, object>.Enumerator enumr;  // enumerator used to fill 'array' past arrayValid to end of dictionary
+		private int arrayValid;                               // number of elements in 'array' that have been filled in
+		private KeyValuePair<object, object>[] array;         // list of kvp's that have been returned by ForEach() since last modification
+
+		/**
+		 * @brief get or set an element of the dictionary.
+		 * Get returns null if element not defined, script sees type 'undef'.
+		 * Setting an element to null removes it.
+		 */
+		public object this[object key]
+		{
+			get {
+				object val;
+				if (!dnary.TryGetValue (key, out val)) val = null;
+				return val;
+			}
+			set {
+				/*
+				 * Save new value in array, replacing one of same key if there.
+				 * null means remove the value, ie, script did array[key] = undef.
+				 */
+				if (value != null) {
+					dnary[key] = value;
+				} else {
+					dnary.Remove (key);
+
+					/*
+					 * Shrink the enumeration array, but always leave at least one element.
+					 */
+					if ((array != null) && (dnary.Count < array.Length / 2)) {
+						Array.Resize<KeyValuePair<object, object>> (ref array, array.Length / 2);
+					}
+				}
+
+				/*
+				 * The enumeration array is invalid because the dictionary has been modified.
+				 * Next time a ForEach() call happens, it will repopulate 'array' as elements are retrieved.
+				 */
+				arrayValid = 0;
+			}
+		}
+
+		/**
+		 * @brief Called in each iteration of a 'foreach' statement.
+		 * @param index = index of element to retrieve (0 = first one)
+		 * @returns -1: no more elements
+		 *        else: index for next element in list
+		 *              key = key of retrieved element
+		 *              val = value of retrieved element
+		 */
+		public int ForEach (int index, ref object key, ref object val)
+		{
+
+			/*
+			 * If we don't have any array, we can't have ever done
+			 * any calls here before, so allocate an array big enough
+			 * and set everything else to the beginning.
+			 */
+			if (array == null) {
+				array = new KeyValuePair<object, object>[dnary.Count];
+				arrayValid = 0;
+			}
+
+			/*
+			 * If dictionary modified since last enumeration, get a new enumerator.
+			 */
+			if (arrayValid == 0) {
+				enumr = dnary.GetEnumerator ();
+				enumrValid = true;
+			}
+
+			/*
+			 * Make sure we have filled the array up enough for requested element.
+			 */
+			while ((arrayValid <= index) && enumrValid && enumr.MoveNext ()) {
+				if (arrayValid >= array.Length) {
+					Array.Resize<KeyValuePair<object, object>> (ref array, dnary.Count);
+				}
+				array[arrayValid++] = enumr.Current;
+			}
+
+			/*
+			 * If we don't have that many elements, return end-of-array status.
+			 */
+			if (arrayValid <= index) return -1;
+
+			/*
+			 * Return the element values and index required to fetch next element.
+			 */
+			key = array[index].Key;
+			val = array[index].Value;
+			return index + 1;
+		}
+
+		/**
+		 * @brief Transmit array out in such a way that it can be reconstructed,
+		 *        including any in-progress ForEach() enumerations.
+		 */
+		public void SendArrayObj (Mono.Tasklets.MMRContSendObj sendObj, Stream stream)
+		{
+			int index = arrayValid;
+			object key = null;
+			object val = null;
+
+			/*
+			 * Completely fill the array from where it is already filled to the end.
+			 * Any elements before arrayValid remain as the current enumerator has
+			 * seen them, and any after arrayValid will be filled by that same
+			 * enumerator.  The array will then be used on the receiving end to iterate
+			 * in the same exact order, because a new enumerator on the receiving end
+			 * probably wouldn't see them in the same order.
+			 */
+			while ((index = ForEach (index, ref key, ref val)) >= 0) { }
+
+			/*
+			 * Set the count then the elements themselves.
+			 */
+			sendObj (stream, (object)arrayValid);
+			for (index = 0; index < arrayValid; index ++) {
+				sendObj (stream, array[index].Key);
+				sendObj (stream, array[index].Value);
+			}
+		}
+
+		/**
+		 * @brief Receive array in.  Any previous contents are erased.
+		 *        Set up such that any enumeration in progress will resume
+		 *        at the exact spot and in the exact same order as they
+		 *        were in on the sending side.
+		 */
+		public void RecvArrayObj (Mono.Tasklets.MMRContRecvObj recvObj, Stream stream)
+		{
+			int index;
+
+			/*
+			 * Empty the dictionary.
+			 */
+			dnary.Clear ();
+
+			/*
+			 * Any enumerator in progress is now invalid, and all elements
+			 * for enumeration must come from the array, so they will be in
+			 * the same order they were in on the sending side.
+			 */
+			enumrValid = false;
+
+			/*
+			 * Get number of elements we will receive and set up an
+			 * array to receive them into.  The array will be used
+			 * for any enumerations in progress, and will have elements
+			 * in order as given by previous calls to those enumerations.
+			 */
+			arrayValid = (int)recvObj (stream);
+			array = new KeyValuePair<object, object>[arrayValid];
+
+			/*
+			 * Fill the array and dictionary.
+			 * Any enumerations will use the array so they will be in the
+			 * same order as on the sending side (until the dictionary is
+			 * modified).
+			 */
+			for (index = 0; index < arrayValid; index ++) {
+				object key = recvObj (stream);
+				object val = recvObj (stream);
+				array[index] = new KeyValuePair<object, object> (key, val);
+				dnary.Add (key, val);
+			}
 		}
 	}
 }
