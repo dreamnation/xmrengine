@@ -161,51 +161,54 @@ namespace Careminster
 
         private AssetBase Get(string id, out string sha)
         {
-            string hash = string.Empty;
+			lock(m_hdfsLock)
+			{
+				string hash = string.Empty;
 
-            int startTime = System.Environment.TickCount;
-            AssetMetadata metadata = m_DataConnector.Get(id, out hash);
+				int startTime = System.Environment.TickCount;
+				AssetMetadata metadata = m_DataConnector.Get(id, out hash);
 
-            sha = hash;
+				sha = hash;
 
-            if (metadata == null)
-            {
-                AssetBase asset = null;
-                if (m_FallbackService != null)
-                {
-                    asset = m_FallbackService.Get(id);
-                    if (asset != null)
-                    {
-                        asset.Metadata.ContentType =
-                                ServerUtils.SLAssetTypeToContentType((int)asset.Type);
-                        sha = GetSHA1Hash(asset.Data);
-                        m_log.InfoFormat("[FALLBACK]: Added asset {0} from fallback to local store", id);
-                        Store(asset);
-                    }
-                }
-                if (asset == null)
-                {
-                    m_log.InfoFormat("[ASSET]: Asset {0} not found", id);
-                }
-                return asset;
-            }
-            AssetBase newAsset = new AssetBase();
-            newAsset.Metadata = metadata;
-            try
-            {
-                newAsset.Data = GetHdfsData(hash);
-                if (newAsset.Data.Length == 0)
-                {
-                    m_log.InfoFormat("[ASSET]: Asset {0}, hash {1} not found in HDFS", id, hash);
-                }
-                return newAsset;
-            }
-            catch (Exception exception)
-            {
-                m_log.Error(exception.ToString());
-                Environment.Exit(1);
-                return null;
-            }
+				if (metadata == null)
+				{
+					AssetBase asset = null;
+					if (m_FallbackService != null)
+					{
+						asset = m_FallbackService.Get(id);
+						if (asset != null)
+						{
+							asset.Metadata.ContentType =
+									ServerUtils.SLAssetTypeToContentType((int)asset.Type);
+							sha = GetSHA1Hash(asset.Data);
+							m_log.InfoFormat("[FALLBACK]: Added asset {0} from fallback to local store", id);
+							Store(asset);
+						}
+					}
+					if (asset == null)
+					{
+						m_log.InfoFormat("[ASSET]: Asset {0} not found", id);
+					}
+					return asset;
+				}
+				AssetBase newAsset = new AssetBase();
+				newAsset.Metadata = metadata;
+				try
+				{
+					newAsset.Data = GetHdfsData(hash);
+					if (newAsset.Data.Length == 0)
+					{
+						m_log.InfoFormat("[ASSET]: Asset {0}, hash {1} not found in HDFS", id, hash);
+					}
+					return newAsset;
+				}
+				catch (Exception exception)
+				{
+					m_log.Error(exception.ToString());
+					Environment.Exit(1);
+					return null;
+				}
+			}
         }
 
         public AssetMetadata GetMetadata(string id)
@@ -241,17 +244,14 @@ namespace Careminster
 
             byte[] buf = new byte[size];
 
-            lock (m_hdfsLock)
-            {
-                int fd = HdfsClient.Open(ToCString(HashToFile(hash)), 0, 3);
-                if (fd == 0) // Not there
-                {
-                    throw new Exception("Error opening HDFS file");
-                }
+			int fd = HdfsClient.Open(ToCString(HashToFile(hash)), 0, 3);
+			if (fd == 0) // Not there
+			{
+				throw new Exception("Error opening HDFS file");
+			}
 
-                HdfsClient.Read(fd, buf, size);
-                HdfsClient.Close(fd);
-            }
+			HdfsClient.Read(fd, buf, size);
+			HdfsClient.Close(fd);
 
             return buf;
         }
@@ -305,29 +305,30 @@ namespace Careminster
                 }
 
                 HdfsClient.Close(hdfsFile);
-            }
 
-            if (asset.ID == string.Empty)
-            {
-                if (asset.FullID == UUID.Zero)
-                {
-                    asset.FullID = UUID.Random();
-                }
-                asset.ID = asset.FullID.ToString();
-            }
-            else if (asset.FullID == UUID.Zero)
-            {
-                UUID uuid = UUID.Zero;
-                if (UUID.TryParse(asset.ID, out uuid))
-                {
-                    asset.FullID = uuid;
-                }
-                else
-                {
-                    asset.FullID = UUID.Random();
-                }
-            }
-            m_DataConnector.Store(asset.Metadata, hash);
+				if (asset.ID == string.Empty)
+				{
+					if (asset.FullID == UUID.Zero)
+					{
+						asset.FullID = UUID.Random();
+					}
+					asset.ID = asset.FullID.ToString();
+				}
+				else if (asset.FullID == UUID.Zero)
+				{
+					UUID uuid = UUID.Zero;
+					if (UUID.TryParse(asset.ID, out uuid))
+					{
+						asset.FullID = uuid;
+					}
+					else
+					{
+						asset.FullID = UUID.Random();
+					}
+				}
+				m_DataConnector.Store(asset.Metadata, hash);
+			}
+
             return asset.ID;
         }
 
