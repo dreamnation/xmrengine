@@ -15,15 +15,18 @@ namespace MMR {
 		/**
 		 * @brief build dictionary of internal functions from an interface.
 		 * @param iface = interface with function definitions
+		 * @param inclSig = false: key is just function name, no overloading possible, ie, <name>
+		 *                   true: key also contains LSL-style argument types, ie, <name>(<arg1type>,<arg2type,...)
 		 * @returns dictionary of function definition tokens
 		 */
-		public InternalFuncDict (Type iface)
+		public InternalFuncDict (Type iface, bool inclSig)
 		{
 			/*
 			 * Loop through list of all methods declared in the interface.
 			 */
 			System.Reflection.MethodInfo[] ifaceMethods = iface.GetMethods ();
 			foreach (System.Reflection.MethodInfo ifaceMethod in ifaceMethods) {
+				string key = ifaceMethod.Name;
 
 				/*
 				 * Only do ones that begin with lower-case letters...
@@ -43,18 +46,32 @@ namespace MMR {
 					TokenArgDecl argDecl = new TokenArgDecl (null);
 					argDecl.names = new TokenName[parameters.Length];
 					argDecl.types = new TokenType[parameters.Length];
+					key = declFunc.funcName.val;
+					if (inclSig) key += "(";
 					for (int i = 0; i < parameters.Length; i++) {
 						System.Reflection.ParameterInfo param = parameters[i];
 						argDecl.names[i] = new TokenName (null, param.Name);
 						argDecl.types[i] = TokenType.FromSysType (null, param.ParameterType);
+						if (inclSig) {
+							if (i > 0) key += ",";
+							key += argDecl.types[i].ToString ();
+						}
 					}
 					declFunc.argDecl = argDecl;
+					if (inclSig) key += ")";
 
 					/*
 					 * Add the TokenDeclFunc struct to the dictionary.
+					 * Key = name(arg1type,arg2type,...) or just name
+					 * ... where the types are the LSL-style type such as 'key', 'rotation', etc.
 					 */
-					this.Add (declFunc.funcName.val, declFunc);
-				} catch (Exception) {
+					this.Add (key, declFunc);
+				} catch (Exception except) {
+
+					string msg = except.ToString ();
+					int i = msg.IndexOf ("\n");
+					if (i > 0) msg = msg.Substring (0, i);
+					Console.WriteLine ("InternalFuncDict*: {0}:     {1}", key, msg);
 
 					///??? IGNORE ANY THAT FAIL - LIKE UNRECOGNIZED TYPE ???///
 					///???                          and OVERLOADED NAMES ???///

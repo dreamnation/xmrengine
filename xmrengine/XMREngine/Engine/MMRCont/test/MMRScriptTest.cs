@@ -89,7 +89,7 @@ namespace MMR {
 			 * Build a dictionary of event handlers so we can parse them from the test tokens.
 			 * This translates eventhandlername -> a function declaration
 			 */
-			eventFunctions = new InternalFuncDict (typeof (IEventHandlers));
+			eventFunctions = new InternalFuncDict (typeof (IEventHandlers), false);
 
 			/*
 			 * Create a script object.  This loads the .DLL into memory

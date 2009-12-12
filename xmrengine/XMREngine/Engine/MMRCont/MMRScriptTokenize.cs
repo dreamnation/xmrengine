@@ -753,10 +753,9 @@ namespace MMR {
 	public class TokenType : Token {
 		public System.Type typ;
 		public System.Type lslBoxing;  // null: normal
-									   // else: LSL-style boxing, ie, LSL_Integer, LSL_Float
-									   //       typ=System.Int32; lslBoxing=LSL_Integer
-									   //       typ=System.Float; lslBoxing=LSL_Float
-								
+		                               // else: LSL-style boxing, ie, LSL_Integer, LSL_Float
+		                               //       typ=System.Int32; lslBoxing=LSL_Integer
+		                               //       typ=System.Float; lslBoxing=LSL_Float
 
 		public TokenType (TokenErrorMessage emsg, int line, int posn, System.Type typ) : base (emsg, line, posn)
 		{
@@ -794,6 +793,12 @@ namespace MMR {
 
 			throw new Exception ("unknown type " + typ.ToString ());
 		}
+
+		/**
+		 * @brief Estimate the number of bytes of memory taken by one of these
+		 *        objects.  For objects with widely varying size, return the
+		 *        smallest it can be.
+		 */
 		public static int StaticSize (System.Type typ)
 		{
 			if (typ == typeof (LSL_List))     return  96;
@@ -837,7 +842,7 @@ namespace MMR {
 	public class TokenTypeKey : TokenType {
 		public TokenTypeKey (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn, typeof (string)) { }
 		public TokenTypeKey (Token original) : base (original, typeof (string)) { }
-		public override string ToString () { return "key"; }
+		public override string ToString () { return "string"; }
 	}
 	public class TokenTypeList : TokenType {
 		public TokenTypeList (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn, typeof (LSL_List)) { }

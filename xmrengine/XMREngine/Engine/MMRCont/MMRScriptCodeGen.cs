@@ -72,7 +72,7 @@ namespace MMR
 				 * Look up an BackEnd Api function by name and get its prototype.
 				 * We do this by looking at the ScriptBaseClass interface definition.
 				 */
-				InternalFuncDict beapif = new InternalFuncDict (typeof (ScriptBaseClass));
+				InternalFuncDict beapif = new InternalFuncDict (typeof (ScriptBaseClass), true);
 
 				//MB()
 
@@ -1294,45 +1294,56 @@ namespace MMR
 			CompRVal retRVal = null;
 			int i, nargs;
 			string name = call.name.val;
+			StringBuilder signature;
 			TokenDeclFunc declFunc;
-
-			/*
-			 * Look the function up.
-			 */
-			isBEAPIFunc = false;
-			if (scriptFunctions.ContainsKey (name)) {
-				declFunc = scriptFunctions[name];
-			} else if ((name[0] >= 'a') && (name[0] <= 'z') &&
-			            beAPIFunctions.ContainsKey (name)) {
-				declFunc = beAPIFunctions[name];
-				isBEAPIFunc = true;
-			} else {
-				ErrorMsg (call, "undefined function " + name);
-				declFunc = new TokenDeclFunc (call);
-				declFunc.retType  = new TokenTypeVoid (call);
-				declFunc.funcName = new TokenName (call, name);
-				declFunc.argDecl  = new TokenArgDecl (call);
-				declFunc.argDecl.types = new TokenType[0];
-				declFunc.argDecl.names = new TokenName[0];
-			}
 
 			/*
 			 * Compute the values of all the function's call arguments.
 			 * Save where the computation results are in the argRVals[] array.
+			 * Might as well build the signature from the argument types, too.
 			 */
 			nargs = call.nArgs;
+			signature = new StringBuilder (name);
+			signature.Append ("(");
 			if (nargs > 0) {
 				argRVals = new CompRVal[nargs];
 				i = 0;
 				for (TokenRVal arg = call.args; arg != null; arg = (TokenRVal)arg.nextToken) {
-					argRVals[i++] = GenerateFromRVal (arg);
+					argRVals[i] = GenerateFromRVal (arg);
+					if (i > 0) signature.Append (",");
+					signature.Append (argRVals[i].type.ToString ());
+					i ++;
 				}
+			}
+			signature.Append (")");
+
+			/*
+			 * Look the function up.
+			 */
+			string sig = signature.ToString ();
+			isBEAPIFunc = false;
+			if (scriptFunctions.ContainsKey (name)) {
+				declFunc = scriptFunctions[name];
+			} else if (beAPIFunctions.ContainsKey (sig)) {
+				declFunc = beAPIFunctions[sig];
+				isBEAPIFunc = true;
+			} else {
+				ErrorMsg (call, "undefined function " + sig);
+				sig = name + "(";
+				foreach (KeyValuePair<string, TokenDeclFunc> kvp in beAPIFunctions) {
+					if (kvp.Key.StartsWith (sig)) ErrorMsg (call, "  have " + kvp.Key);
+				}
+				declFunc = new TokenDeclFunc (call);
+				declFunc.retType  = new TokenTypeObject (call);
+				declFunc.funcName = new TokenName (call, name);
+				declFunc.argDecl  = new TokenArgDecl (call);
 			}
 
 			/*
 			 * Number of arguments passed should match number of params the function was declared with.
+			 * (The only time declFunc.argDecl.types is null is when the function was detected as undefined above).
 			 */
-			if (nargs != declFunc.argDecl.types.Length) {
+			if ((declFunc.argDecl.types != null) && (nargs != declFunc.argDecl.types.Length)) {
 				ErrorMsg (call, name + " has " + declFunc.argDecl.types.Length.ToString () + " param(s), but call has " + nargs.ToString ());
 				if (nargs > declFunc.argDecl.types.Length) nargs = declFunc.argDecl.types.Length;
 			}
@@ -1355,10 +1366,12 @@ namespace MMR
 				}
 				WriteOutput (call, "__sm.beAPI." + name + "(");
 				if (nargs > 0) {
-					OutputWithCast (declFunc.argDecl.types[0], argRVals[0]);
+					if (declFunc.argDecl.types == null) WriteOutput (call, argRVals[0].locstr);
+					else OutputWithCast (declFunc.argDecl.types[0], argRVals[0]);
 					for (i = 0; ++ i < nargs;) {
 						WriteOutput (call, ",");
-						OutputWithCast (declFunc.argDecl.types[i], argRVals[i]);
+						if (declFunc.argDecl.types == null) WriteOutput (call, argRVals[i].locstr);
+						else OutputWithCast (declFunc.argDecl.types[i], argRVals[i]);
 					}
 				}
 				WriteOutput (call, ")");
@@ -1382,7 +1395,8 @@ namespace MMR
 				WriteOutput (call, "__fun_" + name + "(__sm");
 				for (i = 0; i < nargs; i ++) {
 					WriteOutput (call, ",");
-					OutputWithCast (declFunc.argDecl.types[i], argRVals[i]);
+					if (declFunc.argDecl.types == null) WriteOutput (call, argRVals[i].locstr);
+					else OutputWithCast (declFunc.argDecl.types[i], argRVals[i]);
 				}
 				WriteOutput (call, ");");
 
@@ -1649,13 +1663,14 @@ namespace MMR
 			ltc.Add ("key object",      "((object){0})");
 			ltc.Add ("key string",      "{0}");
 			ltc.Add ("list object",     "((object){0})");
-			ltc.Add ("object array",    "(" + TypeName(typeof(XMR_Array))    + "){0}");
-			ltc.Add ("object float",    "(" + TypeName(typeof(float))        + "){0}");
-			ltc.Add ("object integer",  "(" + TypeName(typeof(int))          + "){0}");
-			ltc.Add ("object key",      "(" + TypeName(typeof(LSL_Key))      + "){0}");
-			ltc.Add ("object list",     "(" + TypeName(typeof(LSL_List))     + "){0}");
-			ltc.Add ("object rotation", "(" + TypeName(typeof(LSL_Rotation)) + "){0}");
-			ltc.Add ("object vector",   "(" + TypeName(typeof(LSL_Vector))   + "){0}");
+			ltc.Add ("object array",    TypeName(typeof(XMR_Array)) + ".Obj2Array({0})");   // disallow null
+			ltc.Add ("object float",    "(" + TypeName(typeof(float))        + "){0}");     // value type disallows null
+			ltc.Add ("object integer",  "(" + TypeName(typeof(int))          + "){0}");     // value type disallows null
+			ltc.Add ("object key",      TypeName(typeof(XMR_Array)) + ".Obj2Key({0})");     // disallow null
+			ltc.Add ("object list",     TypeName(typeof(XMR_Array)) + ".Obj2List({0})");    // disallow null
+			ltc.Add ("object rotation", "(" + TypeName(typeof(LSL_Rotation)) + "){0}");     // value type disallows null
+			ltc.Add ("object string",   TypeName(typeof(XMR_Array)) + ".Obj2String({0})");  // disallow null
+			ltc.Add ("object vector",   "(" + TypeName(typeof(LSL_Vector))   + "){0}");     // value type disallows null
 			ltc.Add ("rotation object", "((object){0})");
 			ltc.Add ("string bool",     "({0}!=\"\")");
 			ltc.Add ("string key",      "new " + TypeName(typeof(LSL_Key)) + "({0})");
@@ -1668,7 +1683,6 @@ namespace MMR
 			ltc.Add ("float*string",    "{0}.ToString()");
 			ltc.Add ("integer*string",  "{0}.ToString()");
 			ltc.Add ("list*string",     "{0}.ToString()");
-			ltc.Add ("object*string",   "{0}.ToString()");
 			ltc.Add ("rotation*string", "{0}.ToString()");
 			ltc.Add ("vector*string",   "{0}.ToString()");
 
@@ -2390,7 +2404,7 @@ namespace MMR
 		private KeyValuePair<object, object>[] array;         // list of kvp's that have been returned by ForEach() since last modification
 
 		/**
-		 * @brief get or set an element of the dictionary.
+		 * @brief Handle 'array[index]' syntax to get or set an element of the dictionary.
 		 * Get returns null if element not defined, script sees type 'undef'.
 		 * Setting an element to null removes it.
 		 */
@@ -2425,6 +2439,34 @@ namespace MMR
 				 */
 				arrayValid = 0;
 			}
+		}
+
+		/**
+		 * @brief Converts an 'object' type to array, key, list, string, but disallows null,
+		 *        as our language doesn't allow types other than 'object' to be null.
+		 *        Value types (float, rotation, etc) don't need explicit check for null as
+		 *        the C# runtime can't convert a null to a value type, and throws an exception.
+		 *        But for any reference type (array, key, etc) we must manually check for null.
+		 */
+		public static XMR_Array Obj2Array (object obj)
+		{
+			if (obj == null) throw new NullReferenceException ();
+			return (XMR_Array)obj;
+		}
+		public static LSL_Key Obj2Key (object obj)
+		{
+			if (obj == null) throw new NullReferenceException ();
+			return (LSL_Key)obj;
+		}
+		public static LSL_List Obj2List (object obj)
+		{
+			if (obj == null) throw new NullReferenceException ();
+			return (LSL_List)obj;
+		}
+		public static LSL_String Obj2String (object obj)
+		{
+			if (obj == null) throw new NullReferenceException ();
+			return obj.ToString ();
 		}
 
 		/**
