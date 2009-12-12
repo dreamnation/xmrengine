@@ -4,8 +4,8 @@ ARRAYS
 
 Arrays, as defined here, are indexed dynamic lists of objects.  The indices may 
 be of any value type (float, integer, key, rotation, string, vector).  When 
-passed to functions, they are passed by reference, that is, any changes made to 
-the array by the function are visible to the caller.
+passed to functions, arrays are passed by reference, that is, any changes made 
+to the array by the function are visible to the caller.
 
 
 To enable access to arrays in a script, place this statement in the script file
@@ -28,6 +28,7 @@ A variable is declared just as any other variable but using the 'array' type:
 Note that no initializer value is permitted and the array is empty.
 
 Example:
+
     array ar;
 
 
@@ -108,6 +109,14 @@ Examples:
     (rotation)ar[6.5]
 
 
+To obtain the number of elements in an array, reference the array's count 
+property defined as:
+
+    integer <array-variable>.count
+
+... it returns an integer giving the number of elements in the array.
+
+
 To iterate through all defined values in an array, use this syntax:
 
     foreach (<index-variable>,<value-variable> in <array-variable>) <statement>
@@ -142,4 +151,41 @@ Example:
         if (++ n >= 10) jump thatsenuf;
     }
 @thatsenuf:;
+
+
+An alternative to iterate through the elements of an array is to use the 
+index() and value() methods of an array defined as:
+
+    object <array-variable>.index(integer n)
+    object <array-variable>.value(integer n)
+
+... where n is an integer giving the number of the element to retrieve.  For
+    purposes of these methods, n is an integer in the range 0..count-1, where
+    count is the value of the array's count property.  Thus the first element
+    is retrieved by supplying n=0, the second by n=1, etc.  If n is .ge. count,
+    these methods return the special type undef.
+
+    These methods will return an unique element per value of n from an existing
+    n => element mapping, creating one if needed.  However, each time the array 
+    is modified, any exising n => element mapping is discarded.
+
+    An equivalent to:
+
+        object k;
+        object v;
+        foreach (k, v in a) {
+            statements...;
+        }
+
+    ... is:
+
+        object k;
+        object v;
+        integer n;
+        for (n = 0; n < a.count; n ++) {
+            k = a.index (n);
+            v = a.value (n);
+            statements...;
+        }
+
 

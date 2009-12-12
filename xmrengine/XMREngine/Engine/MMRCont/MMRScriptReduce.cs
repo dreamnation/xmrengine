@@ -1016,10 +1016,15 @@ namespace MMR {
 			if (!(token is TokenKwParOpen)) return operand;
 
 			/*
-			 * Function call, make sure thing before ( is a name.
+			 * Function call, make sure thing before ( is a name or a field.
 			 */
-			if (!(operand is TokenRValLVal) ||
-			    !(((TokenRValLVal)operand).lvToken is TokenLValName)) {
+			TokenLVal meth = null;
+			if (operand is TokenRValLVal) {
+				TokenRValLVal op = (TokenRValLVal)operand;
+				if (op.lvToken is TokenLValName)  meth = op.lvToken;
+				if (op.lvToken is TokenLValField) meth = op.lvToken;
+			}
+			if (meth == null) {
 				ErrorMsg (token, "invalid function reference or missing operator");
 				return null;
 			}
@@ -1028,7 +1033,7 @@ namespace MMR {
 			 * Set up basic function call struct with function name.
 			 */
 			TokenRValCall rValCall = new TokenRValCall (token);
-			rValCall.name = ((TokenLValName)((TokenRValLVal)operand).lvToken).name;
+			rValCall.meth = meth;
 			token = token.nextToken;
 
 			/*
@@ -1551,7 +1556,7 @@ namespace MMR {
 	 */
 	public class TokenRValCall : TokenRVal {
 
-		public TokenName name;
+		public TokenLVal meth;  // TokenLValName or TokenLValField
 		public TokenRVal args;  // null-terminated TokenRVal list
 		public int nArgs;       // number of elements in args
 
@@ -1560,9 +1565,9 @@ namespace MMR {
 		public override string ToString ()
 		{
 			if (args == null) {
-				return name.ToString () + " ()";
+				return meth.ToString () + " ()";
 			}
-			return name.ToString () + " " + args.ToString ();
+			return meth.ToString () + " " + args.ToString ();
 		}
 	}
 

@@ -849,6 +849,15 @@ namespace MMR {
 		public TokenTypeList (Token original) : base (original, typeof (LSL_List)) { }
 		public override string ToString () { return "list"; }
 	}
+	public class TokenTypeMeth : TokenType {
+		public TokenDeclFunc[] funcs;
+		public TokenTypeMeth (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn, null) { }
+		public TokenTypeMeth (Token original) : base (original, null)
+		{
+			///??? this.typ = build a type from retType + argTypes ???///
+		}
+		public override string ToString () { return "method"; }
+	}
 	public class TokenTypeObject : TokenType {
 		public TokenTypeObject (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn, typeof (object)) { }
 		public TokenTypeObject (Token original) : base (original, typeof (object)) { }

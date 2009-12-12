@@ -370,7 +370,7 @@ namespace MMR
 			 * End of the ScriptModule class definition.
 			 */
 			WriteOutput (0, "}");
-            objectWriter.Flush();
+			objectWriter.Flush();
 			objectWriter.Close();
 
 			/*
@@ -381,71 +381,71 @@ namespace MMR
 				return;
 			}
 
-            UTF8Encoding encoding = new UTF8Encoding();
-            string text = encoding.GetString(objectFile.ToArray());
+			/*
+			 * Convert C# to .DLL by sending to comipler.
+			 * Theoretically, we shouldn't get any errors from the compilation.
+			 */
+			UTF8Encoding encoding = new UTF8Encoding();
+			string text = encoding.GetString(objectFile.ToArray());
 
-            if (debugFileName != String.Empty)
-            {
-                FileStream dfs = File.Create(debugFileName);
-                StreamWriter dsw = new StreamWriter(dfs);
+			if (debugFileName != String.Empty)
+			{
+				FileStream dfs = File.Create(debugFileName);
+				StreamWriter dsw = new StreamWriter(dfs);
 
-                dsw.Write(text);
+				dsw.Write(text);
 
-                dsw.Close();
-                dfs.Close();
-            }
+				dsw.Close();
+				dfs.Close();
+			}
 
-            // m_log.Debug(text);
+			CompilerParameters parameters = new CompilerParameters();
 
-            CompilerParameters parameters = new CompilerParameters();
+			////????parameters.IncludeDebugInformation = true;
 
-            parameters.IncludeDebugInformation = true;
+			string rootPath =
+				Path.GetDirectoryName(AppDomain.CurrentDomain.BaseDirectory);
+			
+			parameters.ReferencedAssemblies.Add(Path.Combine(rootPath,
+				"OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll"));
+			parameters.ReferencedAssemblies.Add(Path.Combine(rootPath,
+				"OpenSim.Region.ScriptEngine.Shared.dll"));
+			parameters.ReferencedAssemblies.Add(Path.Combine(rootPath,
+				"OpenSim.Region.ScriptEngine.XMREngine.Engine.MMRCont.dll"));
 
-            string rootPath =
-                Path.GetDirectoryName(AppDomain.CurrentDomain.BaseDirectory);
-            
-            parameters.ReferencedAssemblies.Add(Path.Combine(rootPath,
-                "OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll"));
-            parameters.ReferencedAssemblies.Add(Path.Combine(rootPath,
-                "OpenSim.Region.ScriptEngine.Shared.dll"));
-            parameters.ReferencedAssemblies.Add(Path.Combine(rootPath,
-                "OpenSim.Region.ScriptEngine.XMREngine.Engine.MMRCont.dll"));
+			parameters.ReferencedAssemblies.Add("Mono.Tasklets.dll");
 
-            parameters.ReferencedAssemblies.Add("Mono.Tasklets.dll");
+			parameters.GenerateExecutable = false;
+			parameters.OutputAssembly = binaryName;
 
-            parameters.GenerateExecutable = false;
-            parameters.OutputAssembly = binaryName;
+			CompilerResults results;
 
-            CompilerResults results;
+			try
+			{
+				lock(CSCodeProvider)
+				{
+					results = CSCodeProvider.CompileAssemblyFromSource(parameters, text);
+				}
 
-            try
-            {
-                lock(CSCodeProvider)
-                {
-                    results =
-                            CSCodeProvider.CompileAssemblyFromSource(parameters,
-                            text);
-                }
+				if (results.Errors.Count > 0)
+				{
+					foreach (CompilerError CompErr in results.Errors)
+					{
+						if (CompErr.IsWarning)
+							continue;
 
-                if (results.Errors.Count > 0)
-                {
-                    foreach (CompilerError CompErr in results.Errors)
-                    {
-                        if (CompErr.IsWarning)
-                            continue;
+						m_log.DebugFormat("[MMR]: ({0},{1}]) Error: {2}",
+								CompErr.Line, CompErr.Column,
+								CompErr.ErrorText);
 
-                        m_log.DebugFormat("[MMR]: ({0},{1}]) Error: {2}",
-                                CompErr.Line, CompErr.Column,
-                                CompErr.ErrorText);
-
-                        exitCode = 1;
-                    }
-                }
-            }
-            catch
-            {
-                exitCode = 1;
-            }
+						exitCode = 1;
+					}
+				}
+			}
+			catch
+			{
+				exitCode = 1;
+			}
 		}
 
 		/**
@@ -618,7 +618,10 @@ namespace MMR
 			 */
 			WriteOutput (declFunc.body.closebr, "__Return:;");
 			GenMemUseBlockEpilog (declFunc.body, true);
-			if (!(declFunc.retType is TokenTypeVoid)) {
+			if (declFunc.retType is TokenTypeVoid) {
+				// I had an example where the moron gmcs didn't generate the 'ret' CIL opcode...
+				WriteOutput (declFunc.body.closebr, "return;");
+			} else {
 				WriteOutput (declFunc.body.closebr, "return __retval;");
 			}
 			WriteOutput (declFunc.body.closebr, "}");
@@ -813,12 +816,11 @@ namespace MMR
 				WriteOutput (forEachStmt, "object " + indexVar + ";");
 			}
 			WriteOutput (forEachStmt, loopLabel + ":;");
-			WriteOutput (forEachStmt, indexVar + " = " + arrayLVal.locstr + ".ForEach(" + indexVar + ", ref ");
+			WriteOutput (forEachStmt, "if (!" + arrayLVal.locstr + ".ForEach(" + indexVar + "++, ref ");
 			WriteOutput (forEachStmt, (keyLVal == null) ? objectVar : keyLVal.locstr);
 			WriteOutput (forEachStmt, ", ref ");
 			WriteOutput (forEachStmt, (valLVal == null) ? objectVar : valLVal.locstr);
-			WriteOutput (forEachStmt, ");");
-			WriteOutput (forEachStmt, "if (" + indexVar + " < 0) goto " + doneLabel + ";");
+			WriteOutput (forEachStmt, ")) goto " + doneLabel + ";");
 			WriteOutput (forEachStmt, "__sm.continuation.CheckRun();");
 			GenerateStmt (forEachStmt.bodyStmt);
 			WriteOutput (forEachStmt, "goto " + loopLabel + ";");
@@ -1055,15 +1057,33 @@ namespace MMR
 			string fieldName = lVal.field.val;
 
 			/*
-			 * Since we only have rotation and vector with fields, just pound them out.
+			 * Since we only have a few types with fields, just pound them out.
 			 * To expand, we can make a table, possibly using reflection to look up the baseLVal.type definition.
 			 */
-			if (baseLVal.type.GetType () == typeof (TokenTypeRot)) {
+			if (baseLVal.type is TokenTypeArray) {
+				if (fieldName == "count") {
+					return new CompLVal (new TokenTypeInt (lVal), "(" + baseLVal.locstr + ").__pub_" + fieldName);
+				}
+				if ((fieldName == "index") || (fieldName == "value")) {
+					TokenTypeMeth ttm             = new TokenTypeMeth (lVal);
+					ttm.funcs                     = new TokenDeclFunc[1];
+					ttm.funcs[0]                  = new TokenDeclFunc (lVal);
+					ttm.funcs[0].retType          = new TokenTypeObject (lVal);
+					ttm.funcs[0].funcName         = new TokenName (lVal, "array." + fieldName);
+					ttm.funcs[0].argDecl          = new TokenArgDecl (lVal);
+					ttm.funcs[0].argDecl.types    = new TokenType[1];
+					ttm.funcs[0].argDecl.types[0] = new TokenTypeInt (lVal);
+					ttm.funcs[0].argDecl.names    = new TokenName[1];
+					ttm.funcs[0].argDecl.names[0] = new TokenName (lVal, "number");
+					return new CompLVal (ttm, "(" + baseLVal.locstr + ").__pub_" + fieldName);
+				}
+			}
+			if (baseLVal.type is TokenTypeRot) {
 				if ((fieldName.Length == 1) && (((fieldName[0] >= 'x') && (fieldName[0] <= 'z')) || (fieldName[0] == 's'))) {
 					return new CompLVal (new TokenTypeFloat (lVal), "(" + baseLVal.locstr + ")." + fieldName);
 				}
 			}
-			if (baseLVal.type.GetType () == typeof (TokenTypeVec)) {
+			if (baseLVal.type is TokenTypeVec) {
 				if ((fieldName.Length == 1) && (fieldName[0] >= 'x') && (fieldName[0] <= 'z')) {
 					return new CompLVal (new TokenTypeFloat (lVal), "(" + baseLVal.locstr + ")." + fieldName);
 				}
@@ -1284,18 +1304,110 @@ namespace MMR
 		}
 
 		/**
-		 * @brief Generate code that calls a function.
+		 * @brief Generate code that calls a function or boject's method.
 		 * @returns where the call's return value is stored.
 		 */
 		private CompRVal GenerateFromRValCall (TokenRValCall call)
+		{
+			if (call.meth is TokenLValField) return GenerateFromRValCallField (call);
+			if (call.meth is TokenLValName)  return GenerateFromRValCallName  (call);
+			throw new Exception ("unknow call type");
+		}
+
+		/**
+		 * @brief Generate code that calls a method of an object.
+		 * @returns where the call's return value is stored.
+		 */
+		private CompRVal GenerateFromRValCallField (TokenRValCall call)
+		{
+			CompRVal[] argRVals = null;
+			CompRVal retRVal = null;
+			int i, nargs;
+			string name;
+			TokenDeclFunc declFunc;
+
+			/*
+			 * Compute the values of all the function's call arguments.
+			 * Save where the computation results are in the argRVals[] array.
+			 */
+			nargs = call.nArgs;
+			if (nargs > 0) {
+				argRVals = new CompRVal[nargs];
+				i = 0;
+				for (TokenRVal arg = call.args; arg != null; arg = (TokenRVal)arg.nextToken) {
+					argRVals[i] = GenerateFromRVal (arg);
+					i ++;
+				}
+			}
+
+			/*
+			 * Get method's entrypoint and signature.
+			 */
+			CompLVal method = GenerateFromLVal (call.meth);
+			name = method.locstr;
+			if (((TokenTypeMeth)method.type).funcs.Length != 1) throw new Exception ("tu stOOpid");
+			declFunc = ((TokenTypeMeth)method.type).funcs[0];
+
+			/*
+			 * Number of arguments passed should match number of params the function was declared with.
+			 */
+			if (nargs != declFunc.argDecl.types.Length) {
+				ErrorMsg (call, name + " has " + declFunc.argDecl.types.Length.ToString () + " param(s), but call has " + nargs.ToString ());
+				if (nargs > declFunc.argDecl.types.Length) nargs = declFunc.argDecl.types.Length;
+			}
+
+			/*
+			 * If return type isn't void, set up a temp to put return value in.
+			 */
+			retRVal = new CompRVal (declFunc.retType);
+			if (!(declFunc.retType is TokenTypeVoid)) {
+				WriteOutput (call, TypeName(declFunc.retType) + " " + retRVal.locstr + " = ");
+			}
+
+			/*
+			 * Generate call.
+			 */
+			if (declFunc.retType.lslBoxing == typeof (LSL_Float)) {
+				WriteOutput (call, "(float)");  // because LSL_Float.value is a 'double'
+			}
+			WriteOutput (call, name + "(");
+			for (i = 0; i < nargs; i ++) {
+				if (i > 0) WriteOutput (call, ",");
+				OutputWithCast (declFunc.argDecl.types[i], argRVals[i]);
+			}
+			WriteOutput (call, ")");
+
+			/*
+			 * Maybe we have to unbox the LSL-style boxed return value.
+			 * This converts things like LSL_Integer madness to int.
+			 */
+			if (declFunc.retType.lslBoxing != null) {
+				WriteOutput (call, ".value");
+			}
+
+			WriteOutput (call, ";");
+			return retRVal;
+		}
+
+		/**
+		 * @brief Generate code that calls a function.
+		 * @returns where the call's return value is stored.
+		 */
+		private CompRVal GenerateFromRValCallName (TokenRValCall call)
 		{
 			bool isBEAPIFunc;
 			CompRVal[] argRVals = null;
 			CompRVal retRVal = null;
 			int i, nargs;
-			string name = call.name.val;
+			string name;
 			StringBuilder signature;
 			TokenDeclFunc declFunc;
+
+			if (!(call.meth is TokenLValName)) {
+				ErrorMsg (call, "cannot call a field");
+				return GenerateFromRValLVal (new TokenRValLVal (call.meth));
+			}
+			name = ((TokenLValName)call.meth).name.val;
 
 			/*
 			 * Compute the values of all the function's call arguments.
@@ -2470,14 +2582,50 @@ namespace MMR
 		}
 
 		/**
-		 * @brief Called in each iteration of a 'foreach' statement.
-		 * @param index = index of element to retrieve (0 = first one)
-		 * @returns -1: no more elements
-		 *        else: index for next element in list
-		 *              key = key of retrieved element
-		 *              val = value of retrieved element
+		 * @brief return number of elements in the array.
 		 */
-		public int ForEach (int index, ref object key, ref object val)
+		public int __pub_count {
+			get { return dnary.Count; }
+		}
+
+		/**
+		 * @brief Retrieve index (key) of an arbitrary element.
+		 * @param number = number of the element (0 based)
+		 * @returns null: array doesn't have that many elements
+		 *          else: index (key) for that element
+		 */
+		public object __pub_index (int number)
+		{
+			object key = null;
+			object val = null;
+			ForEach (number, ref key, ref val);
+			return key;
+		}
+
+
+		/**
+		 * @brief Retrieve value of an arbitrary element.
+		 * @param number = number of the element (0 based)
+		 * @returns null: array doesn't have that many elements
+		 *          else: value for that element
+		 */
+		public object __pub_value (int number)
+		{
+			object key = null;
+			object val = null;
+			ForEach (number, ref key, ref val);
+			return val;
+		}
+
+		/**
+		 * @brief Called in each iteration of a 'foreach' statement.
+		 * @param number = index of element to retrieve (0 = first one)
+		 * @returns false: element does not exist
+		 *           true: element exists:
+		 *                 key = key of retrieved element
+		 *                 val = value of retrieved element
+		 */
+		public bool ForEach (int number, ref object key, ref object val)
 		{
 
 			/*
@@ -2501,7 +2649,7 @@ namespace MMR
 			/*
 			 * Make sure we have filled the array up enough for requested element.
 			 */
-			while ((arrayValid <= index) && enumrValid && enumr.MoveNext ()) {
+			while ((arrayValid <= number) && enumrValid && enumr.MoveNext ()) {
 				if (arrayValid >= array.Length) {
 					Array.Resize<KeyValuePair<object, object>> (ref array, dnary.Count);
 				}
@@ -2511,14 +2659,14 @@ namespace MMR
 			/*
 			 * If we don't have that many elements, return end-of-array status.
 			 */
-			if (arrayValid <= index) return -1;
+			if (arrayValid <= number) return false;
 
 			/*
-			 * Return the element values and index required to fetch next element.
+			 * Return the element values.
 			 */
-			key = array[index].Key;
-			val = array[index].Value;
-			return index + 1;
+			key = array[number].Key;
+			val = array[number].Value;
+			return true;
 		}
 
 		/**
@@ -2539,7 +2687,7 @@ namespace MMR
 			 * in the same exact order, because a new enumerator on the receiving end
 			 * probably wouldn't see them in the same order.
 			 */
-			while ((index = ForEach (index, ref key, ref val)) >= 0) { }
+			while (ForEach (index ++, ref key, ref val)) { }
 
 			/*
 			 * Set the count then the elements themselves.
