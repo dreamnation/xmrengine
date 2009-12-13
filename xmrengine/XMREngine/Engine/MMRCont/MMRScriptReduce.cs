@@ -1414,7 +1414,7 @@ namespace MMR {
 	 */
 	public class TokenDeclFunc : Token {
 
-		public TokenType retType;     // new TokenTypeVoid (token) if void
+		public TokenType retType;     // new TokenTypeVoid (token) if void; NEVER null
 		public TokenName funcName;    // function name
 		public TokenArgDecl argDecl;  // argument list prototypes
 		public TokenStmtBlock body;   // statements

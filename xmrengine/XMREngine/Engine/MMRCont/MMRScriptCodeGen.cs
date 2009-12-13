@@ -199,6 +199,7 @@ namespace MMR
 			if (nGlobals > 0) {
 				WriteOutput (0, "public " + smClassName + " () {");
 				WriteOutput (0, smClassName + " __sm = this;");
+				WriteOutput (0, TypeName (typeof (ScriptContinuation)) + " __sc = this.continuation;");
 
 				/*
 				 * Now fill in field initialization values.
@@ -208,7 +209,7 @@ namespace MMR
 					TokenDeclVar declVar = kvp.Value;
 					initialSize += TokenType.StaticSize (declVar.type.typ);
 					if (declVar.init != null) {
-						CompRVal rVal = GenerateFromRVal (declVar.init);
+						CompRVal rVal = GenerateFromRVal (null, declVar.init);
 						WriteOutput (declVar, "__sm.__gbl_" + declVar.name.val + " = " + StringWithCast (declVar.type, rVal) + ";");
 						if (declVar.type is TokenTypeList) {
 							WriteOutput (declVar, "__sm.memUsage += __sm.__gbl_" + declVar.name.val + ".Size;");
@@ -401,7 +402,7 @@ namespace MMR
 
 			CompilerParameters parameters = new CompilerParameters();
 
-			////????parameters.IncludeDebugInformation = true;
+			parameters.IncludeDebugInformation = true;
 
 			string rootPath =
 				Path.GetDirectoryName(AppDomain.CurrentDomain.BaseDirectory);
@@ -461,6 +462,7 @@ namespace MMR
 		 *   private static void __seh_<statename_<eventname>(ScriptWrapper __sw)
 		 *   {
 		 *      <smClassName> __sm = (ScriptWrapper)__sw;
+		 *      ScriptContinuation __sc = __sm.continuation;
 		 *      <typeArg0> <namearg0> = (<typeArg0>)__sw.ehArgs[0];
 		 *      <typeArg1> <nameArg1> = (<typeArg1>)__sw.ehArgs[1];
 		 *
@@ -508,8 +510,10 @@ namespace MMR
 
 			/*
 			 * We use a __sm variable to access the script's user-defined fields and methods.
+			 * And __sc is a cache for __sm.continuation for calling CheckRun().
 			 */
 			WriteOutput (declFunc, smClassName + " __sm = (" + smClassName + ")__sw;");
+			WriteOutput (declFunc, TypeName (typeof (ScriptContinuation)) + " __sc = __sw.continuation;");
 
 			/*
 			 * Output args as variable definitions and initialize each from __sw.ehArgs[].
@@ -585,7 +589,8 @@ namespace MMR
 			/*
 			 * See if time to suspend in case they are doing a loop with recursion.
 			 */
-			WriteOutput (declFunc.body, "__sm.continuation.CheckRun();");
+			WriteOutput (0, TypeName (typeof (ScriptContinuation)) + " __sc = __sm.continuation;");
+			WriteOutput (declFunc.body, "__sc.CheckRun();");
 
 			/*
 			 * Output code for the statements and clean up.
@@ -637,17 +642,17 @@ namespace MMR
 		 */
 		private void GenerateStmt (TokenStmt stmt)
 		{
-			if (stmt is TokenStmtBlock)   { GenerateStmtBlock   ((TokenStmtBlock)stmt, false); return; }
-			if (stmt is TokenStmtRVal)    { GenerateFromRVal    (((TokenStmtRVal)stmt).rVal);  return; }
-			if (stmt is TokenStmtDo)      { GenerateStmtDo      ((TokenStmtDo)stmt);           return; }
-			if (stmt is TokenStmtFor)     { GenerateStmtFor     ((TokenStmtFor)stmt);          return; }
-			if (stmt is TokenStmtForEach) { GenerateStmtForEach ((TokenStmtForEach)stmt);      return; }
-			if (stmt is TokenStmtIf)      { GenerateStmtIf      ((TokenStmtIf)stmt);           return; }
-			if (stmt is TokenStmtJump)    { GenerateStmtJump    ((TokenStmtJump)stmt);         return; }
-			if (stmt is TokenStmtLabel)   { GenerateStmtLabel   ((TokenStmtLabel)stmt);        return; }
-			if (stmt is TokenStmtRet)     { GenerateStmtRet     ((TokenStmtRet)stmt);          return; }
-			if (stmt is TokenStmtState)   { GenerateStmtState   ((TokenStmtState)stmt);        return; }
-			if (stmt is TokenStmtWhile)   { GenerateStmtWhile   ((TokenStmtWhile)stmt);        return; }
+			if (stmt is TokenStmtBlock)   { GenerateStmtBlock   ((TokenStmtBlock)stmt, false);       return; }
+			if (stmt is TokenStmtDo)      { GenerateStmtDo      ((TokenStmtDo)stmt);                 return; }
+			if (stmt is TokenStmtFor)     { GenerateStmtFor     ((TokenStmtFor)stmt);                return; }
+			if (stmt is TokenStmtForEach) { GenerateStmtForEach ((TokenStmtForEach)stmt);            return; }
+			if (stmt is TokenStmtIf)      { GenerateStmtIf      ((TokenStmtIf)stmt);                 return; }
+			if (stmt is TokenStmtJump)    { GenerateStmtJump    ((TokenStmtJump)stmt);               return; }
+			if (stmt is TokenStmtLabel)   { GenerateStmtLabel   ((TokenStmtLabel)stmt);              return; }
+			if (stmt is TokenStmtRet)     { GenerateStmtRet     ((TokenStmtRet)stmt);                return; }
+			if (stmt is TokenStmtRVal)    { GenerateStmtRVal    ((TokenStmtRVal)stmt);               return; }
+			if (stmt is TokenStmtState)   { GenerateStmtState   ((TokenStmtState)stmt);              return; }
+			if (stmt is TokenStmtWhile)   { GenerateStmtWhile   ((TokenStmtWhile)stmt);              return; }
 			throw new Exception ("unknown TokenStmt type " + stmt.GetType ().ToString ());
 		}
 
@@ -735,52 +740,55 @@ namespace MMR
 			}
 		}
 
+		/**
+		 * @brief output code for a 'do' statement
+		 * Must use labels and if/goto's instead of braces as the 'while' clause may generate temp 
+		 * assignment statements and so the result may not be in scope outside the closing brace.
+		 */
 		private void GenerateStmtDo (TokenStmtDo doStmt)
 		{
 			string lbl = GetTempNo ();
 
-			string breakLabel = "__DoBrk_" + lbl;
-			string contLabel = "__DoBot_" + lbl;
-
-			WriteOutput (doStmt, "__DoTop_" + lbl + ":;");
+			string loopLabel = "__DoLoop_" + lbl;
+			WriteOutput (doStmt, loopLabel + ":;");
 			GenerateStmt (doStmt.bodyStmt);
-			WriteOutput (doStmt, contLabel + ":;");
-			WriteOutput (doStmt, "__sm.continuation.CheckRun();");
-			CompRVal testRVal = GenerateFromRVal (doStmt.testRVal);
-			if (testRVal != null) {
-				WriteOutput (doStmt.testRVal, "if (");
-				OutputWithCastToBool (testRVal);
-				WriteOutput (doStmt.testRVal, ") goto __DoTop_" + lbl + ";");
-			}
-			WriteOutput (doStmt, breakLabel + ":;");
+			WriteOutput (doStmt, "__sc.CheckRun();");
+			CompRVal testRVal = GenerateFromRVal (null, doStmt.testRVal);
+			WriteOutput (doStmt.testRVal, "if (");
+			OutputWithCastToBool (testRVal);
+			WriteOutput (doStmt.testRVal, ") goto " + loopLabel + ";");
 		}
 
+		/**
+		 * @brief output code for a 'for' statement
+		 * Must use labels and if/goto's instead of braces as the test expression may generate temp 
+		 * assignment statements and then we can't cram all the temp assignment statments in a real
+		 * for statement.
+		 */
 		private void GenerateStmtFor (TokenStmtFor forStmt)
 		{
 			string lbl = GetTempNo ();
 
-			string breakLabel = "__ForBrk_" + lbl;
-			string loopLabel = "__ForTop_" + lbl;
+			string doneLabel = "__ForDone_" + lbl;
+			string loopLabel = "__ForLoop_" + lbl;
 
 			if (forStmt.initStmt != null) {
 				GenerateStmt (forStmt.initStmt);
 			}
 			WriteOutput (forStmt, loopLabel + ":;");
-			WriteOutput (forStmt, "__sm.continuation.CheckRun();");
+			WriteOutput (forStmt, "__sc.CheckRun();");
 			if (forStmt.testRVal != null) {
-				CompRVal testRVal = GenerateFromRVal (forStmt.testRVal);
-				if (testRVal != null) {
-					WriteOutput (forStmt.testRVal, "if (!");
-					OutputWithCastToBool (testRVal);
-					WriteOutput (forStmt.testRVal, ") goto " + breakLabel + ";");
-				}
+				CompRVal testRVal = GenerateFromRVal (null, forStmt.testRVal);
+				WriteOutput (forStmt.testRVal, "if (!");
+				OutputWithCastToBool (testRVal);
+				WriteOutput (forStmt.testRVal, ") goto " + doneLabel + ";");
 			}
 			GenerateStmt (forStmt.bodyStmt);
 			if (forStmt.incrRVal != null) {
-				GenerateFromRVal (forStmt.incrRVal);
+				GenerateFromRVal (new CompRVal (new TokenTypeVoid (forStmt), "forIncr"), forStmt.incrRVal);
 			}
 			WriteOutput (forStmt, "goto " + loopLabel + ";");
-			WriteOutput (forStmt, breakLabel + ":;");
+			WriteOutput (forStmt, doneLabel + ":;");
 		}
 
 		private void GenerateStmtForEach (TokenStmtForEach forEachStmt)
@@ -821,31 +829,30 @@ namespace MMR
 			WriteOutput (forEachStmt, ", ref ");
 			WriteOutput (forEachStmt, (valLVal == null) ? objectVar : valLVal.locstr);
 			WriteOutput (forEachStmt, ")) goto " + doneLabel + ";");
-			WriteOutput (forEachStmt, "__sm.continuation.CheckRun();");
+			WriteOutput (forEachStmt, "__sc.CheckRun();");
 			GenerateStmt (forEachStmt.bodyStmt);
 			WriteOutput (forEachStmt, "goto " + loopLabel + ";");
 			WriteOutput (forEachStmt, doneLabel + ":;");
 		}
 
+		/**
+		 * @brief output code for an 'if' statement
+		 * Braces are necessary because what may be one statement for trueStmt or elseStmt in
+		 * the script may translate to more than one statement in the resultant C# code.
+		 */
 		private void GenerateStmtIf (TokenStmtIf ifStmt)
 		{
-			string lbl = GetTempNo ();
-
-			CompRVal testRVal = GenerateFromRVal (ifStmt.testRVal);
-			WriteOutput (ifStmt, "if (!");
+			CompRVal testRVal = GenerateFromRVal (null, ifStmt.testRVal);
+			WriteOutput (ifStmt, "if (");
 			OutputWithCastToBool (testRVal);
-			WriteOutput (ifStmt, ") ");
-			if (ifStmt.elseStmt == null) {
-				WriteOutput (ifStmt, "goto __EndIf_" + lbl + ";");
-				GenerateStmt (ifStmt.trueStmt);
-			} else {
-				WriteOutput (ifStmt, "goto __Else_" + lbl + ";");
-				GenerateStmt (ifStmt.trueStmt);
-				WriteOutput (ifStmt, "goto __EndIf_" + lbl + ";");
-				WriteOutput (ifStmt, "__Else_" + lbl + ":;");
+			WriteOutput (ifStmt, ") {");
+			GenerateStmt (ifStmt.trueStmt);
+			WriteOutput (ifStmt, "}");
+			if (ifStmt.elseStmt != null) {
+				WriteOutput (ifStmt.elseStmt, "else {");
 				GenerateStmt (ifStmt.elseStmt);
+				WriteOutput (ifStmt.elseStmt, "}");
 			}
-			WriteOutput (ifStmt, "__EndIf_" + lbl + ":;");
 		}
 
 		/**
@@ -896,7 +903,7 @@ namespace MMR
 		{
 			WriteOutput (labelStmt, "__Jump_" + labelStmt.name.val + ":;");
 			if (labelStmt.hasBkwdRefs) {
-				WriteOutput (labelStmt, " __sm.continuation.CheckRun();");
+				WriteOutput (labelStmt, " __sc.CheckRun();");
 			}
 		}
 
@@ -906,23 +913,37 @@ namespace MMR
 		 */
 		private void GenerateStmtRet (TokenStmtRet retStmt)
 		{
-
 			/*
 			 * Set return value variable (if not void).
 			 */
 			if (retStmt.rVal != null) {
-				CompRVal rVal = GenerateFromRVal (retStmt.rVal);
-				WriteOutput (retStmt, "__retval = " + StringWithCast (curDeclFunc.retType, rVal) + ";");
-			} else {
-				if (!(curDeclFunc.retType is TokenTypeVoid)) {
-					ErrorMsg (retStmt, "function requires return value type " + curDeclFunc.retType.ToString ());
+				CompRVal retVal = new CompRVal (curDeclFunc.retType, "__retval");
+				CompRVal rVal = GenerateFromRVal (retVal, retStmt.rVal);
+				if (rVal != retVal) {
+					WriteOutput (retStmt, "__retval = " + StringWithCast (curDeclFunc.retType, rVal) + ";");
 				}
+			} else if (!(curDeclFunc.retType is TokenTypeVoid)) {
+				ErrorMsg (retStmt, "function requires return value type " + curDeclFunc.retType.ToString ());
 			}
 
 			/*
 			 * Goto function epilog.
 			 */
 			OutputGotoReturn (retStmt);
+		}
+
+		/**
+		 * @brief the statement is just an expression, most likely an assignment or a ++ or -- thing.
+		 */
+		private void GenerateStmtRVal (TokenStmtRVal rValStmt)
+		{
+			/*
+			 * Tell the expression code generator that the result is going to be
+			 * thrown away by giving it a location of type 'void'.  This will tell
+			 * things like 'i ++' or calls to not bother saving the result in a temp.
+			 */
+			CompRVal rVal = new CompRVal (new TokenTypeVoid (rValStmt), "rValStmt");
+			GenerateFromRVal (rVal, rValStmt.rVal);
 		}
 
 		/**
@@ -962,13 +983,11 @@ namespace MMR
 			string contLabel = "__WhileTop_" + lbl;
 
 			WriteOutput (whileStmt, contLabel + ":;");
-			WriteOutput (whileStmt, "__sm.continuation.CheckRun();");
-			CompRVal testRVal = GenerateFromRVal (whileStmt.testRVal);
-			if (testRVal != null) {
-				WriteOutput (whileStmt.testRVal, "if (!");
-				OutputWithCastToBool (testRVal);
-				WriteOutput (whileStmt.testRVal, ") goto " + breakLabel + ";");
-			}
+			WriteOutput (whileStmt, "__sc.CheckRun();");
+			CompRVal testRVal = GenerateFromRVal (null, whileStmt.testRVal);
+			WriteOutput (whileStmt.testRVal, "if (!");
+			OutputWithCastToBool (testRVal);
+			WriteOutput (whileStmt.testRVal, ") goto " + breakLabel + ";");
 			GenerateStmt (whileStmt.bodyStmt);
 			WriteOutput (whileStmt, "goto " + contLabel + ";");
 			WriteOutput (whileStmt, breakLabel + ":;");
@@ -984,12 +1003,16 @@ namespace MMR
 				/*
 				 * Script gave us an initialization value, so just use it.
 				 */
-				CompRVal rVal = GenerateFromRVal (declVar.init);
-				if (!declVar.preDefd) {
-					WriteOutput (declVar, TypeName(declVar.type) + " ");
+				CompRVal var;
+				if (declVar.preDefd) {
+					var = new CompRVal (declVar.type, "__lcl_" + declVar.name.val);
+				} else {
+					var = new CompRVal (declVar.type, TypeName (declVar.type) + " __lcl_" + declVar.name.val);
 				}
-				WriteOutput (declVar, "__lcl_" + declVar.name.val);
-				WriteOutput (declVar, " = " + StringWithCast (declVar.type, rVal) + ";");
+				CompRVal rVal = GenerateFromRVal (var, declVar.init);
+				if (rVal != var) {
+					WriteOutput (declVar, var.locstr + " = " + StringWithCast (var.type, rVal) + ";");
+				}
 				GenMemUseIncrement ("__lcl_" + declVar.name.val, declVar.type);
 			} else if (!declVar.preDefd) {
 
@@ -1026,7 +1049,7 @@ namespace MMR
 			/*
 			 * Compute subscript before rest of lVal in case of multiple subscripts.
 			 */
-			CompRVal subRVal = GenerateFromRVal (lVal.subRVal);
+			CompRVal subRVal = GenerateFromRVal (null, lVal.subRVal);
 
 			/*
 			 * Compute location of array itself.
@@ -1116,15 +1139,21 @@ namespace MMR
 
 		/**
 		 * @brief generate code from an RVal expression and return its type and where the result is stored.
-		 * For anything that does some type of computation, the result it put in a temp var and the temp var name is returned.
-		 * For anything like constants and variable names, the constant or variable name is returned as is (in string form).
-		 * Things like rotations and vectors are put in an object assigned to a temp var, and the temp var name is returned.
+		 * For anything that has side-effects, statements are generated that perform the computation then
+		 * the result it put in a temp var and the temp var name is returned.
+		 * For anything without side-effects, they are returned as an equivalent string.
+		 * Things like rotations and vectors are returned as a "new <objecttype>(<parameters>)" string.
+		 * @param result = null: result can go anywhere
+		 *                 else: try to put result here rather than create a temp if possible
+		 *                       but if result.type is TokenTypeVoid, throw the result value away
+		 * @param rVal = rVal token to be evaluated
+		 * @returns resultant type and location (= result param if result param is used)
 		 */
-		private CompRVal GenerateFromRVal (TokenRVal rVal)
+		private CompRVal GenerateFromRVal (CompRVal result, TokenRVal rVal)
 		{
-			if (rVal is TokenRValAsnPost)  return GenerateFromRValAsnPost ((TokenRValAsnPost)rVal);
-			if (rVal is TokenRValAsnPre)   return GenerateFromRValAsnPre  ((TokenRValAsnPre)rVal);
-			if (rVal is TokenRValCall)     return GenerateFromRValCall    ((TokenRValCall)rVal);
+			if (rVal is TokenRValAsnPost)  return GenerateFromRValAsnPost (result, (TokenRValAsnPost)rVal);
+			if (rVal is TokenRValAsnPre)   return GenerateFromRValAsnPre  (result, (TokenRValAsnPre)rVal);
+			if (rVal is TokenRValCall)     return GenerateFromRValCall    (result, (TokenRValCall)rVal);
 			if (rVal is TokenRValCast)     return GenerateFromRValCast    ((TokenRValCast)rVal);
 			if (rVal is TokenRValFloat)    return GenerateFromRValFloat   ((TokenRValFloat)rVal);
 			if (rVal is TokenRValInt)      return GenerateFromRValInt     ((TokenRValInt)rVal);
@@ -1145,13 +1174,13 @@ namespace MMR
 		/**
 		 * @brief compute the result of a binary operator
 		 * @param token = binary operator token, includes the left and right operands
-		 * @returns where the resultant R-value is
+		 * @returns where the resultant R-value is as something that doesn't have side effects
 		 */
 		private CompRVal GenerateFromRValOpBin (TokenRValOpBin token)
 		{
 			CompLVal leftLVal = null;
 			CompRVal left;
-			CompRVal right = GenerateFromRVal (token.rValRight);
+			CompRVal right;
 
 			/*
 			 * If left operand is an L-value, create an leftLVal location marker for it.
@@ -1161,14 +1190,36 @@ namespace MMR
 				leftLVal = GenerateFromLVal (((TokenRValLVal)token.rValLeft).lvToken);
 				left = new CompRVal (leftLVal.type, leftLVal.locstr);
 			} else {
-				left = GenerateFromRVal (token.rValLeft);
+				left = GenerateFromRVal (null, token.rValLeft);
 			}
 
 			/*
-			 * Formulate key string for binOpStrings = (lefttype)(operator)(righttype)
+			 * Simple overwriting assignments are their own special case,
+			 * as we want to cast the R-value to the type of the L-value.
+			 * StringWithCast() is what determines if it is legal or not.
+			 * And we might also be able to optimize out a temp by having
+			 * the result put directly in the L-value variable.
 			 */
-			string leftIndex = left.type.ToString ();
 			string opcodeIndex = token.opcode.ToString ();
+			if (opcodeIndex == "=") {
+				if (leftLVal == null) {
+					ErrorMsg (token, "invalid L-value");
+				} else {
+					GenMemUseDecrement (leftLVal.locstr, leftLVal.type);
+					right = GenerateFromRVal (left, token.rValRight);
+					if (right != left) {
+						WriteOutput (token, leftLVal.locstr + " = " + StringWithCast (leftLVal.type, right) + ";");
+					}
+					GenMemUseIncrement (leftLVal.locstr, leftLVal.type);
+				}
+				return left;
+			}
+
+			/*
+			 * Computation of some sort, formulate key string for binOpStrings = (lefttype)(operator)(righttype)
+			 */
+			right = GenerateFromRVal (null, token.rValRight);
+			string leftIndex = left.type.ToString ();
 			string rightIndex = right.type.ToString ();
 			string key = leftIndex + opcodeIndex + rightIndex;
 
@@ -1186,7 +1237,7 @@ namespace MMR
 				 * Make sure we don't include such things as ==, >=, etc.
 				 * Nothing like +=, -=, %=, etc, generate a boolean, only the comparisons.
 				 */
-				if ((binOpStr.outtype != typeof(bool)) && opcodeIndex.EndsWith ("=")) {
+				if ((binOpStr.outtype != typeof (bool)) && opcodeIndex.EndsWith ("=")) {
 					WriteOutput (token, String.Format (binOpStr.format, left.locstr, right.locstr));
 					WriteOutput (token, ";");
 					return left;
@@ -1194,42 +1245,28 @@ namespace MMR
 
 				/*
 				 * It's the form result = left binop right.
-				 * Create a temp for the result.
-				 * Output a statement to perform the computation.
-				 * Return location of temporary as location of result of computation.
+				 * If either the original left or right had side effects, they should have been evaluated
+				 * and put in temps already, so what we have for left and right don't have side effects.
+				 * So we can simply return (outtype)(left binop right) as the location of the result.
 				 */
-				CompRVal resultRVal = new CompRVal (TokenType.FromSysType (token.opcode, binOpStr.outtype));
-				WriteOutput (token, String.Format ("{0} {1} = ", TypeName(binOpStr.outtype), resultRVal.locstr));
 				string fmt = binOpStr.format;
-				int whack = binOpStr.format.IndexOf ('#');
+				int whack = fmt.IndexOf ('#');
 				if (whack >= 0) {
-					fmt = binOpStr.format.Substring (0, whack) + binOpStr.format.Substring (whack + 1);
+					fmt = fmt.Substring (0, whack) + fmt.Substring (whack + 1);
 				}
-				WriteOutput (token, String.Format (fmt, left.locstr, right.locstr));
-				WriteOutput (token, ";");
-				return resultRVal;
-			}
-
-			/*
-			 * Simple overwriting assignments are their own special case,
-			 * as we want to cast the R-value to the type of the L-value.
-			 * StringWithCast() is what determines if it is legal or not.
-			 */
-			if (opcodeIndex == "=") {
-				if (leftLVal == null) {
-					ErrorMsg (token, "invalid L-value");
-				} else {
-					GenMemUseDecrement (leftLVal.locstr, leftLVal.type);
-					WriteOutput (token, leftLVal.locstr + " = " + StringWithCast (leftLVal.type, right) + ";");
-					GenMemUseIncrement (leftLVal.locstr, leftLVal.type);
-				}
-				return left;
+				StringBuilder retval = new StringBuilder ("((");
+				retval.Append (TypeName (binOpStr.outtype));
+				retval.Append (")(");
+				retval.Append (String.Format (fmt, left.locstr, right.locstr));
+				retval.Append ("))");
+				return new CompRVal (TokenType.FromSysType (token.opcode, binOpStr.outtype), retval.ToString ());
 			}
 
 			/*
 			 * If the opcode ends with "=", it may be something like "+=".
 			 * So look up the key as if we didn't have the "=" to tell us if the operation is legal.
 			 * Also, the binary operation's output type must be the same as the L-value type.
+			 * Likewise, integer += float not allowed because result is float, but float += integer is ok.
 			 */
 			if (opcodeIndex.EndsWith ("=")) {
 				key = leftIndex + opcodeIndex.Substring (0, opcodeIndex.Length - 1) + rightIndex;
@@ -1246,13 +1283,14 @@ namespace MMR
 						/*
 						 * Types are ok, see if the '=' form is allowed...
 						 */
-						int whack = binOpStr.format.IndexOf ('#');
+						string fmt = binOpStr.format;
+						int whack = fmt.IndexOf ('#');
 						if (whack >= 0) {
 							if (leftLVal == null) {
 								ErrorMsg (token, "invalid L-value");
 							} else {
 								GenMemUseDecrement (leftLVal.locstr, leftLVal.type);
-								string fmt = binOpStr.format.Substring (0, whack) + '=' + binOpStr.format.Substring (whack + 1);
+								fmt = fmt.Substring (0, whack) + '=' + fmt.Substring (whack + 1);
 								WriteOutput (token, String.Format (fmt, leftLVal.locstr, right.locstr));
 								WriteOutput (token, ";");
 								GenMemUseIncrement (leftLVal.locstr, leftLVal.type);
@@ -1277,51 +1315,88 @@ namespace MMR
 		 */
 		private CompRVal GenerateFromRValOpUn (TokenRValOpUn token)
 		{
-			CompRVal inRVal = GenerateFromRVal (token.rVal);
+			CompRVal inRVal = GenerateFromRVal (null, token.rVal);
 			return UnOpGenerate (inRVal, token.opcode);
 		}
 
 		/**
 		 * @brief postfix operator -- this returns the type and location of the resultant value
 		 */
-		private CompRVal GenerateFromRValAsnPost (TokenRValAsnPost asnPost)
+		private CompRVal GenerateFromRValAsnPost (CompRVal result, TokenRValAsnPost asnPost)
 		{
 			CompLVal lVal = GenerateFromLVal (asnPost.lVal);
-			CompRVal rVal = new CompRVal (lVal.type);
-			WriteOutput (asnPost, TypeName(lVal.type) + " " + rVal.locstr + " = " + lVal.locstr + " " + asnPost.postfix.ToString () + ";");
-			return rVal;
+			if (result == null) {
+
+				/*
+				 * Caller says they want the resultant value put in a temp.
+				 */
+				result = new CompRVal (lVal.type);
+				WriteOutput (asnPost, TypeName(lVal.type) + " " + result.locstr + " = " + lVal.locstr + " " + asnPost.postfix.ToString () + ";");
+			} else if (result.type is TokenTypeVoid) {
+
+				/*
+				 * Caller says they are going to throw the value away so don't bother putting it anywhere.
+				 */
+				WriteOutput (asnPost, lVal.locstr + " " + asnPost.postfix.ToString () + ";");
+			} else {
+
+				/*
+				 * Caller would like us to put the value in a specific place.
+				 */
+				CompRVal rVal = new CompRVal (lVal.type, "(" + lVal.locstr + " " + asnPost.postfix.ToString () + ")");
+				WriteOutput (asnPost, result.locstr + " = " + StringWithCast (result.type, rVal) + ";");
+			}
+			return result;
 		}
 
 		/**
 		 * @brief prefix operator -- this returns the type and location of the resultant value
 		 */
-		private CompRVal GenerateFromRValAsnPre (TokenRValAsnPre asnPre)
+		private CompRVal GenerateFromRValAsnPre (CompRVal result, TokenRValAsnPre asnPre)
 		{
 			CompLVal lVal = GenerateFromLVal (asnPre.lVal);
-			CompRVal rVal = new CompRVal (lVal.type);
-			WriteOutput (asnPre, TypeName(lVal.type) + " " + rVal.locstr + " = " + asnPre.prefix.ToString () + " " + lVal.locstr + ";");
-			return rVal;
+			if (result == null) {
+
+				/*
+				 * Caller says they want the resultant value put in a temp.
+				 */
+				result = new CompRVal (lVal.type);
+				WriteOutput (asnPre, TypeName(lVal.type) + " " + result.locstr + " = " + asnPre.prefix.ToString () + " " + lVal.locstr + ";");
+			} else if (result.type is TokenTypeVoid) {
+
+				/*
+				 * Caller says they are going to throw the value away so don't bother putting it anywhere.
+				 */
+				WriteOutput (asnPre, asnPre.prefix.ToString () + " " + lVal.locstr + ";");
+			} else {
+
+				/*
+				 * Caller would like us to put the value in a specific place.
+				 */
+				CompRVal rVal = new CompRVal (lVal.type, "(" + asnPre.prefix.ToString () + " " + lVal.locstr + ")");
+				WriteOutput (asnPre, result.locstr + " = " + StringWithCast (result.type, rVal) + ";");
+			}
+			return result;
 		}
 
 		/**
-		 * @brief Generate code that calls a function or boject's method.
-		 * @returns where the call's return value is stored.
+		 * @brief Generate code that calls a function or object's method.
+		 * @returns where the call's return value is stored (a TokenTypeVoid if void)
 		 */
-		private CompRVal GenerateFromRValCall (TokenRValCall call)
+		private CompRVal GenerateFromRValCall (CompRVal result, TokenRValCall call)
 		{
-			if (call.meth is TokenLValField) return GenerateFromRValCallField (call);
-			if (call.meth is TokenLValName)  return GenerateFromRValCallName  (call);
-			throw new Exception ("unknow call type");
+			if (call.meth is TokenLValField) return GenerateFromRValCallField (result, call);
+			if (call.meth is TokenLValName)  return GenerateFromRValCallName  (result, call);
+			throw new Exception ("unknown call type");
 		}
 
 		/**
 		 * @brief Generate code that calls a method of an object.
-		 * @returns where the call's return value is stored.
+		 * @returns where the call's return value is stored (a TokenTypeVoid if void)
 		 */
-		private CompRVal GenerateFromRValCallField (TokenRValCall call)
+		private CompRVal GenerateFromRValCallField (CompRVal result, TokenRValCall call)
 		{
 			CompRVal[] argRVals = null;
-			CompRVal retRVal = null;
 			int i, nargs;
 			string name;
 			TokenDeclFunc declFunc;
@@ -1329,13 +1404,15 @@ namespace MMR
 			/*
 			 * Compute the values of all the function's call arguments.
 			 * Save where the computation results are in the argRVals[] array.
+			 * We can't generate these inline with the call itself as GenerateFromRVal() may
+			 * output complete statements to compute some particular argument.
 			 */
 			nargs = call.nArgs;
 			if (nargs > 0) {
 				argRVals = new CompRVal[nargs];
 				i = 0;
 				for (TokenRVal arg = call.args; arg != null; arg = (TokenRVal)arg.nextToken) {
-					argRVals[i] = GenerateFromRVal (arg);
+					argRVals[i] = GenerateFromRVal (null, arg);
 					i ++;
 				}
 			}
@@ -1357,47 +1434,30 @@ namespace MMR
 			}
 
 			/*
-			 * If return type isn't void, set up a temp to put return value in.
-			 */
-			retRVal = new CompRVal (declFunc.retType);
-			if (!(declFunc.retType is TokenTypeVoid)) {
-				WriteOutput (call, TypeName(declFunc.retType) + " " + retRVal.locstr + " = ");
-			}
-
-			/*
 			 * Generate call.
 			 */
+			StringBuilder callString = new StringBuilder ();
 			if (declFunc.retType.lslBoxing == typeof (LSL_Float)) {
-				WriteOutput (call, "(float)");  // because LSL_Float.value is a 'double'
+				callString.Append ("(float)");  // because LSL_Float.value is a 'double'
 			}
-			WriteOutput (call, name + "(");
+			callString.Append (name + "(");
 			for (i = 0; i < nargs; i ++) {
-				if (i > 0) WriteOutput (call, ",");
-				OutputWithCast (declFunc.argDecl.types[i], argRVals[i]);
+				if (i > 0) callString.Append (",");
+				callString.Append (StringWithCast (declFunc.argDecl.types[i], argRVals[i]));
 			}
-			WriteOutput (call, ")");
+			callString.Append (")");
 
-			/*
-			 * Maybe we have to unbox the LSL-style boxed return value.
-			 * This converts things like LSL_Integer madness to int.
-			 */
-			if (declFunc.retType.lslBoxing != null) {
-				WriteOutput (call, ".value");
-			}
-
-			WriteOutput (call, ";");
-			return retRVal;
+			return OutputCallStatement (result, call, declFunc, callString);
 		}
 
 		/**
 		 * @brief Generate code that calls a function.
-		 * @returns where the call's return value is stored.
+		 * @returns where the call's return value is stored (a TokenTypeVoid if void)
 		 */
-		private CompRVal GenerateFromRValCallName (TokenRValCall call)
+		private CompRVal GenerateFromRValCallName (CompRVal result, TokenRValCall call)
 		{
 			bool isBEAPIFunc;
 			CompRVal[] argRVals = null;
-			CompRVal retRVal = null;
 			int i, nargs;
 			string name;
 			StringBuilder signature;
@@ -1421,7 +1481,7 @@ namespace MMR
 				argRVals = new CompRVal[nargs];
 				i = 0;
 				for (TokenRVal arg = call.args; arg != null; arg = (TokenRVal)arg.nextToken) {
-					argRVals[i] = GenerateFromRVal (arg);
+					argRVals[i] = GenerateFromRVal (null, arg);
 					if (i > 0) signature.Append (",");
 					signature.Append (argRVals[i].type.ToString ());
 					i ++;
@@ -1461,56 +1521,42 @@ namespace MMR
 			}
 
 			/*
-			 * If return type isn't void, set up a temp to put return value in.
-			 */
-			retRVal = new CompRVal (declFunc.retType);
-			if (!(declFunc.retType is TokenTypeVoid)) {
-				WriteOutput (call, TypeName(declFunc.retType) + " " + retRVal.locstr + " = ");
-			}
-
-			/*
 			 * If calling a backend api function, prefix with beapi object reference.
 			 * If calling a script-defined function, first arg is __sm to pass context along as it is static.
 			 */
+			StringBuilder callString = new StringBuilder ();
 			if (isBEAPIFunc) {
 				if (declFunc.retType.lslBoxing == typeof (LSL_Float)) {
-					WriteOutput (call, "(float)");  // because LSL_Float.value is a 'double'
+					callString.Append ("(float)");  // because LSL_Float.value is a 'double'
 				}
-				WriteOutput (call, "__sm.beAPI." + name + "(");
+				callString.Append ("__sm.beAPI." + name + "(");
 				if (nargs > 0) {
-					if (declFunc.argDecl.types == null) WriteOutput (call, argRVals[0].locstr);
-					else OutputWithCast (declFunc.argDecl.types[0], argRVals[0]);
+					if (declFunc.argDecl.types == null) callString.Append (argRVals[0].locstr);
+					else callString.Append (StringWithCast (declFunc.argDecl.types[0], argRVals[0]));
 					for (i = 0; ++ i < nargs;) {
-						WriteOutput (call, ",");
-						if (declFunc.argDecl.types == null) WriteOutput (call, argRVals[i].locstr);
-						else OutputWithCast (declFunc.argDecl.types[i], argRVals[i]);
+						callString.Append (",");
+						if (declFunc.argDecl.types == null) callString.Append (argRVals[i].locstr);
+						else callString.Append (StringWithCast (declFunc.argDecl.types[i], argRVals[i]));
 					}
 				}
-				WriteOutput (call, ")");
+				callString.Append (")");
 
-				/*
-				 * Maybe we have to unbox the LSL-style boxed return value.
-				 * This converts things like LSL_Integer madness to int.
-				 */
-				if (declFunc.retType.lslBoxing != null) {
-					WriteOutput (call, ".value");
-				}
-
-				WriteOutput (call, ";");
+				result = OutputCallStatement (result, call, declFunc, callString);
 
 				/*
 				 * Also, we want to call CheckRun() after every backend call as
 				 * the backend call may have set flags for CheckRun() to process.
 				 */
-				WriteOutput (call, "__sm.continuation.CheckRun();");
+				WriteOutput (call, "__sc.CheckRun();");
 			} else {
-				WriteOutput (call, "__fun_" + name + "(__sm");
+				callString.Append ("__fun_" + name + "(__sm");
 				for (i = 0; i < nargs; i ++) {
-					WriteOutput (call, ",");
-					if (declFunc.argDecl.types == null) WriteOutput (call, argRVals[i].locstr);
-					else OutputWithCast (declFunc.argDecl.types[i], argRVals[i]);
+					callString.Append (",");
+					if (declFunc.argDecl.types == null) callString.Append (argRVals[i].locstr);
+					else callString.Append (StringWithCast (declFunc.argDecl.types[i], argRVals[i]));
 				}
-				WriteOutput (call, ");");
+				callString.Append (")");
+				result = OutputCallStatement (result, call, declFunc, callString);
 
 				/*
 				 * Also, unwind out if the inner function changed state.
@@ -1519,7 +1565,55 @@ namespace MMR
 				OutputGotoReturn (call);
 				WriteOutput (call, "}");
 			}
-			return retRVal;
+			return result;
+		}
+
+		/**
+		 * @brief Output the C# call statement itself
+		 * @param result = suggested place of where to put result
+		 * @param call = the call statement token
+		 * @param declFunc = call function declaration
+		 * @param callString = string giving the C# equivalent call, up to and including the ")"
+		 * @returns where the result is (a TokenTypeVoid if void)
+		 */
+		private CompRVal OutputCallStatement (CompRVal result, TokenRValCall call, TokenDeclFunc declFunc, StringBuilder callString)
+		{
+
+			/*
+			 * Maybe we have to unbox the LSL-style boxed return value.
+			 * This converts things like LSL_Integer madness to int.
+			 */
+			if (declFunc.retType.lslBoxing != null) {
+				if ((result == null) || !(result.type is TokenTypeVoid)) {
+					callString.Append (".value");
+				}
+			}
+			callString.Append (";");
+
+			/*
+			 * If return is void, just output the call by itself.
+			 */
+			if (declFunc.retType is TokenTypeVoid) {
+				WriteOutput (call, callString.ToString ());
+				if (result == null) {
+					result = new CompRVal (declFunc.retType, "voidCall");
+				} else if (!(result.type is TokenTypeVoid)) {
+					ErrorMsg (call, "function doesn't return a value");
+				}
+				return result;
+			}
+
+			/*
+			 * Otherwise, put the result somewhere, either in given result location or a temp.
+			 */
+			if (result == null) {
+				result = new CompRVal (declFunc.retType);
+				WriteOutput (call, TypeName (declFunc.retType) + " " + result.locstr + " = ");
+			} else if (!(result.type is TokenTypeVoid)) {
+				WriteOutput (call, result.locstr + " = ");
+			}
+			WriteOutput (call, callString.ToString ());
+			return result;
 		}
 
 		/**
@@ -1528,14 +1622,11 @@ namespace MMR
 		 */
 		private CompRVal GenerateFromRValCast (TokenRValCast cast)
 		{
-			CompRVal inRVal = GenerateFromRVal (cast.rVal);
+			CompRVal inRVal = GenerateFromRVal (null, cast.rVal);
 			TokenType outType = cast.castTo;
 
 			if (inRVal.type == outType) return inRVal;
-
-			CompRVal outRVal = new CompRVal (outType);
-			WriteOutput (cast, TypeName(outType) + " " + outRVal.locstr + " = " + StringWithCast (outType, inRVal, true) + ";");
-			return outRVal;
+			return new CompRVal (outType, "(" + StringWithCast (outType, inRVal, true) + ")");
 		}
 
 		/**
@@ -1563,16 +1654,17 @@ namespace MMR
 			string arrayLocstr = "__tmp_" + ScriptCodeGen.GetTempNo ();
 			WriteOutput (rValList, "object[] " + arrayLocstr + " = new object[" + rValList.nItems + "];");
 			int i = 0;
+			TokenType tto = new TokenTypeObject (rValList);
 			for (TokenRVal val = rValList.rVal; val != null; val = (TokenRVal)val.nextToken) {
-				CompRVal eRVal = GenerateFromRVal (val);
-				WriteOutput (val, arrayLocstr + "[" + i + "] = (object)" + eRVal.locstr + ";");
+				CompRVal tRVal = new CompRVal (tto, arrayLocstr + "[" + i + "]");
+				CompRVal eRVal = GenerateFromRVal (tRVal, val);
+				if (eRVal != tRVal) {
+					WriteOutput (val, tRVal.locstr + " = (object)" + eRVal.locstr + ";");
+				}
 				i ++;
 			}
-
-			CompRVal compRVal = new CompRVal (new TokenTypeList (rValList.rVal));
-			WriteOutput (rValList, TypeName(typeof(LSL_List)) + " " + compRVal.locstr + " = new " + 
-			                       TypeName(typeof(LSL_List)) + "(" + arrayLocstr + ");");
-			return compRVal;
+			return new CompRVal (new TokenTypeList (rValList.rVal),
+			                     "(new " + TypeName (typeof (LSL_List)) + "(" + arrayLocstr + "))");
 		}
 
 		/**
@@ -1607,7 +1699,7 @@ namespace MMR
 		 */
 		private CompRVal GenerateFromRValParen (TokenRValParen rValParen)
 		{
-			return GenerateFromRVal (rValParen.rVal);
+			return GenerateFromRVal (null, rValParen.rVal);
 		}
 
 		/**
@@ -1618,10 +1710,10 @@ namespace MMR
 			CompRVal xRVal, yRVal, zRVal, wRVal;
 			TokenTypeFloat flToken = new TokenTypeFloat (rValRot);
 
-			xRVal = GenerateFromRVal (rValRot.xRVal);
-			yRVal = GenerateFromRVal (rValRot.yRVal);
-			zRVal = GenerateFromRVal (rValRot.zRVal);
-			wRVal = GenerateFromRVal (rValRot.wRVal);
+			xRVal = GenerateFromRVal (null, rValRot.xRVal);
+			yRVal = GenerateFromRVal (null, rValRot.yRVal);
+			zRVal = GenerateFromRVal (null, rValRot.zRVal);
+			wRVal = GenerateFromRVal (null, rValRot.wRVal);
 			return new CompRVal (new TokenTypeRot (rValRot),
 					"new " + TypeName(typeof(LSL_Rotation)) + "(" + StringWithCast (flToken, xRVal) + "," + StringWithCast (flToken, yRVal) + "," +
 					StringWithCast (flToken, zRVal) + "," + StringWithCast (flToken, wRVal) + ")");
@@ -1655,9 +1747,9 @@ namespace MMR
 			CompRVal xRVal, yRVal, zRVal;
 			TokenTypeFloat flToken = new TokenTypeFloat (rValVec);
 
-			xRVal = GenerateFromRVal (rValVec.xRVal);
-			yRVal = GenerateFromRVal (rValVec.yRVal);
-			zRVal = GenerateFromRVal (rValVec.zRVal);
+			xRVal = GenerateFromRVal (null, rValVec.xRVal);
+			yRVal = GenerateFromRVal (null, rValVec.yRVal);
+			zRVal = GenerateFromRVal (null, rValVec.zRVal);
 			return new CompRVal (new TokenTypeVec (rValVec),
 					"new " + TypeName(typeof(LSL_Vector)) + "(" + StringWithCast (flToken, xRVal) + "," +
 					StringWithCast (flToken, yRVal) + "," + StringWithCast (flToken, zRVal) + ")");
@@ -1668,7 +1760,7 @@ namespace MMR
 		 */
 		private CompRVal GenerateFromRValIsType (TokenRValIsType rValIsType)
 		{
-			CompRVal rValExp = GenerateFromRVal (rValIsType.rValExp);
+			CompRVal rValExp = GenerateFromRVal (null, rValIsType.rValExp);
 			CompRVal rValRet = new CompRVal (tokenTypeBool, "(" + CheckTypeIsExp (rValExp, rValIsType.typeExp) + ")");
 			return rValRet;
 		}
@@ -2298,24 +2390,9 @@ namespace MMR
 			 * - Negate
 			 */
 			if (opcode is TokenKwSub) {
-				if ((inRVal.type is TokenTypeFloat) || (inRVal.type is TokenTypeInt)) {
-					CompRVal outRVal = new CompRVal (inRVal.type);
-					WriteOutput (opcode, TypeName(inRVal.type) + " " + outRVal.locstr + " = -" + inRVal.locstr + ";");
-					return outRVal;
-				}
-				if (inRVal.type is TokenTypeRot) {
-					CompRVal outRVal = new CompRVal (inRVal.type);
-					WriteOutput (opcode, TypeName(typeof(LSL_Rotation)) + " " + outRVal.locstr + " = new " +
-					                     TypeName(typeof(LSL_Rotation)) + "(-(float)" + inRVal.locstr + ".x,-(float)" +
-							inRVal.locstr + ".y,-(float)" + inRVal.locstr + ".z,-(float)" + inRVal.locstr + ".w);");
-					return outRVal;
-				}
-				if (inRVal.type is TokenTypeVec) {
-					CompRVal outRVal = new CompRVal (inRVal.type);
-					WriteOutput (opcode, TypeName(typeof(LSL_Vector)) + " " + outRVal.locstr + " = new " +
-					                     TypeName(typeof(LSL_Vector)) + "(-(float)" + inRVal.locstr + ".x,-(float)" +
-							inRVal.locstr + ".y,-(float)" + inRVal.locstr + ".z);");
-					return outRVal;
+				if ((inRVal.type is TokenTypeFloat) || (inRVal.type is TokenTypeInt) ||
+				    (inRVal.type is TokenTypeRot) || (inRVal.type is TokenTypeVec)) {
+					return new CompRVal (inRVal.type, "(-" + inRVal.locstr + ")");
 				}
 				ErrorMsg (opcode, "can't negate " + inRVal.type.ToString ());
 				return inRVal;
@@ -2326,9 +2403,7 @@ namespace MMR
 			 */
 			if (opcode is TokenKwTilde) {
 				if (inRVal.type is TokenTypeInt) {
-					CompRVal outRVal = new CompRVal (inRVal.type);
-					WriteOutput (opcode, TypeName(inRVal.type) + " " + outRVal.locstr + " = ~" + inRVal.locstr + ";");
-					return outRVal;
+					return new CompRVal (inRVal.type, "(~" + inRVal.locstr + ")");
 				}
 				ErrorMsg (opcode, "can't complement " + inRVal.type.ToString ());
 				return inRVal;
@@ -2338,9 +2413,7 @@ namespace MMR
 			 * ! Not (boolean)
 			 */
 			if (opcode is TokenKwExclam) {
-				CompRVal outRVal = new CompRVal (tokenTypeBool);
-				WriteOutput (opcode, "bool " + outRVal.locstr + " = !" + StringWithCast (tokenTypeBool, inRVal) + ";");
-				return outRVal;
+				return new CompRVal (tokenTypeBool, "(!" + StringWithCast (tokenTypeBool, inRVal) + ")");
 			}
 
 			throw new Exception ("unhandled opcode " + opcode.ToString ());
