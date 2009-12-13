@@ -186,7 +186,7 @@ namespace MMR
 			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclVar> kvp in tokenScript.vars) {
 				TokenDeclVar declVar = kvp.Value;
 				AddVarDefinition (declVar.type, declVar.name.val);
-				WriteOutput (declVar, "private " + TypeName(declVar.type) + " __gbl_" + declVar.name.val + ";");
+				WriteOutput (declVar, "private " + TypeName (declVar.type) + " __gbl_" + declVar.name.val + ";");
 				nGlobals ++;
 			}
 
@@ -332,7 +332,7 @@ namespace MMR
 			WriteOutput (0, "public override void MigrateScriptIn (System.IO.Stream stream, Mono.Tasklets.MMRContRecvObj recvObj) {");
 			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclVar> kvp in tokenScript.vars) {
 				TokenDeclVar declVar = kvp.Value;
-				WriteOutput (0, "__gbl_" + declVar.name.val + " = (" + TypeName(declVar.type) + ")recvObj (stream);");
+				WriteOutput (0, "__gbl_" + declVar.name.val + " = (" + TypeName (declVar.type) + ")recvObj (stream);");
 			}
 			WriteOutput (0, "}");
 
@@ -524,8 +524,8 @@ namespace MMR
 				// warning CS0219: The variable `__lcl_change' is assigned but its value is never used
 				WriteOutput (0, "#pragma warning disable 219\n");
 				for (int i = 0; i < argDecl.types.Length; i ++) {
-					WriteOutput (argDecl, TypeName(argDecl.types[i]) + " __lcl_" + argDecl.names[i].val + " = (" +
-							TypeName(argDecl.types[i]) + ")__sw.ehArgs[" + i + "];");
+					WriteOutput (argDecl, TypeName (argDecl.types[i]) + " __lcl_" + argDecl.names[i].val + " = (" +
+							TypeName (argDecl.types[i]) + ")__sw.ehArgs[" + i + "];");
 					AddVarDefinition (argDecl.types[i], argDecl.names[i].val);
 				}
 				WriteOutput (0, "#pragma warning restore 219\n");
@@ -568,14 +568,14 @@ namespace MMR
 			if (declFunc.retType is TokenTypeVoid) {
 				WriteOutput (declFunc, "void");
 			} else {
-				WriteOutput (declFunc, TypeName(declFunc.retType));
+				WriteOutput (declFunc, TypeName (declFunc.retType));
 			}
 			WriteOutput (declFunc, " __fun_");
 			WriteOutput (declFunc, name);
 			WriteOutput (declFunc, "(" + smClassName + " __sm");
 			if (argDecl.types.Length > 0) {
 				for (int i = 0; i < argDecl.types.Length; i ++) {
-					WriteOutput (argDecl, "," + TypeName(argDecl.types[i]) + " __lcl_" + argDecl.names[i].val);
+					WriteOutput (argDecl, "," + TypeName (argDecl.types[i]) + " __lcl_" + argDecl.names[i].val);
 					AddVarDefinition (argDecl.types[i], argDecl.names[i].val);
 				}
 			}
@@ -589,7 +589,7 @@ namespace MMR
 			/*
 			 * See if time to suspend in case they are doing a loop with recursion.
 			 */
-			WriteOutput (0, TypeName (typeof (ScriptContinuation)) + " __sc = __sm.continuation;");
+			WriteOutput (declFunc.body, TypeName (typeof (ScriptContinuation)) + " __sc = __sm.continuation;");
 			WriteOutput (declFunc.body, "__sc.CheckRun();");
 
 			/*
@@ -610,7 +610,7 @@ namespace MMR
 			 * Set up a local variable to capture return value.
 			 */
 			if (!(declFunc.retType is TokenTypeVoid)) {
-				WriteOutput (declFunc, TypeName(declFunc.retType) + " __retval = " + DefaultValue (declFunc.retType) + ";");
+				WriteOutput (declFunc, TypeName (declFunc.retType) + " __retval = " + DefaultValue (declFunc.retType) + ";");
 			}
 
 			/*
@@ -703,7 +703,7 @@ namespace MMR
 				} else if (seenStatements) {
 					TokenDeclVar declVar = (TokenDeclVar)t;
 					declVar.preDefd = true;
-					WriteOutput (declVar, TypeName(declVar.type) + " __lcl_" + declVar.name.val + " = " + DefaultValue (declVar.type) + ";");
+					WriteOutput (declVar, TypeName (declVar.type) + " __lcl_" + declVar.name.val + " = " + DefaultValue (declVar.type) + ";");
 				}
 			}
 
@@ -1020,7 +1020,7 @@ namespace MMR
 				 * Scripts have paths that don't initialize variables.
 				 * So initialize them with something so C# compiler doesn't complain.
 				 */
-				WriteOutput (declVar, TypeName(declVar.type) + " __lcl_" + declVar.name.val + " = " + DefaultValue (declVar.type) + ";");
+				WriteOutput (declVar, TypeName (declVar.type) + " __lcl_" + declVar.name.val + " = " + DefaultValue (declVar.type) + ";");
 			}
 
 			/*
@@ -1161,7 +1161,7 @@ namespace MMR
 			if (rVal is TokenRValList)     return GenerateFromRValList    ((TokenRValList)rVal);
 			if (rVal is TokenRValConst)    return ((TokenRValConst)rVal).val.rVal;
 			if (rVal is TokenRValLVal)     return GenerateFromRValLVal    ((TokenRValLVal)rVal);
-			if (rVal is TokenRValOpBin)    return GenerateFromRValOpBin   ((TokenRValOpBin)rVal);
+			if (rVal is TokenRValOpBin)    return GenerateFromRValOpBin   (result, (TokenRValOpBin)rVal);
 			if (rVal is TokenRValOpUn)     return GenerateFromRValOpUn    ((TokenRValOpUn)rVal);
 			if (rVal is TokenRValParen)    return GenerateFromRValParen   ((TokenRValParen)rVal);
 			if (rVal is TokenRValRot)      return GenerateFromRValRot     ((TokenRValRot)rVal);
@@ -1176,10 +1176,10 @@ namespace MMR
 		 * @param token = binary operator token, includes the left and right operands
 		 * @returns where the resultant R-value is as something that doesn't have side effects
 		 */
-		private CompRVal GenerateFromRValOpBin (TokenRValOpBin token)
+		private CompRVal GenerateFromRValOpBin (CompRVal result, TokenRValOpBin token)
 		{
 			CompLVal leftLVal = null;
-			CompRVal left;
+			CompRVal left = null;
 			CompRVal right;
 
 			/*
@@ -1189,8 +1189,6 @@ namespace MMR
 			if (token.rValLeft is TokenRValLVal) {
 				leftLVal = GenerateFromLVal (((TokenRValLVal)token.rValLeft).lvToken);
 				left = new CompRVal (leftLVal.type, leftLVal.locstr);
-			} else {
-				left = GenerateFromRVal (null, token.rValLeft);
 			}
 
 			/*
@@ -1202,8 +1200,9 @@ namespace MMR
 			 */
 			string opcodeIndex = token.opcode.ToString ();
 			if (opcodeIndex == "=") {
-				if (leftLVal == null) {
+				if (left == null) {
 					ErrorMsg (token, "invalid L-value");
+					left = GenerateFromRVal (null, token.rValLeft);
 				} else {
 					GenMemUseDecrement (leftLVal.locstr, leftLVal.type);
 					right = GenerateFromRVal (left, token.rValRight);
@@ -1216,9 +1215,44 @@ namespace MMR
 			}
 
 			/*
-			 * Computation of some sort, formulate key string for binOpStrings = (lefttype)(operator)(righttype)
+			 * Comma operators are also special, as they say to compute the left-hand value
+			 * and discard it, then compute the right-hand argument and that is the result.
+			 */
+			if (opcodeIndex == ",") {
+
+				/*
+				 * Compute left-hand operand but throw away result (because we say to store in a 'void').
+				 */
+				if (left == null) {
+					CompRVal leftRVal = new CompRVal (new TokenTypeVoid (token.opcode), "comma");
+					GenerateFromRVal (leftRVal, token.rValLeft);
+				}
+
+				/*
+				 * Compute right-hand operand and that is the value of the expression.
+				 */
+				return GenerateFromRVal (result, token.rValRight);
+			}
+
+			/*
+			 * Computation of some sort, compute right-hand operand value then left-hand value
+			 * because LSL is supposed to be right-to-left evaluation.
+			 *
+			 * If left-hand operand has side effects, force right-hand operand into a temp so
+			 * it will get computed first, and not just stacked for later evaluation.
 			 */
 			right = GenerateFromRVal (null, token.rValRight);
+			if (token.rValLeft.sideEffects && !right.isFinal) {
+				CompRVal rightTemp = new CompRVal (right.type);
+				WriteOutput (token.rValRight, TypeName (rightTemp.type) + " " + rightTemp.locstr + " = ");
+				WriteOutput (token.rValRight, StringWithCast (rightTemp.type, right) + ";");
+				right = rightTemp;
+			}
+			left = GenerateFromRVal (null, token.rValLeft);
+
+			/*
+			 * Formulate key string for binOpStrings = (lefttype)(operator)(righttype)
+			 */
 			string leftIndex = left.type.ToString ();
 			string rightIndex = right.type.ToString ();
 			string key = leftIndex + opcodeIndex + rightIndex;
@@ -1244,7 +1278,7 @@ namespace MMR
 				}
 
 				/*
-				 * It's the form result = left binop right.
+				 * It's the form left binop right.
 				 * If either the original left or right had side effects, they should have been evaluated
 				 * and put in temps already, so what we have for left and right don't have side effects.
 				 * So we can simply return (outtype)(left binop right) as the location of the result.
@@ -1259,7 +1293,9 @@ namespace MMR
 				retval.Append (")(");
 				retval.Append (String.Format (fmt, left.locstr, right.locstr));
 				retval.Append ("))");
-				return new CompRVal (TokenType.FromSysType (token.opcode, binOpStr.outtype), retval.ToString ());
+				CompRVal retRVal = new CompRVal (TokenType.FromSysType (token.opcode, binOpStr.outtype), retval.ToString ());
+				retRVal.isFinal = left.isFinal && right.isFinal;
+				return retRVal;
 			}
 
 			/*
@@ -1305,7 +1341,7 @@ namespace MMR
 			 * Can't find it, oh well.
 			 */
 			ErrorMsg (token, "op not defined: " + leftIndex + " " + opcodeIndex + " " + rightIndex);
-			return new CompRVal (new TokenTypeVoid (token.opcode));
+			return new CompRVal (new TokenTypeVoid (token.opcode), "undefOp");
 		}
 
 		/**
@@ -1331,7 +1367,7 @@ namespace MMR
 				 * Caller says they want the resultant value put in a temp.
 				 */
 				result = new CompRVal (lVal.type);
-				WriteOutput (asnPost, TypeName(lVal.type) + " " + result.locstr + " = " + lVal.locstr + " " + asnPost.postfix.ToString () + ";");
+				WriteOutput (asnPost, TypeName (lVal.type) + " " + result.locstr + " = " + lVal.locstr + " " + asnPost.postfix.ToString () + ";");
 			} else if (result.type is TokenTypeVoid) {
 
 				/*
@@ -1361,7 +1397,7 @@ namespace MMR
 				 * Caller says they want the resultant value put in a temp.
 				 */
 				result = new CompRVal (lVal.type);
-				WriteOutput (asnPre, TypeName(lVal.type) + " " + result.locstr + " = " + asnPre.prefix.ToString () + " " + lVal.locstr + ";");
+				WriteOutput (asnPre, TypeName (lVal.type) + " " + result.locstr + " = " + asnPre.prefix.ToString () + " " + lVal.locstr + ";");
 			} else if (result.type is TokenTypeVoid) {
 
 				/*
@@ -1626,7 +1662,10 @@ namespace MMR
 			TokenType outType = cast.castTo;
 
 			if (inRVal.type == outType) return inRVal;
-			return new CompRVal (outType, "(" + StringWithCast (outType, inRVal, true) + ")");
+
+			CompRVal outRVal = new CompRVal (outType, "(" + StringWithCast (outType, inRVal, true) + ")");
+			outRVal.isFinal = inRVal.isFinal;
+			return outRVal;
 		}
 
 		/**
@@ -1634,7 +1673,9 @@ namespace MMR
 		 */
 		private CompRVal GenerateFromRValFloat (TokenRValFloat rValFloat)
 		{
-			return new CompRVal (new TokenTypeFloat (rValFloat), rValFloat.flToken.ToString ());
+			CompRVal rVal = new CompRVal (new TokenTypeFloat (rValFloat), rValFloat.flToken.ToString ());
+			rVal.isFinal = true;
+			return rVal;
 		}
 
 		/**
@@ -1642,7 +1683,9 @@ namespace MMR
 		 */
 		private CompRVal GenerateFromRValInt (TokenRValInt rValInt)
 		{
-			return new CompRVal (new TokenTypeInt (rValInt), rValInt.inToken.ToString ());
+			CompRVal rVal = new CompRVal (new TokenTypeInt (rValInt), rValInt.inToken.ToString ());
+			rVal.isFinal = true;
+			return rVal;
 		}
 
 		/**
@@ -1715,8 +1758,9 @@ namespace MMR
 			zRVal = GenerateFromRVal (null, rValRot.zRVal);
 			wRVal = GenerateFromRVal (null, rValRot.wRVal);
 			return new CompRVal (new TokenTypeRot (rValRot),
-					"new " + TypeName(typeof(LSL_Rotation)) + "(" + StringWithCast (flToken, xRVal) + "," + StringWithCast (flToken, yRVal) + "," +
-					StringWithCast (flToken, zRVal) + "," + StringWithCast (flToken, wRVal) + ")");
+			                     "(new " + TypeName (typeof (LSL_Rotation)) + "(" + StringWithCast (flToken, xRVal) + "," + 
+			                     StringWithCast (flToken, yRVal) + "," +
+					     StringWithCast (flToken, zRVal) + "," + StringWithCast (flToken, wRVal) + "))");
 		}
 
 		/**
@@ -1724,7 +1768,9 @@ namespace MMR
 		 */
 		private CompRVal GenerateFromRValStr (TokenRValStr rValStr)
 		{
-			return new CompRVal (new TokenTypeStr (rValStr), rValStr.strToken.ToString ());
+			CompRVal rVal = new CompRVal (new TokenTypeStr (rValStr), rValStr.strToken.ToString ());
+			rVal.isFinal = true;
+			return rVal;
 		}
 
 		/**
@@ -1736,7 +1782,9 @@ namespace MMR
 		 */
 		private CompRVal GenerateFromRValUndef (TokenRValUndef rValUndef)
 		{
-			return new CompRVal (new TokenTypeObject (rValUndef), "null");
+			CompRVal rVal = new CompRVal (new TokenTypeObject (rValUndef), "null");
+			rVal.isFinal = true;
+			return rVal;
 		}
 
 		/**
@@ -1751,8 +1799,8 @@ namespace MMR
 			yRVal = GenerateFromRVal (null, rValVec.yRVal);
 			zRVal = GenerateFromRVal (null, rValVec.zRVal);
 			return new CompRVal (new TokenTypeVec (rValVec),
-					"new " + TypeName(typeof(LSL_Vector)) + "(" + StringWithCast (flToken, xRVal) + "," +
-					StringWithCast (flToken, yRVal) + "," + StringWithCast (flToken, zRVal) + ")");
+					"(new " + TypeName (typeof (LSL_Vector)) + "(" + StringWithCast (flToken, xRVal) + "," +
+					StringWithCast (flToken, yRVal) + "," + StringWithCast (flToken, zRVal) + "))");
 		}
 
 		/**
@@ -1867,17 +1915,17 @@ namespace MMR
 			ltc.Add ("key object",      "((object){0})");
 			ltc.Add ("key string",      "{0}");
 			ltc.Add ("list object",     "((object){0})");
-			ltc.Add ("object array",    TypeName(typeof(XMR_Array)) + ".Obj2Array({0})");   // disallow null
-			ltc.Add ("object float",    "(" + TypeName(typeof(float))        + "){0}");     // value type disallows null
-			ltc.Add ("object integer",  "(" + TypeName(typeof(int))          + "){0}");     // value type disallows null
-			ltc.Add ("object key",      TypeName(typeof(XMR_Array)) + ".Obj2Key({0})");     // disallow null
-			ltc.Add ("object list",     TypeName(typeof(XMR_Array)) + ".Obj2List({0})");    // disallow null
-			ltc.Add ("object rotation", "(" + TypeName(typeof(LSL_Rotation)) + "){0}");     // value type disallows null
-			ltc.Add ("object string",   TypeName(typeof(XMR_Array)) + ".Obj2String({0})");  // disallow null
-			ltc.Add ("object vector",   "(" + TypeName(typeof(LSL_Vector))   + "){0}");     // value type disallows null
+			ltc.Add ("object array",    TypeName (typeof (XMR_Array)) + ".Obj2Array({0})");   // disallow null
+			ltc.Add ("object float",    "(" + TypeName (typeof (float))        + "){0}");     // value type disallows null
+			ltc.Add ("object integer",  "(" + TypeName (typeof (int))          + "){0}");     // value type disallows null
+			ltc.Add ("object key",      TypeName (typeof (XMR_Array)) + ".Obj2Key({0})");     // disallow null
+			ltc.Add ("object list",     TypeName (typeof (XMR_Array)) + ".Obj2List({0})");    // disallow null
+			ltc.Add ("object rotation", "(" + TypeName (typeof (LSL_Rotation)) + "){0}");     // value type disallows null
+			ltc.Add ("object string",   TypeName (typeof (XMR_Array)) + ".Obj2String({0})");  // disallow null
+			ltc.Add ("object vector",   "(" + TypeName (typeof (LSL_Vector))   + "){0}");     // value type disallows null
 			ltc.Add ("rotation object", "((object){0})");
 			ltc.Add ("string bool",     "({0}!=\"\")");
-			ltc.Add ("string key",      "new " + TypeName(typeof(LSL_Key)) + "({0})");
+			ltc.Add ("string key",      "new " + TypeName (typeof (LSL_Key)) + "({0})");
 			ltc.Add ("string object",   "((object){0})");
 			ltc.Add ("string vector",   "((object){0})");
 			ltc.Add ("vector object",   "((object){0})");
@@ -1950,7 +1998,7 @@ namespace MMR
 			} else if (inName == "float") {
 
 				/*
-				 * If both claim to be float, output cast anyway in case one is really a double in disguise.
+				 * If both claim to be float, output cast anyway in case inRVal is really a double in disguise.
 				 */
 				result = "(float)" + inRVal.locstr;
 			} else {
@@ -1966,7 +2014,7 @@ namespace MMR
 			 * This converts things like 'int' to LSL_Integer.
 			 */
 			if (outType.lslBoxing != null) {
-				result = "new " + TypeName(outType.lslBoxing) + "(" + result + ")";
+				result = "new " + TypeName (outType.lslBoxing) + "(" + result + ")";
 			}
 			return result;
 		}
@@ -2303,8 +2351,8 @@ namespace MMR
 			bos.Add ("list+string",    add);
 			bos.Add ("list+vector",    add);
 
-			BinOpStr revadd = new BinOpStr (typeof (LSL_List), "new " + TypeName(typeof(LSL_List)) + "((object){0})+{1}");
-			bos.Add ("float+list",     new BinOpStr (typeof (LSL_List), "new " + TypeName(typeof(LSL_List)) + "((object)(float){0})+{1}"));
+			BinOpStr revadd = new BinOpStr (typeof (LSL_List), "new " + TypeName (typeof (LSL_List)) + "((object){0})+{1}");
+			bos.Add ("float+list",     new BinOpStr (typeof (LSL_List), "new " + TypeName (typeof (LSL_List)) + "((object)(float){0})+{1}"));
 			bos.Add ("integer+list",   revadd);
 			bos.Add ("key+list",       revadd);
 			bos.Add ("rotation+list",  revadd);
@@ -2392,7 +2440,9 @@ namespace MMR
 			if (opcode is TokenKwSub) {
 				if ((inRVal.type is TokenTypeFloat) || (inRVal.type is TokenTypeInt) ||
 				    (inRVal.type is TokenTypeRot) || (inRVal.type is TokenTypeVec)) {
-					return new CompRVal (inRVal.type, "(-" + inRVal.locstr + ")");
+					CompRVal outRVal = new CompRVal (inRVal.type, "(-" + inRVal.locstr + ")");
+					outRVal.isFinal = inRVal.isFinal;
+					return outRVal;
 				}
 				ErrorMsg (opcode, "can't negate " + inRVal.type.ToString ());
 				return inRVal;
@@ -2403,7 +2453,9 @@ namespace MMR
 			 */
 			if (opcode is TokenKwTilde) {
 				if (inRVal.type is TokenTypeInt) {
-					return new CompRVal (inRVal.type, "(~" + inRVal.locstr + ")");
+					CompRVal outRVal = new CompRVal (inRVal.type, "(~" + inRVal.locstr + ")");
+					outRVal.isFinal = inRVal.isFinal;
+					return outRVal;
 				}
 				ErrorMsg (opcode, "can't complement " + inRVal.type.ToString ());
 				return inRVal;
@@ -2413,7 +2465,9 @@ namespace MMR
 			 * ! Not (boolean)
 			 */
 			if (opcode is TokenKwExclam) {
-				return new CompRVal (tokenTypeBool, "(!" + StringWithCast (tokenTypeBool, inRVal) + ")");
+				CompRVal outRVal = new CompRVal (tokenTypeBool, "(!" + StringWithCast (tokenTypeBool, inRVal) + ")");
+				outRVal.isFinal = inRVal.isFinal;
+				return outRVal;
 			}
 
 			throw new Exception ("unhandled opcode " + opcode.ToString ());
@@ -2422,11 +2476,11 @@ namespace MMR
 		/**
 		 * @brief get type name string suitable for output to C# file.
 		 */
-		private static string TypeName(TokenType tokenType)
+		private static string TypeName (TokenType tokenType)
 		{
-			return TypeName(tokenType.typ);
+			return TypeName (tokenType.typ);
 		}
-		private static string TypeName(Type type)
+		private static string TypeName (Type type)
 		{
 			return type.FullName.Replace("+", ".");
 		}
@@ -2547,23 +2601,30 @@ namespace MMR
 
 	/**
 	 * @brief R-value location
-	 *        Includes constants and temp variables.
+	 *        Includes constants, expressions and temp variables.
 	 *        Can also be anything an L-value can be, 
 	 *            when the L-value is being used as an R-value.
 	 */
 	public class CompRVal {
 		public TokenType type;  // type of the value
 		public string locstr;   // where the value is
-		// = could be the constant itself
-		//   or name of temp variable
+		                        // = could a constant itself
+		                        //   or an expression in parentheses
+		                        //   or name of temp variable
+		                        // ... anything that's a single C# value
+		public bool isFinal;    // true iff value cannot be changed by any side effects
+		                        // - temps do not change because we allocate a new one each time
+		                        // - constants never change because they are constant
+		                        // - expressions consisting of all isFinal operands are final
 
 		/*
 		 * Create a temp variable to hold the given type.
 		 */
 		public CompRVal (TokenType type)
 		{
-			this.type = type;
-			locstr = "__tmp_" + ScriptCodeGen.GetTempNo ();
+			this.type    = type;
+			this.locstr  = "__tmp_" + ScriptCodeGen.GetTempNo ();
+			this.isFinal = true;
 		}
 
 		/*
@@ -2572,8 +2633,9 @@ namespace MMR
 		 */
 		public CompRVal (TokenType type, string locstr)
 		{
-			this.type = type;
-			this.locstr = locstr;
+			this.type    = type;
+			this.locstr  = locstr;
+			this.isFinal = false;
 		}
 	}
 

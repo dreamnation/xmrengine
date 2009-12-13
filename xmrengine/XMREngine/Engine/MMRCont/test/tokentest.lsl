@@ -102,13 +102,19 @@ default
     llSay (2, (string)(ar[4] is undef));
     llSay (2, (string)(ar[5] is undef));
 
-    for (i = 0;; i ++) {
+    string st;
+    integer zz = 1;
+
+    for (i = 0;; i ++, zz *= 2) {
         k = ar.index (i);
         v = ar.value (i);
         if (k is undef) jump done;
         llSay (3, (string)k + " => " + (string)v);
+        st = (st = "") + st + "," + (string)v;
     }
 @done;
+    llSay (4, "st=" + st);
+    llSay (4, "zz=" + (string)zz);
 
     integer j = change_to_dead_state ();
     llSay (j, "I say, this doesn't ever execute!");
@@ -234,6 +240,9 @@ state_entry() {
    llSay (3, "2 => <1.000000,2.000000,3.000000>");
    llSay (3, "phony => bologna");
    llSay (3, "4 => 3.5");
+
+   llSay (4, "st=,5,astring,<1.000000,2.000000,3.000000>,bologna,3.5");
+   llSay (4, "zz=32");
 
    llSay (0, "changing to dead state");
    llSay (0, "we're dead!");

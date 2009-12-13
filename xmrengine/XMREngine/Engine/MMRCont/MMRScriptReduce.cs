@@ -1044,7 +1044,7 @@ namespace MMR {
 			} else {
 				rValCall.args = ParseRVal (ref token, typeof (TokenKwParClose));
 				if (rValCall.args == null) return null;
-				rValCall.nArgs = SplitCommaRVals (rValCall.args, out rValCall.args);
+				rValCall.nArgs = SplitCommaRVals (rValCall.args, out rValCall.args, ref rValCall.sideEffects);
 			}
 			return rValCall;
 		}
@@ -1134,13 +1134,15 @@ namespace MMR {
 				TokenRVal rValAll = ParseRVal (ref token, typeof (TokenKwCmpGT));
 				if (rValAll == null) return null;
 				TokenRVal rVals;
-				int nVals = SplitCommaRVals (rValAll, out rVals);
+				bool sideEffects = false;
+				int nVals = SplitCommaRVals (rValAll, out rVals, ref sideEffects);
 				switch (nVals) {
 					case 3: {
 						TokenRValVec rValVec = new TokenRValVec (openBkt);
 						rValVec.xRVal = rVals;
 						rValVec.yRVal = (TokenRVal)rVals.nextToken;
 						rValVec.zRVal = (TokenRVal)rVals.nextToken.nextToken;
+						rValVec.sideEffects = sideEffects;
 						return rValVec;
 					}
 					case 4: {
@@ -1149,6 +1151,7 @@ namespace MMR {
 						rValRot.yRVal = (TokenRVal)rVals.nextToken;
 						rValRot.zRVal = (TokenRVal)rVals.nextToken.nextToken;
 						rValRot.wRVal = (TokenRVal)rVals.nextToken.nextToken.nextToken;
+						rValRot.sideEffects = sideEffects;
 						return rValRot;
 					}
 					default: {
@@ -1166,11 +1169,11 @@ namespace MMR {
 				TokenRValList rValList = new TokenRValList (token);
 				token = token.nextToken;
 				if (token is TokenKwBrkClose) {
-					token = token.nextToken;
+					token = token.nextToken;  // empty list
 				} else {
 					TokenRVal rValAll = ParseRVal (ref token, typeof (TokenKwBrkClose));
 					if (rValAll == null) return null;
-					rValList.nItems = SplitCommaRVals (rValAll, out rValList.rVal);
+					rValList.nItems = SplitCommaRVals (rValAll, out rValList.rVal, ref rValList.sideEffects);
 				}
 				return rValList;
 			}
@@ -1260,6 +1263,7 @@ namespace MMR {
 			token = token.nextToken;
 			tokenRValParen.rVal = ParseRVal (ref token, typeof (TokenKwParClose));
 			if (tokenRValParen.rVal == null) return null;
+			tokenRValParen.sideEffects = tokenRValParen.rVal.sideEffects;
 			return tokenRValParen;
 		}
 
@@ -1268,21 +1272,26 @@ namespace MMR {
 		 * @param rValAll = expression containing commas
 		 * @returns number of comma separated values
 		 *          rVals = values in a null-terminated list linked by rVals.nextToken
+		 *          sideEffects |= some of the values have side effects
 		 */
-		private int SplitCommaRVals (TokenRVal rValAll, out TokenRVal rVals)
+		private int SplitCommaRVals (TokenRVal rValAll, out TokenRVal rVals, ref bool sideEffects)
 		{
 			if (!(rValAll is TokenRValOpBin) || !(((TokenRValOpBin)rValAll).opcode is TokenKwComma)) {
 				rVals = rValAll;
 				if (rVals.nextToken != null) throw new Exception ("expected null");
+				sideEffects |= rValAll.sideEffects;
 				return 1;
 			}
 			TokenRValOpBin opBin = (TokenRValOpBin)rValAll;
 			TokenRVal rValLeft, rValRight;
-			int leftCount  = SplitCommaRVals (opBin.rValLeft,  out rValLeft);
-			int rightCount = SplitCommaRVals (opBin.rValRight, out rValRight);
+			bool sel = false;
+			bool ser = false;
+			int leftCount  = SplitCommaRVals (opBin.rValLeft,  out rValLeft,  ref sel);
+			int rightCount = SplitCommaRVals (opBin.rValRight, out rValRight, ref ser);
 			rVals = rValLeft;
 			while (rValLeft.nextToken != null) rValLeft = (TokenRVal)rValLeft.nextToken;
 			rValLeft.nextToken = rValRight;
+			sideEffects |= sel | ser;
 			return leftCount + rightCount;
 		}
 
@@ -1527,7 +1536,12 @@ namespace MMR {
 	 * @brief any expression that can go on right side of "="
 	 */
 	public class TokenRVal : Token {
-
+		public bool sideEffects = false;  // the value (or some sub-value) has side effects
+		                                  // - constants are always false
+		                                  // - we assume calls always have side effects
+		                                  // - post increment/decrement are always true
+		                                  // - any assignment operator (=, +=, etc) always true
+		                                  // - all others inherit from their operands
 		public TokenRVal (Token original) : base (original) { }
 	}
 
@@ -1538,7 +1552,9 @@ namespace MMR {
 		public TokenLVal lVal;
 		public Token postfix;
 
-		public TokenRValAsnPost (Token original) : base (original) { }
+		public TokenRValAsnPost (Token original) : base (original) {
+			sideEffects = true;
+		}
 	}
 
 	/**
@@ -1548,7 +1564,9 @@ namespace MMR {
 		public Token prefix;
 		public TokenLVal lVal;
 
-		public TokenRValAsnPre (Token original) : base (original) { }
+		public TokenRValAsnPre (Token original) : base (original) {
+			sideEffects = true;
+		}
 	}
 
 	/**
@@ -1560,7 +1578,9 @@ namespace MMR {
 		public TokenRVal args;  // null-terminated TokenRVal list
 		public int nArgs;       // number of elements in args
 
-		public TokenRValCall (Token original) : base (original) { }
+		public TokenRValCall (Token original) : base (original) {
+			sideEffects = true;
+		}
 
 		public override string ToString ()
 		{
@@ -1582,6 +1602,7 @@ namespace MMR {
 		{
 			castTo = type;
 			rVal   = value;
+			sideEffects = value.sideEffects;
 		}
 	}
 
@@ -1667,6 +1688,13 @@ namespace MMR {
 			rValLeft  = left;
 			opcode    = op;
 			rValRight = right;
+
+			sideEffects = left.sideEffects || right.sideEffects;
+			if (!sideEffects) {
+				string opStr = op.ToString ();
+				sideEffects = opStr.EndsWith ("=") && (opStr != ">=") && 
+				              (opStr != "<=") && (opStr != "!=") && (opStr != "==");
+			}
 		}
 
 		public override string ToString ()
@@ -1692,8 +1720,9 @@ namespace MMR {
 
 		public TokenRValOpUn (Token op, TokenRVal right) : base (op)
 		{
-			opcode = op;
-			rVal   = right;
+			opcode      = op;
+			rVal        = right;
+			sideEffects = right.sideEffects;
 		}
 	}
 
