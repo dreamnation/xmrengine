@@ -84,6 +84,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void Initialise(IConfigSource config)
         {
+            Console.WriteLine ("XMR Initialize*: entry\n");
             m_ConfigSource = config;
 
             if (config.Configs["XMREngine"] == null)
@@ -92,6 +93,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 m_Config = config.Configs["XMREngine"];
 
             m_Enabled = m_Config.GetBoolean("Enabled", false);
+            Console.WriteLine ("XMR Initialize*: enabled={0}", m_Enabled);
 
             if (!m_Enabled)
                 return;
@@ -107,6 +109,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void AddRegion(Scene scene)
         {
+            Console.WriteLine ("XMR AddRegion*: m_Enabled={0}", m_Enabled);
             if (!m_Enabled)
                 return;
 
@@ -432,6 +435,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public void OnRezScript(uint localID, UUID itemID, string script,
                 int startParam, bool postOnRez, string engine, int stateSource)
         {
+            Console.WriteLine ("XMR OnRezScript*: script={0}", script);
             if (script.StartsWith("//MRM:"))
                 return;
 

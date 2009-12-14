@@ -9,7 +9,6 @@ using System;
 using System.Threading;
 using System.Collections.Generic;
 using OpenMetaverse;
-using System.Collections.Generic;
 using OpenSim.Region.ScriptEngine.Interfaces;
 using OpenSim.Region.ScriptEngine.Shared;
 using OpenSim.Region.ScriptEngine.Shared.Api;

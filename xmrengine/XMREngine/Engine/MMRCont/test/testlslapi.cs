@@ -26,6 +26,7 @@ public class TestLSLAPI : ILSL_Api, IScriptApi {
 	 */
 	public Token token;
 	public ScriptWrapper scriptWrapper;
+	public bool doCompares;
 
 	private bool disposed = false;
 
@@ -1939,6 +1940,42 @@ public class TestLSLAPI : ILSL_Api, IScriptApi {
 		}
 		Console.Write (") ");
 
+		if (!doCompares) {
+			if (rettype == typeof (void)) {
+				Console.WriteLine ("");
+				return null;
+			}
+			if (rettype == typeof (float)) {
+				Console.WriteLine ("0.0");
+				return (object)0.0f;
+			}
+			if (rettype == typeof (int)) {
+				Console.WriteLine ("0");
+				return (object)0;
+			}
+			if (rettype == typeof (LSL_Key)) {
+				Console.WriteLine ("00000000-0000-0000-0000-000000000000");
+				return new LSL_Key ("00000000-0000-0000-0000-000000000000");
+			}
+			if (rettype == typeof (LSL_Rotation)) {
+				Console.WriteLine ("<0,0,0,1>");
+				return new LSL_Rotation (0.0,0.0,0.0,1.0);
+			}
+			if (rettype == typeof (string)) {
+				Console.WriteLine ("");
+				return "";
+			}
+			if (rettype == typeof (LSL_String)) {
+				Console.WriteLine ("");
+				return new LSL_String ("");
+			}
+			if (rettype == typeof (LSL_Vector)) {
+				Console.WriteLine ("<0,0,0>");
+				return new LSL_Vector (0.0,0.0,0.0);
+			}
+			throw new Exception ("unknown return type " + rettype.ToString ());
+		}
+
 		/*
 		 * See if the function name matches what the test script says.
 		 */
@@ -2205,8 +2242,9 @@ public class TestLSLAPI : ILSL_Api, IScriptApi {
 	public TestLSLAPI Clone ()
 	{
 		TestLSLAPI lsltr = new TestLSLAPI ();
-		lsltr.token = this.token;
+		lsltr.token         = this.token;
 		lsltr.scriptWrapper = this.scriptWrapper;
+		lsltr.doCompares    = this.doCompares;
 		return lsltr;
 	}
 

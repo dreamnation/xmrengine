@@ -1,0 +1,191 @@
+
+ARRAYS
+======
+
+Arrays, as defined here, are indexed dynamic lists of objects.  The indices may 
+be of any value type (float, integer, key, rotation, string, vector).  When 
+passed to functions, arrays are passed by reference, that is, any changes made 
+to the array by the function are visible to the caller.
+
+
+To enable access to arrays in a script, place this statement in the script file
+at any point prior to using the syntaxes described below:
+
+    XMROption arrays;
+
+That statement enables the detection of the following keywords from that point 
+on in the script:
+
+    array, foreach, in, is, object, undef
+
+... otherwise the keywords will be treated as normal identifier names.
+
+
+A variable is declared just as any other variable but using the 'array' type:
+
+    array <array-variable>;
+
+Note that no initializer value is permitted and the array is empty.
+
+Example:
+
+    array ar;
+
+
+Elements may be added to or replaced in an array using this syntax:
+
+    <array-variable-name>[<array-index>] = <value>
+
+... where:
+    <array-variable-name> was previously declared as type array.
+    <array-index> is an expression of type float, integer, key, rotation,
+                  string, vector.  Note that it specifically is not of types
+                  array, list as it must be a value type.  Indices of mixed 
+                  types may be present in the same array.
+    <value> = any value to be stored there, including an array or list.
+
+Examples:
+
+    ar[3] = "abcd";
+    ar["qwer"] = <1,2,3>;
+    ar[6.5] = <3,4,5,6>;
+
+
+Elements may be removed from the array using this syntax:
+
+    <array-variable-name>[<array-index>] = undef
+
+Removing an element that does not exist is not an error, it is silently 
+ignored.
+
+Example:
+
+    ar[3] = undef;
+
+
+Elements may be retrieved by index from the array using this syntax:
+
+    <array-variable-name>[<array-index>]
+
+The resulting value is of type 'object' and may be used wherever a value of
+type 'object' is permitted (see below), including casting to they type it had 
+when last stored in the array.  If no such element exists in the array, the 
+object value returned is the special value 'undef'.
+
+Example:
+
+    object temp = ar["qwer"];
+
+
+A value of type object may be tested for its original type using this syntax:
+
+    <object-value> is <type-name>
+
+... which has a boolean value of true or false.  <type-name> is any of:
+    array, float, integer, key, list, rotation, string, vector, plus the
+    special name undef that indicates there was no array element for the 
+    given index.
+
+Examples:
+
+    object temp = ar["qwer"];
+    if (temp is rotation) {
+        llSay (0, "it is a rotation: " + (string)temp);
+        float tempx = ((rotation)temp).x;
+        llSay (0, "its x-value is: " + (string)tempx);
+    }
+    if (temp is undef) {
+        llSay (0, "there isn't any such element");
+    }
+
+Except when it has the special value 'undef', a value of type 'object' may be 
+cast to its original type.  It may also be cast to type 'string', except when
+it has the special value 'undef'.
+
+Examples:
+
+    (string)ar[3]
+    (vector)ar["qwer"]
+    (rotation)ar[6.5]
+
+
+To obtain the number of elements in an array, reference the array's count 
+property defined as:
+
+    integer <array-variable>.count
+
+... it returns an integer giving the number of elements in the array.
+
+
+To iterate through all defined values in an array, use this syntax:
+
+    foreach (<index-variable>,<value-variable> in <array-variable>) <statement>
+
+... where:
+    <index-variable> was previously declared as an object variable
+    <value-variable> was previously declared as an object variable
+    <array-variable> was previously declared as an array variable
+    <statement> is any valid script statement
+
+    <index-variable> may be omitted if desired
+    <value-variable> may be omitted if desired
+    In any case, the ',' must always be present.
+
+Notes:
+
+    1) If <statement> modifies the array, the resultant enumeration is 
+       undefined, ie, it may skip or duplicate some element(s).  Otherwise,
+       each element is retrieved exactly once.
+    2) In any case, the order of retrieval is undefined.
+    3) <statement> may include a foreach on the same array without any adverse
+       effects on this foreach.
+    4) The foreach can be abandoned (via such as jump or return) as needed.
+
+Example:
+
+    object k;
+    object v;
+    integer n = 0;
+    foreach (k,v in ar) {
+        llSay (0, (string)k + " => " + (string)v);
+        if (++ n >= 10) jump thatsenuf;
+    }
+@thatsenuf:;
+
+
+An alternative to iterate through the elements of an array is to use the 
+index() and value() methods of an array defined as:
+
+    object <array-variable>.index(integer n)
+    object <array-variable>.value(integer n)
+
+... where n is an integer giving the number of the element to retrieve.  For
+    purposes of these methods, n is an integer in the range 0..count-1, where
+    count is the value of the array's count property.  Thus the first element
+    is retrieved by supplying n=0, the second by n=1, etc.  If n is .ge. count,
+    these methods return the special type undef.
+
+    These methods will return an unique element per value of n from an existing
+    n => element mapping, creating one if needed.  However, each time the array 
+    is modified, any exising n => element mapping is discarded.
+
+    An equivalent to:
+
+        object k;
+        object v;
+        foreach (k, v in a) {
+            statements...;
+        }
+
+    ... is:
+
+        object k;
+        object v;
+        integer n;
+        for (n = 0; n < a.count; n ++) {
+            k = a.index (n);
+            v = a.value (n);
+            statements...;
+        }
+
+
