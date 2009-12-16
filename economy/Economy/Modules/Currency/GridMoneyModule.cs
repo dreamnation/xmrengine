@@ -324,7 +324,7 @@ namespace Careminster.Modules.Currency
                 {
                     c.ExecuteNonQuery();
                 }
-                catch (MySqlException)
+                catch (MySqlException e)
                 {
                     System.Threading.Thread.Sleep(500);
 
@@ -339,6 +339,8 @@ namespace Careminster.Modules.Currency
                         continue;
                     }
                     m_log.ErrorFormat("[MONEY] MySQL command: {0}", c.CommandText);
+                    m_log.Error(e.ToString());
+
                     throw;
                 }
 
