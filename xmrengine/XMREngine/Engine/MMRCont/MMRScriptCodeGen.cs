@@ -178,6 +178,32 @@ namespace MMR
 			}
 
 			/*
+			 * If function x calls function y, and function y has a 'state' statement,
+			 * then pretend x has a 'state' statement in it.  Recurse as needed so that
+			 * any number of call levels are handled.
+			 */
+			bool foundChangedState;
+			do {
+				foundChangedState = false;
+				foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclFunc> kvpX in tokenScript.funcs) {
+					TokenDeclFunc declFuncX = kvpX.Value;
+					if (!declFuncX.changesState) {
+						foreach (System.Collections.Generic.KeyValuePair<string, TokenName> kvpY in declFuncX.calledFuncs) {
+							string nameY = kvpY.Key;
+							if (scriptFunctions.ContainsKey (nameY)) {
+								TokenDeclFunc declFuncY = scriptFunctions[nameY];
+								if (declFuncY.changesState) {
+									declFuncX.changesState = true;
+									foundChangedState = true;
+									break;
+								}
+							}
+						}
+					}
+				}
+			} while (foundChangedState);
+
+			/*
 			 * Translate all the global variable declarations to private instance variables.
 			 * Prefix them with __gbl_ so scripts can't directly access any vars defined in ScriptWrapper,
 			 * as all script-generated references are done with __sm.__gbl_<name>.
@@ -1595,11 +1621,13 @@ namespace MMR
 				result = OutputCallStatement (result, call, declFunc, callString);
 
 				/*
-				 * Also, unwind out if the inner function changed state.
+				 * Also, unwind out if the called function changed state.
 				 */
-				WriteOutput (call, "if (__sm.stateChanged) {");
-				OutputGotoReturn (call);
-				WriteOutput (call, "}");
+				if (declFunc.changesState) {
+					WriteOutput (call, "if (__sm.stateChanged) {");
+					OutputGotoReturn (call);
+					WriteOutput (call, "}");
+				}
 			}
 			return result;
 		}

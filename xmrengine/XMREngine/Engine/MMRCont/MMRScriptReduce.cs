@@ -713,6 +713,7 @@ namespace MMR {
 			if (token is TokenName) {
 				tokenStmtState.state = (TokenName)token;
 			}
+			currentDeclFunc.changesState = true;
 			token = token.nextToken.nextToken;
 			return tokenStmtState;
 		}
@@ -1046,6 +1047,17 @@ namespace MMR {
 				if (rValCall.args == null) return null;
 				rValCall.nArgs = SplitCommaRVals (rValCall.args, out rValCall.args, ref rValCall.sideEffects);
 			}
+
+			/*
+			 * If calling a function (not a method), rememeber the called function.
+			 */
+			if (meth is TokenLValName) {
+				TokenLValName methName = (TokenLValName)meth;
+				if (!currentDeclFunc.calledFuncs.ContainsKey (methName.name.val)) {
+					currentDeclFunc.calledFuncs[methName.name.val] = methName.name;
+				}
+			}
+
 			return rValCall;
 		}
 
@@ -1429,6 +1441,9 @@ namespace MMR {
 		public TokenStmtBlock body;   // statements
 		public Dictionary<string, TokenStmtLabel> labels = new Dictionary<string, TokenStmtLabel> ();
 		                              // all labels defined in the function
+		public bool changesState;     // contains a 'state' statement somewhere
+		public Dictionary<string, TokenName> calledFuncs = new Dictionary<string, TokenName> ();
+		                              // all functions called by this function
 
 		public TokenDeclFunc (Token original) : base (original) { }
 
