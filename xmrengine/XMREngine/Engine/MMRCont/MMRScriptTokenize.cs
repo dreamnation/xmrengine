@@ -765,6 +765,7 @@ namespace MMR {
 		{
 			this.typ = typ;
 		}
+
 		public static TokenType FromSysType (Token original, System.Type typ)
 		{
 			if (typ == typeof (LSL_List)) return new TokenTypeList (original);
@@ -792,6 +793,22 @@ namespace MMR {
 			}
 
 			throw new Exception ("unknown type " + typ.ToString ());
+		}
+
+		public static TokenType FromLSLType (Token original, string typ)
+		{
+			if (typ == "list")     return new TokenTypeList   (original);
+			if (typ == "rotation") return new TokenTypeRot    (original);
+			if (typ == "vector")   return new TokenTypeVec    (original);
+			if (typ == "float")    return new TokenTypeFloat  (original);
+			if (typ == "integer")  return new TokenTypeInt    (original);
+			if (typ == "key")      return new TokenTypeKey    (original);
+			if (typ == "string")   return new TokenTypeStr    (original);
+			if (typ == "object")   return new TokenTypeObject (original);
+			if (typ == "array")    return new TokenTypeArray  (original);
+			if (typ == "bool")     return new TokenTypeBool   (original);
+
+			throw new Exception ("unknown type " + typ);
 		}
 
 		/**

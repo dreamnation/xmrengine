@@ -45,8 +45,7 @@ namespace MMR
 		/*
 		 * Static tables that there only needs to be one copy of for all.
 		 */
-		public static Dictionary<string, TokenDeclFunc> beAPIFunctions = null;
-
+		private static Dictionary<string, InlineFunction> inlineFunctions = null;
 		private static Dictionary<string, BinOpStr> binOpStrings = null;
 		private static TokenTypeBool tokenTypeBool = new TokenTypeBool (null);
 		private static Dictionary<string, string> legalTypeCasts = null;
@@ -66,20 +65,10 @@ namespace MMR
 			}
 			//MB()
 
-			if (beAPIFunctions == null) {
-
-				/*
-				 * Look up an BackEnd Api function by name and get its prototype.
-				 * We do this by looking at the ScriptBaseClass interface definition.
-				 */
-				InternalFuncDict beapif = new InternalFuncDict (typeof (ScriptBaseClass), true);
-
+			if (inlineFunctions == null) {
+				Dictionary<string, InlineFunction> inlfun = InlineFunction.CreateDictionary ();
 				//MB()
-
-				/*
-				 * Now that the dictionary is complete, let other threads see it.
-				 */
-				beAPIFunctions = beapif;
+				inlineFunctions = inlfun;
 			}
 			//MB()
 
@@ -107,6 +96,7 @@ namespace MMR
 		private int exitCode = 0;
 		private int nStates = 0;
 		private string smClassName = null;
+		private Token errorMessageToken = null;
 		private TokenDeclFunc curDeclFunc = null;
 		private TokenStmtBlock curStmtBlock = null;
 
@@ -117,6 +107,15 @@ namespace MMR
 
 		private ScriptCodeGen (TokenScript tokenScript, string binaryName, string debugFileName)
 		{
+			/*
+			 * errorMessageToken is used only when the given token doesn't have a
+			 * output delegate associated with it such as for backend API functions
+			 * that only have one copy for the whole system.  It is kept up-to-date
+			 * approximately but is rarely needed so going to assume it doesn't have 
+			 * to be exact.
+			 */
+			errorMessageToken = tokenScript;
+
 			/*
 			 * Set up dictionary to translate function names to their declaration.
 			 * We only do top-level functions so this doesn't need to be a stack.
@@ -668,6 +667,7 @@ namespace MMR
 		 */
 		private void GenerateStmt (TokenStmt stmt)
 		{
+			errorMessageToken = stmt;
 			if (stmt is TokenStmtBlock)   { GenerateStmtBlock   ((TokenStmtBlock)stmt, false);       return; }
 			if (stmt is TokenStmtDo)      { GenerateStmtDo      ((TokenStmtDo)stmt);                 return; }
 			if (stmt is TokenStmtFor)     { GenerateStmtFor     ((TokenStmtFor)stmt);                return; }
@@ -1177,6 +1177,7 @@ namespace MMR
 		 */
 		private CompRVal GenerateFromRVal (CompRVal result, TokenRVal rVal)
 		{
+			errorMessageToken = rVal;
 			if (rVal is TokenRValAsnPost)  return GenerateFromRValAsnPost (result, (TokenRValAsnPost)rVal);
 			if (rVal is TokenRValAsnPre)   return GenerateFromRValAsnPre  (result, (TokenRValAsnPre)rVal);
 			if (rVal is TokenRValCall)     return GenerateFromRValCall    (result, (TokenRValCall)rVal);
@@ -1509,7 +1510,7 @@ namespace MMR
 			}
 			callString.Append (")");
 
-			return OutputCallStatement (result, call, declFunc, callString);
+			return OutputCallStatement (result, call, declFunc.retType, callString);
 		}
 
 		/**
@@ -1518,12 +1519,11 @@ namespace MMR
 		 */
 		private CompRVal GenerateFromRValCallName (CompRVal result, TokenRValCall call)
 		{
-			bool isBEAPIFunc;
 			CompRVal[] argRVals = null;
 			int i, nargs;
 			string name;
 			StringBuilder signature;
-			TokenDeclFunc declFunc;
+			TokenDeclFunc declFunc = null;
 
 			if (!(call.meth is TokenLValName)) {
 				ErrorMsg (call, "cannot call a field");
@@ -1539,8 +1539,8 @@ namespace MMR
 			nargs = call.nArgs;
 			signature = new StringBuilder (name);
 			signature.Append ("(");
+			argRVals = new CompRVal[nargs];
 			if (nargs > 0) {
-				argRVals = new CompRVal[nargs];
 				i = 0;
 				for (TokenRVal arg = call.args; arg != null; arg = (TokenRVal)arg.nextToken) {
 					argRVals[i] = GenerateFromRVal (null, arg);
@@ -1553,24 +1553,49 @@ namespace MMR
 
 			/*
 			 * Look the function up.
+			 * First we look for a script-defined function by that name.  We only match name, 
+			 * ... not signature, as we don't allow overloaded script-defined functions.
+			 * Then try inline functions by signature.
 			 */
-			string sig = signature.ToString ();
-			isBEAPIFunc = false;
+			string sig  = signature.ToString ();
 			if (scriptFunctions.ContainsKey (name)) {
 				declFunc = scriptFunctions[name];
-			} else if (beAPIFunctions.ContainsKey (sig)) {
-				declFunc = beAPIFunctions[sig];
-				isBEAPIFunc = true;
+			} else if (inlineFunctions.ContainsKey (sig)) {
+				return GenerateFromRValCallInline (result, call, inlineFunctions[sig], argRVals);
 			} else {
+
+				/*
+				 * Not found with that exact signature.
+				 * If there is exactly one definition for that name but different signature,
+				 * try implicit type casts to that one signature.
+				 * Note that we only try internal functions as script-defined functions are
+				 * matched by name only and not complete signature.
+				 */
+				string shortSig = name + "(";
+				InlineFunction foundInline = null;
+				foreach (KeyValuePair<string, InlineFunction> kvp in inlineFunctions) {
+					if (kvp.Key.StartsWith (shortSig)) {
+						if (foundInline != null) goto nohope;
+						foundInline = kvp.Value;
+					}
+				}
+				if (foundInline != null) {
+					return GenerateFromRValCallInline (result, call, foundInline, argRVals);
+				}
+
+				/*
+				 * No hope, output error message.
+				 */
+			nohope:
 				ErrorMsg (call, "undefined function " + sig);
-				sig = name + "(";
-				foreach (KeyValuePair<string, TokenDeclFunc> kvp in beAPIFunctions) {
-					if (kvp.Key.StartsWith (sig)) ErrorMsg (call, "  have " + kvp.Key);
+				foreach (KeyValuePair<string, InlineFunction> kvp in inlineFunctions) {
+					if (kvp.Key.StartsWith (shortSig)) ErrorMsg (call, "  have " + kvp.Key);
 				}
 				declFunc = new TokenDeclFunc (call);
 				declFunc.retType  = new TokenTypeObject (call);
 				declFunc.funcName = new TokenName (call, name);
 				declFunc.argDecl  = new TokenArgDecl (call);
+			tryit:;
 			}
 
 			/*
@@ -1583,84 +1608,146 @@ namespace MMR
 			}
 
 			/*
-			 * If calling a backend api function, prefix with beapi object reference.
-			 * If calling a script-defined function, first arg is __sm to pass context along as it is static.
+			 * First arg is __sm to pass context along as it is static.
 			 */
 			StringBuilder callString = new StringBuilder ();
-			if (isBEAPIFunc) {
-				if (declFunc.retType.lslBoxing == typeof (LSL_Float)) {
-					callString.Append ("(float)");  // because LSL_Float.value is a 'double'
-				}
-				callString.Append ("__sm.beAPI." + name + "(");
-				if (nargs > 0) {
-					if (declFunc.argDecl.types == null) callString.Append (argRVals[0].locstr);
-					else callString.Append (StringWithCast (declFunc.argDecl.types[0], argRVals[0]));
-					for (i = 0; ++ i < nargs;) {
-						callString.Append (",");
-						if (declFunc.argDecl.types == null) callString.Append (argRVals[i].locstr);
-						else callString.Append (StringWithCast (declFunc.argDecl.types[i], argRVals[i]));
-					}
-				}
-				callString.Append (")");
+			callString.Append ("__fun_" + name + "(__sm");
+			for (i = 0; i < nargs; i ++) {
+				callString.Append (",");
+				if (declFunc.argDecl.types == null) callString.Append (argRVals[i].locstr);
+				else callString.Append (StringWithCast (declFunc.argDecl.types[i], argRVals[i]));
+			}
+			callString.Append (")");
+			result = OutputCallStatement (result, call, declFunc.retType, callString);
 
-				result = OutputCallStatement (result, call, declFunc, callString);
-
-				/*
-				 * Also, we want to call CheckRun() after every backend call as
-				 * the backend call may have set flags for CheckRun() to process.
-				 */
-				WriteOutput (call, "__sc.CheckRun();");
-			} else {
-				callString.Append ("__fun_" + name + "(__sm");
-				for (i = 0; i < nargs; i ++) {
-					callString.Append (",");
-					if (declFunc.argDecl.types == null) callString.Append (argRVals[i].locstr);
-					else callString.Append (StringWithCast (declFunc.argDecl.types[i], argRVals[i]));
-				}
-				callString.Append (")");
-				result = OutputCallStatement (result, call, declFunc, callString);
-
-				/*
-				 * Also, unwind out if the called function changed state.
-				 */
-				if (declFunc.changesState) {
-					WriteOutput (call, "if (__sm.stateChanged) {");
-					OutputGotoReturn (call);
-					WriteOutput (call, "}");
-				}
+			/*
+			 * Also, unwind out if the called function changed state.
+			 */
+			if (declFunc.changesState) {
+				WriteOutput (call, "if (__sm.stateChanged) {");
+				OutputGotoReturn (call);
+				WriteOutput (call, "}");
 			}
 			return result;
 		}
 
 		/**
-		 * @brief Output the C# call statement itself
+		 * @brief Generate call to inline function.
+		 * @param result     = suggested place for return value
+		 * @param call       = calling script token, encapsulates call and parameters
+		 * @param inlineFunc = what inline function is being called
+		 * @param argRVals   = arguments to pass to function
+		 * @returns where the call's return value is stored (a TokenTypeVoid if void)
+		 */
+		private CompRVal GenerateFromRValCallInline (CompRVal result, TokenRValCall call, InlineFunction inlineFunc, CompRVal[] argRVals)
+		{
+			/*
+			 * Generate code for the inline call by substituting in the locations of the parameters for {0}, {1}, {2}, etc.
+			 */
+			StringBuilder callString = new StringBuilder (inlineFunc.code);
+			int nArgs = argRVals.Length;
+			if (nArgs != inlineFunc.argTypes.Length) {
+				ErrorMsg (call, "function requires " + inlineFunc.argTypes.Length.ToString () + " argument(s), not " + nArgs.ToString ());
+				if (nArgs > inlineFunc.argTypes.Length) nArgs = inlineFunc.argTypes.Length;
+			}
+			for (int i = 0; i < nArgs; i ++) {
+				callString.Replace ("{" + i.ToString () + "}", StringWithCast (inlineFunc.argTypes[i], argRVals[i], false));
+			}
+
+			/*
+			 * If resultant code doen't begin with a '{', we just output it as a standard call.
+			 */
+			if (callString.ToString ()[0] != '{') {
+				return OutputCallStatement (result, call, TokenType.FromSysType (call, inlineFunc.retType), callString);
+			}
+
+			/*
+			 * Begins with a '{', output it as a statement block.
+			 * Substitute any '{#}' with output location as they represent where the return value goes.
+			 */
+			if (inlineFunc.retType == typeof (void)) {
+				if (result == null) {
+					result = new CompRVal (TokenType.FromSysType (call, inlineFunc.retType));
+				} else if (!(result.type is TokenTypeVoid)) {
+					ErrorMsg (call, "function doesn't return a value");
+				}
+				WriteOutput (call, callString.ToString ());
+				return result;
+			}
+
+			string retLocation = null;
+			if ((result == null) || (result.type.typ != inlineFunc.retType)) {
+
+				/*
+				 * Caller either didn't give us a location for the result or gave us a
+				 * location of the wrong type.  So create a temporary for the inline to
+				 * put it's value in that is the exact correct type.
+				 */
+				CompRVal tempVar = new CompRVal (TokenType.FromSysType (call, inlineFunc.retType));
+				retLocation = tempVar.locstr;
+ 				WriteOutput (call, TypeName (inlineFunc.retType) + " " + retLocation + ";");
+
+				/*
+				 * That temp is where the result is.  Our caller will have to move it if
+				 * it wants it somewhere else.
+				 */
+				result = tempVar;
+			} else {
+
+				/*
+				 * Get where our caller told us to put the result.
+				 */
+				retLocation = result.locstr;
+
+				/*
+				 * If the location is also a declaration, output the declaration separately,
+				 * or the declaration will be muted by the braces.  And also it would get
+				 * hosed if there were more than one {#} in the inline code string.
+				 */
+				for (int i = 0; i < retLocation.Length; i ++) {
+					char c = retLocation[i];
+					if (c == ' ') {
+						WriteOutput (call, retLocation + ";");
+						retLocation = retLocation.Substring (++ i);
+						break;
+					}
+					if ((c >= 'a') && (c <= 'z')) continue;
+					if ((c >= 'A') && (c <= 'Z')) continue;
+					if ((c >= '0') && (c <= '9')) continue;
+					if (c == '_') continue;
+					if (c == '.') continue;
+					break;
+				}
+			}
+
+			/*
+			 * We're finally ready to substitute in return value location and output the code.
+			 */
+			callString.Replace ("{#}", retLocation);
+			WriteOutput (call, callString.ToString ());
+			return result;
+		}
+
+		/**
+		 * @brief Output the C# call statement itself, including a semi-colon.
+		 *        If function returns a value, then put return value in a variable and return name of variable.
 		 * @param result = suggested place of where to put result
 		 * @param call = the call statement token
-		 * @param declFunc = call function declaration
+		 * @param retType = return type as defined by function being called
 		 * @param callString = string giving the C# equivalent call, up to and including the ")"
 		 * @returns where the result is (a TokenTypeVoid if void)
 		 */
-		private CompRVal OutputCallStatement (CompRVal result, TokenRValCall call, TokenDeclFunc declFunc, StringBuilder callString)
+		private CompRVal OutputCallStatement (CompRVal result, TokenRValCall call, TokenType retType, StringBuilder callString)
 		{
 
 			/*
-			 * Maybe we have to unbox the LSL-style boxed return value.
-			 * This converts things like LSL_Integer madness to int.
+			 * If function returns void, just output the call by itself.
 			 */
-			if (declFunc.retType.lslBoxing != null) {
-				if ((result == null) || !(result.type is TokenTypeVoid)) {
-					callString.Append (".value");
-				}
-			}
-			callString.Append (";");
-
-			/*
-			 * If return is void, just output the call by itself.
-			 */
-			if (declFunc.retType is TokenTypeVoid) {
+			if (retType is TokenTypeVoid) {
+				callString.Append (";");
 				WriteOutput (call, callString.ToString ());
 				if (result == null) {
-					result = new CompRVal (declFunc.retType, "voidCall");
+					result = new CompRVal (retType, "voidCall");
 				} else if (!(result.type is TokenTypeVoid)) {
 					ErrorMsg (call, "function doesn't return a value");
 				}
@@ -1668,15 +1755,83 @@ namespace MMR
 			}
 
 			/*
-			 * Otherwise, put the result somewhere, either in given result location or a temp.
+			 * If function returns a value but caller doesn't want it, just output call by itself.
+			 */
+			if ((result != null) && (result.type is TokenTypeVoid)) {
+				callString.Append (";");
+				WriteOutput (call, callString.ToString ());
+				return result;
+			}
+
+			/*
+			 * Put the result somewhere, either in given result location or a temp.
 			 */
 			if (result == null) {
-				result = new CompRVal (declFunc.retType);
-				WriteOutput (call, TypeName (declFunc.retType) + " " + result.locstr + " = ");
-			} else if (!(result.type is TokenTypeVoid)) {
+
+				/*
+				 * We need to make up a location to put the return value in.
+				 * So make a temp of the same type that the call returns,
+				 * except make it the unboxed type.
+				 */
+				result = new CompRVal (TokenType.FromSysType (call, retType.typ)); // unboxed type
+				if (retType.lslBoxing != null) {
+					callString.Append (".value");
+				}
+				callString.Append (";");
+				WriteOutput (call, TypeName (retType) + " " + result.locstr + " = " + callString.ToString ());
+			} else {
+
+				/*
+				 * We have a location to put return value in (like a local variable),
+				 * so make a statement to put the return value in that location.  It
+				 * may require a type cast.
+				 */
 				WriteOutput (call, result.locstr + " = ");
+				if ((result.type.typ == retType.typ) && (result.type.lslBoxing == retType.lslBoxing)) {
+
+					/*
+					 * Return value and location are same type, no casting required,
+					 * except if return value is float, it may be a double in disguise,
+					 * so we have to cast to float.
+					 */
+					if ((retType is TokenTypeFloat) && (retType.lslBoxing == null)) {
+						WriteOutput (call, "(float)");
+					}
+					callString.Append (";");
+					WriteOutput (call, callString.ToString ());
+				} else if (result.type.typ == retType.typ) {
+
+					/*
+					 * Types are the same but the boxing is different.
+					 * So box/unbox as needed.
+					 */
+					if (result.type.lslBoxing != null) {
+						if (retType.lslBoxing != null) throw new Exception ("assert fail");
+						WriteOutput (call, "new " + TypeName (result.type.lslBoxing) + "(" + callString.ToString () + ");");
+					} else {
+						if (retType.lslBoxing == null) throw new Exception ("assert fail");
+						callString.Append (".value;");
+						WriteOutput (call, callString.ToString ());
+					}
+				} else {
+
+					/*
+					 * Types are completely different.
+					 * Make sure implicit cast is legal, then output call with cast.
+					 */
+					string key = retType.ToString () + " " + result.type.ToString ();
+					if (!legalTypeCasts.ContainsKey (key)) {
+						ErrorMsg (call, "can't cast " + retType.ToString () + " to " + result.type.ToString ());
+					} else {
+						WriteOutput (call, "(" + TypeName (result.type) + ")(");
+						WriteOutput (call, callString.ToString ());
+						if (retType.lslBoxing != null) {
+							callString.Append (".value");
+						}
+						WriteOutput (call, ");");
+					}
+				}
 			}
-			WriteOutput (call, callString.ToString ());
 			return result;
 		}
 
@@ -1990,12 +2145,20 @@ namespace MMR
 		private string StringWithCast (TokenType outType, CompRVal inRVal, bool explicitAllowed)
 		{
 			string result;
-
-			/*
-			 * First get inRVal converted to the type that outType says.
-			 */
 			string inName = inRVal.type.ToString();
 			string outName = outType.ToString();
+
+			/*
+			 * If output type is 'void', just use the input value as is,
+			 * as it is going to be discarded.
+			 */
+			if (outName == "void") {
+				return inRVal.locstr;
+			}
+
+			/*
+			 * Get inRVal converted to the type that outType says.
+			 */
 			if (inName != outName) {
 
 				/*
@@ -2570,6 +2733,8 @@ namespace MMR
 			}
 			if (i > j) {
 				if (atBegOfLine) {
+					while ((j < text.Length) && (text[j] == ' ')) j ++;
+					if (j >= text.Length) return;
 					lineNoTrans.AddLast (sourceLineNo);
 					objectWriter.Write ("/*{0,5}:{1,5}*/ ", outputLineNo, sourceLineNo);
 					objectWriter.Write ("".PadLeft (indentLevel));
@@ -2594,6 +2759,7 @@ namespace MMR
 				} else {
 					objectWriter.Write ("".PadLeft (indentLevel));
 				}
+				line = line.TrimStart (' ');
 			}
 			objectWriter.WriteLine (line);
 			atBegOfLine = true;
@@ -2605,6 +2771,7 @@ namespace MMR
 		 */
 		private void ErrorMsg (Token token, string message)
 		{
+			if ((token == null) || (token.emsg == null)) token = errorMessageToken;
 			token.ErrorMsg (message);
 			youveAnError = true;
 		}
