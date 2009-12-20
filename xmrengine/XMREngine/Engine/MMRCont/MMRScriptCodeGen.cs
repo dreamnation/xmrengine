@@ -2566,6 +2566,7 @@ namespace MMR
 		{
 			bos.Add ("rotation==rotation", new BinOpStr (typeof (bool), "{0}.EqualsRot({1})"));
 			bos.Add ("rotation!=rotation", new BinOpStr (typeof (bool), "!{0}.EqualsRot({1})"));
+			bos.Add ("rotation*rotation",  new BinOpStr (typeof (LSL_Rotation), "{0} * {1}"));
 		}
 
 		private static void DefineBinOpsRotationX (Dictionary<string, BinOpStr> bos, string x, string y)
