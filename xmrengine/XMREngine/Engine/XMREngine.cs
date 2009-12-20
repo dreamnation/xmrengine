@@ -566,6 +566,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                     m_Instances[itemID].PostEvent(new EventParams("state_entry", new Object[0], new DetectParams[0]));
 
+                    System.Threading.Monitor.PulseAll(m_Instances);
+
                     List<UUID> l;
 
                     if (m_Objects.ContainsKey(part.UUID))
@@ -717,18 +719,26 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
         }
 
+        // Run all scripts through one cycle.
+        // If there are no scripts, wait for one.
+        //
         public void RunOneCycle()
         {
             List<XMRInstance> instances = null;
 
             lock (m_Instances)
             {
+                while (m_Instances.Count == 0)
+                {
+                    System.Threading.Monitor.Wait(m_Instances);
+                }
                 instances = new List<XMRInstance>(m_Instances.Values);
             }
 
             foreach (XMRInstance ins in instances)
                 if (ins != null)
                     ins.RunOne();
+                
         }
 
         public void Suspend(UUID itemID, int ms)
