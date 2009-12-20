@@ -107,6 +107,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private void Schedule()
         {
             m_Scheduled = true;
+            ((XMREngine)m_Engine).WakeUp();
         }
 
         private void Deschedule()
@@ -189,15 +190,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
         }
 
-        public void RunOne()
+        public DateTime RunOne()
         {
             lock (m_RunLock)
             {
                 if (!m_Scheduled)
-                    return;
+                    return DateTime.MaxValue;
 
                 if (m_Suspend > DateTime.UtcNow)
-                    return;
+                    return m_Suspend;
 
                 if (!m_IsIdle)
                 {
@@ -215,7 +216,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     {
                         Monitor.Exit(m_RunLock);
                         m_Engine.World.DeleteSceneObject(m_Part.ParentGroup, false);
-                        return;
+                        return DateTime.MinValue;
                     }
 
                     if (m_Loader.StateCode != m_StateCode)
@@ -230,7 +231,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     if (m_EventQueue.Count < 1)
                     {
                         Deschedule();
-                        return;
+                        return DateTime.MinValue;
                     }
 
                     EventParams evt = m_EventQueue.Dequeue();
@@ -245,6 +246,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_Loader.PostEvent(evt.EventName, evt.Params);
                 }
             }
+            return DateTime.MinValue;
         }
 
         public DetectParams GetDetectParams(int number)
@@ -261,6 +263,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public void Suspend(int ms)
         {
             m_Suspend = DateTime.UtcNow + TimeSpan.FromMilliseconds(ms);
+            ((XMREngine)m_Engine).WakeUp();
         }
 
         public void ApiReset()

@@ -59,6 +59,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private AssemblyResolver m_AssemblyResolver = null;
         private Dictionary<UUID, XMRInstance> m_Instances =
                 new Dictionary<UUID, XMRInstance>();
+        private bool m_WakeUpFlag = false;
+        private object m_WakeUpLock = new object();
         private Dictionary<UUID, int> m_Assemblies =
                 new Dictionary<UUID, int>();
         private Dictionary<UUID, AppDomain> m_AppDomains =
@@ -84,7 +86,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void Initialise(IConfigSource config)
         {
-            Console.WriteLine ("XMR Initialize*: entry\n");
             m_ConfigSource = config;
 
             if (config.Configs["XMREngine"] == null)
@@ -93,7 +94,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 m_Config = config.Configs["XMREngine"];
 
             m_Enabled = m_Config.GetBoolean("Enabled", false);
-            Console.WriteLine ("XMR Initialize*: enabled={0}", m_Enabled);
 
             if (!m_Enabled)
                 return;
@@ -109,7 +109,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void AddRegion(Scene scene)
         {
-            Console.WriteLine ("XMR AddRegion*: m_Enabled={0}", m_Enabled);
             if (!m_Enabled)
                 return;
 
@@ -435,7 +434,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public void OnRezScript(uint localID, UUID itemID, string script,
                 int startParam, bool postOnRez, string engine, int stateSource)
         {
-            Console.WriteLine ("XMR OnRezScript*: script={0}", script);
             if (script.StartsWith("//MRM:"))
                 return;
 
@@ -566,7 +564,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                     m_Instances[itemID].PostEvent(new EventParams("state_entry", new Object[0], new DetectParams[0]));
 
-                    System.Threading.Monitor.PulseAll(m_Instances);
+                    WakeUp();
 
                     List<UUID> l;
 
@@ -719,26 +717,58 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
         }
 
+        public void WakeUp()
+        {
+            lock (m_WakeUpLock)
+            {
+                m_WakeUpFlag = true;
+                System.Threading.Monitor.PulseAll(m_WakeUpLock);
+            }
+        }
+
         // Run all scripts through one cycle.
-        // If there are no scripts, wait for one.
+        // Block until ready to do it all again.
         //
         public void RunOneCycle()
         {
             List<XMRInstance> instances = null;
 
+            m_WakeUpFlag = false;
             lock (m_Instances)
             {
-                while (m_Instances.Count == 0)
-                {
-                    System.Threading.Monitor.Wait(m_Instances);
-                }
                 instances = new List<XMRInstance>(m_Instances.Values);
             }
 
+            DateTime earliest = DateTime.MaxValue;
             foreach (XMRInstance ins in instances)
+            {
                 if (ins != null)
-                    ins.RunOne();
-                
+                {
+                    DateTime suspendUntil = ins.RunOne();
+                    if (earliest > suspendUntil)
+                    {
+                        earliest = suspendUntil;
+                    }
+                }
+            }
+
+            DateTime now = DateTime.UtcNow;
+            if (earliest > now)
+            {
+                lock (m_WakeUpLock)
+                {
+                    if (!m_WakeUpFlag)
+                    {
+                        TimeSpan deltaTS = earliest - now;
+                        int deltaMS = Int32.MaxValue;
+                        if (deltaTS.TotalMilliseconds < Int32.MaxValue)
+                        {
+                            deltaMS = (int)deltaTS.TotalMilliseconds;
+                        }
+                        System.Threading.Monitor.Wait(m_WakeUpLock, deltaMS);
+                    }
+                }
+            }
         }
 
         public void Suspend(UUID itemID, int ms)
