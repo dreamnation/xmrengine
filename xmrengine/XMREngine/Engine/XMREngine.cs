@@ -498,6 +498,36 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public bool SetXMLState(UUID itemID, string xml)
         {
+            m_log.Debug("[XMREngine]: Received XML: " + xml);
+            XmlDocument doc = new XmlDocument();
+
+            try
+            {
+                doc.LoadXml(xml);
+            }
+            catch
+            {
+                return false;
+            }
+
+            XmlElement stateN = (XmlElement)doc.SelectSingleNode("State");
+            if (stateN == null)
+                return false;
+
+            if (stateN.GetAttribute("Engine") != ScriptEngineName)
+                return false;
+
+            XmlElement scriptStateN = (XmlElement)stateN.SelectSingleNode("ScriptState");
+            if (scriptStateN == null)
+                return false;
+
+            XmlElement runningN = (XmlElement)scriptStateN.SelectSingleNode("Running");
+            bool running = bool.Parse(runningN.InnerText);
+
+            XmlElement snapshotN = (XmlElement)scriptStateN.SelectSingleNode("Snapshot");
+            byte[] data = Convert.FromBase64String(snapshotN.InnerText);
+
+            m_log.Debug("[XMREngine]: Successfully decoded XML");
             return false;
         }
 
