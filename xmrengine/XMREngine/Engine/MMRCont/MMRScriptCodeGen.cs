@@ -2752,7 +2752,7 @@ namespace MMR
 		 */
 		private void WriteOutputLine (int sourceLineNo, string line)
 		{
-			if (atBegOfLine && (line.TrimStart (' ')[0] != '#')) {
+			if (atBegOfLine && (!line.TrimStart (' ').StartsWith("#"))) {
 				lineNoTrans.AddLast (sourceLineNo);
 				objectWriter.Write ("/*{0,5}:{1,5}*/ ", outputLineNo, sourceLineNo);
 				if (line.EndsWith (":;") && (indentLevel >= 3)) {
