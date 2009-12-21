@@ -399,8 +399,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return String.Empty;
         }
 
-        public void SetXMLState(UUID itemID, string xml)
+        public bool SetXMLState(UUID itemID, string xml)
         {
+            return false;
         }
 
         public bool PostScriptEvent(UUID itemID, string name, Object[] p)
@@ -668,6 +669,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     File.Delete(assemblyPath + ".mdb");
                 }
             }
+
+            string statePath = Path.Combine(m_ScriptBasePath,
+                    itemID + ".state");
+            File.Delete(statePath);
         }
 
         public void OnScriptReset(uint localID, UUID itemID)
