@@ -854,6 +854,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         item.PermsGranter = new UUID(permissionsN.GetAttribute("granter"));
                         item.PermsMask = Convert.ToInt32(permissionsN.GetAttribute("mask"));
 
+                        XmlElement snapshotN = (XmlElement)scriptStateN.SelectSingleNode("Snapshot");
+                        Byte[] data = Convert.FromBase64String(snapshotN.InnerText);
+                        m_Instances[itemID].RestoreSnapshot(data);
+
                         m_Instances[itemID].Resume();
 
                         m_log.Debug("[XMREngine]: Found state information");
