@@ -56,6 +56,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             get { return m_Part; }
         }
 
+        public DetectParams[] DetectParams
+        {
+            get { return m_DetectParams; }
+        }
+
+        public UUID ItemID
+        {
+            get { return m_ItemID; }
+        }
+
         public void Suspend()
         {
             lock (m_RunLock)

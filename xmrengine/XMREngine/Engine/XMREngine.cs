@@ -402,6 +402,106 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return null;
         }
 
+        private XmlElement GetExecutionState(XMRInstance instance, XmlDocument doc)
+        {
+            SceneObjectPart part = instance.SceneObject;
+
+            TaskInventoryItem item =
+                    part.Inventory.GetInventoryItem(instance.ItemID);
+
+            if (item == null)
+                return null;
+
+            Byte[] data = instance.GetSnapshot();
+
+            string state = Convert.ToBase64String(data);
+
+            XmlElement scriptStateN = doc.CreateElement("", "ScriptState", "");
+
+            XmlElement runningN = doc.CreateElement("", "Running", "");
+            runningN.AppendChild(doc.CreateTextNode(instance.Running.ToString()));
+
+            scriptStateN.AppendChild(runningN);
+
+            XmlElement detectN = doc.CreateElement("", "Detect", "");
+            scriptStateN.AppendChild(detectN);
+
+            DetectParams[] detect = instance.DetectParams;
+
+            foreach (DetectParams d in detect)
+            {
+                XmlElement detectParamsN = doc.CreateElement("", "DetectParams", "");
+                XmlAttribute pos = doc.CreateAttribute("", "pos", "");
+                pos.Value = d.OffsetPos.ToString();
+                detectParamsN.Attributes.Append(pos);
+
+                XmlAttribute d_linkNum = doc.CreateAttribute("",
+                        "linkNum", "");
+                d_linkNum.Value = d.LinkNum.ToString();
+                detectParamsN.Attributes.Append(d_linkNum);
+
+                XmlAttribute d_group = doc.CreateAttribute("",
+                        "group", "");
+                d_group.Value = d.Group.ToString();
+                detectParamsN.Attributes.Append(d_group);
+
+                XmlAttribute d_name = doc.CreateAttribute("",
+                        "name", "");
+                d_name.Value = d.Name.ToString();
+                detectParamsN.Attributes.Append(d_name);
+
+                XmlAttribute d_owner = doc.CreateAttribute("",
+                        "owner", "");
+                d_owner.Value = d.Owner.ToString();
+                detectParamsN.Attributes.Append(d_owner);
+
+                XmlAttribute d_position = doc.CreateAttribute("",
+                        "position", "");
+                d_position.Value = d.Position.ToString();
+                detectParamsN.Attributes.Append(d_position);
+
+                XmlAttribute d_rotation = doc.CreateAttribute("",
+                        "rotation", "");
+                d_rotation.Value = d.Rotation.ToString();
+                detectParamsN.Attributes.Append(d_rotation);
+
+                XmlAttribute d_type = doc.CreateAttribute("",
+                        "type", "");
+                d_type.Value = d.Type.ToString();
+                detectParamsN.Attributes.Append(d_type);
+
+                XmlAttribute d_velocity = doc.CreateAttribute("",
+                        "velocity", "");
+                d_velocity.Value = d.Velocity.ToString();
+                detectParamsN.Attributes.Append(d_velocity);
+
+                detectParamsN.AppendChild(
+                    doc.CreateTextNode(d.Key.ToString()));
+
+                detectN.AppendChild(detectParamsN);
+            }
+
+            XmlElement snapshotN = doc.CreateElement("", "Snapshot", "");
+            snapshotN.AppendChild(doc.CreateTextNode(state));
+
+            scriptStateN.AppendChild(snapshotN);
+
+            // TODO: Plugin data
+
+            XmlNode permissionsN = doc.CreateElement("", "Permissions", "");
+            scriptStateN.AppendChild(permissionsN);
+
+            XmlAttribute granterA = doc.CreateAttribute("", "granter", "");
+            granterA.Value = item.PermsGranter.ToString();
+            permissionsN.Attributes.Append(granterA);
+
+            XmlAttribute maskA = doc.CreateAttribute("", "mask", "");
+            maskA.Value = item.PermsMask.ToString();
+            permissionsN.Attributes.Append(maskA);
+
+            return scriptStateN;
+        }
+
         public string GetXMLState(UUID itemID)
         {
             XMRInstance instance = null;
@@ -418,8 +518,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             //
             instance.Suspend();
 
-            Byte[] data = instance.GetSnapshot();
-
             XmlDocument doc = new XmlDocument();
 
             XmlElement stateN = doc.CreateElement("", "State", "");
@@ -434,6 +532,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             doc.AppendChild(stateN);
 
+            XmlElement scriptStateN = GetExecutionState(instance, doc);
+
+            if (scriptStateN == null)
+                return String.Empty;
+
+            stateN.AppendChild(scriptStateN);
+
             SceneObjectPart part = instance.SceneObject;
 
             TaskInventoryItem item =
@@ -447,21 +552,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             XmlAttribute assetA = doc.CreateAttribute("", "Asset", "");
             assetA.Value = assetID.ToString();
             stateN.Attributes.Append(assetA);
-            
-            string state = Convert.ToBase64String(data);
 
-            XmlElement scriptStateN = doc.CreateElement("", "ScriptState", "");
-            stateN.AppendChild(scriptStateN);
-
-            XmlElement runningN = doc.CreateElement("", "Running", "");
-            runningN.AppendChild(doc.CreateTextNode(instance.Running.ToString()));
-
-            scriptStateN.AppendChild(runningN);
-
-            XmlElement snapshotN = doc.CreateElement("", "Snapshot", "");
-            snapshotN.AppendChild(doc.CreateTextNode(state));
-
-            scriptStateN.AppendChild(snapshotN);
 
             string assemblyPath = Path.Combine(m_ScriptBasePath,
                     item.AssetID.ToString() + ".dll");
@@ -519,11 +610,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (scriptStateN == null)
                 return false;
 
-            XmlElement runningN = (XmlElement)scriptStateN.SelectSingleNode("Running");
-            bool running = bool.Parse(runningN.InnerText);
+            string statePath = Path.Combine(m_ScriptBasePath,
+                    itemID.ToString() + ".state");
 
-            XmlElement snapshotN = (XmlElement)scriptStateN.SelectSingleNode("Snapshot");
-            byte[] data = Convert.FromBase64String(snapshotN.InnerText);
+            FileStream ss = File.Create(statePath);
+            StreamWriter sw = new StreamWriter(ss);
+            sw.Write(scriptStateN.OuterXml);
+            sw.Close();
+            ss.Close();
 
             UUID assetID = new UUID(stateN.GetAttribute("Asset"));
 
@@ -725,12 +819,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_Instances[itemID] = new XMRInstance(loader, this, part,
                             part.LocalId, itemID, outputName);
 
-                    string statepath = Path.Combine(m_ScriptBasePath,
-                            itemID.ToString() + ".state");
-                    Byte[] data = m_Instances[itemID].GetSnapshot();
-                    FileStream fs = File.Create(statepath);
-                    fs.Write(data, 0, data.Length);
-                    fs.Close();
+                    WriteStateFile(itemID, m_Instances[itemID]);
 
                     m_Instances[itemID].PostEvent(new EventParams("state_entry", new Object[0], new DetectParams[0]));
 
@@ -990,11 +1079,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 XMRInstance ins = kvp.Value;
                 UUID itemID = kvp.Key;
 
+                WriteStateFile(itemID, ins);
+            }
+        }
+
+        private void WriteStateFile(UUID itemID, XMRInstance ins)
+        {
+            XmlDocument doc = new XmlDocument();
+
+            XmlElement scriptStateN = GetExecutionState(ins, doc);
+            
+            if (scriptStateN != null)
+            {
+                doc.AppendChild(scriptStateN);
+
                 string statepath = Path.Combine(m_ScriptBasePath,
                         itemID.ToString() + ".state");
-                Byte[] data = ins.GetSnapshot();
+
                 FileStream fs = File.Create(statepath);
-                fs.Write(data, 0, data.Length);
+                StreamWriter sw = new StreamWriter(fs);
+                sw.Write(doc.OuterXml);
+                sw.Close();
                 fs.Close();
             }
         }
