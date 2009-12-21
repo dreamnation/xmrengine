@@ -409,11 +409,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             TaskInventoryItem item =
                     part.Inventory.GetInventoryItem(instance.ItemID);
 
+            XmlElement scriptStateN = doc.CreateElement("", "ScriptState", "");
+
             Byte[] data = instance.GetSnapshot();
 
             string state = Convert.ToBase64String(data);
 
-            XmlElement scriptStateN = doc.CreateElement("", "ScriptState", "");
+            XmlElement snapshotN = doc.CreateElement("", "Snapshot", "");
+            snapshotN.AppendChild(doc.CreateTextNode(state));
+
+            scriptStateN.AppendChild(snapshotN);
 
             XmlElement runningN = doc.CreateElement("", "Running", "");
             runningN.AppendChild(doc.CreateTextNode(instance.Running.ToString()));
@@ -480,11 +485,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     detectN.AppendChild(detectParamsN);
                 }
             }
-
-            XmlElement snapshotN = doc.CreateElement("", "Snapshot", "");
-            snapshotN.AppendChild(doc.CreateTextNode(state));
-
-            scriptStateN.AppendChild(snapshotN);
 
             // TODO: Plugin data
 
@@ -616,6 +616,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             string statePath = Path.Combine(m_ScriptBasePath,
                     itemID.ToString() + ".state");
 
+			m_log.DebugFormat("Creating {0} from snap", statePath);
             FileStream ss = File.Create(statePath);
             StreamWriter sw = new StreamWriter(ss);
             sw.Write(scriptStateN.OuterXml);
@@ -856,6 +857,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                         XmlElement snapshotN = (XmlElement)scriptStateN.SelectSingleNode("Snapshot");
                         Byte[] data = Convert.FromBase64String(snapshotN.InnerText);
+
                         m_Instances[itemID].RestoreSnapshot(data);
 
                         m_Instances[itemID].Resume();
@@ -948,6 +950,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     string assemblyPath = Path.Combine(m_ScriptBasePath,
                             item.AssetID + ".dll");
 
+					m_log.DebugFormat("Deleting {0}", assemblyPath);
                     File.Delete(assemblyPath);
                     File.Delete(assemblyPath + ".mdb");
                 }
@@ -955,6 +958,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             string statePath = Path.Combine(m_ScriptBasePath,
                     itemID + ".state");
+			m_log.DebugFormat("Deleting {0}", statePath);
             File.Delete(statePath);
         }
 
@@ -1142,6 +1146,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 string statepath = Path.Combine(m_ScriptBasePath,
                         itemID.ToString() + ".state");
 
+				m_log.DebugFormat("Creating {0}", statepath);
                 FileStream fs = File.Create(statepath);
                 StreamWriter sw = new StreamWriter(fs);
                 sw.Write(doc.OuterXml);

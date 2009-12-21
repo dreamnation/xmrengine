@@ -205,6 +205,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
             MemoryStream ms = new MemoryStream();
 
             ms.Write(data, 0, data.Length-1);
+			ms.Seek(0, SeekOrigin.Begin);
 
             m_Wrapper.MigrateInEventHandler(ms);
 
