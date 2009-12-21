@@ -448,12 +448,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             assetA.Value = assetID.ToString();
             stateN.Attributes.Append(assetA);
             
-            string assemblyPath = Path.Combine(m_ScriptBasePath,
-                    item.AssetID + ".dll");
-
-            if (!File.Exists(assemblyPath))
-                return String.Empty;
-
             string state = Convert.ToBase64String(data);
 
             XmlElement scriptStateN = doc.CreateElement("", "ScriptState", "");
@@ -469,36 +463,40 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             scriptStateN.AppendChild(snapshotN);
 
-            FileInfo fi = new FileInfo(assemblyPath);
-            if (fi == null)
-                return String.Empty;
+            string assemblyPath = Path.Combine(m_ScriptBasePath,
+                    item.AssetID.ToString() + ".dll");
 
-            Byte[] assemblyData = new Byte[fi.Length];
-
-            try
+            if (File.Exists(assemblyPath))
             {
-                FileStream fs = File.Open(assemblyPath, FileMode.Open, FileAccess.Read);
-                fs.Read(assemblyData, 0, assemblyData.Length);
-                fs.Close();
+                FileInfo fi = new FileInfo(assemblyPath);
+                if (fi == null)
+                    return String.Empty;
+
+                Byte[] assemblyData = new Byte[fi.Length];
+
+                try
+                {
+                    FileStream fs = File.Open(assemblyPath, FileMode.Open, FileAccess.Read);
+                    fs.Read(assemblyData, 0, assemblyData.Length);
+                    fs.Close();
+                }
+                catch (Exception e)
+                {
+                    m_log.Debug("[XMREngine]: Unable to open script assembly: " + e.ToString());
+                    return String.Empty;
+                }
+
+                XmlElement assemN = doc.CreateElement("", "Assembly", "");
+                assemN.AppendChild(doc.CreateTextNode(Convert.ToBase64String(assemblyData)));
+
+                stateN.AppendChild(assemN);
             }
-            catch (Exception e)
-            {
-                m_log.Debug("[XMREngine]: Unable to open script assembly: " + e.ToString());
-                return String.Empty;
-            }
 
-            XmlElement assemN = doc.CreateElement("", "Assembly", "");
-            assemN.AppendChild(doc.CreateTextNode(Convert.ToBase64String(assemblyData)));
-
-            stateN.AppendChild(assemN);
-
-            m_log.Debug("[XMREngine]: Created XML state " + doc.OuterXml);
             return doc.OuterXml;
         }
 
         public bool SetXMLState(UUID itemID, string xml)
         {
-            m_log.Debug("[XMREngine]: Received XML: " + xml);
             XmlDocument doc = new XmlDocument();
 
             try
@@ -527,7 +525,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             XmlElement snapshotN = (XmlElement)scriptStateN.SelectSingleNode("Snapshot");
             byte[] data = Convert.FromBase64String(snapshotN.InnerText);
 
-            m_log.Debug("[XMREngine]: Successfully decoded XML");
+            UUID assetID = new UUID(stateN.GetAttribute("Asset"));
+
+            string assemblyPath = Path.Combine(m_ScriptBasePath,
+                    assetID.ToString() + ".dll");
+
+            if (!File.Exists(assemblyPath))
+            {
+                XmlElement assemN = (XmlElement)stateN.SelectSingleNode("Assembly");
+                if (assemN != null)
+                {
+                    Byte[] assemData = Convert.FromBase64String(assemN.InnerText);
+
+                    FileStream fs = File.Create(assemblyPath);
+                    fs.Write(assemData, 0, assemData.Length);
+                    fs.Close();
+                }
+            }
             return false;
         }
 
