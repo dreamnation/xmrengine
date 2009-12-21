@@ -884,9 +884,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                     m_Partmap[itemID] = part.UUID;
                 }
-                catch
+                catch (Exception e)
                 {
-                    m_log.Error("[XMREngine]: Script load failed, restart region");
+                    m_log.Error("[XMREngine]: Script load failed, restart region + e.ToString()");
                 }
             }
         }
