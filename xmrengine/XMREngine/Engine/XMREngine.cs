@@ -1085,12 +1085,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         private void WriteStateFile(UUID itemID, XMRInstance ins)
         {
+            m_log.Debug("[XMREngine]: WriteStateFile called");
             XmlDocument doc = new XmlDocument();
 
             XmlElement scriptStateN = GetExecutionState(ins, doc);
             
             if (scriptStateN != null)
             {
+                m_log.Debug("[XMREngine]: Writing file, data = "+doc.OuterXml);
                 doc.AppendChild(scriptStateN);
 
                 string statepath = Path.Combine(m_ScriptBasePath,
@@ -1101,6 +1103,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 sw.Write(doc.OuterXml);
                 sw.Close();
                 fs.Close();
+            }
+            else
+            {
+                m_log.Debug("[XMREngine]: Failed to get script state");
             }
         }
     }
