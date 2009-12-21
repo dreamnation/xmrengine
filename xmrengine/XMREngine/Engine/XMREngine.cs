@@ -409,9 +409,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             TaskInventoryItem item =
                     part.Inventory.GetInventoryItem(instance.ItemID);
 
-            if (item == null)
-                return null;
-
             Byte[] data = instance.GetSnapshot();
 
             string state = Convert.ToBase64String(data);
@@ -488,16 +485,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             // TODO: Plugin data
 
-            XmlNode permissionsN = doc.CreateElement("", "Permissions", "");
-            scriptStateN.AppendChild(permissionsN);
+            if (item != null)
+            {
+                XmlNode permissionsN = doc.CreateElement("", "Permissions", "");
+                scriptStateN.AppendChild(permissionsN);
 
-            XmlAttribute granterA = doc.CreateAttribute("", "granter", "");
-            granterA.Value = item.PermsGranter.ToString();
-            permissionsN.Attributes.Append(granterA);
+                XmlAttribute granterA = doc.CreateAttribute("", "granter", "");
+                granterA.Value = item.PermsGranter.ToString();
+                permissionsN.Attributes.Append(granterA);
 
-            XmlAttribute maskA = doc.CreateAttribute("", "mask", "");
-            maskA.Value = item.PermsMask.ToString();
-            permissionsN.Attributes.Append(maskA);
+                XmlAttribute maskA = doc.CreateAttribute("", "mask", "");
+                maskA.Value = item.PermsMask.ToString();
+                permissionsN.Attributes.Append(maskA);
+            }
 
             return scriptStateN;
         }
