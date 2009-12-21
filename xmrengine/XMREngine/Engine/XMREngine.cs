@@ -214,8 +214,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         private void ErrorHandler(Token token, string message)
         {
-            m_log.DebugFormat("[MMR]: ({0},{1}) Error: {2}", token.line,
-                    token.posn, message);
+            if (token != null)
+            {
+                m_log.DebugFormat("[MMR]: ({0},{1}) Error: {2}", token.line,
+                        token.posn, message);
+            }
+            else
+            {
+                m_log.DebugFormat("[MMR]: Error compiling, see exception in log");
+            }
         }
 
         // Not required when not using IScriptInstance
@@ -530,8 +537,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     if (m_Config.GetBoolean("WriteScriptSourceToDebugFile", false))
                         debugFileName = "/tmp/" + item.AssetID.ToString() + ".lsl";
 
-                    ScriptCompile.Compile(script, outputName,
-                            UUID.Zero.ToString(), debugFileName, ErrorHandler);
+                    try
+                    {
+                        ScriptCompile.Compile(script, outputName,
+                                UUID.Zero.ToString(), debugFileName, ErrorHandler);
+                    }
+                    catch (Exception e)
+                    {
+                        m_log.Debug("[XMREngine]: Exception compiling script: " + e.ToString());
+                    }
 
                     if (!File.Exists(outputName))
                         return;
