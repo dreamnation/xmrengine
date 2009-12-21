@@ -7,6 +7,7 @@
 
 
 using System;
+using System.Timers;
 using System.IO;
 using System.Runtime.Remoting;
 using System.Runtime.Remoting.Lifetime;
@@ -70,6 +71,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private Dictionary<UUID, UUID> m_Partmap =
                 new Dictionary<UUID, UUID>();
 
+        private int m_MaintenanceInterval = 10;
+        
+        private Timer m_MaintenanceTimer;
+
         public XMREngine()
         {
         }
@@ -99,6 +104,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 return;
 
             m_log.Info("[XMREngine]: Enabled");
+
+            m_MaintenanceInterval = m_Config.GetInt("MaintenanceInterval", 10);
+
+            if (m_MaintenanceInterval > 0)
+            {
+                m_MaintenanceTimer = new Timer(m_MaintenanceInterval * 60000);
+                m_MaintenanceTimer.Elapsed += DoMaintenance;
+                m_MaintenanceTimer.Start();
+            }
 
             MainConsole.Instance.Commands.AddCommand("xmr", false,
                     "xmr test",
@@ -562,6 +576,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_Instances[itemID] = new XMRInstance(loader, this, part,
                             part.LocalId, itemID, outputName);
 
+                    string statepath = Path.Combine(m_ScriptBasePath,
+                            itemID.ToString() + ".state");
+                    Byte[] data = m_Instances[itemID].GetSnapshot();
+                    FileStream fs = File.Create(statepath);
+                    fs.Write(data, 0, data.Length);
+                    fs.Close();
+
                     m_Instances[itemID].PostEvent(new EventParams("state_entry", new Object[0], new DetectParams[0]));
 
                     WakeUp();
@@ -801,6 +822,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             instance.Die();
+        }
+
+        private void DoMaintenance(object source, ElapsedEventArgs e)
+        {
+            Dictionary<UUID, XMRInstance> instances;
+            lock (m_Instances)
+            {
+                instances = new Dictionary<UUID, XMRInstance>(m_Instances);
+            }
+
+            foreach (KeyValuePair<UUID, XMRInstance> kvp in instances)
+            {
+                XMRInstance ins = kvp.Value;
+                UUID itemID = kvp.Key;
+
+                string statepath = Path.Combine(m_ScriptBasePath,
+                        itemID.ToString() + ".state");
+                Byte[] data = ins.GetSnapshot();
+                FileStream fs = File.Create(statepath);
+                fs.Write(data, 0, data.Length);
+                fs.Close();
+            }
         }
     }
 
