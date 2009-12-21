@@ -854,6 +854,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         item.PermsGranter = new UUID(permissionsN.GetAttribute("Granter"));
                         item.PermsMask = Convert.ToInt32(permissionsN.GetAttribute("Mask"));
 
+                        m_Instances[itemID].Resume();
+
                         m_log.Debug("[XMREngine]: Found state information");
                     }
                     else
