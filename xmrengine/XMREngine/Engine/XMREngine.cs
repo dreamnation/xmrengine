@@ -886,7 +886,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
                 catch (Exception e)
                 {
-                    m_log.Error("[XMREngine]: Script load failed, restart region + e.ToString()");
+                    m_log.Error("[XMREngine]: Script load failed, restart region" + e.ToString());
                 }
             }
         }
