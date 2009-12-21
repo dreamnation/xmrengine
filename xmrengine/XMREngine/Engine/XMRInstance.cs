@@ -51,6 +51,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private Dictionary<string,IScriptApi> m_Apis =
                 new Dictionary<string,IScriptApi>();
 
+        public SceneObjectPart SceneObject
+        {
+            get { return m_Part; }
+        }
+
         public void Suspend()
         {
             lock (m_RunLock)

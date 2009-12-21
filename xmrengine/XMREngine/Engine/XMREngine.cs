@@ -7,6 +7,7 @@
 
 
 using System;
+using System.Xml;
 using System.Timers;
 using System.IO;
 using System.Runtime.Remoting;
@@ -403,7 +404,96 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public string GetXMLState(UUID itemID)
         {
-            return String.Empty;
+            XMRInstance instance = null;
+
+            lock (m_Instances)
+            {
+                if (!m_Instances.ContainsKey(itemID))
+                    return String.Empty;
+
+                instance = m_Instances[itemID];
+            }
+
+            // Script is being migrated out. We will never unsuspend again
+            //
+            instance.Suspend();
+
+            Byte[] data = instance.GetSnapshot();
+
+            XmlDocument doc = new XmlDocument();
+
+            XmlElement stateN = doc.CreateElement("", "State", "");
+
+            XmlAttribute uuidA = doc.CreateAttribute("", "UUID", "");
+            uuidA.Value = itemID.ToString();
+            stateN.Attributes.Append(uuidA);
+
+            XmlAttribute engineA = doc.CreateAttribute("", "Engine", "");
+            engineA.Value = ScriptEngineName;
+            stateN.Attributes.Append(engineA);
+
+            doc.AppendChild(stateN);
+
+            SceneObjectPart part = instance.SceneObject;
+
+            TaskInventoryItem item =
+                    part.Inventory.GetInventoryItem(itemID);
+
+            if (item == null)
+                return String.Empty;
+
+            UUID assetID = item.AssetID;
+
+            XmlAttribute assetA = doc.CreateAttribute("", "Asset", "");
+            assetA.Value = assetID.ToString();
+            stateN.Attributes.Append(assetA);
+            
+            string assemblyPath = Path.Combine(m_ScriptBasePath,
+                    item.AssetID + ".dll");
+
+            if (!File.Exists(assemblyPath))
+                return String.Empty;
+
+            string state = Convert.ToBase64String(data);
+
+            XmlElement scriptStateN = doc.CreateElement("", "ScriptState", "");
+            stateN.AppendChild(scriptStateN);
+
+            XmlElement runningN = doc.CreateElement("", "Running", "");
+            runningN.AppendChild(doc.CreateTextNode(instance.Running.ToString()));
+
+            scriptStateN.AppendChild(runningN);
+
+            XmlElement snapshotN = doc.CreateElement("", "Snapshot", "");
+            snapshotN.AppendChild(doc.CreateTextNode(state));
+
+            scriptStateN.AppendChild(snapshotN);
+
+            FileInfo fi = new FileInfo(assemblyPath);
+            if (fi == null)
+                return String.Empty;
+
+            Byte[] assemblyData = new Byte[fi.Length];
+
+            try
+            {
+                FileStream fs = File.Open(assemblyPath, FileMode.Open, FileAccess.Read);
+                fs.Read(assemblyData, 0, assemblyData.Length);
+                fs.Close();
+            }
+            catch (Exception e)
+            {
+                m_log.Debug("[XMREngine]: Unable to open script assembly: " + e.ToString());
+                return String.Empty;
+            }
+
+            XmlElement assemN = doc.CreateElement("", "Assembly", "");
+            assemN.AppendChild(doc.CreateTextNode(Convert.ToBase64String(assemblyData)));
+
+            stateN.AppendChild(assemN);
+
+            m_log.Debug("[XMREngine]: Created XML state " + doc.OuterXml);
+            return doc.OuterXml;
         }
 
         public bool SetXMLState(UUID itemID, string xml)
