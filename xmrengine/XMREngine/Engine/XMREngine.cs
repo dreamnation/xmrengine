@@ -822,9 +822,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_Instances[itemID] = new XMRInstance(loader, this, part,
                             part.LocalId, itemID, outputName);
 
-                    WriteStateFile(itemID, m_Instances[itemID]);
+                    string statePath = Path.Combine(m_ScriptBasePath,
+                            itemID.ToString() + ".state");
 
-                    m_Instances[itemID].PostEvent(new EventParams("state_entry", new Object[0], new DetectParams[0]));
+                    if (File.Exists(statePath))
+                    {
+                        m_log.Debug("[XMREngine]: Found state information");
+                    }
+                    else
+                    {
+                        WriteStateFile(itemID, m_Instances[itemID]);
+
+                        m_Instances[itemID].PostEvent(new EventParams("state_entry", new Object[0], new DetectParams[0]));
+                    }
 
                     WakeUp();
 
@@ -1088,14 +1098,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         private void WriteStateFile(UUID itemID, XMRInstance ins)
         {
-            m_log.Debug("[XMREngine]: WriteStateFile called");
             XmlDocument doc = new XmlDocument();
 
             XmlElement scriptStateN = GetExecutionState(ins, doc);
             
             if (scriptStateN != null)
             {
-                m_log.Debug("[XMREngine]: Writing file, data = "+doc.OuterXml);
                 doc.AppendChild(scriptStateN);
 
                 string statepath = Path.Combine(m_ScriptBasePath,
@@ -1106,10 +1114,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 sw.Write(doc.OuterXml);
                 sw.Close();
                 fs.Close();
-            }
-            else
-            {
-                m_log.Debug("[XMREngine]: Failed to get script state");
             }
         }
     }
