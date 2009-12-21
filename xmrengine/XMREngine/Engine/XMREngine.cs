@@ -851,8 +851,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         m_Instances[itemID].Running = running;
 
                         XmlElement permissionsN = (XmlElement)scriptStateN.SelectSingleNode("Permissions");
-                        item.PermsGranter = new UUID(permissionsN.GetAttribute("Granter"));
-                        item.PermsMask = Convert.ToInt32(permissionsN.GetAttribute("Mask"));
+                        item.PermsGranter = new UUID(permissionsN.GetAttribute("granter"));
+                        item.PermsMask = Convert.ToInt32(permissionsN.GetAttribute("mask"));
 
                         m_Instances[itemID].Resume();
 
