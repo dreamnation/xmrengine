@@ -827,6 +827,33 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                     if (File.Exists(statePath))
                     {
+                        m_Instances[itemID].Suspend();
+                        
+                        FileStream fs = File.Open(statePath, FileMode.Open, FileAccess.Read);
+                        StreamReader ss = new StreamReader(fs);
+                        string xml = ss.ReadToEnd();
+                        ss.Close();
+                        fs.Close();
+
+                        XmlDocument doc = new XmlDocument();
+
+                        doc.LoadXml(xml);
+
+                        XmlElement scriptStateN = (XmlElement)doc.SelectSingleNode("ScriptState");
+                        if (scriptStateN == null)
+                        {
+                            m_log.Debug("[XMREngine]: Malformed XML: " + xml);
+                            throw new Exception("Malformed XML");
+                        }
+
+                        XmlElement runningN = (XmlElement)scriptStateN.SelectSingleNode("Running");
+                        bool running = bool.Parse(runningN.InnerText);
+                        m_Instances[itemID].Running = running;
+
+                        XmlElement permissionsN = (XmlElement)scriptStateN.SelectSingleNode("Permissions");
+                        item.PermsGranter = new UUID(permissionsN.GetAttribute("Granter"));
+                        item.PermsMask = Convert.ToInt32(permissionsN.GetAttribute("Mask"));
+
                         m_log.Debug("[XMREngine]: Found state information");
                     }
                     else
