@@ -194,6 +194,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void Close()
         {
+            DoMaintenance(null, null);
         }
 
         private void RunTest(string module, string[] args)
