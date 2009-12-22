@@ -47,9 +47,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private bool m_Reset = false;
         private bool m_Die = false;
         private int m_StateCode = 0;
+		private int m_StartParam = 0;
 
         private Dictionary<string,IScriptApi> m_Apis =
                 new Dictionary<string,IScriptApi>();
+
+		public int StartParam
+		{
+			get { return m_StartParam; }
+			set { m_StartParam = value; }
+		}
 
         public SceneObjectPart SceneObject
         {
@@ -59,6 +66,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public DetectParams[] DetectParams
         {
             get { return m_DetectParams; }
+			set { m_DetectParams = value; }
         }
 
         public UUID ItemID

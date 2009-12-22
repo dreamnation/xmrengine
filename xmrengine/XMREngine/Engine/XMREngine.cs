@@ -307,7 +307,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public int GetStartParameter(UUID itemID)
         {
-            return 0;
+            XMRInstance instance = null;
+
+            lock (m_Instances)
+            {
+                if (!m_Instances.ContainsKey(itemID))
+                    return 0;
+
+                instance = m_Instances[itemID];
+
+            }
+
+			return instance.StartParam;
         }
 
         // This is the "set running" method
@@ -422,8 +433,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             XmlElement runningN = doc.CreateElement("", "Running", "");
             runningN.AppendChild(doc.CreateTextNode(instance.Running.ToString()));
-
             scriptStateN.AppendChild(runningN);
+
+            XmlElement startParamN = doc.CreateElement("", "StartParam", "");
+            startParamN.AppendChild(doc.CreateTextNode(instance.StartParam.ToString()));
+
+            scriptStateN.AppendChild(startParamN);
 
             DetectParams[] detect = instance.DetectParams;
 
@@ -501,6 +516,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 maskA.Value = item.PermsMask.ToString();
                 permissionsN.Attributes.Append(maskA);
             }
+
+			Object[] pluginData = AsyncCommandManager.GetSerializationData(this,
+					instance.ItemID);
+
+			XmlNode plugins = doc.CreateElement("", "Plugins", "");
+			DumpList(doc, plugins, new LSL_Types.list(pluginData));
+
+			scriptStateN.AppendChild(plugins);
 
             return scriptStateN;
         }
@@ -616,7 +639,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             string statePath = Path.Combine(m_ScriptBasePath,
                     itemID.ToString() + ".state");
 
-			m_log.DebugFormat("Creating {0} from snap", statePath);
             FileStream ss = File.Create(statePath);
             StreamWriter sw = new StreamWriter(ss);
             sw.Write(scriptStateN.OuterXml);
@@ -823,6 +845,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_Instances[itemID] = new XMRInstance(loader, this, part,
                             part.LocalId, itemID, outputName);
 
+					m_Instances[itemID].StartParam = startParam;
+
                     string statePath = Path.Combine(m_ScriptBasePath,
                             itemID.ToString() + ".state");
 
@@ -841,11 +865,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         doc.LoadXml(xml);
 
                         XmlElement scriptStateN = (XmlElement)doc.SelectSingleNode("ScriptState");
-                        if (scriptStateN == null)
-                        {
-                            m_log.Debug("[XMREngine]: Malformed XML: " + xml);
-                            throw new Exception("Malformed XML");
-                        }
+                        XmlElement startParamN = (XmlElement)scriptStateN.SelectSingleNode("StartParam");
+                        startParam = int.Parse(startParamN.InnerText);
+                        m_Instances[itemID].StartParam = startParam;
 
                         XmlElement runningN = (XmlElement)scriptStateN.SelectSingleNode("Running");
                         bool running = bool.Parse(runningN.InnerText);
@@ -860,15 +882,137 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                         m_Instances[itemID].RestoreSnapshot(data);
 
-                        m_Instances[itemID].Resume();
+						XmlElement detectedN = (XmlElement)scriptStateN.SelectSingleNode("Detect");
+						if (detectedN != null)
+						{
+							List<DetectParams> detected = new List<DetectParams>();
 
-                        m_log.Debug("[XMREngine]: Found state information");
+							XmlNodeList detectL = detectedN.SelectNodes("DetectParams");
+							foreach (XmlNode det in detectL)
+							{
+								string vect =
+										det.Attributes.GetNamedItem(
+										"pos").Value;
+								LSL_Types.Vector3 v =
+										new LSL_Types.Vector3(vect);
+
+								int d_linkNum=0;
+								UUID d_group = UUID.Zero;
+								string d_name = String.Empty;
+								UUID d_owner = UUID.Zero;
+								LSL_Types.Vector3 d_position =
+									new LSL_Types.Vector3();
+								LSL_Types.Quaternion d_rotation =
+									new LSL_Types.Quaternion();
+								int d_type = 0;
+								LSL_Types.Vector3 d_velocity =
+									new LSL_Types.Vector3();
+
+								string tmp;
+
+								tmp = det.Attributes.GetNamedItem(
+										"linkNum").Value;
+								int.TryParse(tmp, out d_linkNum);
+
+								tmp = det.Attributes.GetNamedItem(
+										"group").Value;
+								UUID.TryParse(tmp, out d_group);
+
+								d_name = det.Attributes.GetNamedItem(
+										"name").Value;
+
+								tmp = det.Attributes.GetNamedItem(
+										"owner").Value;
+								UUID.TryParse(tmp, out d_owner);
+
+								tmp = det.Attributes.GetNamedItem(
+										"position").Value;
+								d_position =
+									new LSL_Types.Vector3(tmp);
+
+								tmp = det.Attributes.GetNamedItem(
+										"rotation").Value;
+								d_rotation =
+									new LSL_Types.Quaternion(tmp);
+
+								tmp = det.Attributes.GetNamedItem(
+										"type").Value;
+								int.TryParse(tmp, out d_type);
+
+								tmp = det.Attributes.GetNamedItem(
+										"velocity").Value;
+								d_velocity =
+									new LSL_Types.Vector3(tmp);
+
+								UUID uuid = new UUID();
+								UUID.TryParse(det.InnerText,
+										out uuid);
+
+								DetectParams d = new DetectParams();
+								d.Key = uuid;
+								d.OffsetPos = v;
+								d.LinkNum = d_linkNum;
+								d.Group = d_group;
+								d.Name = d_name;
+								d.Owner = d_owner;
+								d.Position = d_position;
+								d.Rotation = d_rotation;
+								d.Type = d_type;
+								d.Velocity = d_velocity;
+
+								detected.Add(d);
+
+							}
+							m_Instances[itemID].DetectParams = detected.ToArray();
+						}
+
+						XmlElement pluginN = (XmlElement)scriptStateN.SelectSingleNode("Plugins");
+						Object[] pluginData = ReadList(pluginN).Data;
+
+						AsyncCommandManager.CreateFromData(this,
+								localID, itemID, part.UUID,
+								pluginData);
+
+						if (postOnRez)
+						{
+							m_Instances[itemID].PostEvent(new EventParams("on_rez",
+									new Object[] {m_Instances[itemID].StartParam}, new DetectParams[0]));
+						}
+
+						if (stateSource == (int)StateSource.AttachedRez)
+						{
+							m_Instances[itemID].PostEvent(new EventParams("attach",
+									new object[] { part.AttachedAvatar.ToString() }, new DetectParams[0]));
+						}
+                        m_Instances[itemID].Resume();
                     }
                     else
                     {
                         WriteStateFile(itemID, m_Instances[itemID]);
 
                         m_Instances[itemID].PostEvent(new EventParams("state_entry", new Object[0], new DetectParams[0]));
+
+						if (postOnRez)
+						{
+							m_Instances[itemID].PostEvent(new EventParams("on_rez",
+									new Object[] {m_Instances[itemID].StartParam}, new DetectParams[0]));
+						}
+
+						if (stateSource == (int)StateSource.AttachedRez)
+						{
+							m_Instances[itemID].PostEvent(new EventParams("attach",
+									new object[] { part.AttachedAvatar.ToString() }, new DetectParams[0]));
+						}
+						else if (stateSource == (int)StateSource.NewRez)
+						{
+							m_Instances[itemID].PostEvent(new EventParams("changed",
+									new Object[] {256}, new DetectParams[0]));
+						}
+						else if (stateSource == (int)StateSource.PrimCrossing)
+						{
+							m_Instances[itemID].PostEvent(new EventParams("changed",
+									new Object[] {512}, new DetectParams[0]));
+						}
                     }
 
                     WakeUp();
@@ -950,7 +1094,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     string assemblyPath = Path.Combine(m_ScriptBasePath,
                             item.AssetID + ".dll");
 
-					m_log.DebugFormat("Deleting {0}", assemblyPath);
                     File.Delete(assemblyPath);
                     File.Delete(assemblyPath + ".mdb");
                 }
@@ -958,7 +1101,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             string statePath = Path.Combine(m_ScriptBasePath,
                     itemID + ".state");
-			m_log.DebugFormat("Deleting {0}", statePath);
             File.Delete(statePath);
         }
 
@@ -1146,13 +1288,117 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 string statepath = Path.Combine(m_ScriptBasePath,
                         itemID.ToString() + ".state");
 
-				m_log.DebugFormat("Creating {0}", statepath);
                 FileStream fs = File.Create(statepath);
                 StreamWriter sw = new StreamWriter(fs);
                 sw.Write(doc.OuterXml);
                 sw.Close();
                 fs.Close();
             }
+        }
+
+        private static void DumpList(XmlDocument doc, XmlNode parent,
+                LSL_Types.list l)
+        {
+            foreach (Object o in l.Data)
+                WriteTypedValue(doc, parent, "ListItem", "", o);
+        }
+
+        private static LSL_Types.list ReadList(XmlNode parent)
+        {
+            List<Object> olist = new List<Object>();
+
+            XmlNodeList itemL = parent.ChildNodes;
+            foreach (XmlNode item in itemL)
+                olist.Add(ReadTypedValue(item));
+
+            return new LSL_Types.list(olist.ToArray());
+        }
+
+        private static void WriteTypedValue(XmlDocument doc, XmlNode parent,
+                string tag, string name, object value)
+        {
+            Type t=value.GetType();
+            XmlAttribute typ = doc.CreateAttribute("", "type", "");
+            XmlNode n = doc.CreateElement("", tag, "");
+
+            if (value is LSL_Types.list)
+            {
+                typ.Value = "list";
+                n.Attributes.Append(typ);
+
+                DumpList(doc, n, (LSL_Types.list) value);
+
+                if (name != String.Empty)
+                {
+                    XmlAttribute nam = doc.CreateAttribute("", "name", "");
+                    nam.Value = name;
+                    n.Attributes.Append(nam);
+                }
+
+                parent.AppendChild(n);
+                return;
+            }
+
+            n.AppendChild(doc.CreateTextNode(value.ToString()));
+
+            typ.Value = t.ToString();
+            n.Attributes.Append(typ);
+            if (name != String.Empty)
+            {
+                XmlAttribute nam = doc.CreateAttribute("", "name", "");
+                nam.Value = name;
+                n.Attributes.Append(nam);
+            }
+
+            parent.AppendChild(n);
+        }
+
+        private static object ReadTypedValue(XmlNode tag, out string name)
+        {
+            name = tag.Attributes.GetNamedItem("name").Value;
+
+            return ReadTypedValue(tag);
+        }
+
+        private static object ReadTypedValue(XmlNode tag)
+        {
+            Object varValue;
+            string assembly;
+
+            string itemType = tag.Attributes.GetNamedItem("type").Value;
+
+            if (itemType == "list")
+                return ReadList(tag);
+
+            if (itemType == "OpenMetaverse.UUID")
+            {
+                UUID val = new UUID();
+                UUID.TryParse(tag.InnerText, out val);
+
+                return val;
+            }
+
+            Type itemT = Type.GetType(itemType);
+            if (itemT == null)
+            {
+                Object[] args =
+                    new Object[] { tag.InnerText };
+
+                assembly = itemType+", OpenSim.Region.ScriptEngine.Shared";
+                itemT = Type.GetType(assembly);
+                if (itemT == null)
+                    return null;
+
+                varValue = Activator.CreateInstance(itemT, args);
+
+                if (varValue == null)
+                    return null;
+            }
+            else
+            {
+                varValue = Convert.ChangeType(tag.InnerText, itemT);
+            }
+            return varValue;
         }
     }
 
