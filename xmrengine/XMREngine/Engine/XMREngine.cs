@@ -370,10 +370,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return instance.Running;
         }
 
-        public void SetState(UUID itemID, string newState)
-        {
-        }
-
         public void ApiResetScript(UUID itemID)
         {
             XMRInstance instance = null;
