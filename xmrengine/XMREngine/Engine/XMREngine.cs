@@ -14,6 +14,7 @@ using System.Runtime.Remoting;
 using System.Runtime.Remoting.Lifetime;
 using System.Reflection;
 using System.Collections.Generic;
+using System.Collections;
 using System.Security.Policy;
 using OpenSim.Framework;
 using OpenSim.Framework.Console;
@@ -75,6 +76,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private int m_MaintenanceInterval = 10;
         
         private Timer m_MaintenanceTimer;
+
+        private UUID m_CurrentCompileItem;
+        private Dictionary<UUID, ArrayList> m_CompilerErrors =
+                new Dictionary<UUID, ArrayList>();
 
         public XMREngine()
         {
@@ -215,14 +220,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         private void ErrorHandler(Token token, string message)
         {
+            if (!m_CompilerErrors.ContainsKey(m_CurrentCompileItem))
+                m_CompilerErrors[m_CurrentCompileItem] = new ArrayList();
             if (token != null)
             {
-                m_log.DebugFormat("[MMR]: ({0},{1}) Error: {2}", token.line,
-                        token.posn, message);
+                m_CompilerErrors[m_CurrentCompileItem].Add(
+                        String.Format("({0},{1}) Error: {2}", token.line,
+                        token.posn, message));
             }
             else
             {
-                m_log.DebugFormat("[MMR]: Error compiling, see exception in log");
+                m_CompilerErrors[m_CurrentCompileItem].Add("Error compiling, see exception in log");
             }
         }
 
@@ -775,6 +783,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             lock (m_CompileLock)
             {
+                m_CurrentCompileItem = itemID;
+
                 if (!File.Exists(outputName))
                 {
                     if (script == String.Empty)
@@ -1399,6 +1409,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 varValue = Convert.ChangeType(tag.InnerText, itemT);
             }
             return varValue;
+        }
+
+        public ArrayList GetScriptErrors(UUID itemID)
+        {
+            ArrayList errors;
+
+            if (m_CompilerErrors.ContainsKey(itemID))
+                errors = m_CompilerErrors[itemID];
+            else
+                return new ArrayList();
+
+            m_CompilerErrors.Remove(itemID);
+            return errors;
         }
     }
 
