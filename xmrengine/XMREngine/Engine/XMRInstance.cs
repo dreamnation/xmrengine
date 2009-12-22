@@ -7,6 +7,7 @@
 
 using System;
 using System.Threading;
+using System.Reflection;
 using System.Collections.Generic;
 using OpenMetaverse;
 using OpenSim.Region.ScriptEngine.Interfaces;
@@ -22,6 +23,7 @@ using LSL_List = OpenSim.Region.ScriptEngine.Shared.LSL_Types.list;
 using LSL_Rotation = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Quaternion;
 using LSL_String = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
 using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
+using log4net;
 
 // This class exists in the main app domain
 //
@@ -29,6 +31,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 {
     public class XMRInstance : IDisposable
     {
+        private static readonly ILog m_log =
+            LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+
+
         private int m_SuspendCount = 0;
         private bool m_Running = true;
         private bool m_Scheduled = false;
@@ -47,16 +53,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private bool m_Reset = false;
         private bool m_Die = false;
         private int m_StateCode = 0;
-		private int m_StartParam = 0;
+        private int m_StartParam = 0;
 
         private Dictionary<string,IScriptApi> m_Apis =
                 new Dictionary<string,IScriptApi>();
 
-		public int StartParam
-		{
-			get { return m_StartParam; }
-			set { m_StartParam = value; }
-		}
+        public int StartParam
+        {
+            get { return m_StartParam; }
+            set { m_StartParam = value; }
+        }
 
         public SceneObjectPart SceneObject
         {
@@ -66,7 +72,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public DetectParams[] DetectParams
         {
             get { return m_DetectParams; }
-			set { m_DetectParams = value; }
+            set { m_DetectParams = value; }
         }
 
         public UUID ItemID
@@ -225,7 +231,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                 if (!m_IsIdle)
                 {
-                    m_IsIdle = m_Loader.RunOne();
+                    try
+                    {
+                        m_IsIdle = m_Loader.RunOne();
+                    }
+                    catch (Exception e)
+                    {
+                        m_log.Error("[XMREngine]: Exception while running script event. Disabling script.\n" + e.ToString());
+                        m_SuspendCount++;
+                        CheckRunStatus();
+                    }
                     if (m_IsIdle)
                         m_DetectParams = null;
 
