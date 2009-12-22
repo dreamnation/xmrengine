@@ -202,6 +202,11 @@ namespace MMR {
 					i = -- j;
 					continue;
 				}
+				if ((c == '.') && (source[i+1] >= '0') && (source[i+1] <= '9')) {
+					int j = TryParseFloat (i);
+					if (j > 0) i = -- j;
+					continue;
+				}
 
 				/*
 				 * Check for quoted strings.
@@ -338,7 +343,10 @@ namespace MMR {
 					continue;
 				}
 				if (c == '.') {
-					if (decimals) return j;
+					if (decimals) {
+						TokenError (i, "more than one decimal point");
+						return j;
+					}
 					decimals = true;
 					continue;
 				}

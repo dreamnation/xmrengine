@@ -1595,7 +1595,6 @@ namespace MMR
 				declFunc.retType  = new TokenTypeObject (call);
 				declFunc.funcName = new TokenName (call, name);
 				declFunc.argDecl  = new TokenArgDecl (call);
-			tryit:;
 			}
 
 			/*
@@ -2595,6 +2594,8 @@ namespace MMR
 		{
 			bos.Add ("vector==vector",  new BinOpStr (typeof (bool),       "{0}.EqualsVec({1})"));
 			bos.Add ("vector!=vector",  new BinOpStr (typeof (bool),       "!{0}.EqualsVec({1})"));
+			bos.Add ("vector+vector",   new BinOpStr (typeof (LSL_Vector), "{0} + {1}"));
+			bos.Add ("vector-vector",   new BinOpStr (typeof (LSL_Vector), "{0} - {1}"));
 			bos.Add ("vector*vector",   new BinOpStr (typeof (float),      "{0} * {1}"));
 			bos.Add ("vector%vector",   new BinOpStr (typeof (LSL_Vector), "{0} % {1}"));
 			bos.Add ("vector*rotation", new BinOpStr (typeof (LSL_Vector), "{0} * {1}"));
