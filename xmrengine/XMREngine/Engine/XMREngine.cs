@@ -157,7 +157,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 return;
 
             if (m_Scheduler != null)
+            {
                 m_Scheduler.Stop();
+                WakeUp();
+                m_Scheduler.Shutdown();
+            }
             m_Scheduler = null;
 
             m_Events = null;

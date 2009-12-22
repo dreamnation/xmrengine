@@ -31,7 +31,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public void Stop()
         {
             m_RunIt = false;
+        }
 
+        public void Shutdown()
+        {
             m_Thread.Join();
             m_Thread = null;
             m_Engine = null;
