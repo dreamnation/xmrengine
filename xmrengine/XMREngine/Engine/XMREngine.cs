@@ -553,8 +553,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 instance = m_Instances[itemID];
             }
 
-            // Script is being migrated out. We will never unsuspend again
-            //
             instance.Suspend();
 
             XmlDocument doc = new XmlDocument();
@@ -572,6 +570,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             doc.AppendChild(stateN);
 
             XmlElement scriptStateN = GetExecutionState(instance, doc);
+
+            instance.Resume();
 
             if (scriptStateN == null)
                 return String.Empty;
