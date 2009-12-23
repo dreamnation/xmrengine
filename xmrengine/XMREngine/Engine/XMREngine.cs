@@ -612,7 +612,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
                 catch (Exception e)
                 {
-                    m_log.Debug("[XMREngine]: Unable to open script assembly: " + e.ToString());
+//                    m_log.Debug("[XMREngine]: Unable to open script assembly: " + e.ToString());
                     return String.Empty;
                 }
 
@@ -786,12 +786,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             string outputName = Path.Combine(m_ScriptBasePath,
                     item.AssetID.ToString() + ".dll");
 
+//            m_log.DebugFormat("[XMREngine]: Testing for presence of {0}",
+//                    outputName);
+
             lock (m_CompileLock)
             {
                 m_CurrentCompileItem = itemID;
 
                 if (!File.Exists(outputName))
                 {
+//                    m_log.DebugFormat("[XMREngine]: File {0} not found",
+//                            outputName);
                     if (script == String.Empty)
                     {
                         m_log.ErrorFormat("[XMREngine]: Compile of asset {0} was requested but source text is not present and no assembly was found", item.AssetID.ToString());
@@ -819,6 +824,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     if (!File.Exists(outputName))
                         return;
                 }
+//                else
+//                {
+//                    m_log.DebugFormat("[XMREngine]: Found assembly {0}",
+//                            outputName);
+//                }
             }
 
             lock (m_Assemblies)
@@ -843,20 +853,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                             m_AssemblyResolver.OnAssemblyResolve;
 
                 }
-                m_log.DebugFormat("[XMREngine]: Script loaded, asset count {0}",
-                        m_Assemblies[item.AssetID]);
+//                m_log.DebugFormat("[XMREngine]: Created AppDomain, asset count {0}",
+//                        m_Assemblies[item.AssetID]);
             }
 
-            XMRLoader loader =
-                    (XMRLoader)m_AppDomains[item.AssetID].
-                    CreateInstanceAndUnwrap(
-                    "OpenSim.Region.ScriptEngine.XMREngine.Loader",
-                    "OpenSim.Region.ScriptEngine.XMREngine.Loader.XMRLoader");
 
             try
             {
+                XMRLoader loader =
+                        (XMRLoader)m_AppDomains[item.AssetID].
+                        CreateInstanceAndUnwrap(
+                        "OpenSim.Region.ScriptEngine.XMREngine.Loader",
+                        "OpenSim.Region.ScriptEngine.XMREngine.Loader.XMRLoader");
+
+//                m_log.DebugFormat("[XMREngine]: Created loader for {0}",
+//                        outputName);
+
                 XMRInstance instance = new XMRInstance(loader, this, part,
                     part.LocalId, itemID, outputName);
+
+//                m_log.DebugFormat("[XMREngine]: Loaded assembly {0}",
+//                        outputName);
 
                 instance.StartParam = startParam;
 
@@ -892,6 +909,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                     XmlElement snapshotN = (XmlElement)scriptStateN.SelectSingleNode("Snapshot");
                     Byte[] data = Convert.FromBase64String(snapshotN.InnerText);
+
+                    ReplaceAssemblyPath(data, outputName);
 
                     instance.RestoreSnapshot(data);
 
@@ -1055,6 +1074,29 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             catch (Exception e)
             {
                 m_log.Error("[XMREngine]: Script load failed, restart region" + e.ToString());
+                lock (m_Assemblies)
+                {
+                    if (!m_Assemblies.ContainsKey(item.AssetID))
+                        return;
+
+                    m_Assemblies[item.AssetID]--;
+
+//                    m_log.DebugFormat("[XMREngine]: Unloading script, asset count now {0}", m_Assemblies[item.AssetID]);
+                    if (m_Assemblies[item.AssetID] < 1)
+                    {
+//                        m_log.Debug("[XMREngine]: Unloading app domain");
+                        AppDomain.Unload(m_AppDomains[item.AssetID]);
+                        m_AppDomains.Remove(item.AssetID);
+
+                        m_Assemblies.Remove(item.AssetID);
+
+                        string assemblyPath = Path.Combine(m_ScriptBasePath,
+                                item.AssetID + ".dll");
+
+                        File.Delete(assemblyPath);
+                        File.Delete(assemblyPath + ".mdb");
+                    }
+                }
             }
         }
 
@@ -1099,10 +1141,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                 m_Assemblies[item.AssetID]--;
 
-                m_log.DebugFormat("[XMREngine]: Unloading script, asset count now {0}", m_Assemblies[item.AssetID]);
+//                m_log.DebugFormat("[XMREngine]: Unloading script, asset count now {0}", m_Assemblies[item.AssetID]);
                 if (m_Assemblies[item.AssetID] < 1)
                 {
-                    m_log.Debug("[XMREngine]: Unloading app domain");
+//                    m_log.Debug("[XMREngine]: Unloading app domain");
                     AppDomain.Unload(m_AppDomains[item.AssetID]);
                     m_AppDomains.Remove(item.AssetID);
 
@@ -1429,6 +1471,48 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             m_CompilerErrors.Remove(itemID);
             return errors;
+        }
+
+        private void ReplaceAssemblyPath(Byte[] data, string path)
+        {
+            string[] elems = path.Split(new char[] {Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar}, StringSplitOptions.RemoveEmptyEntries);
+            if (elems.Length < 2)
+                return;
+
+            string filename = elems[elems.Length - 1];
+            if (!filename.EndsWith(".dll"))
+                return;
+
+            Byte[] newDir = Util.UTF8.GetBytes(elems[elems.Length - 2]);
+
+            int index = FindInArray(data, Util.UTF8.GetBytes(filename));
+            if (index == -1)
+                return;
+
+            index -= 37;
+
+            if (index < 0)
+                return;
+
+            Array.Copy(newDir, 0, data, index, newDir.Length);
+        }
+
+        private int FindInArray(Byte[] data, Byte[] search)
+        {
+            for (int i = 0 ; i < data.Length - search.Length ; i++)
+                if (ArrayCompare(data, i, search, 0, search.Length))
+                    return i;
+
+            return -1;
+        }
+
+        private bool ArrayCompare(Byte[] data, int s_off, Byte[] search, int off, int len)
+        {
+            for (int i = 0 ; i < len ; i++)
+                if (data[s_off + i] != search[off + i])
+                    return false;
+
+            return true;
         }
     }
 
