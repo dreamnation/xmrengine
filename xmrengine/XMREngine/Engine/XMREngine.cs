@@ -156,6 +156,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (!m_Enabled)
                 return;
 
+            DoMaintenance(null, null);
+
             if (m_Scheduler != null)
             {
                 m_Scheduler.Stop();
@@ -198,7 +200,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void Close()
         {
-            DoMaintenance(null, null);
         }
 
         private void RunTest(string module, string[] args)
