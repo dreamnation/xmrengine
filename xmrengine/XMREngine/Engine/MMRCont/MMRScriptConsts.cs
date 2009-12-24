@@ -5,6 +5,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Text;
 using LSL_Float = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLFloat;
 using LSL_Integer = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLInteger;
 using LSL_Key = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
@@ -18,6 +19,7 @@ namespace MMR {
 
 	public class ScriptConst {
 
+		public static LSL_String   lslconst_EOF           = new LSL_String ("\n\n\n");
 		public static LSL_Key      lslconst_NULL_KEY      = new LSL_Key ("00000000-0000-0000-0000-000000000000");
 		public static LSL_Vector   lslconst_ZERO_VECTOR   = new LSL_Vector (0.0f, 0.0f, 0.0f);
 		public static LSL_Rotation lslconst_ZERO_ROTATION = new LSL_Rotation (0.0f, 0.0f, 0.0f, 1.0f);
@@ -340,7 +342,7 @@ namespace MMR {
 			new ScriptConst (sc, "PAY_HIDE", typeof (int), -1);
 			new ScriptConst (sc, "PAY_DEFAULT", typeof (int), -2);
 			new ScriptConst (sc, "NULL_KEY", typeof (LSL_Key), ScriptConst.lslconst_NULL_KEY);
-			new ScriptConst (sc, "EOF", typeof (string), "\n\n\n");
+			new ScriptConst (sc, "EOF", typeof (string), ScriptConst.lslconst_EOF);
 			new ScriptConst (sc, "PI", typeof (float), (float)3.14159265358979323846264338327950);
 			new ScriptConst (sc, "TWO_PI", typeof (float), (float)6.28318530717958647692528676655900);
 			new ScriptConst (sc, "PI_BY_TWO", typeof (float), (float)1.57079632679489661923132169163975);
@@ -400,7 +402,7 @@ namespace MMR {
 			this.name = name;
 			this.type = type;
 			this.valString = val;
-			this.rVal = new CompRVal (TokenType.FromSysType (null, type), val);
+			this.rVal = new CompRVal (TokenType.FromSysType (null, type), "MMR.ScriptConst.lslconst_" + name);
 		}
 		private ScriptConst (Dictionary<string, ScriptConst> lc, string name, Type type, LSL_Rotation val)
 		{
