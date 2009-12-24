@@ -156,6 +156,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (!m_Enabled)
                 return;
 
+            DoMaintenance(null, null);
+
             if (m_Scheduler != null)
             {
                 m_Scheduler.Stop();
@@ -198,7 +200,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void Close()
         {
-            DoMaintenance(null, null);
         }
 
         private void RunTest(string module, string[] args)
@@ -553,8 +554,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 instance = m_Instances[itemID];
             }
 
-            // Script is being migrated out. We will never unsuspend again
-            //
             instance.Suspend();
 
             XmlDocument doc = new XmlDocument();
@@ -572,6 +571,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             doc.AppendChild(stateN);
 
             XmlElement scriptStateN = GetExecutionState(instance, doc);
+
+            instance.Resume();
 
             if (scriptStateN == null)
                 return String.Empty;
@@ -612,7 +613,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
                 catch (Exception e)
                 {
-                    m_log.Debug("[XMREngine]: Unable to open script assembly: " + e.ToString());
+//                    m_log.Debug("[XMREngine]: Unable to open script assembly: " + e.ToString());
                     return String.Empty;
                 }
 
@@ -786,12 +787,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             string outputName = Path.Combine(m_ScriptBasePath,
                     item.AssetID.ToString() + ".dll");
 
+//            m_log.DebugFormat("[XMREngine]: Testing for presence of {0}",
+//                    outputName);
+
             lock (m_CompileLock)
             {
                 m_CurrentCompileItem = itemID;
 
                 if (!File.Exists(outputName))
                 {
+//                    m_log.DebugFormat("[XMREngine]: File {0} not found",
+//                            outputName);
                     if (script == String.Empty)
                     {
                         m_log.ErrorFormat("[XMREngine]: Compile of asset {0} was requested but source text is not present and no assembly was found", item.AssetID.ToString());
@@ -819,6 +825,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     if (!File.Exists(outputName))
                         return;
                 }
+//                else
+//                {
+//                    m_log.DebugFormat("[XMREngine]: Found assembly {0}",
+//                            outputName);
+//                }
             }
 
             lock (m_Assemblies)
@@ -843,192 +854,203 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                             m_AssemblyResolver.OnAssemblyResolve;
 
                 }
-                m_log.DebugFormat("[XMREngine]: Script loaded, asset count {0}",
-                        m_Assemblies[item.AssetID]);
+//                m_log.DebugFormat("[XMREngine]: Created AppDomain, asset count {0}",
+//                        m_Assemblies[item.AssetID]);
             }
 
-            XMRLoader loader =
-                    (XMRLoader)m_AppDomains[item.AssetID].
-                    CreateInstanceAndUnwrap(
-                    "OpenSim.Region.ScriptEngine.XMREngine.Loader",
-                    "OpenSim.Region.ScriptEngine.XMREngine.Loader.XMRLoader");
 
-            lock (m_Instances)
+            try
             {
-                try
+                XMRLoader loader =
+                        (XMRLoader)m_AppDomains[item.AssetID].
+                        CreateInstanceAndUnwrap(
+                        "OpenSim.Region.ScriptEngine.XMREngine.Loader",
+                        "OpenSim.Region.ScriptEngine.XMREngine.Loader.XMRLoader");
+
+//                m_log.DebugFormat("[XMREngine]: Created loader for {0}",
+//                        outputName);
+
+                XMRInstance instance = new XMRInstance(loader, this, part,
+                    part.LocalId, itemID, outputName);
+
+//                m_log.DebugFormat("[XMREngine]: Loaded assembly {0}",
+//                        outputName);
+
+                instance.StartParam = startParam;
+
+                string statePath = Path.Combine(m_ScriptBasePath,
+                        itemID.ToString() + ".state");
+
+                if (File.Exists(statePath))
                 {
-                    m_Instances[itemID] = new XMRInstance(loader, this, part,
-                            part.LocalId, itemID, outputName);
+                    instance.Suspend();
+                    
+                    FileStream fs = File.Open(statePath, FileMode.Open, FileAccess.Read);
+                    StreamReader ss = new StreamReader(fs);
+                    string xml = ss.ReadToEnd();
+                    ss.Close();
+                    fs.Close();
 
-					m_Instances[itemID].StartParam = startParam;
+                    XmlDocument doc = new XmlDocument();
 
-                    string statePath = Path.Combine(m_ScriptBasePath,
-                            itemID.ToString() + ".state");
+                    doc.LoadXml(xml);
 
-                    if (File.Exists(statePath))
+                    XmlElement scriptStateN = (XmlElement)doc.SelectSingleNode("ScriptState");
+                    XmlElement startParamN = (XmlElement)scriptStateN.SelectSingleNode("StartParam");
+                    startParam = int.Parse(startParamN.InnerText);
+                    instance.StartParam = startParam;
+
+                    XmlElement runningN = (XmlElement)scriptStateN.SelectSingleNode("Running");
+                    bool running = bool.Parse(runningN.InnerText);
+                    instance.Running = running;
+
+                    XmlElement permissionsN = (XmlElement)scriptStateN.SelectSingleNode("Permissions");
+                    item.PermsGranter = new UUID(permissionsN.GetAttribute("granter"));
+                    item.PermsMask = Convert.ToInt32(permissionsN.GetAttribute("mask"));
+
+                    XmlElement snapshotN = (XmlElement)scriptStateN.SelectSingleNode("Snapshot");
+                    Byte[] data = Convert.FromBase64String(snapshotN.InnerText);
+
+                    ReplaceAssemblyPath(data, outputName);
+
+                    instance.RestoreSnapshot(data);
+
+                    XmlElement detectedN = (XmlElement)scriptStateN.SelectSingleNode("Detect");
+                    if (detectedN != null)
                     {
-                        m_Instances[itemID].Suspend();
-                        
-                        FileStream fs = File.Open(statePath, FileMode.Open, FileAccess.Read);
-                        StreamReader ss = new StreamReader(fs);
-                        string xml = ss.ReadToEnd();
-                        ss.Close();
-                        fs.Close();
+                        List<DetectParams> detected = new List<DetectParams>();
 
-                        XmlDocument doc = new XmlDocument();
+                        XmlNodeList detectL = detectedN.SelectNodes("DetectParams");
+                        foreach (XmlNode det in detectL)
+                        {
+                            string vect =
+                                    det.Attributes.GetNamedItem(
+                                    "pos").Value;
+                            LSL_Types.Vector3 v =
+                                    new LSL_Types.Vector3(vect);
 
-                        doc.LoadXml(xml);
+                            int d_linkNum=0;
+                            UUID d_group = UUID.Zero;
+                            string d_name = String.Empty;
+                            UUID d_owner = UUID.Zero;
+                            LSL_Types.Vector3 d_position =
+                                new LSL_Types.Vector3();
+                            LSL_Types.Quaternion d_rotation =
+                                new LSL_Types.Quaternion();
+                            int d_type = 0;
+                            LSL_Types.Vector3 d_velocity =
+                                new LSL_Types.Vector3();
 
-                        XmlElement scriptStateN = (XmlElement)doc.SelectSingleNode("ScriptState");
-                        XmlElement startParamN = (XmlElement)scriptStateN.SelectSingleNode("StartParam");
-                        startParam = int.Parse(startParamN.InnerText);
-                        m_Instances[itemID].StartParam = startParam;
+                            string tmp;
 
-                        XmlElement runningN = (XmlElement)scriptStateN.SelectSingleNode("Running");
-                        bool running = bool.Parse(runningN.InnerText);
-                        m_Instances[itemID].Running = running;
+                            tmp = det.Attributes.GetNamedItem(
+                                    "linkNum").Value;
+                            int.TryParse(tmp, out d_linkNum);
 
-                        XmlElement permissionsN = (XmlElement)scriptStateN.SelectSingleNode("Permissions");
-                        item.PermsGranter = new UUID(permissionsN.GetAttribute("granter"));
-                        item.PermsMask = Convert.ToInt32(permissionsN.GetAttribute("mask"));
+                            tmp = det.Attributes.GetNamedItem(
+                                    "group").Value;
+                            UUID.TryParse(tmp, out d_group);
 
-                        XmlElement snapshotN = (XmlElement)scriptStateN.SelectSingleNode("Snapshot");
-                        Byte[] data = Convert.FromBase64String(snapshotN.InnerText);
+                            d_name = det.Attributes.GetNamedItem(
+                                    "name").Value;
 
-                        m_Instances[itemID].RestoreSnapshot(data);
+                            tmp = det.Attributes.GetNamedItem(
+                                    "owner").Value;
+                            UUID.TryParse(tmp, out d_owner);
 
-						XmlElement detectedN = (XmlElement)scriptStateN.SelectSingleNode("Detect");
-						if (detectedN != null)
-						{
-							List<DetectParams> detected = new List<DetectParams>();
+                            tmp = det.Attributes.GetNamedItem(
+                                    "position").Value;
+                            d_position =
+                                new LSL_Types.Vector3(tmp);
 
-							XmlNodeList detectL = detectedN.SelectNodes("DetectParams");
-							foreach (XmlNode det in detectL)
-							{
-								string vect =
-										det.Attributes.GetNamedItem(
-										"pos").Value;
-								LSL_Types.Vector3 v =
-										new LSL_Types.Vector3(vect);
+                            tmp = det.Attributes.GetNamedItem(
+                                    "rotation").Value;
+                            d_rotation =
+                                new LSL_Types.Quaternion(tmp);
 
-								int d_linkNum=0;
-								UUID d_group = UUID.Zero;
-								string d_name = String.Empty;
-								UUID d_owner = UUID.Zero;
-								LSL_Types.Vector3 d_position =
-									new LSL_Types.Vector3();
-								LSL_Types.Quaternion d_rotation =
-									new LSL_Types.Quaternion();
-								int d_type = 0;
-								LSL_Types.Vector3 d_velocity =
-									new LSL_Types.Vector3();
+                            tmp = det.Attributes.GetNamedItem(
+                                    "type").Value;
+                            int.TryParse(tmp, out d_type);
 
-								string tmp;
+                            tmp = det.Attributes.GetNamedItem(
+                                    "velocity").Value;
+                            d_velocity =
+                                new LSL_Types.Vector3(tmp);
 
-								tmp = det.Attributes.GetNamedItem(
-										"linkNum").Value;
-								int.TryParse(tmp, out d_linkNum);
+                            UUID uuid = new UUID();
+                            UUID.TryParse(det.InnerText,
+                                    out uuid);
 
-								tmp = det.Attributes.GetNamedItem(
-										"group").Value;
-								UUID.TryParse(tmp, out d_group);
+                            DetectParams d = new DetectParams();
+                            d.Key = uuid;
+                            d.OffsetPos = v;
+                            d.LinkNum = d_linkNum;
+                            d.Group = d_group;
+                            d.Name = d_name;
+                            d.Owner = d_owner;
+                            d.Position = d_position;
+                            d.Rotation = d_rotation;
+                            d.Type = d_type;
+                            d.Velocity = d_velocity;
 
-								d_name = det.Attributes.GetNamedItem(
-										"name").Value;
+                            detected.Add(d);
 
-								tmp = det.Attributes.GetNamedItem(
-										"owner").Value;
-								UUID.TryParse(tmp, out d_owner);
-
-								tmp = det.Attributes.GetNamedItem(
-										"position").Value;
-								d_position =
-									new LSL_Types.Vector3(tmp);
-
-								tmp = det.Attributes.GetNamedItem(
-										"rotation").Value;
-								d_rotation =
-									new LSL_Types.Quaternion(tmp);
-
-								tmp = det.Attributes.GetNamedItem(
-										"type").Value;
-								int.TryParse(tmp, out d_type);
-
-								tmp = det.Attributes.GetNamedItem(
-										"velocity").Value;
-								d_velocity =
-									new LSL_Types.Vector3(tmp);
-
-								UUID uuid = new UUID();
-								UUID.TryParse(det.InnerText,
-										out uuid);
-
-								DetectParams d = new DetectParams();
-								d.Key = uuid;
-								d.OffsetPos = v;
-								d.LinkNum = d_linkNum;
-								d.Group = d_group;
-								d.Name = d_name;
-								d.Owner = d_owner;
-								d.Position = d_position;
-								d.Rotation = d_rotation;
-								d.Type = d_type;
-								d.Velocity = d_velocity;
-
-								detected.Add(d);
-
-							}
-							m_Instances[itemID].DetectParams = detected.ToArray();
-						}
-
-						XmlElement pluginN = (XmlElement)scriptStateN.SelectSingleNode("Plugins");
-						Object[] pluginData = ReadList(pluginN).Data;
-
-						AsyncCommandManager.CreateFromData(this,
-								localID, itemID, part.UUID,
-								pluginData);
-
-						if (postOnRez)
-						{
-							m_Instances[itemID].PostEvent(new EventParams("on_rez",
-									new Object[] {m_Instances[itemID].StartParam}, new DetectParams[0]));
-						}
-
-						if (stateSource == (int)StateSource.AttachedRez)
-						{
-							m_Instances[itemID].PostEvent(new EventParams("attach",
-									new object[] { part.AttachedAvatar.ToString() }, new DetectParams[0]));
-						}
-                        m_Instances[itemID].Resume();
+                        }
+                        instance.DetectParams = detected.ToArray();
                     }
-                    else
+
+                    XmlElement pluginN = (XmlElement)scriptStateN.SelectSingleNode("Plugins");
+                    Object[] pluginData = ReadList(pluginN).Data;
+
+                    AsyncCommandManager.CreateFromData(this,
+                            localID, itemID, part.UUID,
+                            pluginData);
+
+                    if (postOnRez)
                     {
-                        WriteStateFile(itemID, m_Instances[itemID]);
-
-                        m_Instances[itemID].PostEvent(new EventParams("state_entry", new Object[0], new DetectParams[0]));
-
-						if (postOnRez)
-						{
-							m_Instances[itemID].PostEvent(new EventParams("on_rez",
-									new Object[] {m_Instances[itemID].StartParam}, new DetectParams[0]));
-						}
-
-						if (stateSource == (int)StateSource.AttachedRez)
-						{
-							m_Instances[itemID].PostEvent(new EventParams("attach",
-									new object[] { part.AttachedAvatar.ToString() }, new DetectParams[0]));
-						}
-						else if (stateSource == (int)StateSource.NewRez)
-						{
-							m_Instances[itemID].PostEvent(new EventParams("changed",
-									new Object[] {256}, new DetectParams[0]));
-						}
-						else if (stateSource == (int)StateSource.PrimCrossing)
-						{
-							m_Instances[itemID].PostEvent(new EventParams("changed",
-									new Object[] {512}, new DetectParams[0]));
-						}
+                        instance.PostEvent(new EventParams("on_rez",
+                                new Object[] {instance.StartParam}, new DetectParams[0]));
                     }
+
+                    if (stateSource == (int)StateSource.AttachedRez)
+                    {
+                        instance.PostEvent(new EventParams("attach",
+                                new object[] { part.AttachedAvatar.ToString() }, new DetectParams[0]));
+                    }
+                    instance.Resume();
+                }
+                else
+                {
+                    WriteStateFile(itemID, instance);
+
+                    instance.PostEvent(new EventParams("state_entry", new Object[0], new DetectParams[0]));
+
+                    if (postOnRez)
+                    {
+                        instance.PostEvent(new EventParams("on_rez",
+                                new Object[] {instance.StartParam}, new DetectParams[0]));
+                    }
+
+                    if (stateSource == (int)StateSource.AttachedRez)
+                    {
+                        instance.PostEvent(new EventParams("attach",
+                                new object[] { part.AttachedAvatar.ToString() }, new DetectParams[0]));
+                    }
+                    else if (stateSource == (int)StateSource.NewRez)
+                    {
+                        instance.PostEvent(new EventParams("changed",
+                                new Object[] {256}, new DetectParams[0]));
+                    }
+                    else if (stateSource == (int)StateSource.PrimCrossing)
+                    {
+                        instance.PostEvent(new EventParams("changed",
+                                new Object[] {512}, new DetectParams[0]));
+                    }
+                }
+
+                lock (m_Instances)
+                {
+                    m_Instances[itemID] = instance;
 
                     WakeUp();
 
@@ -1049,9 +1071,32 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                     m_Partmap[itemID] = part.UUID;
                 }
-                catch (Exception e)
+            }
+            catch (Exception e)
+            {
+                m_log.Error("[XMREngine]: Script load failed, restart region" + e.ToString());
+                lock (m_Assemblies)
                 {
-                    m_log.Error("[XMREngine]: Script load failed, restart region" + e.ToString());
+                    if (!m_Assemblies.ContainsKey(item.AssetID))
+                        return;
+
+                    m_Assemblies[item.AssetID]--;
+
+//                    m_log.DebugFormat("[XMREngine]: Unloading script, asset count now {0}", m_Assemblies[item.AssetID]);
+                    if (m_Assemblies[item.AssetID] < 1)
+                    {
+//                        m_log.Debug("[XMREngine]: Unloading app domain");
+                        AppDomain.Unload(m_AppDomains[item.AssetID]);
+                        m_AppDomains.Remove(item.AssetID);
+
+                        m_Assemblies.Remove(item.AssetID);
+
+                        string assemblyPath = Path.Combine(m_ScriptBasePath,
+                                item.AssetID + ".dll");
+
+                        File.Delete(assemblyPath);
+                        File.Delete(assemblyPath + ".mdb");
+                    }
                 }
             }
         }
@@ -1097,10 +1142,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                 m_Assemblies[item.AssetID]--;
 
-                m_log.DebugFormat("[XMREngine]: Unloading script, asset count now {0}", m_Assemblies[item.AssetID]);
+//                m_log.DebugFormat("[XMREngine]: Unloading script, asset count now {0}", m_Assemblies[item.AssetID]);
                 if (m_Assemblies[item.AssetID] < 1)
                 {
-                    m_log.Debug("[XMREngine]: Unloading app domain");
+//                    m_log.Debug("[XMREngine]: Unloading app domain");
                     AppDomain.Unload(m_AppDomains[item.AssetID]);
                     m_AppDomains.Remove(item.AssetID);
 
@@ -1427,6 +1472,48 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             m_CompilerErrors.Remove(itemID);
             return errors;
+        }
+
+        private void ReplaceAssemblyPath(Byte[] data, string path)
+        {
+            string[] elems = path.Split(new char[] {Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar}, StringSplitOptions.RemoveEmptyEntries);
+            if (elems.Length < 2)
+                return;
+
+            string filename = elems[elems.Length - 1];
+            if (!filename.EndsWith(".dll"))
+                return;
+
+            Byte[] newDir = Util.UTF8.GetBytes(elems[elems.Length - 2]);
+
+            int index = FindInArray(data, Util.UTF8.GetBytes(filename));
+            if (index == -1)
+                return;
+
+            index -= 37;
+
+            if (index < 0)
+                return;
+
+            Array.Copy(newDir, 0, data, index, newDir.Length);
+        }
+
+        private int FindInArray(Byte[] data, Byte[] search)
+        {
+            for (int i = 0 ; i < data.Length - search.Length ; i++)
+                if (ArrayCompare(data, i, search, 0, search.Length))
+                    return i;
+
+            return -1;
+        }
+
+        private bool ArrayCompare(Byte[] data, int s_off, Byte[] search, int off, int len)
+        {
+            for (int i = 0 ; i < len ; i++)
+                if (data[s_off + i] != search[off + i])
+                    return false;
+
+            return true;
         }
     }
 
