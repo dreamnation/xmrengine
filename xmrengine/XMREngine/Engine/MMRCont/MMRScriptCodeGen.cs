@@ -45,10 +45,11 @@ namespace MMR
 		/*
 		 * Static tables that there only needs to be one copy of for all.
 		 */
-		private static Dictionary<string, InlineFunction> inlineFunctions = null;
 		private static Dictionary<string, BinOpStr> binOpStrings = null;
-		private static TokenTypeBool tokenTypeBool = new TokenTypeBool (null);
+		private static Dictionary<string, InlineFunction> inlineFunctions = null;
 		private static Dictionary<string, string> legalTypeCasts = null;
+		private static Dictionary<string, TokenDeclFunc> legalEventHandlers = null;
+		private static TokenTypeBool tokenTypeBool = new TokenTypeBool (null);
 
 		public static bool CodeGen (TokenScript tokenScript, string binaryName,
 				string debugFileName)
@@ -76,6 +77,13 @@ namespace MMR
 				Dictionary<string, string> ltc = CreateLegalTypeCasts ();
 				//MB()
 				legalTypeCasts = ltc;
+			}
+			//MB()
+
+			if (legalEventHandlers == null) {
+				Dictionary<string, TokenDeclFunc> leh = CreateLegalEventHandlers ();
+				//MB()
+				legalEventHandlers = leh;
 			}
 			//MB()
 
@@ -509,8 +517,31 @@ namespace MMR
 
 		private void GenerateEventHandler (string statename, TokenDeclFunc declFunc)
 		{
+			int nargs;
 			string eventname = declFunc.funcName.val;
 			TokenArgDecl argDecl = declFunc.argDecl;
+
+			/*
+			 * Make sure event handler name is valid and that number and type of arguments is correct.
+			 */
+			if (!legalEventHandlers.ContainsKey (eventname)) {
+				ErrorMsg (declFunc, "unknown event handler " + eventname);
+				return;
+			}
+			TokenDeclFunc protoDeclFunc = legalEventHandlers[eventname];
+			nargs = declFunc.argDecl.types.Length;
+			if (protoDeclFunc.argDecl.types.Length != nargs) {
+				ErrorMsg (declFunc, eventname + "(...) supposed to have " + protoDeclFunc.argDecl.types.Length + 
+				                    " arg(s), not " + nargs);
+				if (nargs > protoDeclFunc.argDecl.types.Length) nargs = protoDeclFunc.argDecl.types.Length;
+			}
+			for (int i = 0; i < nargs; i ++) {
+				if (protoDeclFunc.argDecl.types[i].typ != declFunc.argDecl.types[i].typ) {
+					ErrorMsg (declFunc, eventname + "(... " + declFunc.argDecl.types[i].ToString () + " " + 
+					                    declFunc.argDecl.names[i] + " ...) should be " + 
+					                    protoDeclFunc.argDecl.types[i].ToString ());
+				}
+			}
 
 			/*
 			 * Push current function being processed.
@@ -546,11 +577,40 @@ namespace MMR
 			 * ??? add arg count and static type checking to match our type using reflection
 			 */
 			if (argDecl.types.Length > 0) {
+				string tempObj = null;
+
 				// warning CS0219: The variable `__lcl_change' is assigned but its value is never used
 				WriteOutput (0, "#pragma warning disable 219\n");
-				for (int i = 0; i < argDecl.types.Length; i ++) {
-					WriteOutput (argDecl, TypeName (argDecl.types[i]) + " __lcl_" + argDecl.names[i].val + " = (" +
-							TypeName (argDecl.types[i]) + ")__sw.ehArgs[" + i + "];");
+				for (int i = 0; i < nargs; i ++) {
+
+					///////////////////////////////////////////////////////////////////////////////
+					/// Tell script to print out the argument type
+					///WriteOutput (argDecl, "System.Console.WriteLine(\"" + eventname + "[" + i + 
+					///                      "]=\"+__sw.ehArgs[" + i + "].GetType().ToString());");
+					///////////////////////////////////////////////////////////////////////////////
+
+					/*
+					 * Integers might come in as uints and the idiot runtime will throw exception,
+					 * so we have to klump in a test and select which conversion to use.
+					 */
+					if (false && (argDecl.types[i] is TokenTypeInt)) {
+						if (tempObj == null) {
+							tempObj = new CompRVal (null).locstr;
+							WriteOutput (argDecl, "object ");
+						}
+						WriteOutput (argDecl, tempObj + " = __sw.ehArgs[" + i + "];");
+						WriteOutput (argDecl, TypeName (argDecl.types[i]) + " __lcl_" + argDecl.names[i].val + " = ");
+						WriteOutput (argDecl, "(" + tempObj + " is uint) ? ");
+						WriteOutput (argDecl, "(int)(uint)" + tempObj + " : ");
+						WriteOutput (argDecl, "(int)" + tempObj + ";");
+					} else {
+						WriteOutput (argDecl, TypeName (argDecl.types[i]) + " __lcl_" + argDecl.names[i].val + " = ");
+						WriteOutput (argDecl, "(" + TypeName (argDecl.types[i]) + ")__sw.ehArgs[" + i + "];");
+					}
+
+					/*
+					 * The argument is now defined as a local variable accessible to the function body.
+					 */
 					AddVarDefinition (argDecl.types[i], argDecl.names[i].val);
 				}
 				WriteOutput (0, "#pragma warning restore 219\n");
@@ -2142,6 +2202,16 @@ namespace MMR
 		}
 
 		/**
+		 * @brief create table of legal event handler prototypes.
+		 *        This is used to make sure script's event handler declrations are valid.
+		 */
+		private static Dictionary<string, TokenDeclFunc> CreateLegalEventHandlers ()
+		{
+			Dictionary<string, TokenDeclFunc> leh = new InternalFuncDict (typeof (IEventHandlers), false);
+			return leh;
+		}
+
+		/**
 		 * @brief output an implicit cast to cast the 'inRVal' to the 'outType'.
 		 * If inRVal is already the correct type, output it as is.
 		 * @param explicitAllowed = false: only allow implicit casts
@@ -2290,7 +2360,7 @@ namespace MMR
 					TokenType type = args.types[i];
 					staticSize += TokenType.StaticSize (type.typ);
 					if (type is TokenTypeList) {
-						WriteOutput (stmtBlock, "__sm.memUsage += __lcl_" + args.names[i].val + ".dynamicSize;");
+						WriteOutput (stmtBlock, "__sm.memUsage += __lcl_" + args.names[i].val + ".Size;");
 					}
 					if (type is TokenTypeStr) {
 						WriteOutput (stmtBlock, "__sm.memUsage += __lcl_" + args.names[i].val + ".Length * " + STRING_LEN_TO_MEMUSE + ";");
@@ -2312,7 +2382,7 @@ namespace MMR
 		private void GenMemUseDecrement (string locstr, TokenType type)
 		{
 			if (type is TokenTypeList) {
-				WriteOutput (type, "__sm.memUsage -= " + locstr + ".dynamicSize;");
+				WriteOutput (type, "__sm.memUsage -= " + locstr + ".Size;");
 			}
 			if (type is TokenTypeStr) {
 				WriteOutput (type, "__sm.memUsage -= " + locstr + ".Length * " + STRING_LEN_TO_MEMUSE + ";");
@@ -2321,7 +2391,7 @@ namespace MMR
 		private void GenMemUseIncrement (string locstr, TokenType type)
 		{
 			if (type is TokenTypeList) {
-				WriteOutput (type, "__sm.memUsage += " + locstr + ".dynamicSize;");
+				WriteOutput (type, "__sm.memUsage += " + locstr + ".Size;");
 			}
 			if (type is TokenTypeStr) {
 				WriteOutput (type, "__sm.memUsage += " + locstr + ".Length * " + STRING_LEN_TO_MEMUSE + ";");
@@ -2344,7 +2414,7 @@ namespace MMR
 					TokenType type = args.types[i];
 					staticSize += TokenType.StaticSize (type.typ);
 					if (type is TokenTypeList) {
-						WriteOutput (stmtBlock.closebr, "__sm.memUsage -= __lcl_" + args.names[i].val + ".dynamicSize;");
+						WriteOutput (stmtBlock.closebr, "__sm.memUsage -= __lcl_" + args.names[i].val + ".Size;");
 					}
 					if (type is TokenTypeStr) {
 						WriteOutput (stmtBlock.closebr, "__sm.memUsage -= __lcl_" + args.names[i].val + ".Length * " + STRING_LEN_TO_MEMUSE + ";");
@@ -2359,7 +2429,7 @@ namespace MMR
 				foreach (KeyValuePair<string, TokenDeclVar> kvp in stmtBlock.variables) {
 					TokenDeclVar declVar = kvp.Value;
 					if (declVar.type is TokenTypeList) {
-						WriteOutput (stmtBlock.closebr, " + __lcl_" + declVar.name.val + ".dynamicSize");
+						WriteOutput (stmtBlock.closebr, " + __lcl_" + declVar.name.val + ".Size");
 					}
 					if (declVar.type is TokenTypeStr) {
 						WriteOutput (stmtBlock.closebr, " + __lcl_" + declVar.name.val + ".Length * " + STRING_LEN_TO_MEMUSE);
@@ -2564,10 +2634,11 @@ namespace MMR
 			bos.Add ("string+list",    revadd);
 			bos.Add ("vector+list",    revadd);
 
-			BinOpStr addto  = new BinOpStr (typeof (LSL_List), "{0}.Add((object){1})");
-			bos.Add ("list+=float",    new BinOpStr (typeof (LSL_List), "{0}.Add((object)(float){1})"));
+			BinOpStr addto  = new BinOpStr (typeof (LSL_List), "{0} += {1}");
+			bos.Add ("list+=float",    addto);
 			bos.Add ("list+=integer",  addto);
 			bos.Add ("list+=key",      addto);
+			bos.Add ("list+=list",     addto);
 			bos.Add ("list+=rotation", addto);
 			bos.Add ("list+=string",   addto);
 			bos.Add ("list+=vector",   addto);

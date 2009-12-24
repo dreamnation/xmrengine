@@ -1,4 +1,4 @@
-export MONO_PATH=/home/mrieker/opensim/bin
+export MONO_PATH=/home/mike/opensim/bin
 
 rm -f OpenSim.Region.ScriptEngine.*.dll
 ln -s ~/opensim/bin/OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll
