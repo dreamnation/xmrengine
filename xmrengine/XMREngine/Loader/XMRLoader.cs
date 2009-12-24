@@ -126,7 +126,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
 
         public void PostEvent(string eventName, Object[] args)
         {
-            m_Wrapper.StartEventHandler(eventName, args);
+            try
+            {
+                m_Wrapper.StartEventHandler(eventName, args);
+            }
+            catch (Exception e)
+            {
+                // This means the script is incompatible.
+            }
         }
 
         public bool RunOne()
