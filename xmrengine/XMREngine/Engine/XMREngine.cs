@@ -650,6 +650,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (scriptStateN == null)
                 return false;
 
+            XmlAttribute assetA = doc.CreateAttribute("", "Asset", "");
+            assetA.Value = stateN.GetAttribute("Asset");
+            scriptStateN.Attributes.Append(assetA);
+
             string statePath = Path.Combine(m_ScriptBasePath,
                     itemID.ToString() + ".state");
 
@@ -825,11 +829,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     if (!File.Exists(outputName))
                         return;
                 }
-//                else
-//                {
-//                    m_log.DebugFormat("[XMREngine]: Found assembly {0}",
-//                            outputName);
-//                }
             }
 
             lock (m_Assemblies)
@@ -881,6 +880,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 string statePath = Path.Combine(m_ScriptBasePath,
                         itemID.ToString() + ".state");
 
+                XmlDocument doc = null;
+                XmlElement scriptStateN = null;
+
                 if (File.Exists(statePath))
                 {
                     instance.Suspend();
@@ -891,11 +893,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     ss.Close();
                     fs.Close();
 
-                    XmlDocument doc = new XmlDocument();
+                    doc = new XmlDocument();
 
                     doc.LoadXml(xml);
 
-                    XmlElement scriptStateN = (XmlElement)doc.SelectSingleNode("ScriptState");
+                    scriptStateN = (XmlElement)doc.SelectSingleNode("ScriptState");
+                }
+
+                if (scriptStateN != null && scriptStateN.GetAttribute("Asset") == item.AssetID.ToString())
+                {
                     XmlElement startParamN = (XmlElement)scriptStateN.SelectSingleNode("StartParam");
                     startParam = int.Parse(startParamN.InnerText);
                     instance.StartParam = startParam;
