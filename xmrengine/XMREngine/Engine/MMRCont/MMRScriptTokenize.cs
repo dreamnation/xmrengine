@@ -436,19 +436,42 @@ namespace MMR {
 		{
 			bool error;
 			char c;
-			int j, m, mantissa;
+			int basse, j, m, mantissa;
 
+			basse    = 10;
 			error    = false;
 			mantissa = 0;
 			for (j = i; j < source.Length; j ++) {
 				c = source[j];
 				if ((c >= '0') && (c <= '9')) {
-					m = mantissa * 10 + (c - '0');
-					if (m / 10 != mantissa) {
+					m = mantissa * basse + (c - '0');
+					if (m / basse != mantissa) {
 						if (!error) TokenError (i, "integer overflow");
 						error = true;
 					}
 					mantissa = m;
+					continue;
+				}
+				if ((basse == 16) && ((c >= 'A') && (c <= 'F'))) {
+					m = mantissa * basse + (c - 'A') + 10;
+					if (m / basse != mantissa) {
+						if (!error) TokenError (i, "integer overflow");
+						error = true;
+					}
+					mantissa = m;
+					continue;
+				}
+				if ((basse == 16) && ((c >= 'a') && (c <= 'f'))) {
+					m = mantissa * basse + (c - 'a') + 10;
+					if (m / basse != mantissa) {
+						if (!error) TokenError (i, "integer overflow");
+						error = true;
+					}
+					mantissa = m;
+					continue;
+				}
+				if (((c == 'x') || (c == 'X')) && (mantissa == 0) && (basse == 10)) {
+					basse = 16;
 					continue;
 				}
 				break;

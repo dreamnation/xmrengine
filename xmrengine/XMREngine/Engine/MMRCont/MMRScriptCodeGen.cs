@@ -2196,6 +2196,8 @@ namespace MMR
 			ltc.Add ("integer*string",  "{0}.ToString()");
 			ltc.Add ("list*string",     "{0}.ToString()");
 			ltc.Add ("rotation*string", "{0}.ToString()");
+			ltc.Add ("string*float",    "((float)new " + TypeName (typeof (LSL_Float)) + "({0}).value)");
+			ltc.Add ("string*integer",  "((int)new " + TypeName (typeof (LSL_Integer)) + "({0}).value)");
 			ltc.Add ("vector*string",   "{0}.ToString()");
 
 			return ltc;
