@@ -110,6 +110,16 @@ namespace MMR {
 		public object[] subsArray = new object[(int)SubsArray.SIZE];
 
 		/*
+		 * The dllsArray[] tells the continuations what DLL filename translation must
+		 * be done between the sender and receiver.
+		 *
+		 * Basically, unless the DLL has the same exact path on sending and receiving
+		 * systems, this must include all DLLs that have MMRContableAttribute() routines
+		 * in them.
+		 */
+		public string[] dllsArray;
+
+		/*
 		 * Used by script method Dispose() method for debugging.
 		 */
 		public static bool         disposed_bool     = false;
@@ -124,7 +134,7 @@ namespace MMR {
 		/*
 		 * Makes sure migration data version is same on both ends.
 		 */
-		public static readonly byte migrationVersion = 1;
+		public static readonly byte migrationVersion = 2;
 
 		/*
 		 * All script classes must define these methods.
@@ -210,9 +220,9 @@ namespace MMR {
 			/*
 			 * Set up sub-objects and cross-polinate so everything can access everything.
 			 */
-			scriptWrapper.microthread = new ScriptUThread ();
+			scriptWrapper.microthread  = new ScriptUThread ();
 			scriptWrapper.continuation = new ScriptContinuation ();
-			scriptWrapper.microthread.scriptWrapper = scriptWrapper;
+			scriptWrapper.microthread.scriptWrapper  = scriptWrapper;
 			scriptWrapper.continuation.scriptWrapper = scriptWrapper;
 
 			/*
@@ -227,6 +237,20 @@ namespace MMR {
 			 * Constant subsArray values...
 			 */
 			scriptWrapper.subsArray[(int)SubsArray.SCRIPT] = scriptWrapper;
+
+			/*
+			 * All the DLL filenames should be known at this point,
+			 * so fill in the entries needed.
+			 *
+			 * These have to be the exact string returned by mono_image_get_filename().
+			 * To find out which DLLs are needed, set envar MMRCONTSAVEDEBUG=1 and observe
+			 * debug output to see which DLLs are referenced.
+			 */
+			scriptWrapper.dllsArray = new string[4];
+			scriptWrapper.dllsArray[0] = MMRCont.GetDLLName (scriptModule);            // ...<uuid>.dll
+			scriptWrapper.dllsArray[1] = MMRCont.GetDLLName (typeof (ScriptWrapper));  // ...MMRCont.dll
+			scriptWrapper.dllsArray[2] = MMRCont.GetDLLName (typeof (MMRCont));        // ...Mono.Tasklets.dll
+			scriptWrapper.dllsArray[3] = MMRCont.GetDLLName (typeof (LSL_Vector));     // ...ScriptEngine.Shared.dll
 
 			return scriptWrapper;
 		}
@@ -753,7 +777,8 @@ namespace MMR {
 				 */
 				scriptWrapper.subsArray[(int)ScriptWrapper.SubsArray.BEAPI] = scriptWrapper.beAPI;
 				except = scriptWrapper.continuation.LoadEx (scriptWrapper.migrateInStream, 
-				                                            scriptWrapper.subsArray);
+				                                            scriptWrapper.subsArray,
+				                                            scriptWrapper.dllsArray);
 			}
 
 			if (except != null) throw except;
@@ -871,7 +896,7 @@ namespace MMR {
 					 * But otherwise, our state remains intact.
 					 */
 					scriptWrapper.subsArray[(int)ScriptWrapper.SubsArray.BEAPI] = scriptWrapper.beAPI;
-					this.Save (scriptWrapper.migrateOutStream, scriptWrapper.subsArray);
+					this.Save (scriptWrapper.migrateOutStream, scriptWrapper.subsArray, scriptWrapper.dllsArray);
 
 					/*
 					 * We return here under two circumstances:
