@@ -155,7 +155,7 @@ namespace MMR
 			 * so we must use complete names when referencing classes.
 			 */
 			smClassName  = "ScriptModule";
-			WriteOutput (0, "public class " + smClassName + " : MMR.ScriptWrapper {");
+			WriteOutput (0, "public class " + smClassName + " : " + TypeName (typeof (ScriptWrapper)) + " {");
 
 			/*
 			 * Write out COMPILED_VERSION.  This is used by ScriptWrapper to determine if the
@@ -981,11 +981,17 @@ namespace MMR
 
 			/*
 			 * Set new state value and set the global 'stateChanged' flag.
+			 * The 'stateChanged' flag causes our caller to unwind to its caller.
 			 */
 			if (stateStmt.state == null) {
 				WriteOutput (stateStmt, "__sm.stateCode = 0;");  // default state
 			} else if (!stateIndices.ContainsKey (stateStmt.state.val)) {
-				ErrorMsg (stateStmt, "undefined state " + stateStmt.state.val);
+				// The moron XEngine compiles scripts that reference undefined states.
+				// So rather than produce a compile-time error, we'll throw an exception at runtime.
+				// ErrorMsg (stateStmt, "undefined state " + stateStmt.state.val);
+				WriteOutput (stateStmt, "throw new " + TypeName (typeof (ScriptUndefinedStateException)) + 
+				                        "(\"" + stateStmt.state.val + "\");");
+				return;
 			} else {
 				int index = stateIndices[stateStmt.state.val];
 				WriteOutput (stateStmt, "__sm.stateCode = " + index + ";");
@@ -2433,10 +2439,6 @@ namespace MMR
 
 			// things with rotations
 			DefineBinOpsRotation (bos);
-			DefineBinOpsRotationX (bos, "float",   "(float){1}");
-			DefineBinOpsRotationX (bos, "integer", "(float){1}");
-			DefineBinOpsXRotation (bos, "float",   "(float){0}");
-			DefineBinOpsXRotation (bos, "integer", "(float){0}");
 
 			// things with strings
 			DefineBinOpsString (bos);
@@ -2537,6 +2539,7 @@ namespace MMR
 			bos.Add ("list+float",     new BinOpStr (typeof (LSL_List), "{0}+(float){1}"));
 			bos.Add ("list+integer",   add);
 			bos.Add ("list+key",       add);
+			bos.Add ("list+list",      add);
 			bos.Add ("list+rotation",  add);
 			bos.Add ("list+string",    add);
 			bos.Add ("list+vector",    add);
@@ -2563,20 +2566,12 @@ namespace MMR
 
 		private static void DefineBinOpsRotation (Dictionary<string, BinOpStr> bos)
 		{
-			bos.Add ("rotation==rotation", new BinOpStr (typeof (bool), "{0}.EqualsRot({1})"));
-			bos.Add ("rotation!=rotation", new BinOpStr (typeof (bool), "!{0}.EqualsRot({1})"));
+			bos.Add ("rotation==rotation", new BinOpStr (typeof (bool), "{0} == {1}"));
+			bos.Add ("rotation!=rotation", new BinOpStr (typeof (bool), "{0} == {1}"));
+			bos.Add ("rotation+rotation",  new BinOpStr (typeof (LSL_Rotation), "{0} + {1}"));
+			bos.Add ("rotation-rotation",  new BinOpStr (typeof (LSL_Rotation), "{0} - {1}"));
 			bos.Add ("rotation*rotation",  new BinOpStr (typeof (LSL_Rotation), "{0} * {1}"));
-		}
-
-		private static void DefineBinOpsRotationX (Dictionary<string, BinOpStr> bos, string x, string y)
-		{
-			bos.Add ("rotation*" + x, new BinOpStr (typeof (LSL_Rotation), "{0} * " + y));
-			bos.Add ("rotation/" + x, new BinOpStr (typeof (LSL_Rotation), "{0} / " + y));
-		}
-
-		private static void DefineBinOpsXRotation (Dictionary<string, BinOpStr> bos, string x, string y)
-		{
-			bos.Add (x + "*rotation", new BinOpStr (typeof (LSL_Rotation), "{1} * " + y));
+			bos.Add ("rotation/rotation",  new BinOpStr (typeof (LSL_Rotation), "{0} / {1}"));
 		}
 
 		private static void DefineBinOpsString (Dictionary<string, BinOpStr> bos)
@@ -2592,13 +2587,14 @@ namespace MMR
 
 		private static void DefineBinOpsVector (Dictionary<string, BinOpStr> bos)
 		{
-			bos.Add ("vector==vector",  new BinOpStr (typeof (bool),       "{0}.EqualsVec({1})"));
-			bos.Add ("vector!=vector",  new BinOpStr (typeof (bool),       "!{0}.EqualsVec({1})"));
+			bos.Add ("vector==vector",  new BinOpStr (typeof (bool),       "{0} == {1}"));
+			bos.Add ("vector!=vector",  new BinOpStr (typeof (bool),       "{0} != {1}"));
 			bos.Add ("vector+vector",   new BinOpStr (typeof (LSL_Vector), "{0} + {1}"));
 			bos.Add ("vector-vector",   new BinOpStr (typeof (LSL_Vector), "{0} - {1}"));
 			bos.Add ("vector*vector",   new BinOpStr (typeof (float),      "{0} * {1}"));
 			bos.Add ("vector%vector",   new BinOpStr (typeof (LSL_Vector), "{0} % {1}"));
 			bos.Add ("vector*rotation", new BinOpStr (typeof (LSL_Vector), "{0} * {1}"));
+			bos.Add ("vector/rotation", new BinOpStr (typeof (LSL_Vector), "{0} / {1}"));
 		}
 
 		private static void DefineBinOpsVectorX (Dictionary<string, BinOpStr> bos, string x, string y)
@@ -3074,6 +3070,18 @@ namespace MMR
 				array[index] = new KeyValuePair<object, object> (key, val);
 				dnary.Add (key, val);
 			}
+		}
+	}
+
+	/**
+	 * @brief Thrown by a script when it attempts to change to an undefined state.
+	 * These can be detected at compile time but the moron XEngine compiles
+	 * such things, so we compile them as runtime errors.
+	 */
+	public class ScriptUndefinedStateException : Exception {
+		public string stateName;
+		public ScriptUndefinedStateException (string stateName) : base ("undefined state " + stateName) {
+			this.stateName = stateName;
 		}
 	}
 }

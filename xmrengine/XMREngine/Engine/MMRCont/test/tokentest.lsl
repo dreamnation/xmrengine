@@ -4,7 +4,7 @@
 key gotperms=NULL_KEY;
 key requesting=NULL_KEY;
 
-vector offset=<0.0,0.0,0.0>;
+vector offset=<0.1,0.1,0.1>;
 
 show(integer on) {
  
@@ -118,6 +118,7 @@ default
 
     float inlineTest = llPow(3.0,4);
     llSay (5, "inlineTest=" + (string)inlineTest);
+    llSleep (1);
 
     integer j = change_to_dead_state ();
     llSay (j, "I say, this doesn't ever execute!");
@@ -200,7 +201,7 @@ state dead {
 
 /**TEST
 state_entry() {
-   llSitTarget(<0,0,0>, <0,0,0,1>);
+   llSitTarget(<.1,.1,.1>, <0,0,0,1>);
    llListen(1, "", "00000000-0000-0000-0000-000000000000", "") 0;
 
    llSay (0, "0");
@@ -247,6 +248,7 @@ state_entry() {
    llSay (4, "st=,5,astring,<1.000000,2.000000,3.000000>,bologna,3.5");
    llSay (4, "zz=32");
    llSay (5, "inlineTest=81");
+   llSleep (1);
 
    llSay (0, "changing to dead state");
    llSay (0, "we're dead!");
