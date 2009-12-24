@@ -675,6 +675,7 @@ namespace MMR
 			if (stmt is TokenStmtIf)      { GenerateStmtIf      ((TokenStmtIf)stmt);                 return; }
 			if (stmt is TokenStmtJump)    { GenerateStmtJump    ((TokenStmtJump)stmt);               return; }
 			if (stmt is TokenStmtLabel)   { GenerateStmtLabel   ((TokenStmtLabel)stmt);              return; }
+			if (stmt is TokenStmtNull)    {                                                          return; }
 			if (stmt is TokenStmtRet)     { GenerateStmtRet     ((TokenStmtRet)stmt);                return; }
 			if (stmt is TokenStmtRVal)    { GenerateStmtRVal    ((TokenStmtRVal)stmt);               return; }
 			if (stmt is TokenStmtState)   { GenerateStmtState   ((TokenStmtState)stmt);              return; }
@@ -1188,11 +1189,11 @@ namespace MMR
 			if (rVal is TokenRValAsnPre)   return GenerateFromRValAsnPre  (result, (TokenRValAsnPre)rVal);
 			if (rVal is TokenRValCall)     return GenerateFromRValCall    (result, (TokenRValCall)rVal);
 			if (rVal is TokenRValCast)     return GenerateFromRValCast    ((TokenRValCast)rVal);
+			if (rVal is TokenRValConst)    return GenerateFromRValConst   ((TokenRValConst)rVal);
 			if (rVal is TokenRValFloat)    return GenerateFromRValFloat   ((TokenRValFloat)rVal);
 			if (rVal is TokenRValInt)      return GenerateFromRValInt     ((TokenRValInt)rVal);
 			if (rVal is TokenRValIsType)   return GenerateFromRValIsType  ((TokenRValIsType)rVal);
 			if (rVal is TokenRValList)     return GenerateFromRValList    ((TokenRValList)rVal);
-			if (rVal is TokenRValConst)    return ((TokenRValConst)rVal).val.rVal;
 			if (rVal is TokenRValLVal)     return GenerateFromRValLVal    ((TokenRValLVal)rVal);
 			if (rVal is TokenRValOpBin)    return GenerateFromRValOpBin   (result, (TokenRValOpBin)rVal);
 			if (rVal is TokenRValOpUn)     return GenerateFromRValOpUn    ((TokenRValOpUn)rVal);
@@ -1857,6 +1858,16 @@ namespace MMR
 		}
 
 		/**
+		 * @brief Constant in MMRScriptConsts.cs
+		 * @returns where the constants value is stored
+		 */
+		private CompRVal GenerateFromRValConst (TokenRValConst rValConst)
+		{
+			ScriptConst sc = rValConst.val;
+			return sc.rVal;
+		}
+
+		/**
 		 * @brief floating-point constant.
 		 */
 		private CompRVal GenerateFromRValFloat (TokenRValFloat rValFloat)
@@ -2115,7 +2126,8 @@ namespace MMR
 			ltc.Add ("string bool",     "({0}!=\"\")");
 			ltc.Add ("string key",      "new " + TypeName (typeof (LSL_Key)) + "({0})");
 			ltc.Add ("string object",   "((object){0})");
-			ltc.Add ("string vector",   "((object){0})");
+			ltc.Add ("string rotation", "new " + TypeName (typeof (LSL_Rotation)) + "({0})");
+			ltc.Add ("string vector",   "new " + TypeName (typeof (LSL_Vector)) + "({0})");
 			ltc.Add ("vector object",   "((object){0})");
 
 			// EXPLICIT type casts (an * is in middle of the key)
@@ -2702,7 +2714,7 @@ namespace MMR
 				lastWasBackslash = thisIsBackslash;
 				thisIsBackslash  = (c == '\\');
 				if (c == '\n') {
-					if (quoted) throw new Exception ("quoted newline");
+					if (quoted) throw new Exception ("quoted newline in <" + text + "> at " + sourceLineNo.ToString ());
 					WriteOutputLine (sourceLineNo, text.Substring (j, i - j));
 					j = i + 1;
 					continue;
