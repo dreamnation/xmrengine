@@ -823,7 +823,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     }
                     catch (Exception e)
                     {
-                        m_log.Debug("[XMREngine]: Exception compiling script: " + e.ToString());
+                        m_log.DebugFormat("[XMREngine]: Exception compiling script: {0}:{1} ({2}) " + e.ToString(), part.Name, item.Name, item.AssetID);
+                        return;
                     }
 
                     if (!File.Exists(outputName))
