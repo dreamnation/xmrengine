@@ -276,6 +276,9 @@ namespace MMR {
 			new ScriptConst (sc, "PRIM_FULLBRIGHT", typeof (int), 20);
 			new ScriptConst (sc, "PRIM_FLEXIBLE", typeof (int), 21);
 			new ScriptConst (sc, "PRIM_TEXGEN", typeof (int), 22);
+			new ScriptConst (sc, "PRIM_POINT_LIGHT", typeof (int), 23);
+			new ScriptConst (sc, "PRIM_CAST_SHADOWS", typeof (int), 24);
+			new ScriptConst (sc, "PRIM_GLOW", typeof (int), 25);
 			new ScriptConst (sc, "PRIM_TEXGEN_DEFAULT", typeof (int), 0);
 			new ScriptConst (sc, "PRIM_TEXGEN_PLANAR", typeof (int), 1);
 			new ScriptConst (sc, "PRIM_TYPE_BOX", typeof (int), 0);
