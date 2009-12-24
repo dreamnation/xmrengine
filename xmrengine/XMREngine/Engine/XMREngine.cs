@@ -911,7 +911,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     XmlElement snapshotN = (XmlElement)scriptStateN.SelectSingleNode("Snapshot");
                     Byte[] data = Convert.FromBase64String(snapshotN.InnerText);
 
-                    ReplaceAssemblyPath(data, outputName);
+//                    ReplaceAssemblyPath(data, outputName);
 
                     instance.RestoreSnapshot(data);
 
@@ -1474,47 +1474,47 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return errors;
         }
 
-        private void ReplaceAssemblyPath(Byte[] data, string path)
-        {
-            string[] elems = path.Split(new char[] {Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar}, StringSplitOptions.RemoveEmptyEntries);
-            if (elems.Length < 2)
-                return;
-
-            string filename = elems[elems.Length - 1];
-            if (!filename.EndsWith(".dll"))
-                return;
-
-            Byte[] newDir = Util.UTF8.GetBytes(elems[elems.Length - 2]);
-
-            int index = FindInArray(data, Util.UTF8.GetBytes(filename));
-            if (index == -1)
-                return;
-
-            index -= 37;
-
-            if (index < 0)
-                return;
-
-            Array.Copy(newDir, 0, data, index, newDir.Length);
-        }
-
-        private int FindInArray(Byte[] data, Byte[] search)
-        {
-            for (int i = 0 ; i < data.Length - search.Length ; i++)
-                if (ArrayCompare(data, i, search, 0, search.Length))
-                    return i;
-
-            return -1;
-        }
-
-        private bool ArrayCompare(Byte[] data, int s_off, Byte[] search, int off, int len)
-        {
-            for (int i = 0 ; i < len ; i++)
-                if (data[s_off + i] != search[off + i])
-                    return false;
-
-            return true;
-        }
+//        private void ReplaceAssemblyPath(Byte[] data, string path)
+//        {
+//            string[] elems = path.Split(new char[] {Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar}, StringSplitOptions.RemoveEmptyEntries);
+//            if (elems.Length < 2)
+//                return;
+//
+//            string filename = elems[elems.Length - 1];
+//            if (!filename.EndsWith(".dll"))
+//                return;
+//
+//            Byte[] newDir = Util.UTF8.GetBytes(elems[elems.Length - 2]);
+//
+//            int index = FindInArray(data, Util.UTF8.GetBytes(filename));
+//            if (index == -1)
+//                return;
+//
+//            index -= 37;
+//
+//            if (index < 0)
+//                return;
+//
+//            Array.Copy(newDir, 0, data, index, newDir.Length);
+//        }
+//
+//        private int FindInArray(Byte[] data, Byte[] search)
+//        {
+//            for (int i = 0 ; i < data.Length - search.Length ; i++)
+//                if (ArrayCompare(data, i, search, 0, search.Length))
+//                    return i;
+//
+//            return -1;
+//        }
+//
+//        private bool ArrayCompare(Byte[] data, int s_off, Byte[] search, int off, int len)
+//        {
+//            for (int i = 0 ; i < len ; i++)
+//                if (data[s_off + i] != search[off + i])
+//                    return false;
+//
+//            return true;
+//        }
     }
 
     [Serializable]
