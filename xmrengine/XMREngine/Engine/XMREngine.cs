@@ -824,6 +824,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     catch (Exception e)
                     {
                         m_log.DebugFormat("[XMREngine]: Exception compiling script: {0}:{1} ({2}) " + e.ToString(), part.Name, item.Name, item.AssetID);
+                        File.Delete(outputName);
                         return;
                     }
 
