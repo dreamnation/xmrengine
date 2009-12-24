@@ -188,9 +188,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void changed(uint localID, uint change)
         {
+            int ch = (int)change;
             // Add to queue for all scripts in localID, Object pass change.
             myScriptEngine.PostObjectEvent(localID, new EventParams(
-                    "changed",new object[] { change },
+                    "changed",new object[] { ch },
                     new DetectParams[0]));
         }
 
