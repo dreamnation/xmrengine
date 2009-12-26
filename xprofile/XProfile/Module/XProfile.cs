@@ -269,8 +269,8 @@ namespace Careminster.Profile
 
             IClientAPI remoteClient = (IClientAPI)sender;
 
-            m_log.DebugFormat("Avatar picks request from {0} for {1}",
-                    remoteClient.AgentId.ToString(), args[0]);
+            m_log.DebugFormat("[XProfile]: Requesting pick list of {0} for {1}",
+                    args[0], remoteClient.AgentId.ToString());
 
             XProfilePick[] picks = m_PicksTable.Get("UserID", args[0]);
 
@@ -279,6 +279,9 @@ namespace Careminster.Profile
 
             foreach (XProfilePick p in picks)
                 picklist[p.PickID] = p.Data["Name"];
+
+            m_log.DebugFormat("[XProfile]: Returning {0} picks for {1}",
+                    picklist.Count, args[0]);
 
             remoteClient.SendAvatarPicksReply(new UUID(args[0]),
                     picklist);
@@ -289,9 +292,8 @@ namespace Careminster.Profile
                 UUID snapshotID, int sortOrder, bool enabled)
         {
             XProfilePick[] picks = m_PicksTable.Get(
-                    new string[] { "UserID", "PickID" },
-                    new string[] { remoteClient.AgentId.ToString(),
-                                   pickID.ToString() });
+                    new string[] { "PickID" },
+                    new string[] { pickID.ToString() });
 
             ScenePresence p = m_Scene.GetScenePresence(remoteClient.AgentId);
 
@@ -305,6 +307,9 @@ namespace Careminster.Profile
             
             if (picks.Length > 0)
             {
+                if (picks[0].UserID != remoteClient.AgentId)
+                    return;
+
                 pick.Data = picks[0].Data;
             }
             else
@@ -459,8 +464,12 @@ namespace Careminster.Profile
 
             IClientAPI remoteClient = (IClientAPI)sender;
 
+            UUID targetID = remoteClient.AgentId;
+            if (args.Count > 0 && args[0] != null)
+                targetID = new UUID(args[0]);
+
             XProfileClassified[] classifieds = m_ClassifiedsTable.Get( "UserID",
-                    remoteClient.AgentId.ToString());
+                    targetID.ToString());
 
             Dictionary<UUID,string> ret =
                     new Dictionary<UUID,string>();
@@ -468,7 +477,7 @@ namespace Careminster.Profile
             foreach (XProfileClassified c in classifieds)
                 ret[classifieds[0].ClassifiedID] = classifieds[0].Data["Name"];
 
-            remoteClient.SendAvatarClassifiedReply(remoteClient.AgentId,
+            remoteClient.SendAvatarClassifiedReply(targetID,
                     ret);
         }
 
@@ -507,9 +516,8 @@ namespace Careminster.Profile
         try
         {
             XProfileClassified[] classifieds = m_ClassifiedsTable.Get(
-                    new string[] { "UserID", "ClassifiedID" },
-                    new string[] { remoteClient.AgentId.ToString(),
-                                   classifiedID.ToString() });
+                    new string[] { "ClassifiedID" },
+                    new string[] { classifiedID.ToString() });
 
             ScenePresence p = m_Scene.GetScenePresence(remoteClient.AgentId);
 
@@ -544,6 +552,8 @@ namespace Careminster.Profile
             }
             else
             {
+                if (classifieds[0].UserID != remoteClient.AgentId)
+                    return;
                 cl.Data = classifieds[0].Data;
             }
 
