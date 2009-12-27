@@ -468,9 +468,16 @@ namespace MMR
 						if (CompErr.IsWarning)
 							continue;
 
-						m_log.DebugFormat("[MMR]: ({0},{1}]) Error: {2}",
-								CompErr.Line, CompErr.Column,
-								CompErr.ErrorText);
+                        if (CompErr.Line == 0 && CompErr.Column == 0)
+                            continue;
+
+                        tokenScript.line = CompErr.Line;
+                        tokenScript.posn = CompErr.Column;
+
+                        tokenScript.emsg(tokenScript, CompErr.ErrorText);
+//						m_log.DebugFormat("[MMR]: ({0},{1}]) Error: {2}",
+//								CompErr.Line, CompErr.Column,
+//								CompErr.ErrorText);
 
 						exitCode = 1;
 					}

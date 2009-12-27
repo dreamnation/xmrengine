@@ -6,6 +6,7 @@ CREATE TABLE `XProfile` (
   `FirstLifeImageID` char(36) NOT NULL default '00000000-0000-0000-0000-000000000000',
   `ProfileUrl` varchar(255) NOT NULL default '',
   `PartnerID` char(36) NOT NULL default '00000000-0000-0000-0000-000000000000',
+  `Flags` char(16) NOT NULL default '0',
   PRIMARY KEY  (`UserID`)
 ) ENGINE=InnoDB;
 

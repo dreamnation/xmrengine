@@ -199,23 +199,30 @@ namespace Careminster.Profile
             }
 
             XProfileData[] data = m_ProfileTable.Get("UserID", avatarID.ToString());
+            uint flags = (uint)profile.UserFlags & 0x0c;
+
             if (data.Length == 0)
             {
                 remoteClient.SendAvatarProperties(profile.ID, String.Empty,
                         Util.ToDateTime(profile.Created).ToString("M/d/yyyy",
                                 CultureInfo.InvariantCulture),
                         charterMember, String.Empty,
-                        (uint)(profile.UserFlags & 0xff),
+                        flags,
                         UUID.Zero, UUID.Zero, String.Empty, UUID.Zero);
             }
             else
             {
+                flags |= Convert.ToUInt32(data[0].Data["Flags"]);
+
+// TODO: Add when it becomes available:
+//                flags |= online ? 16 : 0;
+//
                 remoteClient.SendAvatarProperties(profile.ID,
                         data[0].Data["ProfileText"],
                         Util.ToDateTime(profile.Created).ToString("M/d/yyyy",
                                 CultureInfo.InvariantCulture),
                         charterMember, data[0].Data["FirstLifeText"],
-                        (uint)(profile.UserFlags & 0xff),
+                        flags,
                         new UUID(data[0].Data["FirstLifeImageID"]),
                         new UUID(data[0].Data["ImageID"]),
                         data[0].Data["ProfileUrl"],
