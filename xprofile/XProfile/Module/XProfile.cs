@@ -269,9 +269,6 @@ namespace Careminster.Profile
 
             IClientAPI remoteClient = (IClientAPI)sender;
 
-            m_log.DebugFormat("[XProfile]: Requesting pick list of {0} for {1}",
-                    args[0], remoteClient.AgentId.ToString());
-
             XProfilePick[] picks = m_PicksTable.Get("UserID", args[0]);
 
             Dictionary<UUID,string> picklist =
@@ -279,9 +276,6 @@ namespace Careminster.Profile
 
             foreach (XProfilePick p in picks)
                 picklist[p.PickID] = p.Data["Name"];
-
-            m_log.DebugFormat("[XProfile]: Returning {0} picks for {1}",
-                    picklist.Count, args[0]);
 
             remoteClient.SendAvatarPicksReply(new UUID(args[0]),
                     picklist);
