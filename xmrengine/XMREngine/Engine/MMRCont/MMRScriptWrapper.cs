@@ -798,63 +798,70 @@ namespace MMR {
 		 * Called by RunItEx() to start the event handler at its entrypoint.
 		 */
 		[MMRContableAttribute ()]
-		public override void RunCont ()
+		public override Exception RunContEx ()
 		{
-			int newStateCode, oldStateCode;
-			ScriptEventHandler seh;
+			Exception except = null;
 
-			/*
-			 * Immediately suspend so the StartEventHandler() method
-			 * returns with minimal delay.  We will resume from this
-			 * point when microthread.Resume() is called.
-			 */
-			scriptWrapper.suspendOnCheckRun = true;
-			this.CheckRun ();
+			try {
+				int newStateCode, oldStateCode;
+				ScriptEventHandler seh;
 
-			/*
-			 * Process event given by 'stateCode' and 'eventCode'.
-			 * The event handler should call CheckRun() as often as convenient.
-			 *
-			 * We do not have to check for null 'seh' here because
-			 * StartEventHandler() already checked the table entry.
-			 */
-			scriptWrapper.stateChanged = false;
-			oldStateCode = scriptWrapper.stateCode;
-			seh = scriptWrapper.scriptEventHandlerTable[oldStateCode,(int)scriptWrapper.eventCode];
-			seh (scriptWrapper);
+				/*
+				 * Immediately suspend so the StartEventHandler() method
+				 * returns with minimal delay.  We will resume from this
+				 * point when microthread.Resume() is called.
+				 */
+				scriptWrapper.suspendOnCheckRun = true;
+				this.CheckRun ();
 
-			scriptWrapper.ehArgs = null;  // we are done with them and no args for
-			                              // exit_state()/enter_state() anyway
-
-			/*
-			 * Note that 'seh' is now invalid, as the continuation restore cannot restore it.
-			 * But mono should see that 'seh' is no longer needed and so Save() shouldn't try
-			 * to save it, theoretically.  Likewise for the other uses of 'seh' below.
-			 */
-
-			/*
-			 * If event handler changed state, call exit_state() on the old state,
-			 * change the state, then call enter_state() on the new state.
-			 */
-			if (scriptWrapper.stateChanged) {
+				/*
+				 * Process event given by 'stateCode' and 'eventCode'.
+				 * The event handler should call CheckRun() as often as convenient.
+				 *
+				 * We do not have to check for null 'seh' here because
+				 * StartEventHandler() already checked the table entry.
+				 */
 				scriptWrapper.stateChanged = false;
-				newStateCode = scriptWrapper.stateCode;
+				oldStateCode = scriptWrapper.stateCode;
+				seh = scriptWrapper.scriptEventHandlerTable[oldStateCode,(int)scriptWrapper.eventCode];
+				seh (scriptWrapper);
 
-				scriptWrapper.stateCode = oldStateCode;
-				seh = scriptWrapper.scriptEventHandlerTable[oldStateCode,(int)ScriptEventCode.state_exit];
-				if (seh != null) seh (scriptWrapper);
-				if (scriptWrapper.stateChanged) throw new Exception ("state_exit() transitioned state");
+				scriptWrapper.ehArgs = null;  // we are done with them and no args for
+				                              // exit_state()/enter_state() anyway
 
-				scriptWrapper.stateCode = newStateCode;
-				seh = scriptWrapper.scriptEventHandlerTable[newStateCode,(int)ScriptEventCode.state_entry];
-				if (seh != null) seh (scriptWrapper);
-				if (scriptWrapper.stateChanged) throw new Exception ("state_entry() transitioned state");
+				/*
+				 * Note that 'seh' is now invalid, as the continuation restore cannot restore it.
+				 * But mono should see that 'seh' is no longer needed and so Save() shouldn't try
+				 * to save it, theoretically.  Likewise for the other uses of 'seh' below.
+				 */
+
+				/*
+				 * If event handler changed state, call exit_state() on the old state,
+				 * change the state, then call enter_state() on the new state.
+				 */
+				if (scriptWrapper.stateChanged) {
+					scriptWrapper.stateChanged = false;
+					newStateCode = scriptWrapper.stateCode;
+
+					scriptWrapper.stateCode = oldStateCode;
+					seh = scriptWrapper.scriptEventHandlerTable[oldStateCode,(int)ScriptEventCode.state_exit];
+					if (seh != null) seh (scriptWrapper);
+					if (scriptWrapper.stateChanged) throw new Exception ("state_exit() transitioned state");
+
+					scriptWrapper.stateCode = newStateCode;
+					seh = scriptWrapper.scriptEventHandlerTable[newStateCode,(int)ScriptEventCode.state_entry];
+					if (seh != null) seh (scriptWrapper);
+					if (scriptWrapper.stateChanged) throw new Exception ("state_entry() transitioned state");
+				}
+			} catch (Exception e) {
+				except = e;
 			}
 
 			/*
 			 * The event handler has run to completion.
 			 */
 			scriptWrapper.eventCode = ScriptEventCode.None;
+			return except;
 		}
 
 		/*
