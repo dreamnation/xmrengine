@@ -10,6 +10,7 @@ namespace MMR {
 	 */
 	public enum ScriptEventCode {
 		None,
+
 		at_rot_target,
 		at_target,
 		attach,
@@ -20,6 +21,7 @@ namespace MMR {
 		control,
 		dataserver,
 		email,
+		http_response,
 		land_collision,
 		land_collision_end,
 		land_collision_start,
@@ -33,14 +35,16 @@ namespace MMR {
 		not_at_target,
 		object_rez,
 		on_rez,
+		remote_data,
 		run_time_permissions,
 		sensor,
 		state_entry,
 		state_exit,
 		timer,
 		touch,
-		touch_end,
 		touch_start,
+		touch_end,
+
 		Size,
 		Garbage = 12345678
 	}
