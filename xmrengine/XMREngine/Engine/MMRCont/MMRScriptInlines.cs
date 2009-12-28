@@ -94,21 +94,21 @@ namespace MMR
 			/*
 			 * Mono generates an FPU instruction for many math calls.
 			 */
-			new InlineFunction (ifd, "llAbs(integer)",       typeof (int),   "{0} < 0 ? -{0} : {0}");
-			new InlineFunction (ifd, "llAcos(float)",        typeof (float), "System.Math.Acos({0})");
-			new InlineFunction (ifd, "llAsin(float)",        typeof (float), "System.Math.Asin({0})");
-			new InlineFunction (ifd, "llAtan2(float,float)", typeof (float), "System.Math.Atan2({0},{1})");
-			new InlineFunction (ifd, "llCeil(float)",        typeof (float), "System.Math.Ceiling({0})");
-			new InlineFunction (ifd, "llCos(float)",         typeof (float), "System.Math.Cos({0})");
-			new InlineFunction (ifd, "llFabs(float)",        typeof (float), "System.Math.Abs({0})");
-			new InlineFunction (ifd, "llFloor(float)",       typeof (float), "System.Math.Floor({0})");
-			new InlineFunction (ifd, "llLog(float)",         typeof (float), "System.Math.Log({0})");
-			new InlineFunction (ifd, "llLog10(float)",       typeof (float), "System.Math.Log10({0})");
-			new InlineFunction (ifd, "llPow(float,float)",   typeof (float), "System.Math.Pow({0},{1})");
-			new InlineFunction (ifd, "llRound(float)",       typeof (float), "System.Math.Round({0},System.MidpointRounding.AwayFromZero)");
-			new InlineFunction (ifd, "llSin(float)",         typeof (float), "System.Math.Sin({0})");
-			new InlineFunction (ifd, "llSqrt(float)",        typeof (float), "System.Math.Sqrt({0})");
-			new InlineFunction (ifd, "llTan(float)",         typeof (float), "System.Math.Tan({0})");
+			new InlineFunction (ifd, "llAbs(integer)",       typeof (int),   "({0} < 0 ? -{0} : {0})");
+			new InlineFunction (ifd, "llAcos(float)",        typeof (float), "(float)System.Math.Acos({0})");
+			new InlineFunction (ifd, "llAsin(float)",        typeof (float), "(float)System.Math.Asin({0})");
+			new InlineFunction (ifd, "llAtan2(float,float)", typeof (float), "(float)System.Math.Atan2({0},{1})");
+			new InlineFunction (ifd, "llCeil(float)",        typeof (float), "(float)System.Math.Ceiling({0})");
+			new InlineFunction (ifd, "llCos(float)",         typeof (float), "(float)System.Math.Cos({0})");
+			new InlineFunction (ifd, "llFabs(float)",        typeof (float), "(float)System.Math.Abs({0})");
+			new InlineFunction (ifd, "llFloor(float)",       typeof (float), "(float)System.Math.Floor({0})");
+			new InlineFunction (ifd, "llLog(float)",         typeof (float), "(float)System.Math.Log({0})");
+			new InlineFunction (ifd, "llLog10(float)",       typeof (float), "(float)System.Math.Log10({0})");
+			new InlineFunction (ifd, "llPow(float,float)",   typeof (float), "(float)System.Math.Pow({0},{1})");
+			new InlineFunction (ifd, "llRound(float)",       typeof (float), "(float)System.Math.Round({0},System.MidpointRounding.AwayFromZero)");
+			new InlineFunction (ifd, "llSin(float)",         typeof (float), "(float)System.Math.Sin({0})");
+			new InlineFunction (ifd, "llSqrt(float)",        typeof (float), "(float)System.Math.Sqrt({0})");
+			new InlineFunction (ifd, "llTan(float)",         typeof (float), "(float)System.Math.Tan({0})");
 
 			/*
 			 * Finally for any API functions defined by ScriptBaseClass that are not overridden 
