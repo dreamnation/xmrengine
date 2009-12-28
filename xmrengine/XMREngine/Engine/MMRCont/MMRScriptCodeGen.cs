@@ -35,7 +35,7 @@ namespace MMR
 			LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
 		public static readonly string COMPILED_VERSION_NAME = "XMRCompiledVersion";
-		public static readonly int COMPILED_VERSION_VALUE = 1;
+		public static readonly int COMPILED_VERSION_VALUE = 2;
 
 		public static readonly int CALL_FRAME_MEMUSE = 64;
 		public static readonly int STRING_LEN_TO_MEMUSE = 2;
@@ -2139,19 +2139,19 @@ namespace MMR
 				return "new " + TypeName (typeof (XMR_Array)) + "()";
 			}
 			if (type is TokenTypeKey) {
-				return "MMR.ScriptConst.lslconst_NULL_KEY";
+				return TypeName (typeof (ScriptBaseClass)) + ".NULL_KEY";
 			}
 			if (type is TokenTypeList) {
 				return "new " + TypeName (typeof (LSL_List)) + "()";
 			}
 			if (type is TokenTypeRot) {
-				return "MMR.ScriptConst.lslconst_ZERO_ROTATION";
+				return TypeName (typeof (ScriptBaseClass)) + ".ZERO_ROTATION";
 			}
 			if (type is TokenTypeStr) {
 				return "\"\"";
 			}
 			if (type is TokenTypeVec) {
-				return "MMR.ScriptConst.lslconst_ZERO_VECTOR";
+				return TypeName (typeof (ScriptBaseClass)) + ".ZERO_VECTOR";
 			}
 			return "(" + type.typ + ")0";
 		}
@@ -2194,7 +2194,8 @@ namespace MMR
 			ltc.Add ("string key",      "new " + TypeName (typeof (LSL_Key)) + "({0})");
 			ltc.Add ("string object",   "((object){0})");
 			ltc.Add ("string rotation", "new " + TypeName (typeof (LSL_Rotation)) + "({0})");
-			ltc.Add ("string vector",   "new " + TypeName (typeof (LSL_Vector)) + "({0})");
+			ltc.Add ("vector list",     "new " + TypeName (typeof (LSL_List)) + "((object){0})");
+			ltc.Add ("string vector",   "new " + TypeName (typeof (LSL_Vector)) + "({0})");   // LSL_Types says explicit
 			ltc.Add ("vector object",   "((object){0})");
 
 			// EXPLICIT type casts (an * is in middle of the key)
@@ -2536,10 +2537,6 @@ namespace MMR
 
 			// things with vectors
 			DefineBinOpsVector (bos);
-			DefineBinOpsVectorX (bos, "float",   "(float){1}");
-			DefineBinOpsVectorX (bos, "integer", "(float){1}");
-			DefineBinOpsXVector (bos, "float",   "(float){0}");
-			DefineBinOpsXVector (bos, "integer", "(float){0}");
 
 			return bos;
 		}
@@ -2656,6 +2653,7 @@ namespace MMR
 			bos.Add ("list!=list",     new BinOpStr (typeof (bool), "{0}!={1}"));
 		}
 
+		// all operations allowed by LSL_Rotation definition
 		private static void DefineBinOpsRotation (Dictionary<string, BinOpStr> bos)
 		{
 			bos.Add ("rotation==rotation", new BinOpStr (typeof (bool), "{0} == {1}"));
@@ -2677,6 +2675,7 @@ namespace MMR
 			bos.Add ("string+string",  new BinOpStr (typeof (string), "{0} +# {1}"));
 		}
 
+		// all operations allowed by LSL_Vector definition
 		private static void DefineBinOpsVector (Dictionary<string, BinOpStr> bos)
 		{
 			bos.Add ("vector==vector",  new BinOpStr (typeof (bool),       "{0} == {1}"));
@@ -2685,24 +2684,22 @@ namespace MMR
 			bos.Add ("vector-vector",   new BinOpStr (typeof (LSL_Vector), "{0} - {1}"));
 			bos.Add ("vector*vector",   new BinOpStr (typeof (float),      "{0} * {1}"));
 			bos.Add ("vector%vector",   new BinOpStr (typeof (LSL_Vector), "{0} % {1}"));
+
+			bos.Add ("vector*float",    new BinOpStr (typeof (LSL_Vector), "{0} * {1}"));
+			bos.Add ("float*vector",    new BinOpStr (typeof (LSL_Vector), "{0} * {1}"));
+			bos.Add ("vector/float",    new BinOpStr (typeof (LSL_Vector), "{0} / {1}"));
+
+			bos.Add ("vector*integer",  new BinOpStr (typeof (LSL_Vector), "{0} * (float){1}"));
+			bos.Add ("integer*vector",  new BinOpStr (typeof (LSL_Vector), "(float){0} * {1}"));
+			bos.Add ("vector/integer",  new BinOpStr (typeof (LSL_Vector), "{0} / (float){1}"));
+
 			bos.Add ("vector*rotation", new BinOpStr (typeof (LSL_Vector), "{0} * {1}"));
 			bos.Add ("vector/rotation", new BinOpStr (typeof (LSL_Vector), "{0} / {1}"));
 		}
 
-		private static void DefineBinOpsVectorX (Dictionary<string, BinOpStr> bos, string x, string y)
-		{
-			bos.Add ("vector*" + x, new BinOpStr (typeof (LSL_Vector), "{0} * " + y));
-			bos.Add ("vector/" + x, new BinOpStr (typeof (LSL_Vector), "{0} / " + y));
-		}
-
-		private static void DefineBinOpsXVector (Dictionary<string, BinOpStr> bos, string x, string y)
-		{
-			bos.Add (x + "*vector", new BinOpStr (typeof (LSL_Vector), "{1} * " + y));
-		}
-
 		private class BinOpStr {
-			public Type outtype;
-			public string format;
+			public Type outtype;   // type of result of computation
+			public string format;  // {0} = left operand; {1} = right operand
 			public BinOpStr (Type outtype, string format)
 			{
 				this.outtype = outtype;
