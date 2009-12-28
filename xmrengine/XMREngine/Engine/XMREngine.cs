@@ -915,6 +915,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     XmlElement permissionsN = (XmlElement)scriptStateN.SelectSingleNode("Permissions");
                     item.PermsGranter = new UUID(permissionsN.GetAttribute("granter"));
                     item.PermsMask = Convert.ToInt32(permissionsN.GetAttribute("mask"));
+                    part.Inventory.UpdateInventoryItem(item);
 
                     XmlElement snapshotN = (XmlElement)scriptStateN.SelectSingleNode("Snapshot");
                     Byte[] data = Convert.FromBase64String(snapshotN.InnerText);
