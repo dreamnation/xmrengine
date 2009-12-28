@@ -115,8 +115,8 @@ namespace MMR {
 	public class TokenBegin : Token {
 
 		private bool youveAnError;  // there was some error tokenizing
-		private int eolIdx;         // index in 'source' at end of previous line
-		private int lineNo;         // current line in source file, starting at 1
+		private int bolIdx;         // index in 'source' at begining of current line
+		private int lineNo;         // current line in source file, starting at 0
 		private string source;      // the whole script source code
 		private Token lastToken;    // last token created so far
 		private bool optionArrays;  // has seen 'XMROption arrays;'
@@ -157,13 +157,13 @@ namespace MMR {
 		private void Tokenize ()
 		{
 			youveAnError = false;
-			eolIdx = -1;
-			lineNo =  0;
+			bolIdx = 0;
+			lineNo = 0;
 			for (int i = 0; i < source.Length; i ++) {
 				char c = source[i];
 				if (c == '\n') {
 					lineNo ++;
-					eolIdx = i;
+					bolIdx = i + 1;
 					continue;
 				}
 
@@ -178,14 +178,14 @@ namespace MMR {
 				if ((i + 2 <= source.Length) && source.Substring (i, 2).Equals ("//")) {
 					while ((i < source.Length) && (source[i] != '\n')) i ++;
 					lineNo ++;
-					eolIdx = i;
+					bolIdx = i + 1;
 					continue;
 				}
 				if ((i + 2 <= source.Length) && (source.Substring (i, 2).Equals ("/*"))) {
 					while ((i + 1 < source.Length) && (((c = source[i]) != '*') || (source[i+1] != '/'))) {
 						if (c == '\n') {
 							lineNo ++;
-							eolIdx = i;
+							bolIdx = i + 1;
 						}
 						i ++;
 					}
@@ -223,7 +223,7 @@ namespace MMR {
 						} else if (c == '\n') {
 							TokenError (i, "string runs off end of line");
 							lineNo ++;
-							eolIdx = j;
+							bolIdx = j + 1;
 							break;
 						} else {
 							if (!backslash && (c == '"')) break;
@@ -233,7 +233,7 @@ namespace MMR {
 					if (j - i > MAX_STRING_LEN) {
 						TokenError (i, "string too long, max " + MAX_STRING_LEN);
 					} else {
-						AppendToken (new TokenStr (emsg, lineNo, i - eolIdx, source.Substring (i + 1, j - i - 1)));
+						AppendToken (new TokenStr (emsg, lineNo, i - bolIdx, source.Substring (i + 1, j - i - 1)));
 					}
 					i = j;
 					continue;
@@ -257,13 +257,13 @@ namespace MMR {
 					} else {
 						string name = source.Substring (i, j - i);
 						if (keywords.ContainsKey (name)) {
-							Object[] args = new Object[] { emsg, lineNo, i - eolIdx };
+							Object[] args = new Object[] { emsg, lineNo, i - bolIdx };
 							AppendToken ((Token)keywords[name].Invoke (args));
 						} else if (optionArrays && arrayKeywords.ContainsKey (name)) {
-							Object[] args = new Object[] { emsg, lineNo, i - eolIdx };
+							Object[] args = new Object[] { emsg, lineNo, i - bolIdx };
 							AppendToken ((Token)arrayKeywords[name].Invoke (args));
 						} else {
-							AppendToken (new TokenName (emsg, lineNo, i - eolIdx, name));
+							AppendToken (new TokenName (emsg, lineNo, i - bolIdx, name));
 						}
 					}
 					i = -- j;
@@ -295,7 +295,7 @@ namespace MMR {
 						if ((i + len <= source.Length) && (source.Substring (i, len).Equals (delims[j].str))) break;
 					}
 					if (j < delims.Length) {
-						Object[] args = { emsg, lineNo, i - eolIdx };
+						Object[] args = { emsg, lineNo, i - bolIdx };
 						Token kwToken = (Token)delims[j].ctorInfo.Invoke (args);
 						AppendToken (kwToken);
 						i += -- len;
@@ -419,7 +419,7 @@ namespace MMR {
 				}
 			}
 			if (!error) {
-				AppendToken (new TokenFloat (emsg, lineNo, i - eolIdx, f));
+				AppendToken (new TokenFloat (emsg, lineNo, i - bolIdx, f));
 			}
 			return j;
 		}
@@ -477,7 +477,7 @@ namespace MMR {
 				break;
 			}
 			if (!error) {
-				AppendToken (new TokenInt (emsg, lineNo, i - eolIdx, mantissa));
+				AppendToken (new TokenInt (emsg, lineNo, i - bolIdx, mantissa));
 			}
 			return j;
 		}
@@ -504,7 +504,7 @@ namespace MMR {
 		 */
 		private void TokenError (int i, string message)
 		{
-			Token temp = new Token (this.emsg, this.lineNo, i - this.eolIdx);
+			Token temp = new Token (this.emsg, this.lineNo, i - this.bolIdx);
 			temp.ErrorMsg (message);
 			youveAnError = true;
 		}
