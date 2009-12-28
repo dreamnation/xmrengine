@@ -471,8 +471,10 @@ namespace MMR
                         if (CompErr.Line == 0 && CompErr.Column == 0)
                             continue;
 
-                        tokenScript.line = CompErr.Line;
-                        tokenScript.posn = CompErr.Column;
+                        if (CompErr.Line > lineNoArray.Length)
+                            continue;
+                        tokenScript.line = lineNoArray[CompErr.Line - 1];
+                        tokenScript.posn = CompErr.Column - 1;
 
                         tokenScript.emsg(tokenScript, CompErr.ErrorText);
 //						m_log.DebugFormat("[MMR]: ({0},{1}]) Error: {2}",
