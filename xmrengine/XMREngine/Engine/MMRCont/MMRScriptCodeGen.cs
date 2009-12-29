@@ -244,12 +244,14 @@ namespace MMR
 					if (declVar.init != null) {
 						CompRVal rVal = GenerateFromRVal (null, declVar.init);
 						WriteOutput (declVar, "__sm.__gbl_" + declVar.name.val + " = " + StringWithCast (declVar.type, rVal) + ";");
-						if (declVar.type is TokenTypeList) {
-							WriteOutput (declVar, "__sm.memUsage += __sm.__gbl_" + declVar.name.val + ".Size;");
-						}
-						if (declVar.type is TokenTypeStr) {
-							WriteOutput (declVar, "__sm.memUsage += __sm.__gbl_" + declVar.name.val + ".Length * " + STRING_LEN_TO_MEMUSE + ";");
-						}
+					} else {
+						WriteOutput (declVar, "__sm.__gbl_" + declVar.name.val + " = " + DefaultValue (declVar.type) + ";");
+					}
+					if (declVar.type is TokenTypeList) {
+						WriteOutput (declVar, "__sm.memUsage += __sm.__gbl_" + declVar.name.val + ".Size;");
+					}
+					if (declVar.type is TokenTypeStr) {
+						WriteOutput (declVar, "__sm.memUsage += __sm.__gbl_" + declVar.name.val + ".Length * " + STRING_LEN_TO_MEMUSE + ";");
 					}
 				}
 				WriteOutput (0, "__sm.memUsage += " + initialSize.ToString () + ";");
