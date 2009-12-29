@@ -298,8 +298,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             myScriptEngine.PostObjectEvent(localID, new EventParams(
                     "control",new object[] {
                     agentID.ToString(),
-                    held,
-                    change},
+                    (int)held,
+                    (int)change},
                     new DetectParams[0]));
         }
 
