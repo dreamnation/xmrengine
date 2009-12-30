@@ -537,7 +537,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			XmlNode plugins = doc.CreateElement("", "Plugins", "");
 			DumpList(doc, plugins, new LSL_Types.list(pluginData));
 
-			scriptStateN.AppendChild(plugins);
+		        scriptStateN.AppendChild(plugins);
 
             return scriptStateN;
         }
@@ -800,38 +800,82 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                 if (!File.Exists(outputName))
                 {
-//                    m_log.DebugFormat("[XMREngine]: File {0} not found",
+//                    m_log.DebugFormat("[XMREngine]: compiling {0}",
 //                            outputName);
-                    if (script == String.Empty)
+                    if (!TryToCompile(script, outputName, item, part))
                     {
-                        m_log.ErrorFormat("[XMREngine]: Compile of asset {0} was requested but source text is not present and no assembly was found", item.AssetID.ToString());
                         return;
                     }
+                }
 
-                    m_log.DebugFormat("[XMREngine]: Compiling script {0}",
-                            item.AssetID);
-
-                    string debugFileName = String.Empty;
-
-                    if (m_Config.GetBoolean("WriteScriptSourceToDebugFile", false))
-                        debugFileName = "/tmp/" + item.AssetID.ToString() + ".lsl";
-
-                    try
+                if (!TryToLoad(outputName, item, part, startParam, localID, postOnRez, stateSource))
+                {
+                    m_log.DebugFormat("[XMREngine]: attempting recompile {0}",
+                            outputName);
+                    File.Delete(outputName);
+                    if (!TryToCompile(script, outputName, item, part))
                     {
-                        ScriptCompile.Compile(script, outputName,
-                                UUID.Zero.ToString(), debugFileName, ErrorHandler);
-                    }
-                    catch (Exception e)
-                    {
-                        m_log.DebugFormat("[XMREngine]: Exception compiling script: {0}:{1} ({2}) " + e.ToString(), part.Name, item.Name, item.AssetID);
-                        File.Delete(outputName);
+                        m_log.DebugFormat("[XMREngine]: recompile failed {0}",
+                               outputName);
                         return;
                     }
-
-                    if (!File.Exists(outputName))
+                    m_log.DebugFormat("[XMREngine]: attempting reload {0}",
+                            outputName);
+                    if (!TryToLoad(outputName, item, part, startParam, localID, postOnRez, stateSource))
+                    {
+                        m_log.DebugFormat("[XMREngine]: reload failed {0}",
+                                outputName);
                         return;
+                    }
+                    m_log.DebugFormat("[XMREngine]: reload successful {0}",
+                            outputName);
                 }
             }
+        }
+
+        private bool TryToCompile(string script, 
+                                  string outputName, 
+                                  TaskInventoryItem item,
+                                  SceneObjectPart part)
+        {
+            if (script == String.Empty)
+            {
+                m_log.ErrorFormat("[XMREngine]: Compile of asset {0} was requested but source text is not present and no assembly was found", item.AssetID.ToString());
+                return false;
+            }
+
+//            m_log.DebugFormat("[XMREngine]: Compiling script {0}",
+//                    item.AssetID);
+
+            string debugFileName = String.Empty;
+
+            if (m_Config.GetBoolean("WriteScriptSourceToDebugFile", false))
+                debugFileName = "/tmp/" + item.AssetID.ToString() + ".lsl";
+
+            try
+            {
+                ScriptCompile.Compile(script, outputName,
+                        item.AssetID.ToString(), debugFileName, ErrorHandler);
+            }
+            catch (Exception e)
+            {
+                m_log.ErrorFormat("[XMREngine]: Exception compiling script: {0}:{1} ({2}) " + e.ToString(), part.Name, item.Name, item.AssetID);
+                File.Delete(outputName);
+                return false;
+            }
+
+            return File.Exists(outputName);
+        }
+
+        private bool TryToLoad(string outputName,
+                               TaskInventoryItem item,
+                               SceneObjectPart part,
+                               int startParam,
+                               uint localID,
+                               bool postOnRez,
+                               int stateSource)
+        {
+            AppDomain appDomain;
 
             lock (m_Assemblies)
             {
@@ -857,14 +901,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
 //                m_log.DebugFormat("[XMREngine]: Created AppDomain, asset count {0}",
 //                        m_Assemblies[item.AssetID]);
+                appDomain = m_AppDomains[item.AssetID];
             }
 
 
             try
             {
                 XMRLoader loader =
-                        (XMRLoader)m_AppDomains[item.AssetID].
-                        CreateInstanceAndUnwrap(
+                        (XMRLoader)appDomain.CreateInstanceAndUnwrap(
                         "OpenSim.Region.ScriptEngine.XMREngine.Loader",
                         "OpenSim.Region.ScriptEngine.XMREngine.Loader.XMRLoader");
 
@@ -872,7 +916,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 //                        outputName);
 
                 XMRInstance instance = new XMRInstance(loader, this, part,
-                    part.LocalId, itemID, outputName);
+                    part.LocalId, m_CurrentCompileItem, outputName);
 
 //                m_log.DebugFormat("[XMREngine]: Loaded assembly {0}",
 //                        outputName);
@@ -880,7 +924,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 instance.StartParam = startParam;
 
                 string statePath = Path.Combine(m_ScriptBasePath,
-                        itemID.ToString() + ".state");
+                        m_CurrentCompileItem.ToString() + ".state");
 
                 XmlDocument doc = null;
                 XmlElement scriptStateN = null;
@@ -922,7 +966,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 //                    ReplaceAssemblyPath(data, outputName);
 
-                    instance.RestoreSnapshot(data);
+                    try
+                    {
+                        instance.RestoreSnapshot(data);
+                    }
+                    catch (Exception e)
+                    {
+                        m_log.Error("[XMREngine]: error restoring script state " + item.AssetID);
+                        m_log.Error("[XMREngine]: ... " + e.Message);
+                        ////???? queue Reset somehow ????////
+                    }
 
                     XmlElement detectedN = (XmlElement)scriptStateN.SelectSingleNode("Detect");
                     if (detectedN != null)
@@ -1012,7 +1065,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     Object[] pluginData = ReadList(pluginN).Data;
 
                     AsyncCommandManager.CreateFromData(this,
-                            localID, itemID, part.UUID,
+                            localID, m_CurrentCompileItem, part.UUID,
                             pluginData);
 
                     if (postOnRez)
@@ -1030,7 +1083,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
                 else
                 {
-                    WriteStateFile(itemID, instance);
+                    WriteStateFile(m_CurrentCompileItem, instance);
 
                     instance.PostEvent(new EventParams("state_entry", new Object[0], new DetectParams[0]));
 
@@ -1059,7 +1112,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                 lock (m_Instances)
                 {
-                    m_Instances[itemID] = instance;
+                    m_Instances[m_CurrentCompileItem] = instance;
 
                     WakeUp();
 
@@ -1075,19 +1128,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         m_Objects[part.UUID] = l;
                     }
 
-                    if (!l.Contains(itemID))
-                        l.Add(itemID);
+                    if (!l.Contains(m_CurrentCompileItem))
+                        l.Add(m_CurrentCompileItem);
 
-                    m_Partmap[itemID] = part.UUID;
+                    m_Partmap[m_CurrentCompileItem] = part.UUID;
                 }
             }
             catch (Exception e)
             {
-                m_log.Error("[XMREngine]: Script load failed, restart region" + e.ToString());
+                m_log.Error("[XMREngine]: Script load failed, restart region");
+                m_log.Error("[XMREngine]: ... " + e.ToString());
                 lock (m_Assemblies)
                 {
                     if (!m_Assemblies.ContainsKey(item.AssetID))
-                        return;
+                        return false;
 
                     m_Assemblies[item.AssetID]--;
 
@@ -1100,15 +1154,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                         m_Assemblies.Remove(item.AssetID);
 
-                        string assemblyPath = Path.Combine(m_ScriptBasePath,
-                                item.AssetID + ".dll");
-
-                        File.Delete(assemblyPath);
-                        File.Delete(assemblyPath + ".mdb");
+                        File.Delete(outputName);
+                        File.Delete(outputName + ".mdb");
                     }
                 }
+                return false;
             }
+            return true;
         }
+
 
         public void OnRemoveScript(uint localID, UUID itemID)
         {

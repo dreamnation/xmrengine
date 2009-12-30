@@ -101,7 +101,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
             m_ScriptBase.InitApi(name, api);
         }
 
-        public bool Load(string dllName)
+        public Exception Load(string dllName)
         {
             m_DllName = dllName;
 
@@ -111,17 +111,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
             }
             catch (Exception e)
             {
-                System.Console.WriteLine("[XMREngine]: Error loading script\n" + e.ToString());
-                return false;
+                return e;
             }
 
             if (m_Wrapper == null)
-                return false;
+            {
+                return new Exception ("ScriptWrapper.CreateScriptInstance returned null");
+            }
 
             m_Wrapper.beAPI = m_ScriptBase;
             m_Wrapper.alwaysSuspend = true;
 
-            return true;
+            return null;
         }
 
         public void PostEvent(string eventName, Object[] args)

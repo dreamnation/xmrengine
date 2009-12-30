@@ -167,10 +167,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 m_Loader.InitApi(api, m_Apis[api]);
             }
 
-            if(!m_Loader.Load(m_DllName))
+            Exception loadException = m_Loader.Load(m_DllName);
+            if (loadException != null)
             {
                 m_Loader.Dispose();
-                throw new Exception("Error loading script");
+                throw loadException;
             }
 
             m_Part.SetScriptEvents(m_ItemID, m_Loader.GetStateEventFlags(0));
