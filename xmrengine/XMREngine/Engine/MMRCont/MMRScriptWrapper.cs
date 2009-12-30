@@ -8,6 +8,8 @@ using System;
 using System.IO;
 using System.Reflection;
 using System.Runtime.Remoting;
+using System.Text;
+using System.Threading;
 using LSL_Float = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLFloat;
 using LSL_Integer = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLInteger;
 using LSL_Key = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
@@ -30,6 +32,7 @@ namespace MMR {
 	 * All scripts must inherit from this class.
 	 */
 	public abstract class ScriptWrapper : MarshalByRefObject, IDisposable {
+		public int instanceNo;
 
 		public int stateCode = 0;                 // state the script is in (0 = 'default')
 		public ScriptEventCode eventCode = ScriptEventCode.None;
@@ -43,6 +46,8 @@ namespace MMR {
 		public int memUsage = 0;                  // script's current memory usage
 		public int memLimit = 100000;             // CheckRun() throws exception if memUsage > memLimit
 		public bool stateChanged = false;         // script sets this if/when it executes a 'state' statement
+
+		public bool debPrint = false;
 
 		/*
 		 * Info about the script DLL itself as a whole.
@@ -255,11 +260,44 @@ namespace MMR {
 			return scriptWrapper;
 		}
 
+		protected ScriptWrapper ()
+		{
+			string envar = Environment.GetEnvironmentVariable ("MMRScriptWrapperDebPrint");
+			this.debPrint = ((envar != null) && ((envar[0] & 1) != 0));
+			instanceNo = this.GetHashCode();
+			DebPrint ("ScriptWrapper*: {0} created", instanceNo);
+		}
+
+		public void DebPrint (string format, object arg0)
+		{
+			DebPrint (format, arg0, null, null, null);
+		}
+
+		public void DebPrint (string format, object arg0, object arg1)
+		{
+			DebPrint (format, arg0, arg1, null, null);
+		}
+
+		public void DebPrint (string format, object arg0, object arg1, object arg2)
+		{
+			DebPrint (format, arg0, arg1, arg2, null);
+		}
+
+		public void DebPrint (string format, object arg0, object arg1, object arg2, object arg3)
+		{
+			if (this.debPrint) {
+				DateTime now = DateTime.Now;
+				String nowStr = String.Format ("{0:D2}:{1:D2}:{2:D2} ", now.Hour, now.Minute, now.Second);
+				Console.WriteLine (nowStr + format, arg0, arg1, arg2, arg3);
+			}
+		}
+
 		/*
 		 * All done with object, it's not usable after this.
 		 */
 		public virtual void Dispose ()
 		{
+			DebPrint ("ScriptWrapper*: {0} disposing", instanceNo);
 			if (this.microthread != null) {
 				this.microthread.Dispose ();
 				this.continuation = null;
@@ -331,6 +369,24 @@ namespace MMR {
 
 		public void StartEventHandler (ScriptEventCode eventCode, object[] ehArgs)
 		{
+			if (debPrint) {
+				StringBuilder dumpargs = new StringBuilder ();
+				dumpargs.Append (GetStateName (this.stateCode));
+				dumpargs.Append (":");
+				dumpargs.Append (eventCode.ToString ());
+				dumpargs.Append ("(");
+				for (int i = 0; i < ehArgs.Length; i ++) {
+					if (i > 0) {
+						dumpargs.Append (",");
+					}
+					dumpargs.Append (ehArgs[i].GetType().ToString());
+					dumpargs.Append (" ");
+					dumpargs.Append (ehArgs[i].ToString());
+				}
+				dumpargs.Append (")");
+				DebPrint ("StartEventHandler*: {0} {1}", this.instanceNo, dumpargs.ToString ());
+			}
+
 			/*
 			 * We use this.eventCode == ScriptEventCode.None to indicate we are idle.
 			 * So trying to execute ScriptEventCode.None might make a mess.
@@ -344,6 +400,7 @@ namespace MMR {
 			 * executing one event handler while the previous one is still going.
 			 */
 			lock (microthread) {
+				DebPrint ("StartEventHandler*: {0} locked", this.instanceNo);
 				if (this.eventCode != ScriptEventCode.None) {
 					throw new Exception ("Event handler already active");
 				}
@@ -372,8 +429,10 @@ namespace MMR {
 					 * This calls Main() below directly, and returns when Main() calls Suspend()
 					 * or when Main() returns, whichever occurs first.  It should return quickly.
 					 */
+					DebPrint ("StartEventHandler*: {0} this.eventCode={1}", this.instanceNo, this.eventCode);
 					microthread.Start ();
 				}
+				DebPrint ("StartEventHandler*: {0} unlocking", this.instanceNo);
 			}
 		}
 
@@ -392,6 +451,7 @@ namespace MMR {
 			 * executing one event handler while the previous one is still going.
 			 */
 			lock (microthread) {
+				DebPrint ("MigrateInEventHandler*: {0} locked", this.instanceNo);
 				if (this.eventCode != ScriptEventCode.None) {
 					throw new Exception ("Event handler already active");
 				}
@@ -445,6 +505,7 @@ namespace MMR {
 				//this.migrateInReader.Dispose ();  // moron thing doesn't compile
 				this.migrateInStream = null;
 				this.migrateInReader = null;
+				DebPrint ("MigrateInEventHandler*: {0} unlocking", this.instanceNo);
 			}
 		}
 
@@ -477,10 +538,12 @@ namespace MMR {
 			 * Execute script until it gets suspended, migrated out or it completes.
 			 */
 			lock (microthread) {
+				DebPrint ("ResumeEventHandler*: {0} locked", this.instanceNo);
 				if (eventCode != ScriptEventCode.None) {
 					microthread.Resume ();
 				}
-				idle = eventCode == ScriptEventCode.None;
+				idle = (eventCode == ScriptEventCode.None);
+				DebPrint ("ResumeEventHandler*: {0} idle={1}", this.instanceNo, idle);
 			}
 
 			/*
@@ -524,6 +587,7 @@ namespace MMR {
 			 */
 			this.suspendOnCheckRun = true;
 			lock (this.microthread) {
+				DebPrint ("MigrateOutEventHandler*: {0} locked", this.instanceNo);
 
 				/*
 				 * The script microthread should be at its Suspend() call within
@@ -571,6 +635,7 @@ namespace MMR {
 				//this.migrateOutWriter.Dispose ();  // moron thing doesn't compile
 				this.migrateOutStream = null;
 				this.migrateOutWriter = null;
+				DebPrint ("MigrateOutEventHandler*: {0} unlocking", this.instanceNo);
 			}
 
 			return written;
@@ -801,9 +866,11 @@ namespace MMR {
 		public override Exception RunContEx ()
 		{
 			Exception except = null;
+			int oldStateCode = -1;
+
 
 			try {
-				int newStateCode, oldStateCode;
+				int newStateCode;
 				ScriptEventHandler seh;
 
 				/*
@@ -823,6 +890,8 @@ namespace MMR {
 				 */
 				scriptWrapper.stateChanged = false;
 				oldStateCode = scriptWrapper.stateCode;
+				scriptWrapper.DebPrint ("RunContEx*: {0} {1}:{2} begin", 
+						scriptWrapper.instanceNo, scriptWrapper.GetStateName (oldStateCode), scriptWrapper.eventCode);
 				seh = scriptWrapper.scriptEventHandlerTable[oldStateCode,(int)scriptWrapper.eventCode];
 				seh (scriptWrapper);
 
@@ -839,19 +908,52 @@ namespace MMR {
 				 * If event handler changed state, call exit_state() on the old state,
 				 * change the state, then call enter_state() on the new state.
 				 */
-				if (scriptWrapper.stateChanged) {
-					scriptWrapper.stateChanged = false;
+				while (scriptWrapper.stateChanged) {
+
+					/*
+					 * Get what state they transitioned to.
+					 */
 					newStateCode = scriptWrapper.stateCode;
 
+					/*
+					 * Maybe print out what happened.
+					 */
+					scriptWrapper.DebPrint ("RunContEx*: {0} {1}:{2} -> {3}", 
+							scriptWrapper.instanceNo, scriptWrapper.GetStateName (oldStateCode), 
+							scriptWrapper.eventCode, scriptWrapper.GetStateName (newStateCode));
+
+					/*
+					 * Restore to old state and call its state_exit() handler.
+					 */
+					scriptWrapper.stateChanged = false;
+					scriptWrapper.eventCode = ScriptEventCode.state_exit;
 					scriptWrapper.stateCode = oldStateCode;
 					seh = scriptWrapper.scriptEventHandlerTable[oldStateCode,(int)ScriptEventCode.state_exit];
 					if (seh != null) seh (scriptWrapper);
-					if (scriptWrapper.stateChanged) throw new Exception ("state_exit() transitioned state");
 
+					/*
+					 * Ignore any state change by state_exit() handlers.
+					 */
+					if (scriptWrapper.stateChanged) {
+						scriptWrapper.DebPrint ("RunContEx*: {0} ignoring {1}:state_exit() state change -> {2}", 
+								scriptWrapper.instanceNo, scriptWrapper.GetStateName (oldStateCode), 
+								scriptWrapper.GetStateName (scriptWrapper.stateCode));
+					}
+
+					/*
+					 * Now pretend we have been in the new state all along as we are done with the old one.
+					 */
+					oldStateCode = newStateCode;
+
+					/*
+					 * Call the new state's state_entry() handler.
+					 * I've seen scripts that change state in the state_entry() handler to allow for that.
+					 */
+					scriptWrapper.stateChanged = false;
+					scriptWrapper.eventCode = ScriptEventCode.state_entry;
 					scriptWrapper.stateCode = newStateCode;
 					seh = scriptWrapper.scriptEventHandlerTable[newStateCode,(int)ScriptEventCode.state_entry];
 					if (seh != null) seh (scriptWrapper);
-					if (scriptWrapper.stateChanged) throw new Exception ("state_entry() transitioned state");
 				}
 			} catch (Exception e) {
 				except = e;
@@ -860,6 +962,8 @@ namespace MMR {
 			/*
 			 * The event handler has run to completion.
 			 */
+			scriptWrapper.DebPrint ("RunContEx*: {0} {1}:{2} done", 
+					scriptWrapper.instanceNo, scriptWrapper.GetStateName (oldStateCode), scriptWrapper.eventCode);
 			scriptWrapper.eventCode = ScriptEventCode.None;
 			return except;
 		}
