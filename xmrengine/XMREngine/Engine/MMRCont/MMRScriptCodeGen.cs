@@ -232,6 +232,7 @@ namespace MMR
 			if (nGlobals > 0) {
 				WriteOutput (0, "public " + smClassName + " () {");
 				WriteOutput (0, smClassName + " __sm = this;");
+				WriteOutput (0, TypeName (typeof (ScriptBaseClass))    + " __be = this.beAPI;");
 				WriteOutput (0, TypeName (typeof (ScriptContinuation)) + " __sc = this.continuation;");
 
 				/*
@@ -506,6 +507,7 @@ namespace MMR
 		 *   private static void __seh_<statename_<eventname>(ScriptWrapper __sw)
 		 *   {
 		 *      <smClassName> __sm = (ScriptWrapper)__sw;
+		 *      ScriptBaseClass __be    = __sm.beAPI;
 		 *      ScriptContinuation __sc = __sm.continuation;
 		 *      <typeArg0> <namearg0> = (<typeArg0>)__sw.ehArgs[0];
 		 *      <typeArg1> <nameArg1> = (<typeArg1>)__sw.ehArgs[1];
@@ -577,9 +579,11 @@ namespace MMR
 
 			/*
 			 * We use a __sm variable to access the script's user-defined fields and methods.
+			 * And __be is a cache for calling the backend API functions.
 			 * And __sc is a cache for __sm.continuation for calling CheckRun().
 			 */
 			WriteOutput (declFunc, smClassName + " __sm = (" + smClassName + ")__sw;");
+			WriteOutput (declFunc, TypeName (typeof (ScriptBaseClass))    + " __be = __sw.beAPI;");
 			WriteOutput (declFunc, TypeName (typeof (ScriptContinuation)) + " __sc = __sw.continuation;");
 
 			/*
@@ -2204,12 +2208,17 @@ namespace MMR
 
 			// EXPLICIT type casts (an * is in middle of the key)
 			ltc.Add ("bool*string",     "({0}?\"true\":\"false\")");
+			ltc.Add ("float*list",      "new " + TypeName (typeof (LSL_List)) + "({0})");
 			ltc.Add ("float*string",    "{0}.ToString()");
+			ltc.Add ("integer*list",    "new " + TypeName (typeof (LSL_List)) + "({0})");
 			ltc.Add ("integer*string",  "{0}.ToString()");
 			ltc.Add ("list*string",     "{0}.ToString()");
+			ltc.Add ("rotation*list",   "new " + TypeName (typeof (LSL_List)) + "({0})");
 			ltc.Add ("rotation*string", "{0}.ToString()");
 			ltc.Add ("string*float",    "((float)new " + TypeName (typeof (LSL_Float)) + "({0}).value)");
 			ltc.Add ("string*integer",  "((int)new " + TypeName (typeof (LSL_Integer)) + "({0}).value)");
+			ltc.Add ("string*list",     "new " + TypeName (typeof (LSL_List)) + "({0})");
+			ltc.Add ("vector*list",     "new " + TypeName (typeof (LSL_List)) + "({0})");
 			ltc.Add ("vector*string",   "{0}.ToString()");
 
 			return ltc;

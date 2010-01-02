@@ -1,5 +1,5 @@
 
-HOME=/home/mrieker
+HOME=/home/mike
 
 scripttest.exe: \
 		MMRScriptTest.cs \

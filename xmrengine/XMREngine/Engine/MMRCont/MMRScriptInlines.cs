@@ -110,16 +110,57 @@ namespace MMR
 			new InlineFunction (ifd, "llSqrt(float)",        typeof (float), "(float)System.Math.Sqrt({0})");
 			new InlineFunction (ifd, "llTan(float)",         typeof (float), "(float)System.Math.Tan({0})");
 
+			new InlineFunction (ifd, "ConsoleWriteLine(string)", typeof (void), "System.Console.WriteLine({0})");
+
 			/*
 			 * Finally for any API functions defined by ScriptBaseClass that are not overridden 
 			 * by anything already defined above, create an inline definition to call it.
 			 *
 			 * We create statement-block forms like this for each:
 			 *    {
-			 *       {#} = __sm.beAPI.methodname({0},{1},...);
+			 *       {#} = __be.methodname({0},{1},...);
 			 *       __sc.CheckRun();
 			 *    }
+			 *
+			 * But for those listed in noCheckRun, we generate:
+			 *    (__be.methodname({0},{1},...))
 			 */
+			string[] noCheckRun = new string[] {
+				"llBase64ToString",
+				"llCSV2List",
+				"llDeleteSubList",
+				"llDeleteSubString",
+				"llDumpList2String",
+				"llEscapeURL",
+				"llGetListEntryType",
+				"llGetListLength",
+				"llGetSubString",
+				"llInsertString",
+				"llList2CSV",
+				"llList2Float",
+				"llList2Integer",
+				"llList2Key",
+				"llList2List",
+				"llList2ListStrided",
+				"llList2Rot",
+				"llList2String",
+				"llList2Vector",
+				"llListFindList",
+				"llListInsertList",
+				"llListRandomize",
+				"llListReplaceList",
+				"llListSort",
+				"llListStatistics",
+				"llMD5String",
+				"llParseString2List",
+				"llParseStringKeepNulls",
+				"llStringLength",
+				"llStringToBase64",
+				"llStringTrim",
+				"llSubStringIndex",
+				"llUnescapeURL"
+			};
+
 			MethodInfo[] ifaceMethods = typeof (ScriptBaseClass).GetMethods ();
 			foreach (MethodInfo ifaceMethod in ifaceMethods) {
 				string key = ifaceMethod.Name;
@@ -153,14 +194,19 @@ namespace MMR
 						if (retType == typeof (LSL_Float))   retType = typeof (float);
 						if (retType == typeof (LSL_Integer)) retType = typeof (int);
 						if (retType == typeof (LSL_String))  retType = typeof (string);
-						StringBuilder code = new StringBuilder ("{ ");
-						if (ifaceMethod.ReturnType != typeof (void)) {
-							code.Append ("{#} = ");
+						StringBuilder code = new StringBuilder ();
+						if (Array.IndexOf (noCheckRun, ifaceMethod.Name) < 0) {
+							code.Append ("{ ");
+							if (ifaceMethod.ReturnType != typeof (void)) {
+								code.Append ("{#} = ");
+							}
+						} else {
+							code.Append ("(");
 						}
 						if (retType == typeof (float)) {
 							code.Append ("(float)");
 						}
-						code.Append ("__sm.beAPI.");
+						code.Append ("__be.");
 						code.Append (ifaceMethod.Name);
 						code.Append ('(');
 						for (int i = 0; i < parameters.Length; i ++) {
@@ -170,7 +216,11 @@ namespace MMR
 						code.Append (')');
 						if (ifaceMethod.ReturnType == typeof (LSL_Float))   code.Append (".value");
 						if (ifaceMethod.ReturnType == typeof (LSL_Integer)) code.Append (".value");
-						code.Append ("; __sc.CheckRun(); }");
+						if (Array.IndexOf (noCheckRun, ifaceMethod.Name) < 0) {
+							code.Append ("; __sc.CheckRun(); }");
+						} else {
+							code.Append (")");
+						}
 						new InlineFunction (ifd, key, retType, code.ToString ());
 					}
 				} catch (Exception except) {
