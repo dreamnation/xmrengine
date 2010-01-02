@@ -689,6 +689,7 @@ namespace MMR
 			/*
 			 * See if time to suspend in case they are doing a loop with recursion.
 			 */
+			WriteOutput (declFunc.body, TypeName (typeof (ScriptBaseClass))    + " __be = __sm.beAPI;");
 			WriteOutput (declFunc.body, TypeName (typeof (ScriptContinuation)) + " __sc = __sm.continuation;");
 			WriteOutput (declFunc.body, "__sc.CheckRun();");
 
