@@ -374,6 +374,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (!m_IsIdle)
                 CheckRunStatus();
         }
+
+        public void StateChange(string newState)
+        {
+        }
     }
 
     public class XMRLSL_Api : LSL_Api

@@ -918,6 +918,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 XMRInstance instance = new XMRInstance(loader, this, part,
                     part.LocalId, m_CurrentCompileItem, outputName);
 
+                loader.StateChange = instance.StateChange;
+
 //                m_log.DebugFormat("[XMREngine]: Loaded assembly {0}",
 //                        outputName);
 

@@ -16,6 +16,8 @@ using MMR;
 
 namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
 {
+    public delegate void StateChangeDelegate(string newState);
+
     [Flags]
     public enum scriptEvents : int
     {
@@ -55,6 +57,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
         private int m_Renew = 10;
         private ScriptWrapper m_Wrapper = null;
         private string m_DllName;
+        public StateChangeDelegate StateChange;
 
         public override Object InitializeLifetimeService()
         {
@@ -74,7 +77,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
 
         public XMRLoader()
         {
-            m_ScriptBase = new ScriptBaseClass();
+            XMRScriptBaseClass baseClass = new XMRScriptBaseClass();
+            baseClass.Loader = this;
+
+            m_ScriptBase = baseClass;
         }
 
         public void Dispose()
@@ -220,6 +226,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
             ms.Close();
 
             return suspended;
+        }
+    }
+
+    public class XMRScriptBaseClass : ScriptBaseClass
+    {
+        public XMRLoader Loader;
+
+        public override void StateChange(string newState)
+        {
+            Loader.StateChange(newState);
         }
     }
 }
