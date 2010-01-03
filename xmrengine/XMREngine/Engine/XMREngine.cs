@@ -918,7 +918,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 XMRInstance instance = new XMRInstance(loader, this, part,
                     part.LocalId, m_CurrentCompileItem, outputName);
 
-                loader.StateChange = instance.StateChange;
+                ///System.Runtime.Serialization.SerializationException: Type OpenSim.Region.ScriptEngine.XMREngine.XMRInstance is not marked as Serializable.
+                ///loader.StateChange = instance.StateChange;
+                ///...uncomment XMRLoader.CallLoaderStateChange() when fixed
 
 //                m_log.DebugFormat("[XMREngine]: Loaded assembly {0}",
 //                        outputName);

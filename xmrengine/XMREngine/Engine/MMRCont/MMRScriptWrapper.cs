@@ -29,6 +29,11 @@ namespace MMR {
 	public delegate void ScriptEventHandler (ScriptWrapper __sw);
 
 	/*
+	 * Whenever a script changes state, it calls this method.
+	 */
+	public delegate void StateChangeDelegate (string newState);
+
+	/*
 	 * All scripts must inherit from this class.
 	 */
 	public abstract class ScriptWrapper : MarshalByRefObject, IDisposable {
@@ -40,6 +45,7 @@ namespace MMR {
 		                                          // - code assumes that only the event handling microthread
 		                                          //   transitions eventCode from non-idle to idle
 		                                          // - idle to non-idle is always Interlocked
+		public StateChangeDelegate stateChange;   // called when script changes state
 		public ScriptBaseClass beAPI;             // passed as 'this' to methods such as llSay()
 		public ScriptContinuation continuation;   // passed as 'this' to CheckRun()
 		public object[] ehArgs;                   // event handler argument array
@@ -941,13 +947,19 @@ namespace MMR {
 					}
 
 					/*
-					 * Now pretend we have been in the new state all along as we are done with the old one.
+					 * Now that the old state can't possibly start any more activity,
+					 * cancel any listening handlers, etc, of the old state.
+					 */
+					scriptWrapper.stateChange (scriptWrapper.GetStateName (newStateCode));
+
+					/*
+					 * Now the new state becomes the old state in case the new state_entry() changes state again.
 					 */
 					oldStateCode = newStateCode;
 
 					/*
 					 * Call the new state's state_entry() handler.
-					 * I've seen scripts that change state in the state_entry() handler to allow for that.
+					 * I've seen scripts that change state in the state_entry() handler, so allow for that.
 					 */
 					scriptWrapper.stateChanged = false;
 					scriptWrapper.eventCode = ScriptEventCode.state_entry;
