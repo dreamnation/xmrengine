@@ -195,29 +195,25 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
 
             bool suspended = m_Wrapper.MigrateOutEventHandler(ms);
 
+            ms.WriteByte((byte)(suspended ? 1 : 0));
+
             Byte[] data = ms.ToArray();
 
             ms.Close();
-
-            Array.Resize(ref data, data.Length+1);
-            if (suspended)
-                data[data.Length-1] = 1;
-            else
-                data[data.Length-1] = 0;
 
             return data;
         }
 
         public bool RestoreSnapshot(Byte[] data)
         {
-            bool suspended = data[data.Length-1] == 1 ? true : false;
-
             MemoryStream ms = new MemoryStream();
 
-            ms.Write(data, 0, data.Length-1);
-			ms.Seek(0, SeekOrigin.Begin);
+            ms.Write(data, 0, data.Length);
+            ms.Seek(0, SeekOrigin.Begin);
 
             m_Wrapper.MigrateInEventHandler(ms);
+
+            bool suspended = ms.ReadByte() > 0;
 
             ms.Close();
 
