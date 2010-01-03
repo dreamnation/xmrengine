@@ -385,6 +385,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void StateChange(string newState)
         {
+            AsyncCommandManager.RemoveScript(m_Engine, m_LocalID, m_ItemID);
         }
     }
 
