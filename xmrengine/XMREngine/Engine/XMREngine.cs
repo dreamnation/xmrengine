@@ -581,13 +581,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             SceneObjectPart part = instance.SceneObject;
 
-            TaskInventoryItem item =
-                    part.Inventory.GetInventoryItem(itemID);
-
-            if (item == null)
-                return String.Empty;
-
-            UUID assetID = item.AssetID;
+            UUID assetID = instance.AssetID;
 
             XmlAttribute assetA = doc.CreateAttribute("", "Asset", "");
             assetA.Value = assetID.ToString();
@@ -595,7 +589,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 
             string assemblyPath = Path.Combine(m_ScriptBasePath,
-                    item.AssetID.ToString() + ".dll");
+                    assetID.ToString() + ".dll");
 
             if (File.Exists(assemblyPath))
             {
@@ -940,9 +934,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         part.LocalId, m_CurrentCompileItem, item.AssetID,
                         outputName);
 
-                ///System.Runtime.Serialization.SerializationException: Type OpenSim.Region.ScriptEngine.XMREngine.XMRInstance is not marked as Serializable.
-                ///loader.StateChange = instance.StateChange;
-                ///...uncomment XMRLoader.CallLoaderStateChange() when fixed
+                loader.StateChange = instance.StateChange;
 
 //                m_log.DebugFormat("[XMREngine]: Loaded assembly {0}",
 //                        outputName);
@@ -1000,7 +992,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     {
                         m_log.Error("[XMREngine]: error restoring script state " + item.AssetID);
                         m_log.Error("[XMREngine]: ... " + e.Message);
-                        ////???? queue Reset somehow ????////
+
+                        instance.PostEvent(new EventParams("state_entry", new Object[0], new DetectParams[0]));
+
+                        if (postOnRez)
+                        {
+                            instance.PostEvent(new EventParams("on_rez",
+                                    new Object[] {instance.StartParam}, new DetectParams[0]));
+                        }
                     }
 
                     XmlElement detectedN = (XmlElement)scriptStateN.SelectSingleNode("Detect");

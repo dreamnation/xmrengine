@@ -222,9 +222,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
 
         private void CallLoaderStateChange(string newState)
         {
-            ///Console.WriteLine("XMRLoader.CallLoaderStateChange({0}) ...dummied out", newState);
-            ///Uncomment when 'loader.StateChange = instance.StateChange' is fixed in XMREngine.cs
-            ///StateChange(newState);
+            StateChange(newState);
         }
     }
 }

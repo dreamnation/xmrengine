@@ -29,7 +29,7 @@ using log4net;
 //
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
-    public class XMRInstance : IDisposable
+    public class XMRInstance : MarshalByRefObject, IDisposable
     {
         private static readonly ILog m_log =
             LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
