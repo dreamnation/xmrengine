@@ -332,7 +332,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             }
 
-			return instance.StartParam;
+            return instance.StartParam;
         }
 
         // This is the "set running" method
@@ -531,13 +531,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 permissionsN.Attributes.Append(maskA);
             }
 
-			Object[] pluginData = AsyncCommandManager.GetSerializationData(this,
-					instance.ItemID);
+            Object[] pluginData = AsyncCommandManager.GetSerializationData(this,
+                    instance.ItemID);
 
-			XmlNode plugins = doc.CreateElement("", "Plugins", "");
-			DumpList(doc, plugins, new LSL_Types.list(pluginData));
+            XmlNode plugins = doc.CreateElement("", "Plugins", "");
+            DumpList(doc, plugins, new LSL_Types.list(pluginData));
 
-		        scriptStateN.AppendChild(plugins);
+                scriptStateN.AppendChild(plugins);
 
             return scriptStateN;
         }
@@ -867,6 +867,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return File.Exists(outputName);
         }
 
+        //  TryToLoad()
+        //      under lock do
+        //          if already have an app domain for the script,
+        //              increment reference count
+        //          else
+        //              create new app domain for the script
+        //          appDomain = script's app domain
+        //      try
+        //          create loader instance
+        //          create script instance
+        //          if state XML file exists for the asset,
+        //              extract <ScriptState> element
+        //          if <ScriptState.Asset> matches assetID,
+        //              restore state from <ScriptState.Snapshot>
+        //          ....
+        //      catch
+        //          output error message
+        //          under lock do
+        //              decrement refcount
+        //              if zero, unload app domain and delete script .DLL
+        //
         private bool TryToLoad(string outputName,
                                TaskInventoryItem item,
                                SceneObjectPart part,
@@ -916,7 +937,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 //                        outputName);
 
                 XMRInstance instance = new XMRInstance(loader, this, part,
-                    part.LocalId, m_CurrentCompileItem, outputName);
+                        part.LocalId, m_CurrentCompileItem, item.AssetID,
+                        outputName);
 
                 ///System.Runtime.Serialization.SerializationException: Type OpenSim.Region.ScriptEngine.XMREngine.XMRInstance is not marked as Serializable.
                 ///loader.StateChange = instance.StateChange;
@@ -1410,6 +1432,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             
             if (scriptStateN != null)
             {
+                scriptStateN.SetAttribute("Asset", ins.AssetID.ToString());
+
                 doc.AppendChild(scriptStateN);
 
                 string statepath = Path.Combine(m_ScriptBasePath,

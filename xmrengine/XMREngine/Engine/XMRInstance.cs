@@ -43,6 +43,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private SceneObjectPart m_Part = null;
         private uint m_LocalID = 0;
         private UUID m_ItemID;
+        private UUID m_AssetID;
         private string m_DllName;
         private bool m_IsIdle = true;
         private Object m_RunLock = new Object();
@@ -78,6 +79,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public UUID ItemID
         {
             get { return m_ItemID; }
+        }
+
+        public UUID AssetID
+        {
+            get { return m_AssetID; }
         }
 
         public void Suspend()
@@ -145,13 +151,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         public XMRInstance(XMRLoader loader, IScriptEngine engine,
-                SceneObjectPart part, uint localID, UUID itemID, string dllName)
+                SceneObjectPart part, uint localID, UUID itemID, UUID assetID,
+                string dllName)
         {
             m_Loader = loader;
             m_Engine = engine;
             m_Part = part;
             m_LocalID = localID;
             m_ItemID = itemID;
+            m_AssetID = assetID;
             m_DllName = dllName;
 
             ApiManager am = new ApiManager();
