@@ -2672,10 +2672,10 @@ namespace MMR
 		{
 			bos.Add ("rotation==rotation", new BinOpStr (typeof (bool), "{0} == {1}"));
 			bos.Add ("rotation!=rotation", new BinOpStr (typeof (bool), "{0} == {1}"));
-			bos.Add ("rotation+rotation",  new BinOpStr (typeof (LSL_Rotation), "{0} + {1}"));
-			bos.Add ("rotation-rotation",  new BinOpStr (typeof (LSL_Rotation), "{0} - {1}"));
-			bos.Add ("rotation*rotation",  new BinOpStr (typeof (LSL_Rotation), "{0} * {1}"));
-			bos.Add ("rotation/rotation",  new BinOpStr (typeof (LSL_Rotation), "{0} / {1}"));
+			bos.Add ("rotation+rotation",  new BinOpStr (typeof (LSL_Rotation), "{0} +# {1}"));
+			bos.Add ("rotation-rotation",  new BinOpStr (typeof (LSL_Rotation), "{0} -# {1}"));
+			bos.Add ("rotation*rotation",  new BinOpStr (typeof (LSL_Rotation), "{0} *# {1}"));
+			bos.Add ("rotation/rotation",  new BinOpStr (typeof (LSL_Rotation), "{0} /# {1}"));
 		}
 
 		private static void DefineBinOpsString (Dictionary<string, BinOpStr> bos)
@@ -2694,21 +2694,21 @@ namespace MMR
 		{
 			bos.Add ("vector==vector",  new BinOpStr (typeof (bool),       "{0} == {1}"));
 			bos.Add ("vector!=vector",  new BinOpStr (typeof (bool),       "{0} != {1}"));
-			bos.Add ("vector+vector",   new BinOpStr (typeof (LSL_Vector), "{0} + {1}"));
-			bos.Add ("vector-vector",   new BinOpStr (typeof (LSL_Vector), "{0} - {1}"));
+			bos.Add ("vector+vector",   new BinOpStr (typeof (LSL_Vector), "{0} +# {1}"));
+			bos.Add ("vector-vector",   new BinOpStr (typeof (LSL_Vector), "{0} -# {1}"));
 			bos.Add ("vector*vector",   new BinOpStr (typeof (float),      "{0} * {1}"));
-			bos.Add ("vector%vector",   new BinOpStr (typeof (LSL_Vector), "{0} % {1}"));
+			bos.Add ("vector%vector",   new BinOpStr (typeof (LSL_Vector), "{0} %# {1}"));
 
-			bos.Add ("vector*float",    new BinOpStr (typeof (LSL_Vector), "{0} * {1}"));
+			bos.Add ("vector*float",    new BinOpStr (typeof (LSL_Vector), "{0} *# {1}"));
 			bos.Add ("float*vector",    new BinOpStr (typeof (LSL_Vector), "{0} * {1}"));
-			bos.Add ("vector/float",    new BinOpStr (typeof (LSL_Vector), "{0} / {1}"));
+			bos.Add ("vector/float",    new BinOpStr (typeof (LSL_Vector), "{0} /# {1}"));
 
-			bos.Add ("vector*integer",  new BinOpStr (typeof (LSL_Vector), "{0} * (float){1}"));
+			bos.Add ("vector*integer",  new BinOpStr (typeof (LSL_Vector), "{0} *# (float){1}"));
 			bos.Add ("integer*vector",  new BinOpStr (typeof (LSL_Vector), "(float){0} * {1}"));
-			bos.Add ("vector/integer",  new BinOpStr (typeof (LSL_Vector), "{0} / (float){1}"));
+			bos.Add ("vector/integer",  new BinOpStr (typeof (LSL_Vector), "{0} /# (float){1}"));
 
-			bos.Add ("vector*rotation", new BinOpStr (typeof (LSL_Vector), "{0} * {1}"));
-			bos.Add ("vector/rotation", new BinOpStr (typeof (LSL_Vector), "{0} / {1}"));
+			bos.Add ("vector*rotation", new BinOpStr (typeof (LSL_Vector), "{0} *# {1}"));
+			bos.Add ("vector/rotation", new BinOpStr (typeof (LSL_Vector), "{0} /# {1}"));
 		}
 
 		private class BinOpStr {
