@@ -674,7 +674,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     fs.Close();
                 }
             }
-            return false;
+            return true;
         }
 
         public bool PostScriptEvent(UUID itemID, string name, Object[] p)
