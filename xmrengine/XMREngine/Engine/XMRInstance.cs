@@ -31,6 +31,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 {
     public class XMRInstance : MarshalByRefObject, IDisposable
     {
+        public const int MAXEVENTQUEUE = 64;
+
         private static readonly ILog m_log =
             LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
@@ -219,6 +221,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             {
                 if (!m_Running)
                     return;
+
+                if (m_EventQueue.Count >= MAXEVENTQUEUE)
+                {
+                    m_log.DebugFormat("[XMREngine]: event queue overflow, {0} -> {1}:{2}\n", 
+                            evt.EventName, m_Part.Name, 
+                            m_Part.Inventory.GetInventoryItem(m_ItemID).Name);
+                    return;
+                }
 
                 if (evt.EventName == "timer")
                 {
