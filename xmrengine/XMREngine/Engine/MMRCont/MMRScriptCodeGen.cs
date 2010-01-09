@@ -98,6 +98,7 @@ namespace MMR
 		/*
 		 * There is one set of these variables for each script being compiled.
 		 */
+		private bool traceAPICalls = false;
 		private bool youveAnError = false;
 		private MemoryStream objectFile;
 		private TextWriter objectWriter;
@@ -115,6 +116,9 @@ namespace MMR
 
 		private ScriptCodeGen (TokenScript tokenScript, string binaryName, string debugFileName)
 		{
+			string envar = Environment.GetEnvironmentVariable ("MMRScriptCompileTraceAPICalls");
+			traceAPICalls = (envar != null) && ((envar[0] & 1) != 0);
+
 			/*
 			 * errorMessageToken is used only when the given token doesn't have a
 			 * output delegate associated with it such as for backend API functions
@@ -1724,6 +1728,13 @@ namespace MMR
 		private CompRVal GenerateFromRValCallInline (CompRVal result, TokenRValCall call, InlineFunction inlineFunc, CompRVal[] argRVals)
 		{
 			/*
+			 * API calls have __be. in them somewhere.  No big deal if we get a false positive because this is just debug output.
+			 * Note that things like inlined math calls don't have __be. anywhere but who needs to trace those anyway?
+			 * If needed, just put __be. as a comment in them somewhere.
+			 */
+			bool traceIt = traceAPICalls && (inlineFunc.code.IndexOf ("__be.") >= 0);
+
+			/*
 			 * Generate code for the inline call by substituting in the locations of the parameters for {0}, {1}, {2}, etc.
 			 */
 			StringBuilder callString = new StringBuilder (inlineFunc.code);
@@ -1737,76 +1748,101 @@ namespace MMR
 			}
 
 			/*
-			 * If resultant code doen't begin with a '{', we just output it as a standard call.
+			 * If resultant code doesn't begin with a '{', we just output it as a standard call.
 			 */
 			if (callString.ToString ()[0] != '{') {
-				return OutputCallStatement (result, call, TokenType.FromSysType (call, inlineFunc.retType), callString);
+				if (!traceIt) {
+					return OutputCallStatement (result, call, TokenType.FromSysType (call, inlineFunc.retType), callString);
+				}
+
+				/*
+				 * Tracing enabled, convert to '{' ... '}' form.
+				 */
+				if (inlineFunc.retType == typeof (void)) {
+					callString.Insert (0, "{ ");
+				} else {
+					callString.Insert (0, "{ {#} = ");
+				}
+				callString.Append ("; }");
 			}
 
 			/*
 			 * Begins with a '{', output it as a statement block.
 			 * Substitute any '{#}' with output location as they represent where the return value goes.
 			 */
+			if (traceIt) WriteOutput (call, "System.Console.WriteLine(\"" + call.line.ToString () + " calling " + inlineFunc.signature + "\");");
 			if (inlineFunc.retType == typeof (void)) {
+
+				/*
+				 * Function is defined to return void.  So either the caller can accept a void
+				 * value, or we have to tell caller that we generate a void value.
+				 */
 				if (result == null) {
 					result = new CompRVal (TokenType.FromSysType (call, inlineFunc.retType));
 				} else if (!(result.type is TokenTypeVoid)) {
 					ErrorMsg (call, "function doesn't return a value");
 				}
-				WriteOutput (call, callString.ToString ());
-				return result;
-			}
-
-			string retLocation = null;
-			if ((result == null) || (result.type.typ != inlineFunc.retType)) {
-
-				/*
-				 * Caller either didn't give us a location for the result or gave us a
-				 * location of the wrong type.  So create a temporary for the inline to
-				 * put it's value in that is the exact correct type.
-				 */
-				CompRVal tempVar = new CompRVal (TokenType.FromSysType (call, inlineFunc.retType));
-				retLocation = tempVar.locstr;
- 				WriteOutput (call, TypeName (inlineFunc.retType) + " " + retLocation + ";");
-
-				/*
-				 * That temp is where the result is.  Our caller will have to move it if
-				 * it wants it somewhere else.
-				 */
-				result = tempVar;
 			} else {
 
 				/*
-				 * Get where our caller told us to put the result.
+				 * Function is defined to return a non-void.  So figure out where to put value.
 				 */
-				retLocation = result.locstr;
+				string retLocation = null;
+				if ((result == null) || (result.type.typ != inlineFunc.retType)) {
 
-				/*
-				 * If the location is also a declaration, output the declaration separately,
-				 * or the declaration will be muted by the braces.  And also it would get
-				 * hosed if there were more than one {#} in the inline code string.
-				 */
-				for (int i = 0; i < retLocation.Length; i ++) {
-					char c = retLocation[i];
-					if (c == ' ') {
-						WriteOutput (call, retLocation + ";");
-						retLocation = retLocation.Substring (++ i);
+					/*
+					 * Caller either didn't give us a location for the result or gave us a
+					 * location of the wrong type.  So create a temporary for the inline to
+					 * put it's value in, so it has something that is the exact correct type.
+					 */
+					CompRVal tempVar = new CompRVal (TokenType.FromSysType (call, inlineFunc.retType));
+					retLocation = tempVar.locstr;
+	 				WriteOutput (call, TypeName (inlineFunc.retType) + " " + retLocation + ";");
+
+					/*
+					 * That temp is where the result is.  Our caller will have to move it if
+					 * it wants it somewhere else.
+					 */
+					result = tempVar;
+				} else {
+
+					/*
+					 * Get where our caller told us to put the result.
+					 */
+					retLocation = result.locstr;
+
+					/*
+					 * If the location is also a declaration, output the declaration separately,
+					 * or the declaration will be muted by the braces.  And also it would get
+					 * hosed if there were more than one {#} in the inline code string.
+					 */
+					for (int i = 0; i < retLocation.Length; i ++) {
+						char c = retLocation[i];
+						if (c == ' ') {
+							WriteOutput (call, retLocation + ";");
+							retLocation = retLocation.Substring (++ i);
+							break;
+						}
+						if ((c >= 'a') && (c <= 'z')) continue;
+						if ((c >= 'A') && (c <= 'Z')) continue;
+						if ((c >= '0') && (c <= '9')) continue;
+						if (c == '_') continue;
+						if (c == '.') continue;
 						break;
 					}
-					if ((c >= 'a') && (c <= 'z')) continue;
-					if ((c >= 'A') && (c <= 'Z')) continue;
-					if ((c >= '0') && (c <= '9')) continue;
-					if (c == '_') continue;
-					if (c == '.') continue;
-					break;
 				}
+
+				/*
+				 * Substitute location of return value for '{#}'.
+				 */
+				callString.Replace ("{#}", retLocation);
 			}
 
 			/*
-			 * We're finally ready to substitute in return value location and output the code.
+			 * We're finally ready to output the code.
 			 */
-			callString.Replace ("{#}", retLocation);
 			WriteOutput (call, callString.ToString ());
+			if (traceIt) WriteOutput (call, "System.Console.WriteLine(\"" + call.line.ToString () + " rtnfrom " + inlineFunc.signature + "\");");
 			return result;
 		}
 
