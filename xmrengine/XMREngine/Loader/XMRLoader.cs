@@ -106,9 +106,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
         {
             m_DllName = dllName;
 
+            string descName = m_ScriptBase.llGetObjectName() + ":" +
+                              m_ScriptBase.llGetScriptName();
+
             try
             {
-                m_Wrapper = ScriptWrapper.CreateScriptInstance(dllName);
+                m_Wrapper = ScriptWrapper.CreateScriptInstance(dllName, descName);
             }
             catch (Exception e)
             {
