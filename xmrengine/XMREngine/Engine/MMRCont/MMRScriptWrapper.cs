@@ -37,7 +37,7 @@ namespace MMR {
 	 * All scripts must inherit from this class.
 	 */
 	public abstract class ScriptWrapper : MarshalByRefObject, IDisposable {
-		public int instanceNo;
+		public string instanceNo;
 
 		public int stateCode = 0;                 // state the script is in (0 = 'default')
 		public ScriptEventCode eventCode = ScriptEventCode.None;
@@ -59,6 +59,7 @@ namespace MMR {
 		 * Info about the script DLL itself as a whole.
 		 */
 		public string scriptDLLName;
+		public string scriptDescName;
 
 		/*
 		 * Every script DLL must define this matrix of event handler delegates.
@@ -148,6 +149,11 @@ namespace MMR {
 		public static readonly byte migrationVersion = 2;
 
 		/*
+		 * Whether or not we are using the microthread.
+		 */
+		private int usingMicrothread = 0;
+
+		/*
 		 * All script classes must define these methods.
 		 * They migrate the script's global variables whether it is idle or not.
 		 */
@@ -161,7 +167,7 @@ namespace MMR {
 		 * Caller should call StartEventHandler() or MigrateInEventHandler() next.
 		 * If calling StartEventHandler(), use ScriptEventCode.state_entry with no args.
 		 */
-		public static ScriptWrapper CreateScriptInstance (string dllName)
+		public static ScriptWrapper CreateScriptInstance (string dllName, string descName)
 		{
 			Assembly scriptAssembly;
 			ScriptEventHandler[,] scriptEventHandlerTable;
@@ -221,17 +227,19 @@ namespace MMR {
 			 * Call its default constructor.  It creates the script object which is derived from ScriptWrapper.
 			 */
 			ScriptWrapper scriptWrapper = (ScriptWrapper)Activator.CreateInstance (scriptModule);
+			scriptWrapper.instanceNo += "/" + descName;
 
 			/*
 			 * Save important things we want to remember, like where its event handlers are.
 			 */
 			scriptWrapper.scriptDLLName           = dllName;
+			scriptWrapper.scriptDescName          = descName;
 			scriptWrapper.scriptEventHandlerTable = scriptEventHandlerTable;
 
 			/*
 			 * Set up sub-objects and cross-polinate so everything can access everything.
 			 */
-			scriptWrapper.microthread  = new ScriptUThread ();
+			scriptWrapper.microthread  = new ScriptUThread (descName);
 			scriptWrapper.continuation = new ScriptContinuation ();
 			scriptWrapper.microthread.scriptWrapper  = scriptWrapper;
 			scriptWrapper.continuation.scriptWrapper = scriptWrapper;
@@ -270,7 +278,10 @@ namespace MMR {
 		{
 			string envar = Environment.GetEnvironmentVariable ("MMRScriptWrapperDebPrint");
 			this.debPrint = ((envar != null) && ((envar[0] & 1) != 0));
-			instanceNo = this.GetHashCode();
+			instanceNo = MMRCont.HexString (MMRCont.ObjAddr (this));
+			if (instanceNo.Length < 8) {
+				instanceNo = "00000000".Substring (0, 8 - instanceNo.Length) + instanceNo;
+			}
 			DebPrint ("ScriptWrapper*: {0} created", instanceNo);
 		}
 
@@ -375,6 +386,8 @@ namespace MMR {
 
 		public void StartEventHandler (ScriptEventCode eventCode, object[] ehArgs)
 		{
+			Exception except;
+
 			if (debPrint) {
 				StringBuilder dumpargs = new StringBuilder ();
 				dumpargs.Append (GetStateName (this.stateCode));
@@ -405,41 +418,48 @@ namespace MMR {
 			 * This lock should always be uncontented as we should never try to start
 			 * executing one event handler while the previous one is still going.
 			 */
-			lock (microthread) {
-				DebPrint ("StartEventHandler*: {0} locked", this.instanceNo);
-				if (this.eventCode != ScriptEventCode.None) {
-					throw new Exception ("Event handler already active");
-				}
+			if (Interlocked.Exchange (ref usingMicrothread, 1) != 0) {
+				throw new Exception ("usingMicrothread lock failed");
+			}
+			DebPrint ("StartEventHandler*: {0} locked", this.instanceNo);
+			if (this.eventCode != ScriptEventCode.None) {
+				throw new Exception ("Event handler already active");
+			}
+
+			/*
+			 * Silly to even try if there is no handler defined for this event.
+			 */
+			except = null;
+			if (this.scriptEventHandlerTable[this.stateCode,(int)eventCode] != null) {
 
 				/*
-				 * Silly to even try if there is no handler defined for this event.
+				 * Save eventCode so we know what event handler to run in the microthread.
+				 * And it also marks us busy so we can't be started again and this event lost.
 				 */
-				if (this.scriptEventHandlerTable[this.stateCode,(int)eventCode] != null) {
+				this.eventCode = eventCode;
+				this.ehArgs    = ehArgs;
 
-					/*
-					 * Save eventCode so we know what event handler to run in the microthread.
-					 * And it also marks us busy so we can't be started again and this event lost.
-					 */
-					this.eventCode = eventCode;
-					this.ehArgs    = ehArgs;
+				/*
+				 * We are starting from beginning of event handler, no migration streams.
+				 */
+				this.migrateInStream  = null;
+				this.migrateInReader  = null;
+				this.migrateOutStream = null;
+				this.migrateOutWriter = null;
 
-					/*
-					 * We are starting from beginning of event handler, no migration streams.
-					 */
-					this.migrateInStream  = null;
-					this.migrateInReader  = null;
-					this.migrateOutStream = null;
-					this.migrateOutWriter = null;
-
-					/*
-					 * This calls Main() below directly, and returns when Main() calls Suspend()
-					 * or when Main() returns, whichever occurs first.  It should return quickly.
-					 */
-					DebPrint ("StartEventHandler*: {0} this.eventCode={1}", this.instanceNo, this.eventCode);
-					microthread.Start ();
-				}
-				DebPrint ("StartEventHandler*: {0} unlocking", this.instanceNo);
+				/*
+				 * This calls Main() below directly, and returns when Main() calls Suspend()
+				 * or when Main() returns, whichever occurs first.  It should return quickly.
+				 */
+				DebPrint ("StartEventHandler*: {0} this.eventCode={1}", this.instanceNo, this.eventCode);
+				except = microthread.StartEx ();
 			}
+			DebPrint ("StartEventHandler*: {0} unlocking", this.instanceNo);
+			if (Interlocked.Exchange (ref usingMicrothread, 0) == 0) {
+				throw new Exception ("usingMicrothread unlock failed");
+			}
+
+			if (except != null) throw except;
 		}
 
 		/*
@@ -456,8 +476,11 @@ namespace MMR {
 			 * This lock should always be uncontented as we should never try to start
 			 * executing one event handler while the previous one is still going.
 			 */
-			lock (microthread) {
-				DebPrint ("MigrateInEventHandler*: {0} locked", this.instanceNo);
+			if (Interlocked.Exchange (ref usingMicrothread, 2) != 0) {
+				throw new Exception ("usingMicrothread lock failed");
+			}
+			DebPrint ("MigrateInEventHandler*: {0} locked", this.instanceNo);
+			try {
 				if (this.eventCode != ScriptEventCode.None) {
 					throw new Exception ("Event handler already active");
 				}
@@ -511,7 +534,11 @@ namespace MMR {
 				//this.migrateInReader.Dispose ();  // moron thing doesn't compile
 				this.migrateInStream = null;
 				this.migrateInReader = null;
+			} finally {
 				DebPrint ("MigrateInEventHandler*: {0} unlocking", this.instanceNo);
+				if (Interlocked.Exchange (ref usingMicrothread, 0) == 0) {
+					throw new Exception ("usingMicrothread unlock failed");
+				}
 			}
 		}
 
@@ -539,18 +566,26 @@ namespace MMR {
 		public bool ResumeEventHandler ()
 		{
 			bool idle;
+			Exception except;
 
 			/*
 			 * Execute script until it gets suspended, migrated out or it completes.
 			 */
-			lock (microthread) {
-				DebPrint ("ResumeEventHandler*: {0} locked", this.instanceNo);
-				if (eventCode != ScriptEventCode.None) {
-					microthread.Resume ();
-				}
-				idle = (eventCode == ScriptEventCode.None);
-				DebPrint ("ResumeEventHandler*: {0} idle={1}", this.instanceNo, idle);
+			if (Interlocked.Exchange (ref usingMicrothread, 3) != 0) {
+				throw new Exception ("usingMicrothread lock failed");
 			}
+			DebPrint ("ResumeEventHandler*: {0} locked", this.instanceNo);
+			except = null;
+			if (eventCode != ScriptEventCode.None) {
+				except = microthread.ResumeEx (except);
+			}
+			idle = (eventCode == ScriptEventCode.None);
+			DebPrint ("ResumeEventHandler*: {0} idle={1}", this.instanceNo, idle);
+			if (Interlocked.Exchange (ref usingMicrothread, 0) == 0) {
+				throw new Exception ("usingMicrothread unlock failed");
+			}
+
+			if (except != null) throw except;
 
 			/*
 			 * Tell the caller whether or not we have anything more to do.
@@ -592,8 +627,11 @@ namespace MMR {
 			 * It may take a while for the script to actually suspend.
 			 */
 			this.suspendOnCheckRun = true;
-			lock (this.microthread) {
-				DebPrint ("MigrateOutEventHandler*: {0} locked", this.instanceNo);
+			if (Interlocked.Exchange (ref usingMicrothread, 4) != 0) {
+				throw new Exception ("usingMicrothread lock failed");
+			}
+			DebPrint ("MigrateOutEventHandler*: {0} locked", this.instanceNo);
+			try {
 
 				/*
 				 * The script microthread should be at its Suspend() call within
@@ -641,7 +679,11 @@ namespace MMR {
 				//this.migrateOutWriter.Dispose ();  // moron thing doesn't compile
 				this.migrateOutStream = null;
 				this.migrateOutWriter = null;
+			} finally {
 				DebPrint ("MigrateOutEventHandler*: {0} unlocking", this.instanceNo);
+				if (Interlocked.Exchange (ref usingMicrothread, 0) == 0) {
+					throw new Exception ("usingMicrothread unlock failed");
+				}
 			}
 
 			return written;
@@ -817,6 +859,8 @@ namespace MMR {
 
 		public ScriptWrapper scriptWrapper;  // script wrapper we belong to
 
+		public ScriptUThread (string descName) : base (descName) { }
+
 		/*
 		 * Called on the microthread stack as part of Start().
 		 * Start() returns when this method calls Suspend() or
@@ -987,6 +1031,9 @@ namespace MMR {
 		[MMRContableAttribute ()]
 		public void CheckRun ()
 		{
+			scriptWrapper.DebPrint ("CheckRun*: {0} {1}:{2} entry", 
+					scriptWrapper.instanceNo, scriptWrapper.GetStateName (scriptWrapper.stateCode), scriptWrapper.eventCode);
+
 			scriptWrapper.suspendOnCheckRun |= scriptWrapper.alwaysSuspend;
 
 			/*
@@ -1046,6 +1093,9 @@ namespace MMR {
 					MMRUThread.Suspend ();
 				}
 			}
+
+			scriptWrapper.DebPrint ("CheckRun*: {0} {1}:{2} exit", 
+					scriptWrapper.instanceNo, scriptWrapper.GetStateName (scriptWrapper.stateCode), scriptWrapper.eventCode);
 		}
 	}
 
