@@ -690,7 +690,7 @@ namespace MMR
 			 * See if time to suspend in case they are doing a loop with recursion.
 			 */
 			WriteOutput (declFunc.body, TypeName (typeof (ScriptBaseClass)) + " __be = __sm.beAPI;");
-			WriteOutput (declFunc.body, "__sm.CheckRun();");
+			WriteOutput (declFunc.body, "__sm.continuation.CheckRun();");
 
 			/*
 			 * Output code for the statements and clean up.
@@ -854,7 +854,7 @@ namespace MMR
 			string loopLabel = "__DoLoop_" + lbl;
 			WriteOutput (doStmt, loopLabel + ":;");
 			GenerateStmt (doStmt.bodyStmt);
-			WriteOutput (doStmt, "__sm.CheckRun();");
+			WriteOutput (doStmt, "__sm.continuation.CheckRun();");
 			CompRVal testRVal = GenerateFromRVal (null, doStmt.testRVal);
 			WriteOutput (doStmt.testRVal, "if (");
 			OutputWithCastToBool (testRVal);
@@ -878,7 +878,7 @@ namespace MMR
 				GenerateStmt (forStmt.initStmt);
 			}
 			WriteOutput (forStmt, loopLabel + ":;");
-			WriteOutput (forStmt, "__sm.CheckRun();");
+			WriteOutput (forStmt, "__sm.continuation.CheckRun();");
 			if (forStmt.testRVal != null) {
 				CompRVal testRVal = GenerateFromRVal (null, forStmt.testRVal);
 				WriteOutput (forStmt.testRVal, "if (!");
@@ -931,7 +931,7 @@ namespace MMR
 			WriteOutput (forEachStmt, ", ref ");
 			WriteOutput (forEachStmt, (valLVal == null) ? objectVar : valLVal.locstr);
 			WriteOutput (forEachStmt, ")) goto " + doneLabel + ";");
-			WriteOutput (forEachStmt, "__sm.CheckRun();");
+			WriteOutput (forEachStmt, "__sm.continuation.CheckRun();");
 			GenerateStmt (forEachStmt.bodyStmt);
 			WriteOutput (forEachStmt, "goto " + loopLabel + ";");
 			WriteOutput (forEachStmt, doneLabel + ":;");
@@ -1005,7 +1005,7 @@ namespace MMR
 		{
 			WriteOutput (labelStmt, "__Jump_" + labelStmt.name.val + ":;");
 			if (labelStmt.hasBkwdRefs) {
-				WriteOutput (labelStmt, " __sm.CheckRun();");
+				WriteOutput (labelStmt, " __sm.continuation.CheckRun();");
 			}
 		}
 
@@ -1091,7 +1091,7 @@ namespace MMR
 			string contLabel = "__WhileTop_" + lbl;
 
 			WriteOutput (whileStmt, contLabel + ":;");
-			WriteOutput (whileStmt, "__sm.CheckRun();");
+			WriteOutput (whileStmt, "__sm.continuation.CheckRun();");
 			CompRVal testRVal = GenerateFromRVal (null, whileStmt.testRVal);
 			WriteOutput (whileStmt.testRVal, "if (!");
 			OutputWithCastToBool (testRVal);
@@ -1751,7 +1751,7 @@ namespace MMR
 				}
 
 				/*
-				 * Tracing enabled, convert to '{' ... '}' form.
+				 * Tracing enabled, convert to '{' ... '}' form so we can splice a trace call before and after the API call.
 				 */
 				if (inlineFunc.retType == typeof (void)) {
 					callString.Insert (0, "{ ");
@@ -1765,7 +1765,17 @@ namespace MMR
 			 * Begins with a '{', output it as a statement block.
 			 * Substitute any '{#}' with output location as they represent where the return value goes.
 			 */
-			if (traceIt) WriteOutput (call, "System.Console.WriteLine(\"" + call.line.ToString () + " calling " + inlineFunc.signature + "\");");
+			string traceTemp = null;
+			if (traceIt) {
+				traceTemp = "__trc_" + call.line.ToString () + "_" + call.posn.ToString ();
+				WriteOutput (call, "object[] " + traceTemp + " = new object[" + nArgs.ToString () + "];");
+				for (int i = 0; i < nArgs; i ++) {
+					WriteOutput (call, traceTemp + "[" + i.ToString () + "] = " + argRVals[i].locstr + ";");
+				}
+				traceTemp = "__sm.TraceAPICall(" + call.line.ToString () + ", \"" + inlineFunc.signature + "\", " + traceTemp + ", ";
+				WriteOutput (call, traceTemp + "true, null);");
+			}
+			string retLocation;
 			if (inlineFunc.retType == typeof (void)) {
 
 				/*
@@ -1777,12 +1787,12 @@ namespace MMR
 				} else if (!(result.type is TokenTypeVoid)) {
 					ErrorMsg (call, "function doesn't return a value");
 				}
+				retLocation = "null";
 			} else {
 
 				/*
 				 * Function is defined to return a non-void.  So figure out where to put value.
 				 */
-				string retLocation = null;
 				if ((result == null) || (result.type.typ != inlineFunc.retType)) {
 
 					/*
@@ -1837,7 +1847,9 @@ namespace MMR
 			 * We're finally ready to output the code.
 			 */
 			WriteOutput (call, callString.ToString ());
-			if (traceIt) WriteOutput (call, "System.Console.WriteLine(\"" + call.line.ToString () + " rtnfrom " + inlineFunc.signature + "\");");
+			if (traceIt) {
+				WriteOutput (call, traceTemp + "false, " + retLocation + ");");
+			}
 			return result;
 		}
 

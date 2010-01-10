@@ -75,8 +75,9 @@ namespace MMR {
 
 		/*
 		 * Continuation layer to serialize/deserialize script stack.
+		 * 'protected' so scripts can call continuation.CheckRun().
 		 */
-		private ScriptContinuation continuation;
+		protected ScriptContinuation continuation;
 
 		/*
 		 * Set to suspend microthread at next CheckRun() call.
@@ -311,6 +312,31 @@ namespace MMR {
 				String nowStr = String.Format ("{0:D2}:{1:D2}:{2:D2} ", now.Hour, now.Minute, now.Second);
 				Console.WriteLine (nowStr + format, arg0, arg1, arg2, arg3);
 			}
+		}
+
+		/*
+		 * Called by scripts before and after all beAPI calls if compiled with envar MMRScriptCompileTraceAPICalls=1.
+		 *
+		 * Input:
+		 *   line = .lsl script source line number of call
+		 *   signature = signature of function being called: name(argtype,argtype,...)
+		 *   args = array of arg values passed to function
+		 *   isCall = true: this is before the call
+		 *           false: this is after the call (returned)
+		 *   retval = null: either this is before the call or function returns void
+		 *            else: return value
+		 */
+		public void TraceAPICall (int line, string signature, object[] args, bool isCall, object retval)
+		{
+			StringBuilder call = new StringBuilder ();
+			call.Append (signature.Substring (0, signature.IndexOf ('(') + 1));
+			for (int i = 0; i < args.Length; i ++) {
+				if (i > 0) call.Append (',');
+				call.Append (args[i].ToString ());
+			}
+			call.Append (isCall ? ") call" : ") rtn ");
+			if (retval != null) call.Append (retval.ToString ());
+			DebPrint ("TraceAPICall*: {0} {1} {2}", instanceNo, line, call.ToString ());
 		}
 
 		/*
@@ -854,81 +880,6 @@ namespace MMR {
 		}
 
 
-		/*
-		 * The script code should call this routine whenever it is
-		 * convenient to perform a migation or switch microthreads.
-		 */
-		[MMRContableAttribute ()]
-		public void CheckRun ()
-		{
-			this.DebPrint ("CheckRun*: {0} {1}:{2} entry", 
-					this.instanceNo, this.GetStateName (this.stateCode), this.eventCode);
-
-			this.suspendOnCheckRun |= this.alwaysSuspend;
-
-			/*
-			 * We should never try to stop with stateChanged as once stateChanged is set to true,
-			 * the compiled script functions all return directly out without calling CheckRun().
-			 *
-			 * Thus any checkpoint/restart save/resume code can assume stateChanged = false.
-			 */
-			if (this.stateChanged) throw new Exception ("CheckRun() called with stateChanged set");
-
-			/*
-			 * Make sure script isn't hogging too much memory.
-			 */
-			int mu = this.memUsage;
-			int ml = this.memLimit;
-			if (mu > ml) {
-				throw new Exception ("memory usage " + mu + " exceeds limit " + ml);
-			}
-
-			while (this.suspendOnCheckRun || (this.migrateOutStream != null)) {
-
-				/*
-				 * See if MigrateOutEventHandler() has been called.
-				 * If so, dump our stack to the stream then suspend.
-				 */
-				if (this.migrateOutStream != null) {
-
-					/*
-					 * Puque our stack to the output stream.
-					 * But otherwise, our state remains intact.
-					 */
-					this.subsArray[(int)ScriptWrapper.SubsArray.BEAPI] = this.beAPI;
-					this.continuation.Save (this.migrateOutStream, this.subsArray, this.dllsArray);
-
-					/*
-					 * We return here under two circumstances:
-					 *  1) the script state has been written out to the migrateOutStream
-					 *  2) the script state has been read in from the migrateOutStream
-					 */
-					this.migrateComplete = true;
-
-					/*
-					 * Suspend immediately.
-					 * If we were migrating out, the MMRUThread.Suspend() call below will return
-					 *    to the microthread.Resume() call within MigrateOutEventHandler().
-					 * If we were migrating in, the MMRUThread.Suspend() call below will return
-					 *    to the microthread.Start() call within MigrateInEventHandler().
-					 */
-					this.suspendOnCheckRun = true;
-				}
-
-				/*
-				 * Maybe SuspendEventHandler() has been called.
-				 */
-				if (this.suspendOnCheckRun) {
-					this.suspendOnCheckRun = false;
-					MMRUThread.Suspend ();
-				}
-			}
-
-			this.DebPrint ("CheckRun*: {0} {1}:{2} exit", 
-					this.instanceNo, this.GetStateName (this.stateCode), this.eventCode);
-		}
-
-
 		/*****************************************************************\
 		 *  Wrapper around continuation to enclose it in a microthread.  *
 		\*****************************************************************/
@@ -983,7 +934,7 @@ namespace MMR {
 		 *  Wrapper around script event handler so it can be migrated.  *
 		\****************************************************************/
 
-		private class ScriptContinuation : MMRCont {
+		protected class ScriptContinuation : MMRCont {
 
 			public ScriptWrapper scriptWrapper;  // script wrapper we belong to
 
@@ -1006,7 +957,7 @@ namespace MMR {
 					 * point when microthread.Resume() is called.
 					 */
 					scriptWrapper.suspendOnCheckRun = true;
-					scriptWrapper.CheckRun ();
+					scriptWrapper.continuation.CheckRun ();
 
 					/*
 					 * Process event given by 'stateCode' and 'eventCode'.
@@ -1099,6 +1050,83 @@ namespace MMR {
 						scriptWrapper.instanceNo, scriptWrapper.GetStateName (oldStateCode), scriptWrapper.eventCode);
 				scriptWrapper.eventCode = ScriptEventCode.None;
 				return except;
+			}
+
+			/*
+			 * The script code should call this routine whenever it is
+			 * convenient to perform a migation or switch microthreads.
+			 *
+			 * Note:  I tried moving this to ScriptWrapper itslef but Save() chokes on it because it gets wrapped
+			 *        by a marshalling wrapper, presumably because ScriptWrapper is tagged with MarshalByRefObj.
+			 */
+			[MMRContableAttribute ()]
+			public void CheckRun ()
+			{
+				scriptWrapper.DebPrint ("CheckRun*: {0} {1}:{2} entry", 
+						scriptWrapper.instanceNo, scriptWrapper.GetStateName (scriptWrapper.stateCode), scriptWrapper.eventCode);
+
+				scriptWrapper.suspendOnCheckRun |= scriptWrapper.alwaysSuspend;
+
+				/*
+				 * We should never try to stop with stateChanged as once stateChanged is set to true,
+				 * the compiled script functions all return directly out without calling CheckRun().
+				 *
+				 * Thus any checkpoint/restart save/resume code can assume stateChanged = false.
+				 */
+				if (scriptWrapper.stateChanged) throw new Exception ("CheckRun() called with stateChanged set");
+
+				/*
+				 * Make sure script isn't hogging too much memory.
+				 */
+				int mu = scriptWrapper.memUsage;
+				int ml = scriptWrapper.memLimit;
+				if (mu > ml) {
+					throw new Exception ("memory usage " + mu + " exceeds limit " + ml);
+				}
+
+				while (scriptWrapper.suspendOnCheckRun || (scriptWrapper.migrateOutStream != null)) {
+
+					/*
+					 * See if MigrateOutEventHandler() has been called.
+					 * If so, dump our stack to the stream then suspend.
+					 */
+					if (scriptWrapper.migrateOutStream != null) {
+
+						/*
+						 * Puque our stack to the output stream.
+						 * But otherwise, our state remains intact.
+						 */
+						scriptWrapper.subsArray[(int)ScriptWrapper.SubsArray.BEAPI] = scriptWrapper.beAPI;
+						this.Save (scriptWrapper.migrateOutStream, scriptWrapper.subsArray, scriptWrapper.dllsArray);
+
+						/*
+						 * We return here under two circumstances:
+						 *  1) the script state has been written out to the migrateOutStream
+						 *  2) the script state has been read in from the migrateOutStream
+						 */
+						scriptWrapper.migrateComplete = true;
+
+						/*
+						 * Suspend immediately.
+						 * If we were migrating out, the MMRUThread.Suspend() call below will return
+						 *    to the microthread.Resume() call within MigrateOutEventHandler().
+						 * If we were migrating in, the MMRUThread.Suspend() call below will return
+						 *    to the microthread.Start() call within MigrateInEventHandler().
+						 */
+						scriptWrapper.suspendOnCheckRun = true;
+					}
+
+					/*
+					 * Maybe SuspendEventHandler() has been called.
+					 */
+					if (scriptWrapper.suspendOnCheckRun) {
+						scriptWrapper.suspendOnCheckRun = false;
+						MMRUThread.Suspend ();
+					}
+				}
+
+				scriptWrapper.DebPrint ("CheckRun*: {0} {1}:{2} exit", 
+						scriptWrapper.instanceNo, scriptWrapper.GetStateName (scriptWrapper.stateCode), scriptWrapper.eventCode);
 			}
 		}
 	}

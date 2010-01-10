@@ -118,7 +118,7 @@ namespace MMR
 			 * We create statement-block forms like this for each:
 			 *    {
 			 *       {#} = __be.methodname({0},{1},...);
-			 *       __sm.CheckRun();
+			 *       __sm.continuation.CheckRun();
 			 *    }
 			 *
 			 * But for those listed in noCheckRun, we generate:
@@ -216,7 +216,7 @@ namespace MMR
 						if (ifaceMethod.ReturnType == typeof (LSL_Float))   code.Append (".value");
 						if (ifaceMethod.ReturnType == typeof (LSL_Integer)) code.Append (".value");
 						if (Array.IndexOf (noCheckRun, ifaceMethod.Name) < 0) {
-							code.Append ("; __sm.CheckRun(); }");
+							code.Append ("; __sm.continuation.CheckRun(); }");
 						} else {
 							code.Append (")");
 						}
