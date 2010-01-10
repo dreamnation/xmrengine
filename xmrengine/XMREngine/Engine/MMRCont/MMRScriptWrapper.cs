@@ -47,7 +47,6 @@ namespace MMR {
 		                                          // - idle to non-idle is always Interlocked
 		public StateChangeDelegate stateChange;   // called when script changes state
 		public ScriptBaseClass beAPI;             // passed as 'this' to methods such as llSay()
-		public ScriptContinuation continuation;   // passed as 'this' to CheckRun()
 		public object[] ehArgs;                   // event handler argument array
 		public int memUsage = 0;                  // script's current memory usage
 		public int memLimit = 100000;             // CheckRun() throws exception if memUsage > memLimit
@@ -72,7 +71,12 @@ namespace MMR {
 		/*
 		 * We will use this microthread to run the scripts event handlers.
 		 */
-		protected ScriptUThread microthread;
+		private ScriptUThread microthread;
+
+		/*
+		 * Continuation layer to serialize/deserialize script stack.
+		 */
+		private ScriptContinuation continuation;
 
 		/*
 		 * Set to suspend microthread at next CheckRun() call.
@@ -848,181 +852,7 @@ namespace MMR {
 				default: throw new Exception ("bad stream code " + code.ToString ());
 			}
 		}
-	}
 
-
-	/*****************************************************************\
-	 *  Wrapper around continuation to enclose it in a microthread.  *
-	\*****************************************************************/
-
-	public class ScriptUThread : MMRUThread {
-
-		public ScriptWrapper scriptWrapper;  // script wrapper we belong to
-
-		public ScriptUThread (string descName) : base (descName) { }
-
-		/*
-		 * Called on the microthread stack as part of Start().
-		 * Start() returns when this method calls Suspend() or
-		 * when this method returns (whichever happens first).
-		 */
-		public override void Main ()
-		{
-			Exception except;
-
-			/*
-			 * The normal case is this script event handler is just being
-			 * called directly at its entrypoint.  The RunItEx() method
-			 * calls RunCont() below.  Any exceptions thrown by RunCont()
-			 * are returned by RunItEx().
-			 */
-			if (scriptWrapper.migrateInStream == null) {
-				except = scriptWrapper.continuation.RunItEx ();
-			} else {
-
-				/*
-				 * The other case is that we want to resume execution of
-				 * a script from its migration data.  So this reads the
-				 * data from the stream to recreate wherever RunCont()
-				 * called Save() from, then it jumps to that point.
-				 *
-				 * In our case, that point is always within our CheckRun()
-				 * method, which immediately suspends when the restore is
-				 * complete, which causes LoadEx() to return at that time.
-				 */
-				scriptWrapper.subsArray[(int)ScriptWrapper.SubsArray.BEAPI] = scriptWrapper.beAPI;
-				except = scriptWrapper.continuation.LoadEx (scriptWrapper.migrateInStream, 
-				                                            scriptWrapper.subsArray,
-				                                            scriptWrapper.dllsArray);
-			}
-
-			if (except != null) throw except;
-		}
-	}
-
-
-	/****************************************************************\
-	 *  Wrapper around script event handler so it can be migrated.  *
-	\****************************************************************/
-
-	public class ScriptContinuation : MMRCont {
-
-		public ScriptWrapper scriptWrapper;  // script wrapper we belong to
-
-		/*
-		 * Called by RunItEx() to start the event handler at its entrypoint.
-		 */
-		[MMRContableAttribute ()]
-		public override Exception RunContEx ()
-		{
-			Exception except = null;
-			int oldStateCode = -1;
-
-
-			try {
-				int newStateCode;
-				ScriptEventHandler seh;
-
-				/*
-				 * Immediately suspend so the StartEventHandler() method
-				 * returns with minimal delay.  We will resume from this
-				 * point when microthread.Resume() is called.
-				 */
-				scriptWrapper.suspendOnCheckRun = true;
-				this.CheckRun ();
-
-				/*
-				 * Process event given by 'stateCode' and 'eventCode'.
-				 * The event handler should call CheckRun() as often as convenient.
-				 *
-				 * We do not have to check for null 'seh' here because
-				 * StartEventHandler() already checked the table entry.
-				 */
-				scriptWrapper.stateChanged = false;
-				oldStateCode = scriptWrapper.stateCode;
-				scriptWrapper.DebPrint ("RunContEx*: {0} {1}:{2} begin", 
-						scriptWrapper.instanceNo, scriptWrapper.GetStateName (oldStateCode), scriptWrapper.eventCode);
-				seh = scriptWrapper.scriptEventHandlerTable[oldStateCode,(int)scriptWrapper.eventCode];
-				seh (scriptWrapper);
-
-				scriptWrapper.ehArgs = null;  // we are done with them and no args for
-				                              // exit_state()/enter_state() anyway
-
-				/*
-				 * Note that 'seh' is now invalid, as the continuation restore cannot restore it.
-				 * But mono should see that 'seh' is no longer needed and so Save() shouldn't try
-				 * to save it, theoretically.  Likewise for the other uses of 'seh' below.
-				 */
-
-				/*
-				 * If event handler changed state, call exit_state() on the old state,
-				 * change the state, then call enter_state() on the new state.
-				 */
-				while (scriptWrapper.stateChanged) {
-
-					/*
-					 * Get what state they transitioned to.
-					 */
-					newStateCode = scriptWrapper.stateCode;
-
-					/*
-					 * Maybe print out what happened.
-					 */
-					scriptWrapper.DebPrint ("RunContEx*: {0} {1}:{2} -> {3}", 
-							scriptWrapper.instanceNo, scriptWrapper.GetStateName (oldStateCode), 
-							scriptWrapper.eventCode, scriptWrapper.GetStateName (newStateCode));
-
-					/*
-					 * Restore to old state and call its state_exit() handler.
-					 */
-					scriptWrapper.stateChanged = false;
-					scriptWrapper.eventCode = ScriptEventCode.state_exit;
-					scriptWrapper.stateCode = oldStateCode;
-					seh = scriptWrapper.scriptEventHandlerTable[oldStateCode,(int)ScriptEventCode.state_exit];
-					if (seh != null) seh (scriptWrapper);
-
-					/*
-					 * Ignore any state change by state_exit() handlers.
-					 */
-					if (scriptWrapper.stateChanged) {
-						scriptWrapper.DebPrint ("RunContEx*: {0} ignoring {1}:state_exit() state change -> {2}", 
-								scriptWrapper.instanceNo, scriptWrapper.GetStateName (oldStateCode), 
-								scriptWrapper.GetStateName (scriptWrapper.stateCode));
-					}
-
-					/*
-					 * Now that the old state can't possibly start any more activity,
-					 * cancel any listening handlers, etc, of the old state.
-					 */
-					scriptWrapper.stateChange (scriptWrapper.GetStateName (newStateCode));
-
-					/*
-					 * Now the new state becomes the old state in case the new state_entry() changes state again.
-					 */
-					oldStateCode = newStateCode;
-
-					/*
-					 * Call the new state's state_entry() handler.
-					 * I've seen scripts that change state in the state_entry() handler, so allow for that.
-					 */
-					scriptWrapper.stateChanged = false;
-					scriptWrapper.eventCode = ScriptEventCode.state_entry;
-					scriptWrapper.stateCode = newStateCode;
-					seh = scriptWrapper.scriptEventHandlerTable[newStateCode,(int)ScriptEventCode.state_entry];
-					if (seh != null) seh (scriptWrapper);
-				}
-			} catch (Exception e) {
-				except = e;
-			}
-
-			/*
-			 * The event handler has run to completion.
-			 */
-			scriptWrapper.DebPrint ("RunContEx*: {0} {1}:{2} done", 
-					scriptWrapper.instanceNo, scriptWrapper.GetStateName (oldStateCode), scriptWrapper.eventCode);
-			scriptWrapper.eventCode = ScriptEventCode.None;
-			return except;
-		}
 
 		/*
 		 * The script code should call this routine whenever it is
@@ -1031,10 +861,10 @@ namespace MMR {
 		[MMRContableAttribute ()]
 		public void CheckRun ()
 		{
-			scriptWrapper.DebPrint ("CheckRun*: {0} {1}:{2} entry", 
-					scriptWrapper.instanceNo, scriptWrapper.GetStateName (scriptWrapper.stateCode), scriptWrapper.eventCode);
+			this.DebPrint ("CheckRun*: {0} {1}:{2} entry", 
+					this.instanceNo, this.GetStateName (this.stateCode), this.eventCode);
 
-			scriptWrapper.suspendOnCheckRun |= scriptWrapper.alwaysSuspend;
+			this.suspendOnCheckRun |= this.alwaysSuspend;
 
 			/*
 			 * We should never try to stop with stateChanged as once stateChanged is set to true,
@@ -1042,38 +872,38 @@ namespace MMR {
 			 *
 			 * Thus any checkpoint/restart save/resume code can assume stateChanged = false.
 			 */
-			if (scriptWrapper.stateChanged) throw new Exception ("CheckRun() called with stateChanged set");
+			if (this.stateChanged) throw new Exception ("CheckRun() called with stateChanged set");
 
 			/*
 			 * Make sure script isn't hogging too much memory.
 			 */
-			int mu = scriptWrapper.memUsage;
-			int ml = scriptWrapper.memLimit;
+			int mu = this.memUsage;
+			int ml = this.memLimit;
 			if (mu > ml) {
 				throw new Exception ("memory usage " + mu + " exceeds limit " + ml);
 			}
 
-			while (scriptWrapper.suspendOnCheckRun || (scriptWrapper.migrateOutStream != null)) {
+			while (this.suspendOnCheckRun || (this.migrateOutStream != null)) {
 
 				/*
 				 * See if MigrateOutEventHandler() has been called.
 				 * If so, dump our stack to the stream then suspend.
 				 */
-				if (scriptWrapper.migrateOutStream != null) {
+				if (this.migrateOutStream != null) {
 
 					/*
 					 * Puque our stack to the output stream.
 					 * But otherwise, our state remains intact.
 					 */
-					scriptWrapper.subsArray[(int)ScriptWrapper.SubsArray.BEAPI] = scriptWrapper.beAPI;
-					this.Save (scriptWrapper.migrateOutStream, scriptWrapper.subsArray, scriptWrapper.dllsArray);
+					this.subsArray[(int)ScriptWrapper.SubsArray.BEAPI] = this.beAPI;
+					this.continuation.Save (this.migrateOutStream, this.subsArray, this.dllsArray);
 
 					/*
 					 * We return here under two circumstances:
 					 *  1) the script state has been written out to the migrateOutStream
 					 *  2) the script state has been read in from the migrateOutStream
 					 */
-					scriptWrapper.migrateComplete = true;
+					this.migrateComplete = true;
 
 					/*
 					 * Suspend immediately.
@@ -1082,28 +912,194 @@ namespace MMR {
 					 * If we were migrating in, the MMRUThread.Suspend() call below will return
 					 *    to the microthread.Start() call within MigrateInEventHandler().
 					 */
-					scriptWrapper.suspendOnCheckRun = true;
+					this.suspendOnCheckRun = true;
 				}
 
 				/*
 				 * Maybe SuspendEventHandler() has been called.
 				 */
-				if (scriptWrapper.suspendOnCheckRun) {
-					scriptWrapper.suspendOnCheckRun = false;
+				if (this.suspendOnCheckRun) {
+					this.suspendOnCheckRun = false;
 					MMRUThread.Suspend ();
 				}
 			}
 
-			scriptWrapper.DebPrint ("CheckRun*: {0} {1}:{2} exit", 
-					scriptWrapper.instanceNo, scriptWrapper.GetStateName (scriptWrapper.stateCode), scriptWrapper.eventCode);
+			this.DebPrint ("CheckRun*: {0} {1}:{2} exit", 
+					this.instanceNo, this.GetStateName (this.stateCode), this.eventCode);
+		}
+
+
+		/*****************************************************************\
+		 *  Wrapper around continuation to enclose it in a microthread.  *
+		\*****************************************************************/
+
+		private class ScriptUThread : MMRUThread {
+
+			public ScriptWrapper scriptWrapper;  // script wrapper we belong to
+
+			public ScriptUThread (string descName) : base (descName) { }
+
+			/*
+			 * Called on the microthread stack as part of Start().
+			 * Start() returns when this method calls Suspend() or
+			 * when this method returns (whichever happens first).
+			 */
+			public override void Main ()
+			{
+				Exception except;
+
+				/*
+				 * The normal case is this script event handler is just being
+				 * called directly at its entrypoint.  The RunItEx() method
+				 * calls RunCont() below.  Any exceptions thrown by RunCont()
+				 * are returned by RunItEx().
+				 */
+				if (scriptWrapper.migrateInStream == null) {
+					except = scriptWrapper.continuation.RunItEx ();
+				} else {
+
+					/*
+					 * The other case is that we want to resume execution of
+					 * a script from its migration data.  So this reads the
+					 * data from the stream to recreate wherever RunCont()
+					 * called Save() from, then it jumps to that point.
+					 *
+					 * In our case, that point is always within our CheckRun()
+					 * method, which immediately suspends when the restore is
+					 * complete, which causes LoadEx() to return at that time.
+					 */
+					scriptWrapper.subsArray[(int)ScriptWrapper.SubsArray.BEAPI] = scriptWrapper.beAPI;
+					except = scriptWrapper.continuation.LoadEx (scriptWrapper.migrateInStream, 
+					                                            scriptWrapper.subsArray,
+					                                            scriptWrapper.dllsArray);
+				}
+
+				if (except != null) throw except;
+			}
+		}
+
+
+		/****************************************************************\
+		 *  Wrapper around script event handler so it can be migrated.  *
+		\****************************************************************/
+
+		private class ScriptContinuation : MMRCont {
+
+			public ScriptWrapper scriptWrapper;  // script wrapper we belong to
+
+			/*
+			 * Called by RunItEx() to start the event handler at its entrypoint.
+			 */
+			[MMRContableAttribute ()]
+			public override Exception RunContEx ()
+			{
+				Exception except = null;
+				int oldStateCode = -1;
+
+				try {
+					int newStateCode;
+					ScriptEventHandler seh;
+
+					/*
+					 * Immediately suspend so the StartEventHandler() method
+					 * returns with minimal delay.  We will resume from this
+					 * point when microthread.Resume() is called.
+					 */
+					scriptWrapper.suspendOnCheckRun = true;
+					scriptWrapper.CheckRun ();
+
+					/*
+					 * Process event given by 'stateCode' and 'eventCode'.
+					 * The event handler should call CheckRun() as often as convenient.
+					 *
+					 * We do not have to check for null 'seh' here because
+					 * StartEventHandler() already checked the table entry.
+					 */
+					scriptWrapper.stateChanged = false;
+					oldStateCode = scriptWrapper.stateCode;
+					scriptWrapper.DebPrint ("RunContEx*: {0} {1}:{2} begin", 
+							scriptWrapper.instanceNo, scriptWrapper.GetStateName (oldStateCode), scriptWrapper.eventCode);
+					seh = scriptWrapper.scriptEventHandlerTable[oldStateCode,(int)scriptWrapper.eventCode];
+					seh (scriptWrapper);
+
+					scriptWrapper.ehArgs = null;  // we are done with them and no args for
+					                              // exit_state()/enter_state() anyway
+
+					/*
+					 * Note that 'seh' is now invalid, as the continuation restore cannot restore it.
+					 * But mono should see that 'seh' is no longer needed and so Save() shouldn't try
+					 * to save it, theoretically.  Likewise for the other uses of 'seh' below.
+					 */
+
+					/*
+					 * If event handler changed state, call exit_state() on the old state,
+					 * change the state, then call enter_state() on the new state.
+					 */
+					while (scriptWrapper.stateChanged) {
+
+						/*
+						 * Get what state they transitioned to.
+						 */
+						newStateCode = scriptWrapper.stateCode;
+
+						/*
+						 * Maybe print out what happened.
+						 */
+						scriptWrapper.DebPrint ("RunContEx*: {0} {1}:{2} -> {3}", 
+								scriptWrapper.instanceNo, scriptWrapper.GetStateName (oldStateCode), 
+								scriptWrapper.eventCode, scriptWrapper.GetStateName (newStateCode));
+
+						/*
+						 * Restore to old state and call its state_exit() handler.
+						 */
+						scriptWrapper.stateChanged = false;
+						scriptWrapper.eventCode = ScriptEventCode.state_exit;
+						scriptWrapper.stateCode = oldStateCode;
+						seh = scriptWrapper.scriptEventHandlerTable[oldStateCode,(int)ScriptEventCode.state_exit];
+						if (seh != null) seh (scriptWrapper);
+
+						/*
+						 * Ignore any state change by state_exit() handlers.
+						 */
+						if (scriptWrapper.stateChanged) {
+							scriptWrapper.DebPrint ("RunContEx*: {0} ignoring {1}:state_exit() state change -> {2}", 
+									scriptWrapper.instanceNo, scriptWrapper.GetStateName (oldStateCode), 
+									scriptWrapper.GetStateName (scriptWrapper.stateCode));
+						}
+
+						/*
+						 * Now that the old state can't possibly start any more activity,
+						 * cancel any listening handlers, etc, of the old state.
+						 */
+						scriptWrapper.stateChange (scriptWrapper.GetStateName (newStateCode));
+
+						/*
+						 * Now the new state becomes the old state in case the new state_entry() changes state again.
+						 */
+						oldStateCode = newStateCode;
+
+						/*
+						 * Call the new state's state_entry() handler.
+						 * I've seen scripts that change state in the state_entry() handler, so allow for that.
+						 */
+						scriptWrapper.stateChanged = false;
+						scriptWrapper.eventCode = ScriptEventCode.state_entry;
+						scriptWrapper.stateCode = newStateCode;
+						seh = scriptWrapper.scriptEventHandlerTable[newStateCode,(int)ScriptEventCode.state_entry];
+						if (seh != null) seh (scriptWrapper);
+					}
+				} catch (Exception e) {
+					except = e;
+				}
+
+				/*
+				 * The event handler has run to completion.
+				 */
+				scriptWrapper.DebPrint ("RunContEx*: {0} {1}:{2} done", 
+						scriptWrapper.instanceNo, scriptWrapper.GetStateName (oldStateCode), scriptWrapper.eventCode);
+				scriptWrapper.eventCode = ScriptEventCode.None;
+				return except;
+			}
 		}
 	}
-
-
-	/**
-	 * @brief This exception is thrown by CheckRun() when it has completed
-	 *        writing the script state out to the network for a MigrateOut
-	 *        operation, to unwind the stack.
-	 */
-	public class GetMeOutOfThisScript : Exception { }
 }

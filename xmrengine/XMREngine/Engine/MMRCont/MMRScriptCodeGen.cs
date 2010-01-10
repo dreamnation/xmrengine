@@ -237,7 +237,6 @@ namespace MMR
 				WriteOutput (0, "public " + smClassName + " () {");
 				WriteOutput (0, smClassName + " __sm = this;");
 				WriteOutput (0, TypeName (typeof (ScriptBaseClass))    + " __be = this.beAPI;");
-				WriteOutput (0, TypeName (typeof (ScriptContinuation)) + " __sc = this.continuation;");
 
 				/*
 				 * Now fill in field initialization values.
@@ -512,7 +511,6 @@ namespace MMR
 		 *   {
 		 *      <smClassName> __sm = (ScriptWrapper)__sw;
 		 *      ScriptBaseClass __be    = __sm.beAPI;
-		 *      ScriptContinuation __sc = __sm.continuation;
 		 *      <typeArg0> <namearg0> = (<typeArg0>)__sw.ehArgs[0];
 		 *      <typeArg1> <nameArg1> = (<typeArg1>)__sw.ehArgs[1];
 		 *
@@ -584,11 +582,9 @@ namespace MMR
 			/*
 			 * We use a __sm variable to access the script's user-defined fields and methods.
 			 * And __be is a cache for calling the backend API functions.
-			 * And __sc is a cache for __sm.continuation for calling CheckRun().
 			 */
 			WriteOutput (declFunc, smClassName + " __sm = (" + smClassName + ")__sw;");
 			WriteOutput (declFunc, TypeName (typeof (ScriptBaseClass))    + " __be = __sw.beAPI;");
-			WriteOutput (declFunc, TypeName (typeof (ScriptContinuation)) + " __sc = __sw.continuation;");
 
 			/*
 			 * Output args as variable definitions and initialize each from __sw.ehArgs[].
@@ -693,9 +689,8 @@ namespace MMR
 			/*
 			 * See if time to suspend in case they are doing a loop with recursion.
 			 */
-			WriteOutput (declFunc.body, TypeName (typeof (ScriptBaseClass))    + " __be = __sm.beAPI;");
-			WriteOutput (declFunc.body, TypeName (typeof (ScriptContinuation)) + " __sc = __sm.continuation;");
-			WriteOutput (declFunc.body, "__sc.CheckRun();");
+			WriteOutput (declFunc.body, TypeName (typeof (ScriptBaseClass)) + " __be = __sm.beAPI;");
+			WriteOutput (declFunc.body, "__sm.CheckRun();");
 
 			/*
 			 * Output code for the statements and clean up.
@@ -859,7 +854,7 @@ namespace MMR
 			string loopLabel = "__DoLoop_" + lbl;
 			WriteOutput (doStmt, loopLabel + ":;");
 			GenerateStmt (doStmt.bodyStmt);
-			WriteOutput (doStmt, "__sc.CheckRun();");
+			WriteOutput (doStmt, "__sm.CheckRun();");
 			CompRVal testRVal = GenerateFromRVal (null, doStmt.testRVal);
 			WriteOutput (doStmt.testRVal, "if (");
 			OutputWithCastToBool (testRVal);
@@ -883,7 +878,7 @@ namespace MMR
 				GenerateStmt (forStmt.initStmt);
 			}
 			WriteOutput (forStmt, loopLabel + ":;");
-			WriteOutput (forStmt, "__sc.CheckRun();");
+			WriteOutput (forStmt, "__sm.CheckRun();");
 			if (forStmt.testRVal != null) {
 				CompRVal testRVal = GenerateFromRVal (null, forStmt.testRVal);
 				WriteOutput (forStmt.testRVal, "if (!");
@@ -936,7 +931,7 @@ namespace MMR
 			WriteOutput (forEachStmt, ", ref ");
 			WriteOutput (forEachStmt, (valLVal == null) ? objectVar : valLVal.locstr);
 			WriteOutput (forEachStmt, ")) goto " + doneLabel + ";");
-			WriteOutput (forEachStmt, "__sc.CheckRun();");
+			WriteOutput (forEachStmt, "__sm.CheckRun();");
 			GenerateStmt (forEachStmt.bodyStmt);
 			WriteOutput (forEachStmt, "goto " + loopLabel + ";");
 			WriteOutput (forEachStmt, doneLabel + ":;");
@@ -1010,7 +1005,7 @@ namespace MMR
 		{
 			WriteOutput (labelStmt, "__Jump_" + labelStmt.name.val + ":;");
 			if (labelStmt.hasBkwdRefs) {
-				WriteOutput (labelStmt, " __sc.CheckRun();");
+				WriteOutput (labelStmt, " __sm.CheckRun();");
 			}
 		}
 
@@ -1096,7 +1091,7 @@ namespace MMR
 			string contLabel = "__WhileTop_" + lbl;
 
 			WriteOutput (whileStmt, contLabel + ":;");
-			WriteOutput (whileStmt, "__sc.CheckRun();");
+			WriteOutput (whileStmt, "__sm.CheckRun();");
 			CompRVal testRVal = GenerateFromRVal (null, whileStmt.testRVal);
 			WriteOutput (whileStmt.testRVal, "if (!");
 			OutputWithCastToBool (testRVal);
