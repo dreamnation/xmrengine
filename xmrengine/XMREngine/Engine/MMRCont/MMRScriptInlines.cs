@@ -80,9 +80,8 @@ namespace MMR
 		 * can be forced by incrementing ScriptCodeGen.COMPILED_VERSION_VALUE.
 		 *
 		 * In addition to the parameter values, the inline code (either form) has the
-		 * following variables avaialble:
+		 * following variable avaialble:
 		 *    __sm = the current ScriptModule instance, which inherits from ScriptWrapper
-		 *    __sc = __sm.continuation (useful for calling __sc.CheckRun())
 		 * Also, any substituted parameters or return value identifiers will always begin
 		 * with two underscores (__), so any local variables created for internal use by
 		 * the inline code must begin with something other than __.
@@ -119,7 +118,7 @@ namespace MMR
 			 * We create statement-block forms like this for each:
 			 *    {
 			 *       {#} = __be.methodname({0},{1},...);
-			 *       __sc.CheckRun();
+			 *       __sm.continuation.CheckRun();
 			 *    }
 			 *
 			 * But for those listed in noCheckRun, we generate:
@@ -217,7 +216,7 @@ namespace MMR
 						if (ifaceMethod.ReturnType == typeof (LSL_Float))   code.Append (".value");
 						if (ifaceMethod.ReturnType == typeof (LSL_Integer)) code.Append (".value");
 						if (Array.IndexOf (noCheckRun, ifaceMethod.Name) < 0) {
-							code.Append ("; __sc.CheckRun(); }");
+							code.Append ("; __sm.continuation.CheckRun(); }");
 						} else {
 							code.Append (")");
 						}

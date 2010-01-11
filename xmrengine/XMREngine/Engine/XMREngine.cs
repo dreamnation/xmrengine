@@ -224,6 +224,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
         }
 
+        // Output error message when compiling a script
+        //
         private void ErrorHandler(Token token, string message)
         {
             if (!m_CompilerErrors.ContainsKey(m_CurrentCompileItem))
@@ -260,14 +262,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public event ScriptRemoved OnScriptRemoved;
         public event ObjectRemoved OnObjectRemoved;
 
+        // Events targeted at a specific script
+        // ... like listen() for an llListen() call
+        //
         public bool PostScriptEvent(UUID itemID, EventParams parms)
         {
             XMRInstance instance = null;
 
             lock (m_Instances)
             {
-                if (!m_Instances.ContainsKey(itemID))
+                if (!m_Instances.ContainsKey(itemID)) {
                     return false;
+                }
 
                 instance = m_Instances[itemID];
             }
@@ -277,6 +283,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return true;
         }
 
+        // Events targeted at an object as a whole
+        // ... like change() for an avatar wanting to sit at a table
+        //
         public bool PostObjectEvent(uint localID, EventParams parms)
         {
             SceneObjectPart part = m_Scene.GetSceneObjectPart(localID);
@@ -792,7 +801,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             {
                 m_CurrentCompileItem = itemID;
 
-                if (!File.Exists(outputName))
+                string envar = Environment.GetEnvironmentVariable ("XMREngineForceCompile");
+                bool forceCompile = (envar != null) && ((envar[0] & 1) != 0);
+
+                if (forceCompile || !File.Exists(outputName))
                 {
 //                    m_log.DebugFormat("[XMREngine]: compiling {0}",
 //                            outputName);

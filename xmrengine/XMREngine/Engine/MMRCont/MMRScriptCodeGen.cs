@@ -98,6 +98,7 @@ namespace MMR
 		/*
 		 * There is one set of these variables for each script being compiled.
 		 */
+		private bool traceAPICalls = false;
 		private bool youveAnError = false;
 		private MemoryStream objectFile;
 		private TextWriter objectWriter;
@@ -115,6 +116,9 @@ namespace MMR
 
 		private ScriptCodeGen (TokenScript tokenScript, string binaryName, string debugFileName)
 		{
+			string envar = Environment.GetEnvironmentVariable ("MMRScriptCompileTraceAPICalls");
+			traceAPICalls = (envar != null) && ((envar[0] & 1) != 0);
+
 			/*
 			 * errorMessageToken is used only when the given token doesn't have a
 			 * output delegate associated with it such as for backend API functions
@@ -233,7 +237,6 @@ namespace MMR
 				WriteOutput (0, "public " + smClassName + " () {");
 				WriteOutput (0, smClassName + " __sm = this;");
 				WriteOutput (0, TypeName (typeof (ScriptBaseClass))    + " __be = this.beAPI;");
-				WriteOutput (0, TypeName (typeof (ScriptContinuation)) + " __sc = this.continuation;");
 
 				/*
 				 * Now fill in field initialization values.
@@ -508,7 +511,6 @@ namespace MMR
 		 *   {
 		 *      <smClassName> __sm = (ScriptWrapper)__sw;
 		 *      ScriptBaseClass __be    = __sm.beAPI;
-		 *      ScriptContinuation __sc = __sm.continuation;
 		 *      <typeArg0> <namearg0> = (<typeArg0>)__sw.ehArgs[0];
 		 *      <typeArg1> <nameArg1> = (<typeArg1>)__sw.ehArgs[1];
 		 *
@@ -580,11 +582,9 @@ namespace MMR
 			/*
 			 * We use a __sm variable to access the script's user-defined fields and methods.
 			 * And __be is a cache for calling the backend API functions.
-			 * And __sc is a cache for __sm.continuation for calling CheckRun().
 			 */
 			WriteOutput (declFunc, smClassName + " __sm = (" + smClassName + ")__sw;");
 			WriteOutput (declFunc, TypeName (typeof (ScriptBaseClass))    + " __be = __sw.beAPI;");
-			WriteOutput (declFunc, TypeName (typeof (ScriptContinuation)) + " __sc = __sw.continuation;");
 
 			/*
 			 * Output args as variable definitions and initialize each from __sw.ehArgs[].
@@ -689,9 +689,8 @@ namespace MMR
 			/*
 			 * See if time to suspend in case they are doing a loop with recursion.
 			 */
-			WriteOutput (declFunc.body, TypeName (typeof (ScriptBaseClass))    + " __be = __sm.beAPI;");
-			WriteOutput (declFunc.body, TypeName (typeof (ScriptContinuation)) + " __sc = __sm.continuation;");
-			WriteOutput (declFunc.body, "__sc.CheckRun();");
+			WriteOutput (declFunc.body, TypeName (typeof (ScriptBaseClass)) + " __be = __sm.beAPI;");
+			WriteOutput (declFunc.body, "__sm.continuation.CheckRun();");
 
 			/*
 			 * Output code for the statements and clean up.
@@ -855,7 +854,7 @@ namespace MMR
 			string loopLabel = "__DoLoop_" + lbl;
 			WriteOutput (doStmt, loopLabel + ":;");
 			GenerateStmt (doStmt.bodyStmt);
-			WriteOutput (doStmt, "__sc.CheckRun();");
+			WriteOutput (doStmt, "__sm.continuation.CheckRun();");
 			CompRVal testRVal = GenerateFromRVal (null, doStmt.testRVal);
 			WriteOutput (doStmt.testRVal, "if (");
 			OutputWithCastToBool (testRVal);
@@ -879,7 +878,7 @@ namespace MMR
 				GenerateStmt (forStmt.initStmt);
 			}
 			WriteOutput (forStmt, loopLabel + ":;");
-			WriteOutput (forStmt, "__sc.CheckRun();");
+			WriteOutput (forStmt, "__sm.continuation.CheckRun();");
 			if (forStmt.testRVal != null) {
 				CompRVal testRVal = GenerateFromRVal (null, forStmt.testRVal);
 				WriteOutput (forStmt.testRVal, "if (!");
@@ -932,7 +931,7 @@ namespace MMR
 			WriteOutput (forEachStmt, ", ref ");
 			WriteOutput (forEachStmt, (valLVal == null) ? objectVar : valLVal.locstr);
 			WriteOutput (forEachStmt, ")) goto " + doneLabel + ";");
-			WriteOutput (forEachStmt, "__sc.CheckRun();");
+			WriteOutput (forEachStmt, "__sm.continuation.CheckRun();");
 			GenerateStmt (forEachStmt.bodyStmt);
 			WriteOutput (forEachStmt, "goto " + loopLabel + ";");
 			WriteOutput (forEachStmt, doneLabel + ":;");
@@ -1006,7 +1005,7 @@ namespace MMR
 		{
 			WriteOutput (labelStmt, "__Jump_" + labelStmt.name.val + ":;");
 			if (labelStmt.hasBkwdRefs) {
-				WriteOutput (labelStmt, " __sc.CheckRun();");
+				WriteOutput (labelStmt, " __sm.continuation.CheckRun();");
 			}
 		}
 
@@ -1092,7 +1091,7 @@ namespace MMR
 			string contLabel = "__WhileTop_" + lbl;
 
 			WriteOutput (whileStmt, contLabel + ":;");
-			WriteOutput (whileStmt, "__sc.CheckRun();");
+			WriteOutput (whileStmt, "__sm.continuation.CheckRun();");
 			CompRVal testRVal = GenerateFromRVal (null, whileStmt.testRVal);
 			WriteOutput (whileStmt.testRVal, "if (!");
 			OutputWithCastToBool (testRVal);
@@ -1724,6 +1723,13 @@ namespace MMR
 		private CompRVal GenerateFromRValCallInline (CompRVal result, TokenRValCall call, InlineFunction inlineFunc, CompRVal[] argRVals)
 		{
 			/*
+			 * API calls have __be. in them somewhere.  No big deal if we get a false positive because this is just debug output.
+			 * Note that things like inlined math calls don't have __be. anywhere but who needs to trace those anyway?
+			 * If needed, just put __be. as a comment in them somewhere.
+			 */
+			bool traceIt = traceAPICalls && (inlineFunc.code.IndexOf ("__be.") >= 0);
+
+			/*
 			 * Generate code for the inline call by substituting in the locations of the parameters for {0}, {1}, {2}, etc.
 			 */
 			StringBuilder callString = new StringBuilder (inlineFunc.code);
@@ -1737,76 +1743,113 @@ namespace MMR
 			}
 
 			/*
-			 * If resultant code doen't begin with a '{', we just output it as a standard call.
+			 * If resultant code doesn't begin with a '{', we just output it as a standard call.
 			 */
 			if (callString.ToString ()[0] != '{') {
-				return OutputCallStatement (result, call, TokenType.FromSysType (call, inlineFunc.retType), callString);
+				if (!traceIt) {
+					return OutputCallStatement (result, call, TokenType.FromSysType (call, inlineFunc.retType), callString);
+				}
+
+				/*
+				 * Tracing enabled, convert to '{' ... '}' form so we can splice a trace call before and after the API call.
+				 */
+				if (inlineFunc.retType == typeof (void)) {
+					callString.Insert (0, "{ ");
+				} else {
+					callString.Insert (0, "{ {#} = ");
+				}
+				callString.Append ("; }");
 			}
 
 			/*
 			 * Begins with a '{', output it as a statement block.
 			 * Substitute any '{#}' with output location as they represent where the return value goes.
 			 */
+			string traceTemp = null;
+			if (traceIt) {
+				traceTemp = "__trc_" + call.line.ToString () + "_" + call.posn.ToString ();
+				WriteOutput (call, "object[] " + traceTemp + " = new object[" + nArgs.ToString () + "];");
+				for (int i = 0; i < nArgs; i ++) {
+					WriteOutput (call, traceTemp + "[" + i.ToString () + "] = " + argRVals[i].locstr + ";");
+				}
+				traceTemp = "__sm.TraceAPICall(" + call.line.ToString () + ", \"" + inlineFunc.signature + "\", " + traceTemp + ", ";
+				WriteOutput (call, traceTemp + "true, null);");
+			}
+			string retLocation;
 			if (inlineFunc.retType == typeof (void)) {
+
+				/*
+				 * Function is defined to return void.  So either the caller can accept a void
+				 * value, or we have to tell caller that we generate a void value.
+				 */
 				if (result == null) {
 					result = new CompRVal (TokenType.FromSysType (call, inlineFunc.retType));
 				} else if (!(result.type is TokenTypeVoid)) {
 					ErrorMsg (call, "function doesn't return a value");
 				}
-				WriteOutput (call, callString.ToString ());
-				return result;
-			}
-
-			string retLocation = null;
-			if ((result == null) || (result.type.typ != inlineFunc.retType)) {
-
-				/*
-				 * Caller either didn't give us a location for the result or gave us a
-				 * location of the wrong type.  So create a temporary for the inline to
-				 * put it's value in that is the exact correct type.
-				 */
-				CompRVal tempVar = new CompRVal (TokenType.FromSysType (call, inlineFunc.retType));
-				retLocation = tempVar.locstr;
- 				WriteOutput (call, TypeName (inlineFunc.retType) + " " + retLocation + ";");
-
-				/*
-				 * That temp is where the result is.  Our caller will have to move it if
-				 * it wants it somewhere else.
-				 */
-				result = tempVar;
+				retLocation = "null";
 			} else {
 
 				/*
-				 * Get where our caller told us to put the result.
+				 * Function is defined to return a non-void.  So figure out where to put value.
 				 */
-				retLocation = result.locstr;
+				if ((result == null) || (result.type.typ != inlineFunc.retType)) {
 
-				/*
-				 * If the location is also a declaration, output the declaration separately,
-				 * or the declaration will be muted by the braces.  And also it would get
-				 * hosed if there were more than one {#} in the inline code string.
-				 */
-				for (int i = 0; i < retLocation.Length; i ++) {
-					char c = retLocation[i];
-					if (c == ' ') {
-						WriteOutput (call, retLocation + ";");
-						retLocation = retLocation.Substring (++ i);
+					/*
+					 * Caller either didn't give us a location for the result or gave us a
+					 * location of the wrong type.  So create a temporary for the inline to
+					 * put it's value in, so it has something that is the exact correct type.
+					 */
+					CompRVal tempVar = new CompRVal (TokenType.FromSysType (call, inlineFunc.retType));
+					retLocation = tempVar.locstr;
+	 				WriteOutput (call, TypeName (inlineFunc.retType) + " " + retLocation + ";");
+
+					/*
+					 * That temp is where the result is.  Our caller will have to move it if
+					 * it wants it somewhere else.
+					 */
+					result = tempVar;
+				} else {
+
+					/*
+					 * Get where our caller told us to put the result.
+					 */
+					retLocation = result.locstr;
+
+					/*
+					 * If the location is also a declaration, output the declaration separately,
+					 * or the declaration will be muted by the braces.  And also it would get
+					 * hosed if there were more than one {#} in the inline code string.
+					 */
+					for (int i = 0; i < retLocation.Length; i ++) {
+						char c = retLocation[i];
+						if (c == ' ') {
+							WriteOutput (call, retLocation + ";");
+							retLocation = retLocation.Substring (++ i);
+							break;
+						}
+						if ((c >= 'a') && (c <= 'z')) continue;
+						if ((c >= 'A') && (c <= 'Z')) continue;
+						if ((c >= '0') && (c <= '9')) continue;
+						if (c == '_') continue;
+						if (c == '.') continue;
 						break;
 					}
-					if ((c >= 'a') && (c <= 'z')) continue;
-					if ((c >= 'A') && (c <= 'Z')) continue;
-					if ((c >= '0') && (c <= '9')) continue;
-					if (c == '_') continue;
-					if (c == '.') continue;
-					break;
 				}
+
+				/*
+				 * Substitute location of return value for '{#}'.
+				 */
+				callString.Replace ("{#}", retLocation);
 			}
 
 			/*
-			 * We're finally ready to substitute in return value location and output the code.
+			 * We're finally ready to output the code.
 			 */
-			callString.Replace ("{#}", retLocation);
 			WriteOutput (call, callString.ToString ());
+			if (traceIt) {
+				WriteOutput (call, traceTemp + "false, " + retLocation + ");");
+			}
 			return result;
 		}
 

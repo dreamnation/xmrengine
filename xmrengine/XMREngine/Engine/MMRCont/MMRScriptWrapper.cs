@@ -37,7 +37,7 @@ namespace MMR {
 	 * All scripts must inherit from this class.
 	 */
 	public abstract class ScriptWrapper : MarshalByRefObject, IDisposable {
-		public int instanceNo;
+		public string instanceNo;
 
 		public int stateCode = 0;                 // state the script is in (0 = 'default')
 		public ScriptEventCode eventCode = ScriptEventCode.None;
@@ -47,7 +47,6 @@ namespace MMR {
 		                                          // - idle to non-idle is always Interlocked
 		public StateChangeDelegate stateChange;   // called when script changes state
 		public ScriptBaseClass beAPI;             // passed as 'this' to methods such as llSay()
-		public ScriptContinuation continuation;   // passed as 'this' to CheckRun()
 		public object[] ehArgs;                   // event handler argument array
 		public int memUsage = 0;                  // script's current memory usage
 		public int memLimit = 100000;             // CheckRun() throws exception if memUsage > memLimit
@@ -59,6 +58,7 @@ namespace MMR {
 		 * Info about the script DLL itself as a whole.
 		 */
 		public string scriptDLLName;
+		public string scriptDescName;
 
 		/*
 		 * Every script DLL must define this matrix of event handler delegates.
@@ -71,7 +71,12 @@ namespace MMR {
 		/*
 		 * We will use this microthread to run the scripts event handlers.
 		 */
-		protected ScriptUThread microthread;
+		private ScriptUThread microthread;
+
+		/*
+		 * Continuation layer to serialize/deserialize script stack.
+		 */
+		public ScriptContinuation continuation;
 
 		/*
 		 * Set to suspend microthread at next CheckRun() call.
@@ -148,6 +153,11 @@ namespace MMR {
 		public static readonly byte migrationVersion = 2;
 
 		/*
+		 * Whether or not we are using the microthread.
+		 */
+		private int usingMicrothread = 0;
+
+		/*
 		 * All script classes must define these methods.
 		 * They migrate the script's global variables whether it is idle or not.
 		 */
@@ -161,7 +171,7 @@ namespace MMR {
 		 * Caller should call StartEventHandler() or MigrateInEventHandler() next.
 		 * If calling StartEventHandler(), use ScriptEventCode.state_entry with no args.
 		 */
-		public static ScriptWrapper CreateScriptInstance (string dllName)
+		public static ScriptWrapper CreateScriptInstance (string dllName, string descName)
 		{
 			Assembly scriptAssembly;
 			ScriptEventHandler[,] scriptEventHandlerTable;
@@ -221,17 +231,19 @@ namespace MMR {
 			 * Call its default constructor.  It creates the script object which is derived from ScriptWrapper.
 			 */
 			ScriptWrapper scriptWrapper = (ScriptWrapper)Activator.CreateInstance (scriptModule);
+			scriptWrapper.instanceNo += "/" + descName;
 
 			/*
 			 * Save important things we want to remember, like where its event handlers are.
 			 */
 			scriptWrapper.scriptDLLName           = dllName;
+			scriptWrapper.scriptDescName          = descName;
 			scriptWrapper.scriptEventHandlerTable = scriptEventHandlerTable;
 
 			/*
 			 * Set up sub-objects and cross-polinate so everything can access everything.
 			 */
-			scriptWrapper.microthread  = new ScriptUThread ();
+			scriptWrapper.microthread  = new ScriptUThread (descName);
 			scriptWrapper.continuation = new ScriptContinuation ();
 			scriptWrapper.microthread.scriptWrapper  = scriptWrapper;
 			scriptWrapper.continuation.scriptWrapper = scriptWrapper;
@@ -270,7 +282,10 @@ namespace MMR {
 		{
 			string envar = Environment.GetEnvironmentVariable ("MMRScriptWrapperDebPrint");
 			this.debPrint = ((envar != null) && ((envar[0] & 1) != 0));
-			instanceNo = this.GetHashCode();
+			instanceNo = MMRCont.HexString (MMRCont.ObjAddr (this));
+			if (instanceNo.Length < 8) {
+				instanceNo = "00000000".Substring (0, 8 - instanceNo.Length) + instanceNo;
+			}
 			DebPrint ("ScriptWrapper*: {0} created", instanceNo);
 		}
 
@@ -296,6 +311,31 @@ namespace MMR {
 				String nowStr = String.Format ("{0:D2}:{1:D2}:{2:D2} ", now.Hour, now.Minute, now.Second);
 				Console.WriteLine (nowStr + format, arg0, arg1, arg2, arg3);
 			}
+		}
+
+		/*
+		 * Called by scripts before and after all beAPI calls if compiled with envar MMRScriptCompileTraceAPICalls=1.
+		 *
+		 * Input:
+		 *   line = .lsl script source line number of call
+		 *   signature = signature of function being called: name(argtype,argtype,...)
+		 *   args = array of arg values passed to function
+		 *   isCall = true: this is before the call
+		 *           false: this is after the call (returned)
+		 *   retval = null: either this is before the call or function returns void
+		 *            else: return value
+		 */
+		public void TraceAPICall (int line, string signature, object[] args, bool isCall, object retval)
+		{
+			StringBuilder call = new StringBuilder ();
+			call.Append (signature.Substring (0, signature.IndexOf ('(') + 1));
+			for (int i = 0; i < args.Length; i ++) {
+				if (i > 0) call.Append (',');
+				call.Append (args[i].ToString ());
+			}
+			call.Append (isCall ? ") call" : ") rtn ");
+			if (retval != null) call.Append (retval.ToString ());
+			DebPrint ("TraceAPICall*: {0} {1} {2}", instanceNo, line, call.ToString ());
 		}
 
 		/*
@@ -375,6 +415,8 @@ namespace MMR {
 
 		public void StartEventHandler (ScriptEventCode eventCode, object[] ehArgs)
 		{
+			Exception except = null;
+
 			if (debPrint) {
 				StringBuilder dumpargs = new StringBuilder ();
 				dumpargs.Append (GetStateName (this.stateCode));
@@ -405,41 +447,41 @@ namespace MMR {
 			 * This lock should always be uncontented as we should never try to start
 			 * executing one event handler while the previous one is still going.
 			 */
-			lock (microthread) {
-				DebPrint ("StartEventHandler*: {0} locked", this.instanceNo);
-				if (this.eventCode != ScriptEventCode.None) {
-					throw new Exception ("Event handler already active");
-				}
+			LockMicrothread (1);
+			if (this.eventCode != ScriptEventCode.None) {
+				except = new Exception ("Event handler already active");
+			}
+
+			/*
+			 * Silly to even try if there is no handler defined for this event.
+			 */
+			else if (this.scriptEventHandlerTable[this.stateCode,(int)eventCode] != null) {
 
 				/*
-				 * Silly to even try if there is no handler defined for this event.
+				 * Save eventCode so we know what event handler to run in the microthread.
+				 * And it also marks us busy so we can't be started again and this event lost.
 				 */
-				if (this.scriptEventHandlerTable[this.stateCode,(int)eventCode] != null) {
+				this.eventCode = eventCode;
+				this.ehArgs    = ehArgs;
 
-					/*
-					 * Save eventCode so we know what event handler to run in the microthread.
-					 * And it also marks us busy so we can't be started again and this event lost.
-					 */
-					this.eventCode = eventCode;
-					this.ehArgs    = ehArgs;
+				/*
+				 * We are starting from beginning of event handler, no migration streams.
+				 */
+				this.migrateInStream  = null;
+				this.migrateInReader  = null;
+				this.migrateOutStream = null;
+				this.migrateOutWriter = null;
 
-					/*
-					 * We are starting from beginning of event handler, no migration streams.
-					 */
-					this.migrateInStream  = null;
-					this.migrateInReader  = null;
-					this.migrateOutStream = null;
-					this.migrateOutWriter = null;
-
-					/*
-					 * This calls Main() below directly, and returns when Main() calls Suspend()
-					 * or when Main() returns, whichever occurs first.  It should return quickly.
-					 */
-					DebPrint ("StartEventHandler*: {0} this.eventCode={1}", this.instanceNo, this.eventCode);
-					microthread.Start ();
-				}
-				DebPrint ("StartEventHandler*: {0} unlocking", this.instanceNo);
+				/*
+				 * This calls Main() below directly, and returns when Main() calls Suspend()
+				 * or when Main() returns, whichever occurs first.  It should return quickly.
+				 */
+				DebPrint ("StartEventHandler*: {0} this.eventCode={1}", this.instanceNo, this.eventCode);
+				except = microthread.StartEx ();
 			}
+			UnlkMicrothread (1);
+
+			if (except != null) throw except;
 		}
 
 		/*
@@ -456,8 +498,8 @@ namespace MMR {
 			 * This lock should always be uncontented as we should never try to start
 			 * executing one event handler while the previous one is still going.
 			 */
-			lock (microthread) {
-				DebPrint ("MigrateInEventHandler*: {0} locked", this.instanceNo);
+			LockMicrothread (2);
+			try {
 				if (this.eventCode != ScriptEventCode.None) {
 					throw new Exception ("Event handler already active");
 				}
@@ -511,7 +553,8 @@ namespace MMR {
 				//this.migrateInReader.Dispose ();  // moron thing doesn't compile
 				this.migrateInStream = null;
 				this.migrateInReader = null;
-				DebPrint ("MigrateInEventHandler*: {0} unlocking", this.instanceNo);
+			} finally {
+				UnlkMicrothread (2);
 			}
 		}
 
@@ -539,18 +582,20 @@ namespace MMR {
 		public bool ResumeEventHandler ()
 		{
 			bool idle;
+			Exception except;
 
 			/*
 			 * Execute script until it gets suspended, migrated out or it completes.
 			 */
-			lock (microthread) {
-				DebPrint ("ResumeEventHandler*: {0} locked", this.instanceNo);
-				if (eventCode != ScriptEventCode.None) {
-					microthread.Resume ();
-				}
-				idle = (eventCode == ScriptEventCode.None);
-				DebPrint ("ResumeEventHandler*: {0} idle={1}", this.instanceNo, idle);
+			LockMicrothread (3);
+			except = null;
+			if (eventCode != ScriptEventCode.None) {
+				except = microthread.ResumeEx (except);
 			}
+			idle = (eventCode == ScriptEventCode.None);
+			DebPrint ("ResumeEventHandler*: {0} idle={1}", this.instanceNo, idle);
+			UnlkMicrothread (3);
+			if (except != null) throw except;
 
 			/*
 			 * Tell the caller whether or not we have anything more to do.
@@ -592,8 +637,8 @@ namespace MMR {
 			 * It may take a while for the script to actually suspend.
 			 */
 			this.suspendOnCheckRun = true;
-			lock (this.microthread) {
-				DebPrint ("MigrateOutEventHandler*: {0} locked", this.instanceNo);
+			LockMicrothread (4);
+			try {
 
 				/*
 				 * The script microthread should be at its Suspend() call within
@@ -641,10 +686,36 @@ namespace MMR {
 				//this.migrateOutWriter.Dispose ();  // moron thing doesn't compile
 				this.migrateOutStream = null;
 				this.migrateOutWriter = null;
-				DebPrint ("MigrateOutEventHandler*: {0} unlocking", this.instanceNo);
+			} finally {
+				UnlkMicrothread (4);
 			}
 
 			return written;
+		}
+
+		/*
+		 * These routines make sure we aren't trying to use the microthread
+		 * more than once at a time.  They are pure debugging and can be
+		 * removed if so desired.
+		 */
+		private void LockMicrothread (int key)
+		{
+			DebPrint ("LockMicrothread*: {0} locking with {1}", this.instanceNo, key);
+			int was = Interlocked.Exchange (ref usingMicrothread, key);
+			if (was != 0) {
+				throw new Exception ("usingMicrothread lock failed, was " + was.ToString ());
+			}
+			DebPrint ("LockMicrothread*: {0} locked with {1}", this.instanceNo, key);
+		}
+
+		private void UnlkMicrothread (int key)
+		{
+			DebPrint ("UnlkMicrothread*: {0} unlocking with {1}", this.instanceNo, key);
+			int was = Interlocked.Exchange (ref usingMicrothread, 0);
+			if (was != key) {
+				throw new Exception ("usingMicrothread unlock failed");
+			}
+			DebPrint ("UnlkMicrothread*: {0} unlocked with {1}", this.instanceNo, key);
 		}
 
 		/**
@@ -806,53 +877,55 @@ namespace MMR {
 				default: throw new Exception ("bad stream code " + code.ToString ());
 			}
 		}
-	}
 
 
-	/*****************************************************************\
-	 *  Wrapper around continuation to enclose it in a microthread.  *
-	\*****************************************************************/
+		/*****************************************************************\
+		 *  Wrapper around continuation to enclose it in a microthread.  *
+		\*****************************************************************/
 
-	public class ScriptUThread : MMRUThread {
+		private class ScriptUThread : MMRUThread {
 
-		public ScriptWrapper scriptWrapper;  // script wrapper we belong to
+			public ScriptWrapper scriptWrapper;  // script wrapper we belong to
 
-		/*
-		 * Called on the microthread stack as part of Start().
-		 * Start() returns when this method calls Suspend() or
-		 * when this method returns (whichever happens first).
-		 */
-		public override void Main ()
-		{
-			Exception except;
+			public ScriptUThread (string descName) : base (descName) { }
 
 			/*
-			 * The normal case is this script event handler is just being
-			 * called directly at its entrypoint.  The RunItEx() method
-			 * calls RunCont() below.  Any exceptions thrown by RunCont()
-			 * are returned by RunItEx().
+			 * Called on the microthread stack as part of Start().
+			 * Start() returns when this method calls Suspend() or
+			 * when this method returns (whichever happens first).
 			 */
-			if (scriptWrapper.migrateInStream == null) {
-				except = scriptWrapper.continuation.RunItEx ();
-			} else {
+			public override void Main ()
+			{
+				Exception except;
 
 				/*
-				 * The other case is that we want to resume execution of
-				 * a script from its migration data.  So this reads the
-				 * data from the stream to recreate wherever RunCont()
-				 * called Save() from, then it jumps to that point.
-				 *
-				 * In our case, that point is always within our CheckRun()
-				 * method, which immediately suspends when the restore is
-				 * complete, which causes LoadEx() to return at that time.
+				 * The normal case is this script event handler is just being
+				 * called directly at its entrypoint.  The RunItEx() method
+				 * calls RunCont() below.  Any exceptions thrown by RunCont()
+				 * are returned by RunItEx().
 				 */
-				scriptWrapper.subsArray[(int)ScriptWrapper.SubsArray.BEAPI] = scriptWrapper.beAPI;
-				except = scriptWrapper.continuation.LoadEx (scriptWrapper.migrateInStream, 
-				                                            scriptWrapper.subsArray,
-				                                            scriptWrapper.dllsArray);
-			}
+				if (scriptWrapper.migrateInStream == null) {
+					except = scriptWrapper.continuation.RunItEx ();
+				} else {
 
-			if (except != null) throw except;
+					/*
+					 * The other case is that we want to resume execution of
+					 * a script from its migration data.  So this reads the
+					 * data from the stream to recreate wherever RunCont()
+					 * called Save() from, then it jumps to that point.
+					 *
+					 * In our case, that point is always within our CheckRun()
+					 * method, which immediately suspends when the restore is
+					 * complete, which causes LoadEx() to return at that time.
+					 */
+					scriptWrapper.subsArray[(int)ScriptWrapper.SubsArray.BEAPI] = scriptWrapper.beAPI;
+					except = scriptWrapper.continuation.LoadEx (scriptWrapper.migrateInStream, 
+					                                            scriptWrapper.subsArray,
+					                                            scriptWrapper.dllsArray);
+				}
+
+				if (except != null) throw except;
+			}
 		}
 	}
 
@@ -861,6 +934,7 @@ namespace MMR {
 	 *  Wrapper around script event handler so it can be migrated.  *
 	\****************************************************************/
 
+	// needs to be public so it will be seen by mmrcont_load()
 	public class ScriptContinuation : MMRCont {
 
 		public ScriptWrapper scriptWrapper;  // script wrapper we belong to
@@ -874,7 +948,6 @@ namespace MMR {
 			Exception except = null;
 			int oldStateCode = -1;
 
-
 			try {
 				int newStateCode;
 				ScriptEventHandler seh;
@@ -885,7 +958,7 @@ namespace MMR {
 				 * point when microthread.Resume() is called.
 				 */
 				scriptWrapper.suspendOnCheckRun = true;
-				this.CheckRun ();
+				scriptWrapper.continuation.CheckRun ();
 
 				/*
 				 * Process event given by 'stateCode' and 'eventCode'.
@@ -983,10 +1056,16 @@ namespace MMR {
 		/*
 		 * The script code should call this routine whenever it is
 		 * convenient to perform a migation or switch microthreads.
+		 *
+		 * Note:  I tried moving this to ScriptWrapper itslef but Save() chokes on it because it gets wrapped
+		 *        by a marshalling wrapper, presumably because ScriptWrapper is tagged with MarshalByRefObj.
 		 */
 		[MMRContableAttribute ()]
 		public void CheckRun ()
 		{
+			scriptWrapper.DebPrint ("CheckRun*: {0} {1}:{2} entry", 
+					scriptWrapper.instanceNo, scriptWrapper.GetStateName (scriptWrapper.stateCode), scriptWrapper.eventCode);
+
 			scriptWrapper.suspendOnCheckRun |= scriptWrapper.alwaysSuspend;
 
 			/*
@@ -1046,14 +1125,9 @@ namespace MMR {
 					MMRUThread.Suspend ();
 				}
 			}
+
+			scriptWrapper.DebPrint ("CheckRun*: {0} {1}:{2} exit", 
+					scriptWrapper.instanceNo, scriptWrapper.GetStateName (scriptWrapper.stateCode), scriptWrapper.eventCode);
 		}
 	}
-
-
-	/**
-	 * @brief This exception is thrown by CheckRun() when it has completed
-	 *        writing the script state out to the network for a MigrateOut
-	 *        operation, to unwind the stack.
-	 */
-	public class GetMeOutOfThisScript : Exception { }
 }

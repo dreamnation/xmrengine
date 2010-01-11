@@ -9,6 +9,7 @@ using System;
 using System.Threading;
 using System.Reflection;
 using System.Collections.Generic;
+using Mono.Tasklets;
 using OpenMetaverse;
 using OpenSim.Region.ScriptEngine.Interfaces;
 using OpenSim.Region.ScriptEngine.Shared;
@@ -31,13 +32,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 {
     public class XMRInstance : MarshalByRefObject, IDisposable
     {
+        public const int MAXEVENTQUEUE = 64;
+
         private static readonly ILog m_log =
             LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
-
-        private int m_SuspendCount = 0;
-        private bool m_Running = true;
-        private bool m_Scheduled = false;
         private XMRLoader m_Loader = null;
         private IScriptEngine m_Engine = null;
         private SceneObjectPart m_Part = null;
@@ -45,16 +44,46 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private UUID m_ItemID;
         private UUID m_AssetID;
         private string m_DllName;
-        private bool m_IsIdle = true;
-        private Object m_RunLock = new Object();
-        private bool m_TimerQueued = false;
-        private Queue<EventParams> m_EventQueue = new Queue<EventParams>();
         private DetectParams[] m_DetectParams = null;
-        private DateTime m_Suspend = new DateTime(0);
         private bool m_Reset = false;
         private bool m_Die = false;
         private int m_StateCode = 0;
         private int m_StartParam = 0;
+        private string m_DescName;
+
+        // If code needs to have both m_QueueLock and m_RunLock,
+        // be sure to lock m_RunLock first then m_QueueLock, as
+        // that is the order used in RunOne().
+        // These locks are currently separated to allow the script
+        // to call API routines that queue events back to the script.
+        // If we just had one lock, then the queuing would deadlock.
+
+        // guards m_EventQueue, m_TimerQueued, m_Running
+        private Object m_QueueLock = new Object();
+
+        // true iff allowed to accept new events
+        private bool m_Running = true;
+
+        // queue of events that haven't been acted upon yet
+        private Queue<EventParams> m_EventQueue = new Queue<EventParams>();
+
+        // true iff m_EventQueue contains a timer() event
+        private bool m_TimerQueued = false;
+
+
+        // guards m_IsIdle (locked whilst in ScriptWrapper running the script)
+        private Object m_RunLock = new Object();
+
+        // false iff script is running an event handler, ie, from the time its
+        // event handler entrypoint is called until its event handler returns
+        private bool m_IsIdle = true;
+
+        // script won't step while > 0.  bus-atomic updates only.
+        private int m_SuspendCount = 0;
+
+        // don't run any of script until this time
+        private DateTime m_SuspendUntil = DateTime.MinValue;
+
 
         private Dictionary<string,IScriptApi> m_Apis =
                 new Dictionary<string,IScriptApi>();
@@ -88,20 +117,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void Suspend()
         {
-            lock (m_RunLock)
-            {
-                m_SuspendCount++;
-
-                CheckRunStatus();
-            }
+            Interlocked.Increment(ref m_SuspendCount);
         }
 
         public void Resume()
         {
-            if (m_SuspendCount > 0)
-                m_SuspendCount--;
-
-            CheckRunStatus();
+            int nowIs = Interlocked.Decrement(ref m_SuspendCount);
+            if (nowIs < 0)
+            {
+                throw new Exception("m_SuspendCount negative");
+            }
+            if (nowIs == 0)
+            {
+                KickScheduler();
+            }
         }
 
         public bool Running
@@ -113,41 +142,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             set
             {
-                lock (m_RunLock)
+                lock (m_QueueLock)
                 {
                     m_Running = value;
-
-                    if (!m_Running)
+                    if (!value)
+                    {
                         m_EventQueue.Clear();
-
-                    CheckRunStatus();
+                        m_TimerQueued = false;
+                    }
                 }
             }
         }
 
-        private void CheckRunStatus()
+        /*
+         * Kick the scheduler to call our RunOne() if it is asleep.
+         */
+        private void KickScheduler()
         {
-            if ((!m_Running) || (m_SuspendCount > 0))
-            {
-                if (m_Scheduled)
-                    Deschedule();
-            }
-            else
-            {
-                if (!m_Scheduled)
-                    Schedule();
-            }
-        }
-
-        private void Schedule()
-        {
-            m_Scheduled = true;
             ((XMREngine)m_Engine).WakeUp();
-        }
-
-        private void Deschedule()
-        {
-            m_Scheduled = false;
         }
 
         public XMRInstance(XMRLoader loader, IScriptEngine engine,
@@ -161,6 +173,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_ItemID = itemID;
             m_AssetID = assetID;
             m_DllName = dllName;
+
+            m_DescName  = MMRCont.HexString(MMRCont.ObjAddr(this));
+            if (m_DescName.Length < 8)
+            {
+                m_DescName = "00000000".Substring(0, 8 - m_DescName.Length);
+            }
+            m_DescName += " " + part.Name + ":" + 
+                    part.Inventory.GetInventoryItem(itemID).Name + ":";
 
             ApiManager am = new ApiManager();
 
@@ -187,13 +207,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void Dispose()
         {
-            lock (m_RunLock)
-            {
-                m_Part.RemoveScriptEvents(m_ItemID);
-                AsyncCommandManager.RemoveScript(m_Engine, m_LocalID, m_ItemID);
-                m_Loader.Dispose();
-                m_Loader = null;
-            }
+            m_Part.RemoveScriptEvents(m_ItemID);
+            AsyncCommandManager.RemoveScript(m_Engine, m_LocalID, m_ItemID);
+            m_Loader.Dispose();
+            m_Loader = null;
         }
 
         public void PostEvent(EventParams evt)
@@ -210,10 +227,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     evt.Params[i] = (string)((LSL_Key)evt.Params[i]);
             }
 
-            lock (m_RunLock)
+            lock (m_QueueLock)
             {
                 if (!m_Running)
                     return;
+
+                if (m_EventQueue.Count >= MAXEVENTQUEUE)
+                {
+                    m_log.DebugFormat("[XMREngine]: event queue overflow, {0} -> {1}:{2}\n", 
+                            evt.EventName, m_Part.Name, 
+                            m_Part.Inventory.GetInventoryItem(m_ItemID).Name);
+                    return;
+                }
 
                 if (evt.EventName == "timer")
                 {
@@ -223,76 +248,120 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
 
                 m_EventQueue.Enqueue(evt);
-
-                CheckRunStatus();
             }
+            KickScheduler();
         }
 
+        /*
+         * This is called in the script thread to step script until it calls CheckRun().
+         */
         public DateTime RunOne()
         {
+            /*
+             * If script has called llSleep(), don't do any more until time is up.
+             */
+            if (m_SuspendUntil > DateTime.UtcNow)
+            {
+                return m_SuspendUntil;
+            }
+
+            /*
+             * Also, someone may have called Suspend().
+             */
+            if (m_SuspendCount > 0) {
+                return DateTime.MaxValue;
+            }
+
+            /*
+             * Make sure we aren't being migrated in or out and prevent that 
+             * whilst we are in here.
+             */
             lock (m_RunLock)
             {
-                if (!m_Scheduled)
-                    return DateTime.MaxValue;
 
-                if (m_Suspend > DateTime.UtcNow)
-                    return m_Suspend;
-
-                if (!m_IsIdle)
+                /*
+                 * Maybe we can dequeue a new event and start processing it.
+                 */
+                if (m_IsIdle)
                 {
+                    EventParams evt = null;
+                    lock (m_QueueLock)
+                    {
+                        if (m_EventQueue.Count > 0)
+                        {
+                            evt = m_EventQueue.Dequeue();
+                            if (evt.EventName == "timer")
+                            {
+                                m_TimerQueued = false;
+                            }
+                        }
+                    }
+
+                    if (evt == null)
+                    {
+                        return DateTime.MaxValue;
+                    }
+
+                    m_IsIdle = false;
+                    m_DetectParams = evt.DetectParams;
+
+                    Exception ex = null;
                     try
                     {
-                        m_IsIdle = m_Loader.RunOne();
+                        ex = m_Loader.PostEvent(evt.EventName, evt.Params);
                     }
                     catch (Exception e)
                     {
-                        m_log.Error("[XMREngine]: Exception while running script event. Disabling script.\n" + e.ToString());
-                        m_SuspendCount++;
-                        CheckRunStatus();
+                        ex = e;
                     }
-                    if (m_IsIdle)
-                        m_DetectParams = null;
-
-                    if (m_Reset)
+                    if (ex != null)
                     {
-                        m_Reset = false;
-                        Reset();
-                    }
-
-                    if (m_Die)
-                    {
-                        Monitor.Exit(m_RunLock);
-                        m_Engine.World.DeleteSceneObject(m_Part.ParentGroup, false);
-                        return DateTime.MinValue;
-                    }
-
-                    if (m_Loader.StateCode != m_StateCode)
-                    {
-                        m_StateCode = m_Loader.StateCode;
-                        m_Part.SetScriptEvents(m_ItemID,
-                                m_Loader.GetStateEventFlags(m_StateCode));
+                        m_log.Error("[XMREngine]: Exception while starting script event. Disabling script.\n" + ex.ToString());
+                        Interlocked.Increment(ref m_SuspendCount);
+                        return DateTime.MaxValue;
                     }
                 }
-                else
+
+                /*
+                 * New or old event, step script until it calls CheckRun().
+                 */
+                try
                 {
-                    if (m_EventQueue.Count < 1)
-                    {
-                        Deschedule();
-                        return DateTime.MinValue;
-                    }
+                    m_IsIdle = m_Loader.RunOne();
+                }
+                catch (Exception e)
+                {
+                    m_log.Error("[XMREngine]: Exception while running script event. Disabling script.\n" + e.ToString());
+                    Interlocked.Increment(ref m_SuspendCount);
+                }
+                if (m_IsIdle)
+                    m_DetectParams = null;
 
-                    EventParams evt = m_EventQueue.Dequeue();
+                if (m_Reset)
+                {
+                    m_Reset = false;
+                    Reset();
+                }
 
-                    if (evt.EventName == "timer")
-                        m_TimerQueued = false;
+                if (m_Die)
+                {
+                    m_Engine.World.DeleteSceneObject(m_Part.ParentGroup, false);
+                    return DateTime.MinValue;
+                }
 
-                    m_IsIdle = false;
-
-                    m_DetectParams = evt.DetectParams;
-
-                    m_Loader.PostEvent(evt.EventName, evt.Params);
+                ///??? can this be done via StateChange() ???///
+                ///??? and simply pass the new mask to StateChange() ???///
+                if (m_Loader.StateCode != m_StateCode)
+                {
+                    m_StateCode = m_Loader.StateCode;
+                    m_Part.SetScriptEvents(m_ItemID,
+                            m_Loader.GetStateEventFlags(m_StateCode));
                 }
             }
+
+            /*
+             * Call this one again asap.
+             */
             return DateTime.MinValue;
         }
 
@@ -309,7 +378,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void Suspend(int ms)
         {
-            m_Suspend = DateTime.UtcNow + TimeSpan.FromMilliseconds(ms);
+            m_SuspendUntil = DateTime.UtcNow + TimeSpan.FromMilliseconds(ms);
             ((XMREngine)m_Engine).WakeUp();
         }
 
@@ -327,7 +396,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             part.Inventory.GetInventoryItem(m_ItemID).PermsGranter = UUID.Zero;
             AsyncCommandManager.RemoveScript(m_Engine, m_LocalID, m_ItemID);
 
-            m_EventQueue.Clear();
+            lock (m_QueueLock)
+            {
+                m_EventQueue.Clear();
+                m_TimerQueued = false;
+            }
             m_DetectParams = null;
 
             m_Loader.Reset();
@@ -369,20 +442,43 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public Byte[] GetSnapshot()
         {
+            Byte[] snapshot;
+
+            /*
+             * Make sure we aren't executing part of the script so it stays stable.
+             */
             lock (m_RunLock)
             {
-                return m_Loader.GetSnapshot();
+                snapshot = m_Loader.GetSnapshot();
             }
+            return snapshot;
         }
 
         public void RestoreSnapshot(Byte[] data)
         {
-            m_IsIdle = !m_Loader.RestoreSnapshot(data);
+            /*
+             * Make sure we aren't executing part of the script so we can 
+             * write it.
+             */
+            lock (m_RunLock)
+            {
+                m_IsIdle = !m_Loader.RestoreSnapshot(data);
+            }
 
+            /*
+             * If we restored it in the middle of an event handler, resume 
+             * event handler.
+             */
             if (!m_IsIdle)
-                CheckRunStatus();
+            {
+                KickScheduler();
+            }
         }
 
+        /*
+         * The script has executed a 'state <newState>;' command.
+         * Tell outer layers to cancel any event triggers, like llListen().
+         */
         public void StateChange(string newState)
         {
             AsyncCommandManager.RemoveScript(m_Engine, m_LocalID, m_ItemID);

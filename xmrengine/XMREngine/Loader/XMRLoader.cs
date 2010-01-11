@@ -107,9 +107,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
         {
             m_DllName = dllName;
 
+            string descName = m_ScriptBase.llGetObjectName() + ":" +
+                              m_ScriptBase.llGetScriptName();
+
             try
             {
-                m_Wrapper = ScriptWrapper.CreateScriptInstance(dllName);
+                m_Wrapper = ScriptWrapper.CreateScriptInstance(dllName, descName);
             }
             catch (Exception e)
             {
@@ -128,7 +131,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
             return null;
         }
 
-        public void PostEvent(string eventName, Object[] args)
+        public Exception PostEvent(string eventName, Object[] args)
         {
             try
             {
@@ -136,8 +139,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
             }
             catch (Exception e)
             {
-                // This means the script is incompatible.
+                return e;
             }
+            return null;
         }
 
         public bool RunOne()
