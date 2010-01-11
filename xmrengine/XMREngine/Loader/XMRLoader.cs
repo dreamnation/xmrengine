@@ -46,7 +46,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
         touch = 8,
         touch_end = 536870912,
         touch_start = 2097152,
-        object_rez = 4194304
+        object_rez = 4194304,
+        at_rot_target = 16777216
     }
 
     public class XMRLoader : MarshalByRefObject, IDisposable, ISponsor
