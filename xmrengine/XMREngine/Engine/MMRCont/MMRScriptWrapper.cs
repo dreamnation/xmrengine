@@ -75,9 +75,8 @@ namespace MMR {
 
 		/*
 		 * Continuation layer to serialize/deserialize script stack.
-		 * 'protected' so scripts can call continuation.CheckRun().
 		 */
-		protected ScriptContinuation continuation;
+		public ScriptContinuation continuation;
 
 		/*
 		 * Set to suspend microthread at next CheckRun() call.
@@ -416,7 +415,7 @@ namespace MMR {
 
 		public void StartEventHandler (ScriptEventCode eventCode, object[] ehArgs)
 		{
-			Exception except;
+			Exception except = null;
 
 			if (debPrint) {
 				StringBuilder dumpargs = new StringBuilder ();
@@ -448,19 +447,15 @@ namespace MMR {
 			 * This lock should always be uncontented as we should never try to start
 			 * executing one event handler while the previous one is still going.
 			 */
-			if (Interlocked.Exchange (ref usingMicrothread, 1) != 0) {
-				throw new Exception ("usingMicrothread lock failed");
-			}
-			DebPrint ("StartEventHandler*: {0} locked", this.instanceNo);
+			LockMicrothread (1);
 			if (this.eventCode != ScriptEventCode.None) {
-				throw new Exception ("Event handler already active");
+				except = new Exception ("Event handler already active");
 			}
 
 			/*
 			 * Silly to even try if there is no handler defined for this event.
 			 */
-			except = null;
-			if (this.scriptEventHandlerTable[this.stateCode,(int)eventCode] != null) {
+			else if (this.scriptEventHandlerTable[this.stateCode,(int)eventCode] != null) {
 
 				/*
 				 * Save eventCode so we know what event handler to run in the microthread.
@@ -484,10 +479,7 @@ namespace MMR {
 				DebPrint ("StartEventHandler*: {0} this.eventCode={1}", this.instanceNo, this.eventCode);
 				except = microthread.StartEx ();
 			}
-			DebPrint ("StartEventHandler*: {0} unlocking", this.instanceNo);
-			if (Interlocked.Exchange (ref usingMicrothread, 0) == 0) {
-				throw new Exception ("usingMicrothread unlock failed");
-			}
+			UnlkMicrothread (1);
 
 			if (except != null) throw except;
 		}
@@ -506,10 +498,7 @@ namespace MMR {
 			 * This lock should always be uncontented as we should never try to start
 			 * executing one event handler while the previous one is still going.
 			 */
-			if (Interlocked.Exchange (ref usingMicrothread, 2) != 0) {
-				throw new Exception ("usingMicrothread lock failed");
-			}
-			DebPrint ("MigrateInEventHandler*: {0} locked", this.instanceNo);
+			LockMicrothread (2);
 			try {
 				if (this.eventCode != ScriptEventCode.None) {
 					throw new Exception ("Event handler already active");
@@ -565,10 +554,7 @@ namespace MMR {
 				this.migrateInStream = null;
 				this.migrateInReader = null;
 			} finally {
-				DebPrint ("MigrateInEventHandler*: {0} unlocking", this.instanceNo);
-				if (Interlocked.Exchange (ref usingMicrothread, 0) == 0) {
-					throw new Exception ("usingMicrothread unlock failed");
-				}
+				UnlkMicrothread (2);
 			}
 		}
 
@@ -601,20 +587,14 @@ namespace MMR {
 			/*
 			 * Execute script until it gets suspended, migrated out or it completes.
 			 */
-			if (Interlocked.Exchange (ref usingMicrothread, 3) != 0) {
-				throw new Exception ("usingMicrothread lock failed");
-			}
-			DebPrint ("ResumeEventHandler*: {0} locked", this.instanceNo);
+			LockMicrothread (3);
 			except = null;
 			if (eventCode != ScriptEventCode.None) {
 				except = microthread.ResumeEx (except);
 			}
 			idle = (eventCode == ScriptEventCode.None);
 			DebPrint ("ResumeEventHandler*: {0} idle={1}", this.instanceNo, idle);
-			if (Interlocked.Exchange (ref usingMicrothread, 0) == 0) {
-				throw new Exception ("usingMicrothread unlock failed");
-			}
-
+			UnlkMicrothread (3);
 			if (except != null) throw except;
 
 			/*
@@ -657,10 +637,7 @@ namespace MMR {
 			 * It may take a while for the script to actually suspend.
 			 */
 			this.suspendOnCheckRun = true;
-			if (Interlocked.Exchange (ref usingMicrothread, 4) != 0) {
-				throw new Exception ("usingMicrothread lock failed");
-			}
-			DebPrint ("MigrateOutEventHandler*: {0} locked", this.instanceNo);
+			LockMicrothread (4);
 			try {
 
 				/*
@@ -710,13 +687,35 @@ namespace MMR {
 				this.migrateOutStream = null;
 				this.migrateOutWriter = null;
 			} finally {
-				DebPrint ("MigrateOutEventHandler*: {0} unlocking", this.instanceNo);
-				if (Interlocked.Exchange (ref usingMicrothread, 0) == 0) {
-					throw new Exception ("usingMicrothread unlock failed");
-				}
+				UnlkMicrothread (4);
 			}
 
 			return written;
+		}
+
+		/*
+		 * These routines make sure we aren't trying to use the microthread
+		 * more than once at a time.  They are pure debugging and can be
+		 * removed if so desired.
+		 */
+		private void LockMicrothread (int key)
+		{
+			DebPrint ("LockMicrothread*: {0} locking with {1}", this.instanceNo, key);
+			int was = Interlocked.Exchange (ref usingMicrothread, key);
+			if (was != 0) {
+				throw new Exception ("usingMicrothread lock failed, was " + was.ToString ());
+			}
+			DebPrint ("LockMicrothread*: {0} locked with {1}", this.instanceNo, key);
+		}
+
+		private void UnlkMicrothread (int key)
+		{
+			DebPrint ("UnlkMicrothread*: {0} unlocking with {1}", this.instanceNo, key);
+			int was = Interlocked.Exchange (ref usingMicrothread, 0);
+			if (was != key) {
+				throw new Exception ("usingMicrothread unlock failed");
+			}
+			DebPrint ("UnlkMicrothread*: {0} unlocked with {1}", this.instanceNo, key);
 		}
 
 		/**
@@ -928,206 +927,207 @@ namespace MMR {
 				if (except != null) throw except;
 			}
 		}
+	}
 
 
-		/****************************************************************\
-		 *  Wrapper around script event handler so it can be migrated.  *
-		\****************************************************************/
+	/****************************************************************\
+	 *  Wrapper around script event handler so it can be migrated.  *
+	\****************************************************************/
 
-		protected class ScriptContinuation : MMRCont {
+	// needs to be public so it will be seen by mmrcont_load()
+	public class ScriptContinuation : MMRCont {
 
-			public ScriptWrapper scriptWrapper;  // script wrapper we belong to
+		public ScriptWrapper scriptWrapper;  // script wrapper we belong to
 
-			/*
-			 * Called by RunItEx() to start the event handler at its entrypoint.
-			 */
-			[MMRContableAttribute ()]
-			public override Exception RunContEx ()
-			{
-				Exception except = null;
-				int oldStateCode = -1;
+		/*
+		 * Called by RunItEx() to start the event handler at its entrypoint.
+		 */
+		[MMRContableAttribute ()]
+		public override Exception RunContEx ()
+		{
+			Exception except = null;
+			int oldStateCode = -1;
 
-				try {
-					int newStateCode;
-					ScriptEventHandler seh;
+			try {
+				int newStateCode;
+				ScriptEventHandler seh;
+
+				/*
+				 * Immediately suspend so the StartEventHandler() method
+				 * returns with minimal delay.  We will resume from this
+				 * point when microthread.Resume() is called.
+				 */
+				scriptWrapper.suspendOnCheckRun = true;
+				scriptWrapper.continuation.CheckRun ();
+
+				/*
+				 * Process event given by 'stateCode' and 'eventCode'.
+				 * The event handler should call CheckRun() as often as convenient.
+				 *
+				 * We do not have to check for null 'seh' here because
+				 * StartEventHandler() already checked the table entry.
+				 */
+				scriptWrapper.stateChanged = false;
+				oldStateCode = scriptWrapper.stateCode;
+				scriptWrapper.DebPrint ("RunContEx*: {0} {1}:{2} begin", 
+						scriptWrapper.instanceNo, scriptWrapper.GetStateName (oldStateCode), scriptWrapper.eventCode);
+				seh = scriptWrapper.scriptEventHandlerTable[oldStateCode,(int)scriptWrapper.eventCode];
+				seh (scriptWrapper);
+
+				scriptWrapper.ehArgs = null;  // we are done with them and no args for
+				                              // exit_state()/enter_state() anyway
+
+				/*
+				 * Note that 'seh' is now invalid, as the continuation restore cannot restore it.
+				 * But mono should see that 'seh' is no longer needed and so Save() shouldn't try
+				 * to save it, theoretically.  Likewise for the other uses of 'seh' below.
+				 */
+
+				/*
+				 * If event handler changed state, call exit_state() on the old state,
+				 * change the state, then call enter_state() on the new state.
+				 */
+				while (scriptWrapper.stateChanged) {
 
 					/*
-					 * Immediately suspend so the StartEventHandler() method
-					 * returns with minimal delay.  We will resume from this
-					 * point when microthread.Resume() is called.
+					 * Get what state they transitioned to.
 					 */
-					scriptWrapper.suspendOnCheckRun = true;
-					scriptWrapper.continuation.CheckRun ();
+					newStateCode = scriptWrapper.stateCode;
 
 					/*
-					 * Process event given by 'stateCode' and 'eventCode'.
-					 * The event handler should call CheckRun() as often as convenient.
-					 *
-					 * We do not have to check for null 'seh' here because
-					 * StartEventHandler() already checked the table entry.
+					 * Maybe print out what happened.
+					 */
+					scriptWrapper.DebPrint ("RunContEx*: {0} {1}:{2} -> {3}", 
+							scriptWrapper.instanceNo, scriptWrapper.GetStateName (oldStateCode), 
+							scriptWrapper.eventCode, scriptWrapper.GetStateName (newStateCode));
+
+					/*
+					 * Restore to old state and call its state_exit() handler.
 					 */
 					scriptWrapper.stateChanged = false;
-					oldStateCode = scriptWrapper.stateCode;
-					scriptWrapper.DebPrint ("RunContEx*: {0} {1}:{2} begin", 
-							scriptWrapper.instanceNo, scriptWrapper.GetStateName (oldStateCode), scriptWrapper.eventCode);
-					seh = scriptWrapper.scriptEventHandlerTable[oldStateCode,(int)scriptWrapper.eventCode];
-					seh (scriptWrapper);
-
-					scriptWrapper.ehArgs = null;  // we are done with them and no args for
-					                              // exit_state()/enter_state() anyway
+					scriptWrapper.eventCode = ScriptEventCode.state_exit;
+					scriptWrapper.stateCode = oldStateCode;
+					seh = scriptWrapper.scriptEventHandlerTable[oldStateCode,(int)ScriptEventCode.state_exit];
+					if (seh != null) seh (scriptWrapper);
 
 					/*
-					 * Note that 'seh' is now invalid, as the continuation restore cannot restore it.
-					 * But mono should see that 'seh' is no longer needed and so Save() shouldn't try
-					 * to save it, theoretically.  Likewise for the other uses of 'seh' below.
+					 * Ignore any state change by state_exit() handlers.
 					 */
-
-					/*
-					 * If event handler changed state, call exit_state() on the old state,
-					 * change the state, then call enter_state() on the new state.
-					 */
-					while (scriptWrapper.stateChanged) {
-
-						/*
-						 * Get what state they transitioned to.
-						 */
-						newStateCode = scriptWrapper.stateCode;
-
-						/*
-						 * Maybe print out what happened.
-						 */
-						scriptWrapper.DebPrint ("RunContEx*: {0} {1}:{2} -> {3}", 
+					if (scriptWrapper.stateChanged) {
+						scriptWrapper.DebPrint ("RunContEx*: {0} ignoring {1}:state_exit() state change -> {2}", 
 								scriptWrapper.instanceNo, scriptWrapper.GetStateName (oldStateCode), 
-								scriptWrapper.eventCode, scriptWrapper.GetStateName (newStateCode));
-
-						/*
-						 * Restore to old state and call its state_exit() handler.
-						 */
-						scriptWrapper.stateChanged = false;
-						scriptWrapper.eventCode = ScriptEventCode.state_exit;
-						scriptWrapper.stateCode = oldStateCode;
-						seh = scriptWrapper.scriptEventHandlerTable[oldStateCode,(int)ScriptEventCode.state_exit];
-						if (seh != null) seh (scriptWrapper);
-
-						/*
-						 * Ignore any state change by state_exit() handlers.
-						 */
-						if (scriptWrapper.stateChanged) {
-							scriptWrapper.DebPrint ("RunContEx*: {0} ignoring {1}:state_exit() state change -> {2}", 
-									scriptWrapper.instanceNo, scriptWrapper.GetStateName (oldStateCode), 
-									scriptWrapper.GetStateName (scriptWrapper.stateCode));
-						}
-
-						/*
-						 * Now that the old state can't possibly start any more activity,
-						 * cancel any listening handlers, etc, of the old state.
-						 */
-						scriptWrapper.stateChange (scriptWrapper.GetStateName (newStateCode));
-
-						/*
-						 * Now the new state becomes the old state in case the new state_entry() changes state again.
-						 */
-						oldStateCode = newStateCode;
-
-						/*
-						 * Call the new state's state_entry() handler.
-						 * I've seen scripts that change state in the state_entry() handler, so allow for that.
-						 */
-						scriptWrapper.stateChanged = false;
-						scriptWrapper.eventCode = ScriptEventCode.state_entry;
-						scriptWrapper.stateCode = newStateCode;
-						seh = scriptWrapper.scriptEventHandlerTable[newStateCode,(int)ScriptEventCode.state_entry];
-						if (seh != null) seh (scriptWrapper);
+								scriptWrapper.GetStateName (scriptWrapper.stateCode));
 					}
-				} catch (Exception e) {
-					except = e;
-				}
 
-				/*
-				 * The event handler has run to completion.
-				 */
-				scriptWrapper.DebPrint ("RunContEx*: {0} {1}:{2} done", 
-						scriptWrapper.instanceNo, scriptWrapper.GetStateName (oldStateCode), scriptWrapper.eventCode);
-				scriptWrapper.eventCode = ScriptEventCode.None;
-				return except;
+					/*
+					 * Now that the old state can't possibly start any more activity,
+					 * cancel any listening handlers, etc, of the old state.
+					 */
+					scriptWrapper.stateChange (scriptWrapper.GetStateName (newStateCode));
+
+					/*
+					 * Now the new state becomes the old state in case the new state_entry() changes state again.
+					 */
+					oldStateCode = newStateCode;
+
+					/*
+					 * Call the new state's state_entry() handler.
+					 * I've seen scripts that change state in the state_entry() handler, so allow for that.
+					 */
+					scriptWrapper.stateChanged = false;
+					scriptWrapper.eventCode = ScriptEventCode.state_entry;
+					scriptWrapper.stateCode = newStateCode;
+					seh = scriptWrapper.scriptEventHandlerTable[newStateCode,(int)ScriptEventCode.state_entry];
+					if (seh != null) seh (scriptWrapper);
+				}
+			} catch (Exception e) {
+				except = e;
 			}
 
 			/*
-			 * The script code should call this routine whenever it is
-			 * convenient to perform a migation or switch microthreads.
-			 *
-			 * Note:  I tried moving this to ScriptWrapper itslef but Save() chokes on it because it gets wrapped
-			 *        by a marshalling wrapper, presumably because ScriptWrapper is tagged with MarshalByRefObj.
+			 * The event handler has run to completion.
 			 */
-			[MMRContableAttribute ()]
-			public void CheckRun ()
-			{
-				scriptWrapper.DebPrint ("CheckRun*: {0} {1}:{2} entry", 
-						scriptWrapper.instanceNo, scriptWrapper.GetStateName (scriptWrapper.stateCode), scriptWrapper.eventCode);
+			scriptWrapper.DebPrint ("RunContEx*: {0} {1}:{2} done", 
+					scriptWrapper.instanceNo, scriptWrapper.GetStateName (oldStateCode), scriptWrapper.eventCode);
+			scriptWrapper.eventCode = ScriptEventCode.None;
+			return except;
+		}
 
-				scriptWrapper.suspendOnCheckRun |= scriptWrapper.alwaysSuspend;
+		/*
+		 * The script code should call this routine whenever it is
+		 * convenient to perform a migation or switch microthreads.
+		 *
+		 * Note:  I tried moving this to ScriptWrapper itslef but Save() chokes on it because it gets wrapped
+		 *        by a marshalling wrapper, presumably because ScriptWrapper is tagged with MarshalByRefObj.
+		 */
+		[MMRContableAttribute ()]
+		public void CheckRun ()
+		{
+			scriptWrapper.DebPrint ("CheckRun*: {0} {1}:{2} entry", 
+					scriptWrapper.instanceNo, scriptWrapper.GetStateName (scriptWrapper.stateCode), scriptWrapper.eventCode);
 
-				/*
-				 * We should never try to stop with stateChanged as once stateChanged is set to true,
-				 * the compiled script functions all return directly out without calling CheckRun().
-				 *
-				 * Thus any checkpoint/restart save/resume code can assume stateChanged = false.
-				 */
-				if (scriptWrapper.stateChanged) throw new Exception ("CheckRun() called with stateChanged set");
+			scriptWrapper.suspendOnCheckRun |= scriptWrapper.alwaysSuspend;
 
-				/*
-				 * Make sure script isn't hogging too much memory.
-				 */
-				int mu = scriptWrapper.memUsage;
-				int ml = scriptWrapper.memLimit;
-				if (mu > ml) {
-					throw new Exception ("memory usage " + mu + " exceeds limit " + ml);
-				}
+			/*
+			 * We should never try to stop with stateChanged as once stateChanged is set to true,
+			 * the compiled script functions all return directly out without calling CheckRun().
+			 *
+			 * Thus any checkpoint/restart save/resume code can assume stateChanged = false.
+			 */
+			if (scriptWrapper.stateChanged) throw new Exception ("CheckRun() called with stateChanged set");
 
-				while (scriptWrapper.suspendOnCheckRun || (scriptWrapper.migrateOutStream != null)) {
-
-					/*
-					 * See if MigrateOutEventHandler() has been called.
-					 * If so, dump our stack to the stream then suspend.
-					 */
-					if (scriptWrapper.migrateOutStream != null) {
-
-						/*
-						 * Puque our stack to the output stream.
-						 * But otherwise, our state remains intact.
-						 */
-						scriptWrapper.subsArray[(int)ScriptWrapper.SubsArray.BEAPI] = scriptWrapper.beAPI;
-						this.Save (scriptWrapper.migrateOutStream, scriptWrapper.subsArray, scriptWrapper.dllsArray);
-
-						/*
-						 * We return here under two circumstances:
-						 *  1) the script state has been written out to the migrateOutStream
-						 *  2) the script state has been read in from the migrateOutStream
-						 */
-						scriptWrapper.migrateComplete = true;
-
-						/*
-						 * Suspend immediately.
-						 * If we were migrating out, the MMRUThread.Suspend() call below will return
-						 *    to the microthread.Resume() call within MigrateOutEventHandler().
-						 * If we were migrating in, the MMRUThread.Suspend() call below will return
-						 *    to the microthread.Start() call within MigrateInEventHandler().
-						 */
-						scriptWrapper.suspendOnCheckRun = true;
-					}
-
-					/*
-					 * Maybe SuspendEventHandler() has been called.
-					 */
-					if (scriptWrapper.suspendOnCheckRun) {
-						scriptWrapper.suspendOnCheckRun = false;
-						MMRUThread.Suspend ();
-					}
-				}
-
-				scriptWrapper.DebPrint ("CheckRun*: {0} {1}:{2} exit", 
-						scriptWrapper.instanceNo, scriptWrapper.GetStateName (scriptWrapper.stateCode), scriptWrapper.eventCode);
+			/*
+			 * Make sure script isn't hogging too much memory.
+			 */
+			int mu = scriptWrapper.memUsage;
+			int ml = scriptWrapper.memLimit;
+			if (mu > ml) {
+				throw new Exception ("memory usage " + mu + " exceeds limit " + ml);
 			}
+
+			while (scriptWrapper.suspendOnCheckRun || (scriptWrapper.migrateOutStream != null)) {
+
+				/*
+				 * See if MigrateOutEventHandler() has been called.
+				 * If so, dump our stack to the stream then suspend.
+				 */
+				if (scriptWrapper.migrateOutStream != null) {
+
+					/*
+					 * Puque our stack to the output stream.
+					 * But otherwise, our state remains intact.
+					 */
+					scriptWrapper.subsArray[(int)ScriptWrapper.SubsArray.BEAPI] = scriptWrapper.beAPI;
+					this.Save (scriptWrapper.migrateOutStream, scriptWrapper.subsArray, scriptWrapper.dllsArray);
+
+					/*
+					 * We return here under two circumstances:
+					 *  1) the script state has been written out to the migrateOutStream
+					 *  2) the script state has been read in from the migrateOutStream
+					 */
+					scriptWrapper.migrateComplete = true;
+
+					/*
+					 * Suspend immediately.
+					 * If we were migrating out, the MMRUThread.Suspend() call below will return
+					 *    to the microthread.Resume() call within MigrateOutEventHandler().
+					 * If we were migrating in, the MMRUThread.Suspend() call below will return
+					 *    to the microthread.Start() call within MigrateInEventHandler().
+					 */
+					scriptWrapper.suspendOnCheckRun = true;
+				}
+
+				/*
+				 * Maybe SuspendEventHandler() has been called.
+				 */
+				if (scriptWrapper.suspendOnCheckRun) {
+					scriptWrapper.suspendOnCheckRun = false;
+					MMRUThread.Suspend ();
+				}
+			}
+
+			scriptWrapper.DebPrint ("CheckRun*: {0} {1}:{2} exit", 
+					scriptWrapper.instanceNo, scriptWrapper.GetStateName (scriptWrapper.stateCode), scriptWrapper.eventCode);
 		}
 	}
 }
