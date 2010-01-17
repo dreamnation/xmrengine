@@ -255,10 +255,20 @@ namespace Careminster.Profile
             if (newProfile.ID != remoteClient.AgentId)
                 return;
 
-            XProfileData profileData = new XProfileData();
-            profileData.Data = new Dictionary<string, string>();
+            XProfileData profileData;
 
-            profileData.UserID = remoteClient.AgentId;
+            XProfileData[] data = m_ProfileTable.Get("UserID", remoteClient.AgentId.ToString());
+            if (data.Length > 0)
+            {
+                profileData = data[0];
+            }
+            else
+            {
+                profileData = new XProfileData();
+                profileData.Data = new Dictionary<string, string>();
+                profileData.UserID = remoteClient.AgentId;
+            }
+
             profileData.Data["ImageID"] = newProfile.Image.ToString();
             profileData.Data["ProfileText"] = newProfile.AboutText;
             profileData.Data["FirstLifeText"] = newProfile.FirstLifeAboutText;

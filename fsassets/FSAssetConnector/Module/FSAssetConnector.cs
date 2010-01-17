@@ -161,7 +161,7 @@ namespace Careminster
                         double avg = (double)m_readTicks / (double)m_readCount;
 //                        if (avg > 10000)
 //                            Environment.Exit(0);
-                        m_log.InfoFormat("[ASSET]: Read stats: {0} files, {1} ticks, avg {2}, missing {3}", m_readCount, m_readTicks, (double)m_readTicks / (double)m_readCount, m_missingAssets);
+                        m_log.InfoFormat("[ASSET]: Read stats: {0} files, {1} ticks, avg {2:F2}, missing {3}", m_readCount, m_readTicks, (double)m_readTicks / (double)m_readCount, m_missingAssets);
                     }
                     m_readCount = 0;
                     m_readTicks = 0;
@@ -188,12 +188,22 @@ namespace Careminster
                         string diskFile = Path.Combine(m_FSBase, s);
 
                         Directory.CreateDirectory(Path.GetDirectoryName(diskFile));
-                        File.Move(files[i], diskFile);
+                        try
+                        {
+                            File.Move(files[i], diskFile);
+                        }
+                        catch(System.IO.IOException e)
+                        {
+                            if (e.Message.StartsWith("Win32 IO returned ERROR_ALREADY_EXISTS"))
+                                File.Delete(files[i]);
+                            else
+                                throw;
+                        }
                     }
                     int totalTicks = System.Environment.TickCount - tickCount;
                     if (totalTicks > 0) // Wrap?
                     {
-                        m_log.InfoFormat("[ASSET]: Write cycle complete, {0} files, {1} ticks, avg {2}", files.Length, totalTicks, (double)totalTicks / (double)files.Length);
+                        m_log.InfoFormat("[ASSET]: Write cycle complete, {0} files, {1} ticks, avg {2:F2}", files.Length, totalTicks, (double)totalTicks / (double)files.Length);
                     }
                 }
 
