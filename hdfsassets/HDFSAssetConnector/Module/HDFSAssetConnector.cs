@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Threading;
 using System.Reflection;
 using OpenSim.Framework;
 using OpenSim.Framework.Console;
@@ -46,8 +47,13 @@ namespace Careminster
         protected int m_HdfsReplication = 1;
         protected string m_FsckProgram;
         protected IAssetService m_FallbackService;
-
-        private Object m_hdfsLock = new Object();
+        protected Thread m_WriterThread;
+        protected Thread m_StatsThread;
+        protected string m_SpoolDirectory;
+        protected object m_readLock = new object();
+        protected object m_statsLock = new object();
+        protected int m_readCount = 0;
+        protected int m_readTicks = 0;
 
         public HDFSAssetConnector(IConfigSource config) : base(config)
         {
@@ -111,6 +117,12 @@ namespace Careminster
                 }
             }
 
+            m_SpoolDirectory = assetConfig.GetString("SpoolDirectory", "/tmp");
+
+            string spoolTmp = Path.Combine(m_SpoolDirectory, "spool");
+
+            Directory.CreateDirectory(spoolTmp);
+
             if (HdfsClient.OpenHdfs(ToCString(m_HdfsHost), m_HdfsPort) < 0)
             {
                 throw new Exception("Error connecting to HDFS");
@@ -129,7 +141,79 @@ namespace Careminster
                         });
             }
             m_log.Info("[ASSET CONNECTOR]: HDFS asset service enabled");
-}
+
+            m_WriterThread = new Thread(Writer);
+            m_WriterThread.Start();
+            m_StatsThread = new Thread(Stats);
+            m_StatsThread.Start();
+        }
+
+        private void Stats()
+        {
+            while (true)
+            {
+                Thread.Sleep(5000);
+                 
+                lock (m_statsLock)
+                {
+                    if (m_readCount > 0)
+                    {
+                        double avg = (double)m_readTicks / (double)m_readCount;
+                        if (avg > 10000)
+                            Environment.Exit(0);
+//                        m_log.InfoFormat("[ASSET CONNECTOR]: Read stats: {0} files, {1} ticks, avg {2}", m_readCount, m_readTicks, (double)m_readTicks / (double)m_readCount);
+                    }
+                    m_readCount = 0;
+                    m_readTicks = 0;
+                }
+            }
+        }
+
+        private void Writer()
+        {
+            m_log.Info("[ASSET CONNECTOR]: Writer started");
+
+            while (true)
+            {
+                string[] files = Directory.GetFiles(m_SpoolDirectory);
+
+                if (files.Length > 0)
+                {
+                    int tickCount = Environment.TickCount;
+                    for (int i = 0 ; i < files.Length ; i++)
+                    {
+                        string hash = Path.GetFileNameWithoutExtension(files[i]);
+                        string s = HashToFile(hash);
+                        int hdfsFile = 0;
+
+                        hdfsFile = HdfsClient.Open(ToCString(s), 0, m_HdfsReplication);
+                        if (hdfsFile == 0)
+                        {
+                            hdfsFile = HdfsClient.Open(ToCString(s), 0x41, m_HdfsReplication);
+                            if (hdfsFile == 0)
+                            {
+                                throw new Exception("Error opening HDFS file");
+                            }
+
+                            byte[] buffer = File.ReadAllBytes(files[i]);
+
+                            HdfsClient.Write(hdfsFile, buffer, buffer.Length);
+                        }
+
+                        HdfsClient.Close(hdfsFile);
+
+                        File.Delete(files[i]);
+                    }
+                    int totalTicks = System.Environment.TickCount - tickCount;
+                    if (totalTicks > 0) // Wrap?
+                    {
+                        m_log.InfoFormat("[ASSET CONNECTOR]: Write cycle complete, {0} files, {1} ticks, avg {2}", files.Length, totalTicks, (double)totalTicks / (double)files.Length);
+                    }
+                }
+
+                Thread.Sleep(1000);
+            }
+        }
 
         string GetSHA1Hash(byte[] data)
         {
@@ -161,54 +245,62 @@ namespace Careminster
 
         private AssetBase Get(string id, out string sha)
         {
-			lock(m_hdfsLock)
-			{
-				string hash = string.Empty;
+            string hash = string.Empty;
 
-				int startTime = System.Environment.TickCount;
-				AssetMetadata metadata = m_DataConnector.Get(id, out hash);
+            int startTime = System.Environment.TickCount;
+            AssetMetadata metadata;
 
-				sha = hash;
+            lock (m_readLock)
+            {
+                metadata = m_DataConnector.Get(id, out hash);
+            }
 
-				if (metadata == null)
-				{
-					AssetBase asset = null;
-					if (m_FallbackService != null)
-					{
-						asset = m_FallbackService.Get(id);
-						if (asset != null)
-						{
-							asset.Metadata.ContentType =
-									ServerUtils.SLAssetTypeToContentType((int)asset.Type);
-							sha = GetSHA1Hash(asset.Data);
-							m_log.InfoFormat("[FALLBACK]: Added asset {0} from fallback to local store", id);
-							Store(asset);
-						}
-					}
-					if (asset == null)
-					{
-						m_log.InfoFormat("[ASSET]: Asset {0} not found", id);
-					}
-					return asset;
-				}
-				AssetBase newAsset = new AssetBase();
-				newAsset.Metadata = metadata;
-				try
-				{
-					newAsset.Data = GetHdfsData(hash);
-					if (newAsset.Data.Length == 0)
-					{
-						m_log.InfoFormat("[ASSET]: Asset {0}, hash {1} not found in HDFS", id, hash);
-					}
-					return newAsset;
-				}
-				catch (Exception exception)
-				{
-					m_log.Error(exception.ToString());
-					Environment.Exit(1);
-					return null;
-				}
-			}
+            sha = hash;
+
+            if (metadata == null)
+            {
+                AssetBase asset = null;
+                if (m_FallbackService != null)
+                {
+                    asset = m_FallbackService.Get(id);
+                    if (asset != null)
+                    {
+                        asset.Metadata.ContentType =
+                                ServerUtils.SLAssetTypeToContentType((int)asset.Type);
+                        sha = GetSHA1Hash(asset.Data);
+                        m_log.InfoFormat("[FALLBACK]: Added asset {0} from fallback to local store", id);
+                        Store(asset);
+                    }
+                }
+                if (asset == null)
+                {
+                    m_log.InfoFormat("[ASSET]: Asset {0} not found", id);
+                }
+                return asset;
+            }
+            AssetBase newAsset = new AssetBase();
+            newAsset.Metadata = metadata;
+            try
+            {
+                newAsset.Data = GetHdfsData(hash);
+                if (newAsset.Data.Length == 0)
+                {
+                    m_log.InfoFormat("[ASSET]: Asset {0}, hash {1} not found in HDFS", id, hash);
+                }
+
+                lock (m_statsLock)
+                {
+                    m_readTicks += Environment.TickCount - startTime;
+                    m_readCount++;
+                }
+                return newAsset;
+            }
+            catch (Exception exception)
+            {
+                m_log.Error(exception.ToString());
+                Environment.Exit(1);
+                return null;
+            }
         }
 
         public AssetMetadata GetMetadata(string id)
@@ -237,6 +329,21 @@ namespace Careminster
 
         public byte[] GetHdfsData(string hash)
         {
+            string spoolFile = Path.Combine(m_SpoolDirectory, hash + ".asset");
+
+            if (File.Exists(spoolFile))
+            {
+                try
+                {
+                    byte[] content = File.ReadAllBytes(spoolFile);
+
+                    return content;
+                }
+                catch
+                {
+                }
+            }
+
             string file = HashToFile(hash);
             int size = HdfsClient.Size(ToCString(file));
             if (size < 0)
@@ -244,16 +351,17 @@ namespace Careminster
 
             byte[] buf = new byte[size];
 
-			int fd = HdfsClient.Open(ToCString(HashToFile(hash)), 0, 3);
-			if (fd == 0) // Not there
-			{
-				throw new Exception("Error opening HDFS file");
-			}
+            int fd = HdfsClient.Open(ToCString(HashToFile(hash)), 0, 3);
+            if (fd == 0) // Not there
+            {
+                throw new Exception("Error opening HDFS file");
+            }
 
-			HdfsClient.Read(fd, buf, size);
-			HdfsClient.Close(fd);
+            HdfsClient.Read(fd, buf, size);
+            HdfsClient.Close(fd);
 
             return buf;
+
         }
 
         public string Store(AssetBase asset)
@@ -265,69 +373,42 @@ namespace Careminster
         {
             int tickCount = Environment.TickCount;
             string hash = GetSHA1Hash(asset.Data);
-            string s = HashToFile(hash);
-            int hdfsFile = 0;
 
-            lock (m_hdfsLock)
+            string tempFile = Path.Combine(Path.Combine(m_SpoolDirectory, "spool"), hash + ".asset");
+            string finalFile = Path.Combine(m_SpoolDirectory, hash + ".asset");
+
+            if (!File.Exists(finalFile))
             {
-                if (!force)
+                FileStream fs = File.Create(tempFile);
+
+                fs.Write(asset.Data, 0, asset.Data.Length);
+
+                fs.Close();
+
+                File.Move(tempFile, finalFile);
+            }
+
+            if (asset.ID == string.Empty)
+            {
+                if (asset.FullID == UUID.Zero)
                 {
-                    hdfsFile = HdfsClient.Open(ToCString(s), 0, m_HdfsReplication);
+                    asset.FullID = UUID.Random();
                 }
-                if (hdfsFile == 0)
+                asset.ID = asset.FullID.ToString();
+            }
+            else if (asset.FullID == UUID.Zero)
+            {
+                UUID uuid = UUID.Zero;
+                if (UUID.TryParse(asset.ID, out uuid))
                 {
-                    hdfsFile = HdfsClient.Open(ToCString(s), 0x41, m_HdfsReplication);
-                    if (hdfsFile == 0)
-                    {
-                        throw new Exception("Error opening HDFS file");
-                    }
-
-                    int length = asset.Data.Length;
-                    byte[] destinationArray = new byte[0x4000];
-                    int sourceIndex = 0;
-
-                    while (length > 0)
-                    {
-                        int len = length;
-                        if (len > 0x4000)
-                        {
-                            len = 0x4000;
-                        }
-                        Array.Copy(asset.Data, sourceIndex, destinationArray, 0, len);
-                        int bytes = HdfsClient.Write(hdfsFile, destinationArray, len);
-                        if (bytes <= 0)
-                        {
-                            break;
-                        }
-                        sourceIndex += bytes;
-                        length -= bytes;
-                    }
+                    asset.FullID = uuid;
                 }
-
-                HdfsClient.Close(hdfsFile);
-
-				if (asset.ID == string.Empty)
-				{
-					if (asset.FullID == UUID.Zero)
-					{
-						asset.FullID = UUID.Random();
-					}
-					asset.ID = asset.FullID.ToString();
-				}
-				else if (asset.FullID == UUID.Zero)
-				{
-					UUID uuid = UUID.Zero;
-					if (UUID.TryParse(asset.ID, out uuid))
-					{
-						asset.FullID = uuid;
-					}
-					else
-					{
-						asset.FullID = UUID.Random();
-					}
-				}
-				m_DataConnector.Store(asset.Metadata, hash);
-			}
+                else
+                {
+                    asset.FullID = UUID.Random();
+                }
+            }
+            m_DataConnector.Store(asset.Metadata, hash);
 
             return asset.ID;
         }

@@ -192,7 +192,7 @@ namespace Careminster
             int count = Convert.ToInt32(reader["count"]);
 
             reader.Close();
-            cmd.Dispose();
+            FreeCommand(cmd);
 
             return count;
         }
