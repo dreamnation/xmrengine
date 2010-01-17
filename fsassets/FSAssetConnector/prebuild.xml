@@ -1,0 +1,35 @@
+   <Project name="FSAssetConnector" path="addon-modules/FSAssetConnector/Module" type="Library">
+     <Configuration name="Debug">
+       <Options>
+         <OutputPath>../../../bin/</OutputPath>
+       </Options>
+     </Configuration>
+     <Configuration name="Release">
+       <Options>
+         <OutputPath>../../../bin/</OutputPath>
+       </Options>
+     </Configuration>
+
+     <ReferencePath>../../../bin/</ReferencePath>
+     <Reference name="System"/>
+     <Reference name="System.Data"/>
+     <Reference name="OpenMetaverseTypes.dll"/>
+     <Reference name="hdfsdll.dll"/>
+     <Reference name="OpenMetaverse.dll"/>
+     <Reference name="OpenSim.Framework"/>
+     <Reference name="OpenSim.Framework.Console"/>
+     <Reference name="OpenSim.Framework.Servers.HttpServer"/>
+     <Reference name="OpenSim.Server.Base"/>
+     <Reference name="OpenSim.Services.Interfaces"/>
+     <Reference name="OpenSim.Services.Base"/>
+     <Reference name="OpenSim.Services.Connectors"/>
+     <Reference name="OpenSim.Data"/>
+     <Reference name="OpenSim.Data.MySQL"/>
+     <Reference name="Nini.dll" />
+     <Reference name="log4net.dll"/>
+     <Reference name="MySql.Data.dll"/>
+
+     <Files>
+       <Match pattern="*.cs" recurse="true"/>
+     </Files>
+   </Project>
