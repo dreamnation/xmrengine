@@ -9,6 +9,7 @@ using System;
 using System.Threading;
 using System.Reflection;
 using System.Collections.Generic;
+using Mono.Tasklets;
 using OpenMetaverse;
 using OpenSim.Region.ScriptEngine.Interfaces;
 using OpenSim.Region.ScriptEngine.Shared;
@@ -48,6 +49,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private bool m_Die = false;
         private int m_StateCode = 0;
         private int m_StartParam = 0;
+        private string m_DescName;
 
         // If code needs to have both m_QueueLock and m_RunLock,
         // be sure to lock m_RunLock first then m_QueueLock, as
@@ -172,6 +174,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_AssetID = assetID;
             m_DllName = dllName;
 
+            m_DescName  = MMRCont.HexString(MMRCont.ObjAddr(this));
+            if (m_DescName.Length < 8)
+            {
+                m_DescName = "00000000".Substring(0, 8 - m_DescName.Length);
+            }
+            m_DescName += " " + part.Name + ":" + 
+                    part.Inventory.GetInventoryItem(itemID).Name + ":";
+
             ApiManager am = new ApiManager();
 
             foreach (string api in am.GetApis())
@@ -281,7 +291,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         {
                             evt = m_EventQueue.Dequeue();
                             if (evt.EventName == "timer")
+                            {
                                 m_TimerQueued = false;
+                            }
                         }
                     }
 
@@ -293,14 +305,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_IsIdle = false;
                     m_DetectParams = evt.DetectParams;
 
+                    Exception ex = null;
                     try
                     {
-                        m_Loader.PostEvent(evt.EventName, evt.Params);
+                        ex = m_Loader.PostEvent(evt.EventName, evt.Params);
                     }
                     catch (Exception e)
                     {
-                        m_log.Error("[XMREngine]: Exception while starting script event. Disabling script.\n" + e.ToString());
+                        ex = e;
+                    }
+                    if (ex != null)
+                    {
+                        m_log.Error("[XMREngine]: Exception while starting script event. Disabling script.\n" + ex.ToString());
                         Interlocked.Increment(ref m_SuspendCount);
+                        return DateTime.MaxValue;
                     }
                 }
 
@@ -331,6 +349,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     return DateTime.MinValue;
                 }
 
+                ///??? can this be done via StateChange() ???///
+                ///??? and simply pass the new mask to StateChange() ???///
                 if (m_Loader.StateCode != m_StateCode)
                 {
                     m_StateCode = m_Loader.StateCode;
@@ -422,13 +442,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public Byte[] GetSnapshot()
         {
+            Byte[] snapshot;
+
             /*
              * Make sure we aren't executing part of the script so it stays stable.
              */
             lock (m_RunLock)
             {
-                return m_Loader.GetSnapshot();
+                snapshot = m_Loader.GetSnapshot();
             }
+            return snapshot;
         }
 
         public void RestoreSnapshot(Byte[] data)

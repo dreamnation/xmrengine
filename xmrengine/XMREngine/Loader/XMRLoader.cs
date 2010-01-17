@@ -46,7 +46,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
         touch = 8,
         touch_end = 536870912,
         touch_start = 2097152,
-        object_rez = 4194304
+        object_rez = 4194304,
+        at_rot_target = 16777216
     }
 
     public class XMRLoader : MarshalByRefObject, IDisposable, ISponsor
@@ -130,7 +131,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
             return null;
         }
 
-        public void PostEvent(string eventName, Object[] args)
+        public Exception PostEvent(string eventName, Object[] args)
         {
             try
             {
@@ -138,8 +139,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
             }
             catch (Exception e)
             {
-                // This means the script is incompatible.
+                return e;
             }
+            return null;
         }
 
         public bool RunOne()
