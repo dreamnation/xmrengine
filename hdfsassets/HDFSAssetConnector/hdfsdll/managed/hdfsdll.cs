@@ -1,3 +1,10 @@
+////////////////////////////////////////////////////////////////
+//
+// (c) 2009, 2010 Careminster Limited and Melanie Thielker
+//
+// All rights reserved
+//
+
 using System;
 using System.Runtime.InteropServices;
 using System.Security;

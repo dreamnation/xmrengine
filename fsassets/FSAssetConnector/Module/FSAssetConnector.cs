@@ -1,3 +1,9 @@
+////////////////////////////////////////////////////////////////
+//
+// (c) 2009, 2010 Careminster Limited and Melanie Thielker
+//
+// All rights reserved
+//
 using System;
 using System.Diagnostics;
 using System.Collections.Generic;
@@ -50,6 +56,9 @@ namespace Careminster
         protected object m_statsLock = new object();
         protected int m_readCount = 0;
         protected int m_readTicks = 0;
+        protected int m_missingAssets = 0;
+        protected string m_FSBase;
+        protected string m_Realm;
 
         public FSAssetConnector(IConfigSource config) : base(config)
         {
@@ -86,7 +95,9 @@ namespace Careminster
                 throw new Exception("Missing database connection string");
             }
 
-            m_DataConnector = new FSAssetConnectorData(m_ConnectionString);
+            m_Realm = assetConfig.GetString("Realm", "fsassets");
+
+            m_DataConnector = new FSAssetConnectorData(m_ConnectionString, m_Realm);
             m_FsckProgram = assetConfig.GetString("FsckProgram", string.Empty);
 
             string str = assetConfig.GetString("FallbackService", string.Empty);
@@ -110,9 +121,11 @@ namespace Careminster
 
             Directory.CreateDirectory(spoolTmp);
 
-            if (HdfsClient.OpenHdfs(ToCString(m_HdfsHost), m_HdfsPort) < 0)
+            m_FSBase = assetConfig.GetString("BaseDirectory", String.Empty);
+            if (m_FSBase == String.Empty)
             {
-                throw new Exception("Error connecting to HDFS");
+                m_log.ErrorFormat("[ASSET]: BaseDirectory not specified");
+                throw new Exception("Configuration error");
             }
 
             string loader = assetConfig.GetString("DefaultAssetLoader", string.Empty);
@@ -127,7 +140,7 @@ namespace Careminster
                             Store(a, false);
                         });
             }
-            m_log.Info("[ASSET CONNECTOR]: FS asset service enabled");
+            m_log.Info("[ASSET]: FS asset service enabled");
 
             m_WriterThread = new Thread(Writer);
             m_WriterThread.Start();
@@ -139,26 +152,27 @@ namespace Careminster
         {
             while (true)
             {
-                Thread.Sleep(5000);
+                Thread.Sleep(60000);
                  
                 lock (m_statsLock)
                 {
                     if (m_readCount > 0)
                     {
                         double avg = (double)m_readTicks / (double)m_readCount;
-                        if (avg > 10000)
-                            Environment.Exit(0);
-//                        m_log.InfoFormat("[ASSET CONNECTOR]: Read stats: {0} files, {1} ticks, avg {2}", m_readCount, m_readTicks, (double)m_readTicks / (double)m_readCount);
+//                        if (avg > 10000)
+//                            Environment.Exit(0);
+                        m_log.InfoFormat("[ASSET]: Read stats: {0} files, {1} ticks, avg {2}, missing {3}", m_readCount, m_readTicks, (double)m_readTicks / (double)m_readCount, m_missingAssets);
                     }
                     m_readCount = 0;
                     m_readTicks = 0;
+                    m_missingAssets = 0;
                 }
             }
         }
 
         private void Writer()
         {
-            m_log.Info("[ASSET CONNECTOR]: Writer started");
+            m_log.Info("[ASSET]: Writer started");
 
             while (true)
             {
@@ -171,15 +185,15 @@ namespace Careminster
                     {
                         string hash = Path.GetFileNameWithoutExtension(files[i]);
                         string s = HashToFile(hash);
+                        string diskFile = Path.Combine(m_FSBase, s);
 
-                        // TODO: Add writing code
-
-                        File.Delete(files[i]);
+                        Directory.CreateDirectory(Path.GetDirectoryName(diskFile));
+                        File.Move(files[i], diskFile);
                     }
                     int totalTicks = System.Environment.TickCount - tickCount;
                     if (totalTicks > 0) // Wrap?
                     {
-                        m_log.InfoFormat("[ASSET CONNECTOR]: Write cycle complete, {0} files, {1} ticks, avg {2}", files.Length, totalTicks, (double)totalTicks / (double)files.Length);
+                        m_log.InfoFormat("[ASSET]: Write cycle complete, {0} files, {1} ticks, avg {2}", files.Length, totalTicks, (double)totalTicks / (double)files.Length);
                     }
                 }
 
@@ -196,8 +210,7 @@ namespace Careminster
 
         public string HashToPath(string hash)
         {
-            return new String(new char[] {Path.DirectorySeparatorChar}) + 
-                   Path.Combine(hash.Substring(0, 2),
+            return Path.Combine(hash.Substring(0, 2),
                    Path.Combine(hash.Substring(2, 2),
                    Path.Combine(hash.Substring(4, 2),
                    hash.Substring(6, 4))));
@@ -246,7 +259,8 @@ namespace Careminster
                 }
                 if (asset == null)
                 {
-                    m_log.InfoFormat("[ASSET]: Asset {0} not found", id);
+//                    m_log.InfoFormat("[ASSET]: Asset {0} not found", id);
+                    m_missingAssets++;
                 }
                 return asset;
             }
@@ -254,10 +268,10 @@ namespace Careminster
             newAsset.Metadata = metadata;
             try
             {
-                newAsset.Data = GetHdfsData(hash);
+                newAsset.Data = GetFsData(hash);
                 if (newAsset.Data.Length == 0)
                 {
-                    m_log.InfoFormat("[ASSET]: Asset {0}, hash {1} not found in HDFS", id, hash);
+                    m_log.InfoFormat("[ASSET]: Asset {0}, hash {1} not found in FS", id, hash);
                 }
 
                 lock (m_statsLock)
@@ -270,6 +284,7 @@ namespace Careminster
             catch (Exception exception)
             {
                 m_log.Error(exception.ToString());
+                Thread.Sleep(5000);
                 Environment.Exit(1);
                 return null;
             }
@@ -287,7 +302,7 @@ namespace Careminster
             if (m_DataConnector.Get(id, out hash) == null)
                 return null;
 
-            return GetHdfsData(hash);
+            return GetFsData(hash);
         }
 
         public bool Get(string id, Object sender, AssetRetrieved handler)
@@ -299,7 +314,7 @@ namespace Careminster
             return true;
         }
 
-        public byte[] GetHdfsData(string hash)
+        public byte[] GetFsData(string hash)
         {
             string spoolFile = Path.Combine(m_SpoolDirectory, hash + ".asset");
 
@@ -317,9 +332,20 @@ namespace Careminster
             }
 
             string file = HashToFile(hash);
+            string diskFile = Path.Combine(m_FSBase, file);
 
-            // TODO: Add reding code
+            if (File.Exists(diskFile))
+            {
+                try
+                {
+                    byte[] content = File.ReadAllBytes(diskFile);
 
+                    return content;
+                }
+                catch
+                {
+                }
+            }
             return null;
 
         }

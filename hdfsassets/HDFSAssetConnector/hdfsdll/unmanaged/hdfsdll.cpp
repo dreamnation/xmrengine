@@ -1,3 +1,10 @@
+////////////////////////////////////////////////////////////////
+//
+// (c) 2009, 2010 Careminster Limited and Melanie Thielker
+//
+// All rights reserved
+//
+
 #include <hdfs.h>
 #include <stdio.h>
 #include <stdlib.h>

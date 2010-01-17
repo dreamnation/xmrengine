@@ -1,3 +1,10 @@
+////////////////////////////////////////////////////////////////
+//
+// (c) 2009, 2010 Careminster Limited and Melanie Thielker
+//
+// All rights reserved
+//
+
 using System;
 using System.Reflection;
 using OpenSim.Framework;
@@ -23,11 +30,13 @@ namespace Careminster
 
         protected MySqlConnection m_Connection = null;
         protected string m_ConnectionString;
+        protected string m_Table;
         protected Object m_connLock = new Object();
 
-        public FSAssetConnectorData(string connectionString)
+        public FSAssetConnectorData(string connectionString, string table)
         {
             m_ConnectionString = connectionString;
+            m_Table = table;
 
             OpenDatabase();
         }
@@ -104,7 +113,7 @@ namespace Careminster
 
             MySqlCommand cmd = new MySqlCommand();
 
-            cmd.CommandText = "select id, name, description, type, hash, create_time from hdfsassets where id = ?id";
+            cmd.CommandText = String.Format("select id, name, description, type, hash, create_time from {0} where id = ?id", m_Table);
             cmd.Parameters.AddWithValue("?id", id);
 
             IDataReader reader = ExecuteReader(cmd);
@@ -131,7 +140,7 @@ namespace Careminster
 
             reader.Close();
 
-            cmd.CommandText = "update hdfsassets set access_time = UNIX_TIMESTAMP() where id = ?id";
+            cmd.CommandText = String.Format("update {0} set access_time = UNIX_TIMESTAMP() where id = ?id", m_Table);
 
             cmd.ExecuteNonQuery();
 
@@ -163,7 +172,7 @@ namespace Careminster
 
             if (existingAsset == null)
             {
-                cmd.CommandText = "insert into hdfsassets (id, name, description, type, hash, create_time, access_time) values ( ?id, ?name, ?description, ?type, ?hash, UNIX_TIMESTAMP(), UNIX_TIMESTAMP())";
+                cmd.CommandText = String.Format("insert into {0} (id, name, description, type, hash, create_time, access_time) values ( ?id, ?name, ?description, ?type, ?hash, UNIX_TIMESTAMP(), UNIX_TIMESTAMP())", m_Table);
 
                 ExecuteNonQuery(cmd);
 
@@ -172,7 +181,7 @@ namespace Careminster
                 return;
             }
 
-            cmd.CommandText = "update hdfsassets set hash = ?hash, access_time = UNIX_TIMESTAMP() where id = ?id";
+            cmd.CommandText = String.Format("update {0} set hash = ?hash, access_time = UNIX_TIMESTAMP() where id = ?id", m_Table);
 
             ExecuteNonQuery(cmd);
 
@@ -183,7 +192,7 @@ namespace Careminster
         {
             MySqlCommand cmd = m_Connection.CreateCommand();
 
-            cmd.CommandText = "select count(*) as count from hdfsassets";
+            cmd.CommandText = String.Format("select count(*) as count from {0}", m_Table);
 
             IDataReader reader = ExecuteReader(cmd);
 
@@ -201,7 +210,7 @@ namespace Careminster
         {
             MySqlCommand cmd = m_Connection.CreateCommand();
 
-            cmd.CommandText = "delete from hdfsassets where id = ?id";
+            cmd.CommandText = String.Format("delete from {0} where id = ?id", m_Table);
 
             cmd.Parameters.AddWithValue("?id", id);
 
