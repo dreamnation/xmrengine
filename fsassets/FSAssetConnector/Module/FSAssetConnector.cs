@@ -411,19 +411,21 @@ namespace Careminster
 
         public bool UpdateContent(string id, byte[] data)
         {
-            string oldhash;
-            AssetMetadata meta = m_DataConnector.Get(id, out oldhash);
+            return false;
 
-            if (meta == null)
-                return false;
-
-            AssetBase asset = new AssetBase();
-            asset.Metadata = meta;
-            asset.Data = data;
-
-            Store(asset);
-
-            return true;
+//            string oldhash;
+//            AssetMetadata meta = m_DataConnector.Get(id, out oldhash);
+//
+//            if (meta == null)
+//                return false;
+//
+//            AssetBase asset = new AssetBase();
+//            asset.Metadata = meta;
+//            asset.Data = data;
+//
+//            Store(asset);
+//
+//            return true;
         }
 
         public bool Delete(string id)
