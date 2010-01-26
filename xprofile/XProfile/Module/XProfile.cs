@@ -272,6 +272,7 @@ namespace Careminster.Profile
             profileData.Data["ImageID"] = newProfile.Image.ToString();
             profileData.Data["ProfileText"] = newProfile.AboutText;
             profileData.Data["FirstLifeText"] = newProfile.FirstLifeAboutText;
+            profileData.Data["FirstLifeImageID"] = newProfile.FirstLifeImage.ToString();
             profileData.Data["ProfileUrl"] = newProfile.ProfileUrl;
 
             if (m_ProfileTable.Store(profileData))
