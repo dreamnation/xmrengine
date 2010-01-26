@@ -207,7 +207,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void Dispose()
         {
-            m_Part.RemoveScriptEvents(m_ItemID);
+//          This is now done in Scene
+//            m_Part.RemoveScriptEvents(m_ItemID);
             AsyncCommandManager.RemoveScript(m_Engine, m_LocalID, m_ItemID);
             m_Loader.Dispose();
             m_Loader = null;
