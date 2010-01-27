@@ -17,6 +17,7 @@ using OpenSim.Region.Framework.Scenes;
 using OpenSim.Framework.Communications.Cache;
 using MySql.Data.MySqlClient;
 using System.Data;
+using OpenSim.Services.Interfaces;
 
 namespace Careminster.Modules.Groups
 {
@@ -693,8 +694,8 @@ Console.WriteLine("==> Session ID {0} UUID {1}", imSessionID.ToString(), id.ToSt
                         return;
                     }
 
-                    CachedUserInfo profile = ((Scene)(client.Scene)).CommsManager.UserProfileCacheService.GetUserDetails(client.AgentId);
-                    if (profile == null)
+                    IInventoryService invService = client.Scene.RequestModuleInterface<IInventoryService>();
+                    if (invService == null)
                     {
                         r.Close();
                         cmd.Dispose();
@@ -717,12 +718,12 @@ Console.WriteLine("==> Session ID {0} UUID {1}", imSessionID.ToString(), id.ToSt
                     item.GroupID = UUID.Zero;
                     item.Flags = Convert.ToUInt32(r["flags"]);
                     item.CreationDate = Util.UnixTimeSinceEpoch();
-                    item.Folder = profile.FindFolderForType(item.AssetType).ID;
+                    item.Folder = invService.GetFolderForType(client.AgentId, (AssetType)item.AssetType).ID;
 
                     r.Close();
                     cmd.Dispose();
 
-                    ((Scene)(client.Scene)).AddInventoryItem(client, item);
+                    invService.AddItem(item);
                     client.SendBulkUpdateInventory(item);
 
                     return;
@@ -800,25 +801,21 @@ Console.WriteLine("==> Session ID {0} UUID {1}", imSessionID.ToString(), id.ToSt
 
                             Console.WriteLine("==> {0} {1}", itemID.ToString(), ownerID.ToString());
 
-                            CachedUserInfo profile = ((Scene)(client.Scene)).CommsManager.UserProfileCacheService.GetUserDetails(ownerID);
+                            IInventoryService invService = client.Scene.RequestModuleInterface<IInventoryService>();
+                            InventoryItemBase item = new InventoryItemBase(itemID, client.AgentId);
+                            item = invService.GetItem(item);
 
-                            if (profile.RootFolder != null)
+                            if (item != null)
                             {
-                                InventoryItemBase item =
-                                        profile.RootFolder.FindItem(itemID);
-
-                                if (item != null)
-                                {
-                                    AssetType = item.AssetType;
-                                    AttachmentName = item.Name;
-                                    HasAttachment = 1;
-                                    InvType = item.InvType;
-                                    AssetID = item.AssetID;
-                                    CreatorID = item.CreatorIdAsUuid;
-                                    NextOwnerPerms = (int)item.NextPermissions;
-                                    Flags = (int)item.Flags;
-                                    Description = item.Description;
-                                }
+                                AssetType = item.AssetType;
+                                AttachmentName = item.Name;
+                                HasAttachment = 1;
+                                InvType = item.InvType;
+                                AssetID = item.AssetID;
+                                CreatorID = item.CreatorIdAsUuid;
+                                NextOwnerPerms = (int)item.NextPermissions;
+                                Flags = (int)item.Flags;
+                                Description = item.Description;
                             }
                         }
                     }
