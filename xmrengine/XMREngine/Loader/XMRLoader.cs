@@ -16,45 +16,13 @@ using MMR;
 
 namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
 {
-    [Flags]
-    public enum scriptEvents : int
-    {
-        None = 0,
-        attach = 1,
-        collision = 16,
-        collision_end = 32,
-        collision_start = 64,
-        control = 128,
-        dataserver = 256,
-        email = 512,
-        http_response = 1024,
-        land_collision = 2048,
-        land_collision_end = 4096,
-        land_collision_start = 8192,
-        at_target = 16384,
-        listen = 32768,
-        money = 65536,
-        moving_end = 131072,
-        moving_start = 262144,
-        not_at_rot_target = 524288,
-        not_at_target = 1048576,
-        remote_data = 8388608,
-        run_time_permissions = 268435456,
-        state_entry = 1073741824,
-        state_exit = 2,
-        timer = 4,
-        touch = 8,
-        touch_end = 536870912,
-        touch_start = 2097152,
-        object_rez = 4194304
-    }
-
     public class XMRLoader : MarshalByRefObject, IDisposable, ISponsor
     {
         private ScriptBaseClass m_ScriptBase;
         private int m_Renew = 10;
         private ScriptWrapper m_Wrapper = null;
         private string m_DllName;
+        private string m_DescName;
         public StateChangeDelegate StateChange;
 
         public override Object InitializeLifetimeService()
@@ -102,12 +70,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
             m_ScriptBase.InitApi(name, api);
         }
 
-        public Exception Load(string dllName)
+        public Exception Load(string dllName, string descName)
         {
-            m_DllName = dllName;
-
-            string descName = m_ScriptBase.llGetObjectName() + ":" +
-                              m_ScriptBase.llGetScriptName();
+            m_DllName  = dllName;
+            m_DescName = descName;
 
             try
             {
@@ -128,6 +94,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
             m_Wrapper.stateChange = CallLoaderStateChange;
 
             return null;
+        }
+
+        public string GetStateName(int stateCode)
+        {
+            return m_Wrapper.GetStateName(stateCode);
         }
 
         public Exception PostEvent(string eventName, Object[] args)
@@ -153,7 +124,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
             m_Wrapper.Dispose();
             m_Wrapper = null;
 
-            Load(m_DllName);
+            Load(m_DllName, m_DescName);
         }
 
         public int StateCode
@@ -163,30 +134,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
 
         public int GetStateEventFlags(int stateCode)
         {
-            if (stateCode < 0 || stateCode >= m_Wrapper.scriptEventHandlerTable.GetLength(0))
+            if ((stateCode < 0) ||
+                (stateCode >= m_Wrapper.scriptEventHandlerTable.GetLength(0)))
+            {
                 return 0;
+            }
 
             int code = 0;
-
-            ScriptEventHandler h;
-
-            for (int i = 0 ; i < m_Wrapper.scriptEventHandlerTable.GetLength(1) ; i++ )
+            for (int i = 0 ; i < 32; i ++)
             {
-                h = m_Wrapper.scriptEventHandlerTable[stateCode, i];
-
-                if (h != null)
+                if (m_Wrapper.scriptEventHandlerTable[stateCode, i] != null)
                 {
-                    ScriptEventCode c = (ScriptEventCode)i;
-                    string eventName = c.ToString();
-
-                    try
-                    {
-                        scriptEvents scriptEventFlag = (scriptEvents)Enum.Parse(typeof(scriptEvents), eventName);
-                        code |= (int)scriptEventFlag;
-                    }
-                    catch
-                    {
-                    }
+                    code |= 1 << i;
                 }
             }
 
