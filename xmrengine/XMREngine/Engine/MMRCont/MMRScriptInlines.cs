@@ -131,6 +131,7 @@ namespace MMR
 				"llDeleteSubString",
 				"llDumpList2String",
 				"llEscapeURL",
+				"llEuler2Rot",
 				"llGetListEntryType",
 				"llGetListLength",
 				"llGetSubString",

@@ -35,7 +35,7 @@ namespace MMR
 			LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
 		public static readonly string COMPILED_VERSION_NAME = "XMRCompiledVersion";
-		public static readonly int COMPILED_VERSION_VALUE = 2;
+		public static readonly int COMPILED_VERSION_VALUE = 3;
 
 		public static readonly int CALL_FRAME_MEMUSE = 64;
 		public static readonly int STRING_LEN_TO_MEMUSE = 2;
@@ -428,7 +428,7 @@ namespace MMR
 			UTF8Encoding encoding = new UTF8Encoding();
 			string text = encoding.GetString(objectFile.ToArray());
 
-			if (debugFileName != String.Empty)
+			if ((debugFileName != null) && (debugFileName != String.Empty))
 			{
 				FileStream dfs = File.Create(debugFileName);
 				StreamWriter dsw = new StreamWriter(dfs);

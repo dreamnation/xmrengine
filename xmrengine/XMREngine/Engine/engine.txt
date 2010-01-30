@@ -71,6 +71,16 @@ Script thread:
             block until time to run again
 
 
+Timeslice thread:
+
+    XMRSched.TimeSliceThread()
+        Thread.Sleep()
+        XMREngine.TimeSlice()
+            XMRInstance.TimeSlice()
+                XMRLoader.TimeSlice()
+                    set ScriptWrapper.suspendOnCheckRun = true
+
+
 --------------------------------------------------------------------------------
 
 Outside app domain:

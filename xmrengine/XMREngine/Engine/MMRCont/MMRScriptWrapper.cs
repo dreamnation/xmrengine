@@ -36,7 +36,7 @@ namespace MMR {
 	/*
 	 * All scripts must inherit from this class.
 	 */
-	public abstract class ScriptWrapper : MarshalByRefObject, IDisposable {
+	public abstract class ScriptWrapper : IDisposable {
 		public string instanceNo;
 
 		public int stateCode = 0;                 // state the script is in (0 = 'default')
@@ -106,6 +106,7 @@ namespace MMR {
 		 *   1) continuation object itself
 		 *   2) writer stream object references are translated to null
 		 *   3) subsArray object itself
+		 *   4) dllsArray object itself
 		 *
 		 * So any additional object references on the stack we want translated must 
 		 * be placed in subsArray[].
@@ -589,13 +590,16 @@ namespace MMR {
 			 */
 			LockMicrothread (3);
 			except = null;
-			if (eventCode != ScriptEventCode.None) {
+			ScriptEventCode ec = eventCode;
+			if (ec != ScriptEventCode.None) {
 				except = microthread.ResumeEx (except);
 			}
 			idle = (eventCode == ScriptEventCode.None);
 			DebPrint ("ResumeEventHandler*: {0} idle={1}", this.instanceNo, idle);
 			UnlkMicrothread (3);
-			if (except != null) throw except;
+			if (except != null) {
+				throw except;
+			}
 
 			/*
 			 * Tell the caller whether or not we have anything more to do.
@@ -667,7 +671,8 @@ namespace MMR {
 				 * SUSPENDED state is with a stack and which eventCode it was processing.
 				 * IDLE state is without a stack and ScriptEventCode.None indicating it was idle.
 				 */
-				written = (this.eventCode != ScriptEventCode.None);
+				ScriptEventCode ec = this.eventCode;
+				written = (ec != ScriptEventCode.None);
 
 				/*
 				 * Resume the microthread to actually write the network stream.
@@ -676,7 +681,10 @@ namespace MMR {
 				 */
 				if (written) {
 					this.migrateComplete = false;
-					this.microthread.Resume ();
+					Exception except = this.microthread.ResumeEx (null);
+					if (except != null) {
+						throw except;
+					}
 					if (!this.migrateComplete) throw new Exception ("migrate out did not complete");
 				}
 
@@ -947,6 +955,7 @@ namespace MMR {
 		{
 			Exception except = null;
 			int oldStateCode = -1;
+			ScriptWrapper sw = scriptWrapper;
 
 			try {
 				int newStateCode;
@@ -957,8 +966,8 @@ namespace MMR {
 				 * returns with minimal delay.  We will resume from this
 				 * point when microthread.Resume() is called.
 				 */
-				scriptWrapper.suspendOnCheckRun = true;
-				scriptWrapper.continuation.CheckRun ();
+				sw.suspendOnCheckRun = true;
+				this.CheckRun ();
 
 				/*
 				 * Process event given by 'stateCode' and 'eventCode'.
@@ -967,15 +976,17 @@ namespace MMR {
 				 * We do not have to check for null 'seh' here because
 				 * StartEventHandler() already checked the table entry.
 				 */
-				scriptWrapper.stateChanged = false;
-				oldStateCode = scriptWrapper.stateCode;
-				scriptWrapper.DebPrint ("RunContEx*: {0} {1}:{2} begin", 
-						scriptWrapper.instanceNo, scriptWrapper.GetStateName (oldStateCode), scriptWrapper.eventCode);
-				seh = scriptWrapper.scriptEventHandlerTable[oldStateCode,(int)scriptWrapper.eventCode];
-				seh (scriptWrapper);
+				sw.stateChanged = false;
+				oldStateCode = sw.stateCode;
+				sw.DebPrint ("RunContEx*: {0} {1}:{2} begin", 
+						sw.instanceNo, 
+						sw.GetStateName (oldStateCode), 
+						sw.eventCode);
+				seh = sw.scriptEventHandlerTable[oldStateCode,(int)sw.eventCode];
+				seh (sw);
 
-				scriptWrapper.ehArgs = null;  // we are done with them and no args for
-				                              // exit_state()/enter_state() anyway
+				sw.ehArgs = null;  // we are done with them and no args for
+				                   // exit_state()/enter_state() anyway
 
 				/*
 				 * Note that 'seh' is now invalid, as the continuation restore cannot restore it.
@@ -987,43 +998,43 @@ namespace MMR {
 				 * If event handler changed state, call exit_state() on the old state,
 				 * change the state, then call enter_state() on the new state.
 				 */
-				while (scriptWrapper.stateChanged) {
+				while (sw.stateChanged) {
 
 					/*
 					 * Get what state they transitioned to.
 					 */
-					newStateCode = scriptWrapper.stateCode;
+					newStateCode = sw.stateCode;
 
 					/*
 					 * Maybe print out what happened.
 					 */
-					scriptWrapper.DebPrint ("RunContEx*: {0} {1}:{2} -> {3}", 
-							scriptWrapper.instanceNo, scriptWrapper.GetStateName (oldStateCode), 
-							scriptWrapper.eventCode, scriptWrapper.GetStateName (newStateCode));
+					sw.DebPrint ("RunContEx*: {0} {1}:{2} -> {3}", 
+							sw.instanceNo, sw.GetStateName (oldStateCode), 
+							sw.eventCode, sw.GetStateName (newStateCode));
 
 					/*
 					 * Restore to old state and call its state_exit() handler.
 					 */
-					scriptWrapper.stateChanged = false;
-					scriptWrapper.eventCode = ScriptEventCode.state_exit;
-					scriptWrapper.stateCode = oldStateCode;
-					seh = scriptWrapper.scriptEventHandlerTable[oldStateCode,(int)ScriptEventCode.state_exit];
-					if (seh != null) seh (scriptWrapper);
+					sw.stateChanged = false;
+					sw.eventCode = ScriptEventCode.state_exit;
+					sw.stateCode = oldStateCode;
+					seh = sw.scriptEventHandlerTable[oldStateCode,(int)ScriptEventCode.state_exit];
+					if (seh != null) seh (sw);
 
 					/*
 					 * Ignore any state change by state_exit() handlers.
 					 */
-					if (scriptWrapper.stateChanged) {
-						scriptWrapper.DebPrint ("RunContEx*: {0} ignoring {1}:state_exit() state change -> {2}", 
-								scriptWrapper.instanceNo, scriptWrapper.GetStateName (oldStateCode), 
-								scriptWrapper.GetStateName (scriptWrapper.stateCode));
+					if (sw.stateChanged) {
+						sw.DebPrint ("RunContEx*: {0} ignoring {1}:state_exit() state change -> {2}", 
+								sw.instanceNo, sw.GetStateName (oldStateCode), 
+								sw.GetStateName (sw.stateCode));
 					}
 
 					/*
 					 * Now that the old state can't possibly start any more activity,
 					 * cancel any listening handlers, etc, of the old state.
 					 */
-					scriptWrapper.stateChange (scriptWrapper.GetStateName (newStateCode));
+					sw.stateChange (sw.GetStateName (newStateCode));
 
 					/*
 					 * Now the new state becomes the old state in case the new state_entry() changes state again.
@@ -1034,11 +1045,11 @@ namespace MMR {
 					 * Call the new state's state_entry() handler.
 					 * I've seen scripts that change state in the state_entry() handler, so allow for that.
 					 */
-					scriptWrapper.stateChanged = false;
-					scriptWrapper.eventCode = ScriptEventCode.state_entry;
-					scriptWrapper.stateCode = newStateCode;
-					seh = scriptWrapper.scriptEventHandlerTable[newStateCode,(int)ScriptEventCode.state_entry];
-					if (seh != null) seh (scriptWrapper);
+					sw.stateChanged = false;
+					sw.eventCode = ScriptEventCode.state_entry;
+					sw.stateCode = newStateCode;
+					seh = sw.scriptEventHandlerTable[newStateCode,(int)ScriptEventCode.state_entry];
+					if (seh != null) seh (sw);
 				}
 			} catch (Exception e) {
 				except = e;
@@ -1047,9 +1058,9 @@ namespace MMR {
 			/*
 			 * The event handler has run to completion.
 			 */
-			scriptWrapper.DebPrint ("RunContEx*: {0} {1}:{2} done", 
-					scriptWrapper.instanceNo, scriptWrapper.GetStateName (oldStateCode), scriptWrapper.eventCode);
-			scriptWrapper.eventCode = ScriptEventCode.None;
+			sw.DebPrint ("RunContEx*: {0} {1}:{2} done", 
+					sw.instanceNo, sw.GetStateName (oldStateCode), sw.eventCode);
+			sw.eventCode = ScriptEventCode.None;
 			return except;
 		}
 
@@ -1057,7 +1068,7 @@ namespace MMR {
 		 * The script code should call this routine whenever it is
 		 * convenient to perform a migation or switch microthreads.
 		 *
-		 * Note:  I tried moving this to ScriptWrapper itslef but Save() chokes on it because it gets wrapped
+		 * Note:  I tried moving this to ScriptWrapper itself but Save() chokes on it because it gets wrapped
 		 *        by a marshalling wrapper, presumably because ScriptWrapper is tagged with MarshalByRefObj.
 		 */
 		[MMRContableAttribute ()]
