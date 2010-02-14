@@ -23,7 +23,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
         private ScriptWrapper m_Wrapper = null;
         private string m_DllName;
         private string m_DescName;
-        public StateChangeDelegate StateChange;
+        public StateChangeDelegate m_StateChange;
 
         public override Object InitializeLifetimeService()
         {
@@ -46,6 +46,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
             m_ScriptBase = new ScriptBaseClass();
         }
 
+        ////~XMRLoader()
+        ////{
+        ////    if (m_DescName != null) {
+        ////        Console.WriteLine("[XMREngine] ~XMRLoader*: gc " + m_DescName);
+        ////    } else {
+        ////        Console.WriteLine("[XMREngine] ~XMRLoader*: gc (unknown)");
+        ////    }
+        ////}
+
         public void Dispose()
         {
             if (m_Wrapper != null)
@@ -53,7 +62,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
             m_Wrapper = null;
 
             ILease lease = (ILease)GetLifetimeService();
-
             lease.Unregister(this);
             m_Renew = 0;
         }
@@ -185,7 +193,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
 
         private void CallLoaderStateChange(string newState)
         {
-            StateChange(newState);
+            m_StateChange(newState);
         }
     }
 }

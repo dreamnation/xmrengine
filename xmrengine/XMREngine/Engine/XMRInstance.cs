@@ -10,6 +10,7 @@ using System.Threading;
 using System.Reflection;
 using System.Collections;
 using System.Collections.Generic;
+using System.Runtime.Remoting.Lifetime;
 using System.Security.Policy;
 using System.IO;
 using System.Xml;
@@ -36,7 +37,7 @@ using log4net;
 //
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
-    public class XMRInstance : MarshalByRefObject, IDisposable
+    public class XMRInstance : MarshalByRefObject, IDisposable, ISponsor
     {
         public const int MAXEVENTQUEUE = 64;
 
@@ -70,6 +71,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private StateSource m_StateSource;
         private string m_DescName;
         private ArrayList m_CompilerErrors;
+        private int m_Renew = 10;
 
         // If code needs to have both m_QueueLock and m_RunLock,
         // be sure to lock m_RunLock first then m_QueueLock, as
@@ -109,10 +111,26 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 new Dictionary<string,IScriptApi>();
 
 
-        public XMRInstance(uint localID, UUID itemID, string script,
-                           int startParam, bool postOnRez, int stateSource,
-                           XMREngine engine, SceneObjectPart part, 
-                           TaskInventoryItem item, string scriptBasePath)
+        public override Object InitializeLifetimeService()
+        {
+            ILease lease = (ILease)base.InitializeLifetimeService();
+            if (lease.CurrentState == LeaseState.Initial)
+            {
+                lease.InitialLeaseTime = TimeSpan.FromSeconds(10);
+                lease.RenewOnCallTime = TimeSpan.FromSeconds(10);
+                lease.SponsorshipTimeout = TimeSpan.FromSeconds(20);
+
+                lease.Register(this);
+            }
+
+            return lease;
+        }
+
+
+        public void Construct(uint localID, UUID itemID, string script,
+                              int startParam, bool postOnRez, int stateSource,
+                              XMREngine engine, SceneObjectPart part, 
+                              TaskInventoryItem item, string scriptBasePath)
         {
             m_LocalID     = localID;
             m_ItemID      = itemID;
@@ -159,6 +177,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_Part.SetScriptEvents(m_ItemID, m_Loader.GetStateEventFlags(0));
         }
 
+        ////~XMRInstance()
+        ////{
+        ////    m_log.Debug("[XMREngine] ~XMRInstance*: gc " + m_ItemID.ToString() + " " + m_DescName);
+        ////}
+
         public void Dispose()
         {
             m_Part.RemoveScriptEvents(m_ItemID);
@@ -169,6 +192,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 m_Loader = null;
             }
             AppDomDecRefs(true);
+
+            ILease lease = (ILease)GetLifetimeService();
+            lease.Unregister(this);
+            m_Renew = 0;
+        }
+
+        public TimeSpan Renewal(ILease lease)
+        {
+            if (m_Renew == 0) {
+                lease.Unregister(this);
+            }
+            return TimeSpan.FromSeconds(m_Renew);
         }
 
         // Called by 'xmr test ls' console command
@@ -292,6 +327,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         String.Format("({0},{1}) Error: {2}", token.line,
                                 token.posn, message));
             }
+            else if (message != null)
+            {
+                m_CompilerErrors.Add(
+                        String.Format("(0,0) Error: {0}", message));
+            }
             else
             {
                 m_CompilerErrors.Add("Error compiling, see exception in log");
@@ -349,7 +389,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         "OpenSim.Region.ScriptEngine.XMREngine.Loader",
                         "OpenSim.Region.ScriptEngine.XMREngine.Loader.XMRLoader");
 
-                m_Loader.StateChange = StateChange;
+                m_Loader.m_StateChange = StateChange;
 
                 Exception e = m_Loader.Load(m_DllFileName, m_DescName);
                 if (e != null)
@@ -1207,7 +1247,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         /*
-         * The script has executed a 'state <newState>;' command.
+         * The script is executing a 'state <newState>;' command.
          * Tell outer layers to cancel any event triggers, like llListen().
          */
         public void StateChange(string newState)

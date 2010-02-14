@@ -61,6 +61,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public  AssemblyResolver m_AssemblyResolver = null;
         private Dictionary<UUID, XMRInstance> m_Instances =
                 new Dictionary<UUID, XMRInstance>();
+        private Dictionary<UUID, ArrayList> m_ScriptErrors =
+                new Dictionary<UUID, ArrayList>();
         private bool m_WakeUpFlag = false;
         private object m_WakeUpLock = new object();
         private Dictionary<UUID, List<UUID>> m_Objects =
@@ -627,14 +629,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_log.DebugFormat("[XMREngine]: Running script {0}, asset {1}",
                     item.Name, item.AssetID);
 
-            XMRInstance instance;
+            XMRInstance instance = new XMRInstance();
             try {
-                instance = new XMRInstance (localID, itemID, script, 
-                                            startParam, postOnRez, stateSource, 
-                                            this, part, item, m_ScriptBasePath);
+                instance.Construct(localID, itemID, script, 
+                                   startParam, postOnRez, stateSource, 
+                                   this, part, item, m_ScriptBasePath);
             } catch (Exception e) {
                 m_log.DebugFormat("[XMREngine]: Error starting script: {0}",
                                   e.ToString());
+                lock (m_ScriptErrors) {
+                    ArrayList errors = instance.GetScriptErrors();
+                    if (errors == null) {
+                        errors = new ArrayList();
+                        errors.Add(e.ToString());
+                    }
+                    m_ScriptErrors[itemID] = errors;
+                }
                 return;
             }
 
@@ -871,16 +881,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public ArrayList GetScriptErrors(UUID itemID)
         {
-            XMRInstance instance;
+            ArrayList errors;
 
-            lock (m_Instances)
+            lock (m_ScriptErrors)
             {
-                if (!m_Instances.TryGetValue(itemID, out instance))
-                {
-                    return null;
+                if (m_ScriptErrors.TryGetValue(itemID, out errors)) {
+                    m_ScriptErrors.Remove(itemID);
+                } else {
+                    errors = null;
                 }
             }
-            return instance.GetScriptErrors();
+            if (errors == null) {
+                errors = new ArrayList();
+            }
+            return errors;
         }
 
 //        private void ReplaceAssemblyPath(Byte[] data, string path)
