@@ -212,7 +212,8 @@ namespace MMR {
 					TokenName tokenName = (TokenName)token;
 					token = token.nextToken;
 					if (!(token is TokenKwParOpen)) {
-						ErrorMsg (token, "looking for open paren");
+						ErrorMsg (token, "looking for open paren after assuming " + 
+						                 tokenName.val + " is a function name");
 						token = SkipPastSemi (token);
 						continue;
 					}
