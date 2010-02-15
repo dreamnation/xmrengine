@@ -486,6 +486,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         // Load state from the given XML into the script object
         private void LoadScriptState(XmlDocument doc)
         {
+            DetectParams[] detParams;
 
             // Everything we know is enclosed in <ScriptState>...</ScriptState>
             XmlElement scriptStateN = (XmlElement)doc.SelectSingleNode("ScriptState");
@@ -514,45 +515,52 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_Item.PermsMask = Convert.ToInt32(permissionsN.GetAttribute("mask"));
             m_Part.Inventory.UpdateInventoryItem(m_Item);
 
-            if (RestoreDetectParams(scriptStateN))
+            // get values used by stuff like llDetectedGrab, etc.
+            detParams = RestoreDetectParams(scriptStateN);
+
+            // Restore timers and listeners
+            XmlElement pluginN = (XmlElement)scriptStateN.SelectSingleNode("Plugins");
+            Object[] pluginData = ReadList(pluginN).Data;
+
+            // See if we are supposed to send an 'on_rez' event
+            if (m_PostOnRez)
             {
-                XmlElement pluginN = (XmlElement)scriptStateN.SelectSingleNode("Plugins");
-                Object[] pluginData = ReadList(pluginN).Data;
-
-                AsyncCommandManager.CreateFromData(m_Engine,
-                        m_LocalID, m_ItemID, m_Part.UUID,
-                        pluginData);
-
-                if (m_PostOnRez)
-                {
-                    PostEvent(new EventParams("on_rez",
-                            new Object[] { startparam }, new DetectParams[0]));
-                }
-
-                if (m_StateSource == StateSource.AttachedRez)
-                {
-                    PostEvent(new EventParams("attach",
-                            new object[] { m_Part.AttachedAvatar.ToString() }, 
-                            new DetectParams[0]));
-                }
+                PostEvent(new EventParams("on_rez",
+                        new Object[] { startparam }, new DetectParams[0]));
             }
 
+            // Maybe an 'attach' event too
+            if (m_StateSource == StateSource.AttachedRez)
+            {
+                PostEvent(new EventParams("attach",
+                        new object[] { m_Part.AttachedAvatar.ToString() }, 
+                        new DetectParams[0]));
+            }
+
+            // Script's global variables and stack contents
             XmlElement snapshotN = 
                     (XmlElement)scriptStateN.SelectSingleNode("Snapshot");
             Byte[] data = Convert.FromBase64String(snapshotN.InnerText);
             m_IsIdle = !m_Loader.RestoreSnapshot(data);
 
             // Now that we can't throw an exception, do final updates
-            m_StartParam = startparam;
+            AsyncCommandManager.CreateFromData(m_Engine,
+                    m_LocalID, m_ItemID, m_Part.UUID,
+                    pluginData);
+            m_DetectParams = detParams;
+            m_StartParam   = startparam;
         }
 
-        private bool RestoreDetectParams(XmlElement scriptStateN)
+        /**
+         * @brief Read llDetectedGrab, etc, values from XML
+         */
+        private DetectParams[] RestoreDetectParams(XmlElement scriptStateN)
         {
             XmlElement detectedN = 
                     (XmlElement)scriptStateN.SelectSingleNode("Detect");
             if (detectedN == null)
             {
-                return false;
+                return null;
             }
 
             List<DetectParams> detected = new List<DetectParams>();
@@ -620,8 +628,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                 detected.Add(d);
             }
-            m_DetectParams = detected.ToArray();
-            return true;
+            return detected.ToArray();
         }
 
         private static LSL_List ReadList(XmlNode parent)

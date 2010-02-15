@@ -423,11 +423,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         // Get script's current state as an XML string
-        // - called by "Take Copy" and when object deleted (ie, moved to Trash)
+        // - called by "Take", "Take Copy" and when object deleted (ie, moved to Trash)
         // This includes both the .state file and the .DLL file contents
         public string GetXMLState(UUID itemID)
         {
             XMRInstance instance;
+
             lock (m_Instances)
             {
                 if (!m_Instances.TryGetValue(itemID, out instance))
