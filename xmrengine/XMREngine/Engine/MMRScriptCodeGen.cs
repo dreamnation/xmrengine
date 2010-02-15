@@ -250,14 +250,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					} else {
 						WriteOutput (declVar, "__sm.__gbl_" + declVar.name.val + " = " + DefaultValue (declVar.type) + ";");
 					}
-					if (declVar.type is TokenTypeList) {
-						WriteOutput (declVar, "__sm.memUsage += __sm.__gbl_" + declVar.name.val + ".Size;");
-					}
-					if (declVar.type is TokenTypeStr) {
-						WriteOutput (declVar, "__sm.memUsage += __sm.__gbl_" + declVar.name.val + ".Length * " + STRING_LEN_TO_MEMUSE + ";");
-					}
 				}
-				WriteOutput (0, "__sm.memUsage += " + initialSize.ToString () + ";");
 
 				/*
 				 * That's all for the constructor.
@@ -633,7 +626,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Output code for the statements and clean up.
 			 */
-			GenMemUseBlockProlog (declFunc.body, true);
 			GenerateFuncBody (declFunc);
 			curDeclFunc = oldDeclFunc;
 		}
@@ -681,11 +673,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			WriteOutput (declFunc, ") {");
 
 			/*
-			 * Account for the call frame and all top-level variables.
-			 */
-			GenMemUseBlockProlog (declFunc.body, true);
-
-			/*
 			 * See if time to suspend in case they are doing a loop with recursion.
 			 */
 			WriteOutput (declFunc.body, TypeName (typeof (ScriptBaseClass)) + " __be = __sm.beAPI;");
@@ -700,7 +687,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		/**
 		 * @brief output function body.
-		 *        the open brace and GenMemUseBlockProlog() has already been output.
+		 *        the open brace has already been output.
 		 */
 		private void GenerateFuncBody (TokenDeclFunc declFunc)
 		{
@@ -721,7 +708,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * All return statements 'goto __Return' so we can do mem use epilog.
 			 */
 			WriteOutput (declFunc.body.closebr, "__Return:;");
-			GenMemUseBlockEpilog (declFunc.body, true);
 			if (declFunc.retType is TokenTypeVoid) {
 				// I had an example where the moron gmcs didn't generate the 'ret' CIL opcode...
 				WriteOutput (declFunc.body.closebr, "return;");
@@ -776,7 +762,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				    (stmtBlock.statements.nextToken != null)) {
 					WriteOutput (stmtBlock, "{");
 				}
-				GenMemUseBlockProlog (stmtBlock, false);
 			}
 
 			/*
@@ -831,7 +816,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * If this is a top-level statement block, the caller must do this as necessary.
 			 */
 			if (!fromFunc) {
-				GenMemUseBlockEpilog (stmtBlock, false);
 				if ((stmtBlock.statements == null) ||
 				    (stmtBlock.statements is TokenDeclVar) ||
 				    (stmtBlock.statements.nextToken != null)) {
@@ -984,14 +968,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
-			 * If we are jumping to an outer block, decrement memory usage by whatever variables we leave behind.
-			 */
-			for (stmtBlock = curStmtBlock; stmtBlock != null; stmtBlock = stmtBlock.outerStmtBlock) {
-				if (stmtBlock == stmtLabel.block) break;
-				GenMemUseBlockEpilog (stmtBlock, false);
-			}
-
-			/*
 			 * Finally output the equivalent 'goto' statement.
 			 */
 			WriteOutput (jumpStmt, "goto __Jump_" + jumpStmt.label.val + ";");
@@ -1120,7 +1096,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				if (rVal != var) {
 					WriteOutput (declVar, var.locstr + " = " + StringWithCast (var.type, rVal) + ";");
 				}
-				GenMemUseIncrement ("__lcl_" + declVar.name.val, declVar.type);
 			} else if (!declVar.preDefd) {
 
 				/*
@@ -1312,12 +1287,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					ErrorMsg (token, "invalid L-value");
 					left = GenerateFromRVal (null, token.rValLeft);
 				} else {
-					GenMemUseDecrement (leftLVal.locstr, leftLVal.type);
 					right = GenerateFromRVal (left, token.rValRight);
 					if (right != left) {
 						WriteOutput (token, leftLVal.locstr + " = " + StringWithCast (leftLVal.type, right) + ";");
 					}
-					GenMemUseIncrement (leftLVal.locstr, leftLVal.type);
 				}
 				return left;
 			}
@@ -1433,11 +1406,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 							if (leftLVal == null) {
 								ErrorMsg (token, "invalid L-value");
 							} else {
-								GenMemUseDecrement (leftLVal.locstr, leftLVal.type);
 								fmt = fmt.Substring (0, whack) + '=' + fmt.Substring (whack + 1);
 								WriteOutput (token, String.Format (fmt, leftLVal.locstr, right.locstr));
 								WriteOutput (token, ";");
-								GenMemUseIncrement (leftLVal.locstr, leftLVal.type);
 							}
 							return left;
 						}
@@ -2165,14 +2136,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void OutputGotoReturn (Token stmt)
 		{
-
-			/*
-			 * If returning from an inner block, pop memory usage for all but the outermost block.
-			 */
-			for (TokenStmtBlock stmtBlock = curStmtBlock; stmtBlock.outerStmtBlock != null; stmtBlock = stmtBlock.outerStmtBlock) {
-				GenMemUseBlockEpilog (stmtBlock, false);
-			}
-
 			/*
 			 * Now we can jump to the common epilog where it will pop memory usage for the outermost block.
 			 */
@@ -2399,109 +2362,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ErrorMsg (type, "duplicate var definition " + name);
 			} else {
 				vars.Add (name, type);
-			}
-		}
-
-		/**
-		 * @brief Generate code at the beginning of a statement block to keep track of memory use in the block.
-		 * @param stmtBlock = statement block { } that was just started
-		 * @param callFrame = true: this is top-level block that defines a function
-		 *                   false: this is an inner-level block
-		 */
-		private void GenMemUseBlockProlog (TokenStmtBlock stmtBlock, bool callFrame)
-		{
-
-			/*
-			 * Total up static memory usage for all variables in the block
-			 * no matter where in the block they are declared.  This is more
-			 * efficient than updating the usage for each individual var as
-			 * it is declared, and easier to manage in case a jump or return
-			 * exits the block.
-			 */
-			int staticSize = 0;
-			if (callFrame) {
-				staticSize = CALL_FRAME_MEMUSE;
-				TokenArgDecl args = stmtBlock.function.argDecl;
-				for (int i = 0; i < args.types.Length; i ++) {
-					TokenType type = args.types[i];
-					staticSize += TokenType.StaticSize (type.typ);
-					if (type is TokenTypeList) {
-						WriteOutput (stmtBlock, "__sm.memUsage += __lcl_" + args.names[i].val + ".Size;");
-					}
-					if (type is TokenTypeStr) {
-						WriteOutput (stmtBlock, "__sm.memUsage += __lcl_" + args.names[i].val + ".Length * " + STRING_LEN_TO_MEMUSE + ";");
-					}
-				}
-			}
-			foreach (KeyValuePair<string, TokenDeclVar> kvp in stmtBlock.variables) {
-				staticSize += TokenType.StaticSize (kvp.Value.type.typ);
-			}
-			if (staticSize > 0) {
-				WriteOutput (stmtBlock, "__sm.memUsage += " + staticSize.ToString () + ";");
-			}
-		}
-
-		/**
-		 * @brief a value was just assigned to a variable
-		 *        adjust memory usage accordingly
-		 */
-		private void GenMemUseDecrement (string locstr, TokenType type)
-		{
-			if (type is TokenTypeList) {
-				WriteOutput (type, "__sm.memUsage -= " + locstr + ".Size;");
-			}
-			if (type is TokenTypeStr) {
-				WriteOutput (type, "__sm.memUsage -= " + locstr + ".Length * " + STRING_LEN_TO_MEMUSE + ";");
-			}
-		}
-		private void GenMemUseIncrement (string locstr, TokenType type)
-		{
-			if (type is TokenTypeList) {
-				WriteOutput (type, "__sm.memUsage += " + locstr + ".Size;");
-			}
-			if (type is TokenTypeStr) {
-				WriteOutput (type, "__sm.memUsage += " + locstr + ".Length * " + STRING_LEN_TO_MEMUSE + ";");
-			}
-		}
-
-		/**
-		 * @brief Generate code at the end of a statement block to keep track of memory use in the block.
-		 * @param stmtBlock = statement block { } that is about to be ended
-		 * @param callFrame = true: this is top-level block that defines a function
-		 *                   false: this is an inner-level block
-		 */
-		private void GenMemUseBlockEpilog (TokenStmtBlock stmtBlock, bool callFrame)
-		{
-			int staticSize = 0;
-			if (callFrame) {
-				staticSize = CALL_FRAME_MEMUSE;
-				TokenArgDecl args = stmtBlock.function.argDecl;
-				for (int i = 0; i < args.types.Length; i ++) {
-					TokenType type = args.types[i];
-					staticSize += TokenType.StaticSize (type.typ);
-					if (type is TokenTypeList) {
-						WriteOutput (stmtBlock.closebr, "__sm.memUsage -= __lcl_" + args.names[i].val + ".Size;");
-					}
-					if (type is TokenTypeStr) {
-						WriteOutput (stmtBlock.closebr, "__sm.memUsage -= __lcl_" + args.names[i].val + ".Length * " + STRING_LEN_TO_MEMUSE + ";");
-					}
-				}
-			}
-			foreach (KeyValuePair<string, TokenDeclVar> kvp in stmtBlock.variables) {
-				staticSize += TokenType.StaticSize (kvp.Value.type.typ);
-			}
-			if (staticSize > 0) {
-				WriteOutput (stmtBlock.closebr, "__sm.memUsage -= " + staticSize.ToString ());
-				foreach (KeyValuePair<string, TokenDeclVar> kvp in stmtBlock.variables) {
-					TokenDeclVar declVar = kvp.Value;
-					if (declVar.type is TokenTypeList) {
-						WriteOutput (stmtBlock.closebr, " + __lcl_" + declVar.name.val + ".Size");
-					}
-					if (declVar.type is TokenTypeStr) {
-						WriteOutput (stmtBlock.closebr, " + __lcl_" + declVar.name.val + ".Length * " + STRING_LEN_TO_MEMUSE);
-					}
-				}
-				WriteOutput (stmtBlock.closebr, ";");
 			}
 		}
 
