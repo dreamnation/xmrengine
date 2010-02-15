@@ -37,6 +37,8 @@ namespace MMR {
 	 * All scripts must inherit from this class.
 	 */
 	public abstract class ScriptWrapper : IDisposable {
+		public static UIntPtr stackSize = (UIntPtr)(2*1024*1024);
+
 		public string instanceNo;
 
 		public int stateCode = 0;                 // state the script is in (0 = 'default')
@@ -895,7 +897,7 @@ namespace MMR {
 
 			public ScriptWrapper scriptWrapper;  // script wrapper we belong to
 
-			public ScriptUThread (string descName) : base (descName) { }
+			public ScriptUThread (string descName) : base (ScriptWrapper.stackSize, descName) { }
 
 			/*
 			 * Called on the microthread stack as part of Start().
