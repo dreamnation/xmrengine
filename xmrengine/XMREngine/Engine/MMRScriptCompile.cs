@@ -13,7 +13,7 @@ using System.Reflection;
 using log4net;
 using OpenMetaverse;
 
-namespace MMR
+namespace OpenSim.Region.ScriptEngine.XMREngine
 {
     public class ScriptCompile
     {
@@ -37,43 +37,40 @@ namespace MMR
                                     string debugFileName,
                                     TokenErrorMessage errorMessage)
         {
-            TokenBegin tokenBegin =
-                        TokenBegin.Construct(errorMessage, source);
-
             string fname = assetID + "_" + (++ fileno).ToString () + "_script_compile";
             string envar = Environment.GetEnvironmentVariable ("MMRScriptCompileSaveSource");
             if ((envar != null) && ((envar[0] & 1) != 0)) {
-                Console.WriteLine ("MMRScriptCopmileSaveSource: saving to {0}.lsl", fname);
+                m_log.DebugFormat("[XMREngine]: MMRScriptCopmileSaveSource: saving to {0}.lsl", fname);
                 File.WriteAllText (fname + ".lsl", source);
             }
 
+            TokenBegin tokenBegin =
+                        TokenBegin.Construct(errorMessage, source);
             if (tokenBegin == null)
             {
-                m_log.DebugFormat("[MMR]: Tokenizing error on {0}", assetID);
-
+                m_log.DebugFormat("[XMREngine]: Tokenizing error on {0}", assetID);
                 return false;
             }
 
             TokenScript tokenScript = ScriptReduce.Reduce(tokenBegin);
-
             if (tokenScript == null)
             {
-                m_log.DebugFormat("[MMR]: Reducing error on {0}", assetID);
-
+                m_log.DebugFormat("[XMREngine]: Reducing error on {0}", assetID);
                 return false;
             }
 
             envar = Environment.GetEnvironmentVariable ("MMRScriptCompileSaveCSharp");
             if ((envar != null) && ((envar[0] & 1) != 0)) {
-                Console.WriteLine ("MMRScriptCopmileSaveCSharp: saving to {0}.cs", fname);
+                m_log.DebugFormat("[XMREngine]: MMRScriptCopmileSaveCSharp: saving to {0}.cs", fname);
                 debugFileName = fname + ".cs";
             }
 
-            bool ok = ScriptCodeGen.CodeGen(tokenScript, binaryName,
-                    debugFileName);
-
+            bool ok = ScriptCodeGen.CodeGen(tokenScript, binaryName, debugFileName);
             if (!ok)
+            {
+                m_log.DebugFormat("[XMREngine]: Codegen error on {0}", assetID);
                 return false;
+            }
 
             return true;
         }

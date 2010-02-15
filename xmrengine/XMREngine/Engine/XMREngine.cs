@@ -30,7 +30,6 @@ using Mono.Addins;
 using OpenMetaverse;
 using log4net;
 using OpenSim.Region.ScriptEngine.XMREngine.Loader;
-using MMR;
 using LSL_Float = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLFloat;
 using LSL_Integer = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLInteger;
 using LSL_Key = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
@@ -636,17 +635,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                                    this, part, item, m_ScriptBasePath);
             } catch (Exception e) {
                 m_log.DebugFormat("[XMREngine]: Error starting script: {0}",
-                                  e.ToString());
+                                  e.Message);
                 lock (m_ScriptErrors) {
                     ArrayList errors = instance.GetScriptErrors();
                     if (errors == null) {
                         errors = new ArrayList();
-                        errors.Add(e.ToString());
+                        errors.Add(e.Message);
+                    } else {
+                        foreach (Object err in errors) {
+                            m_log.DebugFormat("[XMREngine]:   {0}", err.ToString());
+                        }
                     }
                     m_ScriptErrors[itemID] = errors;
-                    foreach (Object err in errors) {
-                        m_log.DebugFormat("[XMREngine]:   {0}", err.ToString());
-                    }
                 }
                 return;
             }

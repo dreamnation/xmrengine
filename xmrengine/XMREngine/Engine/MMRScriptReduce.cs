@@ -25,7 +25,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace MMR {
+namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 	public class ScriptReduce {
 

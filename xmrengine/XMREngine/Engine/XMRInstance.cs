@@ -14,7 +14,6 @@ using System.Runtime.Remoting.Lifetime;
 using System.Security.Policy;
 using System.IO;
 using System.Xml;
-using MMR;
 using Mono.Tasklets;
 using OpenMetaverse;
 using OpenSim.Framework;
@@ -248,9 +247,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     File.Delete(m_DllFileName);
                 }
 
-                if (!File.Exists(m_DllFileName) && !TryToCompile())
+                if (!File.Exists(m_DllFileName))
                 {
-                    throw new Exception("script compile failed");
+                    TryToCompile();
                 }
 
                 if (TryToLoad())
@@ -263,10 +262,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 m_log.DebugFormat("[XMREngine]: attempting recompile {0}",
                         m_DllFileName);
                 File.Delete(m_DllFileName);
-                if (!TryToCompile())
-                {
-                    throw new Exception("script recompile failed");
-                }
+                TryToCompile();
                 m_log.DebugFormat("[XMREngine]: attempting reload {0}",
                         m_DllFileName);
                 if (!TryToLoad())
@@ -279,38 +275,46 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         // Try to create DLL file from source code
-        private bool TryToCompile()
+        // If error, just throw exception
+        private void TryToCompile()
         {
+            bool ok;
+
             if (m_SourceCode == String.Empty)
             {
-                m_log.ErrorFormat("[XMREngine]: Compile of asset {0} was requested but source text is not present and no assembly was found", 
-                                  m_AssetID.ToString());
-                return false;
+                throw new Exception("Compile of asset " + m_AssetID.ToString() + " was requested but source text is not present and no assembly was found");
             }
 
             try
             {
-                ScriptCompile.Compile(m_SourceCode, 
-                                      m_DllFileName,
-                                      m_AssetID.ToString(), 
-                                      null, 
-                                      ErrorHandler);
+                ok = ScriptCompile.Compile(m_SourceCode, 
+                                           m_DllFileName,
+                                           m_AssetID.ToString(), 
+                                           null, 
+                                           ErrorHandler);
             }
             catch (Exception e)
             {
-                m_log.ErrorFormat("[XMREngine]: Exception compiling script: {0}:{1} ({2}): {3}",
-                        m_Part.Name, m_Item.Name, m_AssetID, e.ToString());
                 File.Delete(m_DllFileName);
-                return false;
+                throw e;
+            }
+
+            if (m_CompilerErrors != null)
+            {
+                File.Delete(m_DllFileName);
+                throw new Exception ("compilation errors");
+            }
+
+            if (!ok)
+            {
+                File.Delete(m_DllFileName);
+                throw new Exception ("compilation failed");
             }
 
             if (!File.Exists(m_DllFileName))
             {
-                m_log.ErrorFormat("[XMREngine]: Compile failed to create .DLL");
-                return false;
+                throw new Exception ("compile successful but failed to create .DLL");
             }
-
-            return true;
         }
 
         // Output error message when compiling a script

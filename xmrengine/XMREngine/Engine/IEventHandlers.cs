@@ -6,7 +6,7 @@ using LSL_Rotation = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Quaternion;
 using LSL_String = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
 using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
 
-namespace MMR
+namespace OpenSim.Region.ScriptEngine.XMREngine
 {
     public interface IEventHandlers {
         void at_rot_target (int tnum, LSL_Rotation targetrot, LSL_Rotation ourrot);

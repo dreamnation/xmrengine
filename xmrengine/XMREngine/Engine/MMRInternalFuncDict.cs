@@ -8,7 +8,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 
-namespace MMR {
+namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 	public class InternalFuncDict : Dictionary<string, TokenDeclFunc> {
 

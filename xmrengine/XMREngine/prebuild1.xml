@@ -1,27 +1,23 @@
-   <Project name="OpenSim.Region.ScriptEngine.XMREngine.Engine.MMRCont" path="addon-modules/XMREngine/Engine/MMRCont" type="Library">
+   <Project name="OpenSim.Region.ScriptEngine.XMREngine.Loader" path="addon-modules/XMREngine/Loader" type="Library">
      <Configuration name="Debug">
        <Options>
-         <OutputPath>../../../../bin/</OutputPath>
+         <OutputPath>../../../bin/</OutputPath>
        </Options>
      </Configuration>
      <Configuration name="Release">
        <Options>
-         <OutputPath>../../../../bin/</OutputPath>
+         <OutputPath>../../../bin/</OutputPath>
        </Options>
      </Configuration>
 
-     <ReferencePath>../../../../bin/</ReferencePath>
+     <ReferencePath>../../../bin/</ReferencePath>
      <Reference name="System" localCopy="false"/>
-     <Reference name="System.Xml"/>
      <Reference name="System.Runtime.Remoting"/>
      <Reference name="OpenMetaverseTypes.dll"/>
-     <Reference name="OpenSim.Framework.dll"/>
-     <Reference name="OpenSim.Region.ScriptEngine.Shared"/>
+     <Reference name="OpenSim.Region.ScriptEngine.XMREngine.Engine.MMRCont"/>
      <Reference name="OpenSim.Region.ScriptEngine.Shared.Api.Runtime"/>
-     <Reference name="OpenSim.Region.ScriptEngine.Interfaces"/>
+     <Reference name="OpenSim.Region.ScriptEngine.Shared"/>
      <Reference name="Mono.Tasklets" />
-     <Reference name="Nini.dll" />
-     <Reference name="log4net.dll"/>
 
      <Files>
        <Match pattern="*.cs" recurse="false"/>

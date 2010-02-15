@@ -17,7 +17,7 @@ using LSL_String = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
 using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
 
 
-namespace MMR {
+namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 	public class ScriptConst {
 

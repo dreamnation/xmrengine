@@ -21,7 +21,7 @@ using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
 /**
  * @brief Backend API call definitions.
  */
-namespace MMR
+namespace OpenSim.Region.ScriptEngine.XMREngine
 {
 	public class InlineFunction {
 		public string signature;      // name(arglsltypes,...)

@@ -10,6 +10,7 @@ using LSL_List = OpenSim.Region.ScriptEngine.Shared.LSL_Types.list;
 using LSL_Rotation = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Quaternion;
 using LSL_String = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
 using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
+using OpenSim.Region.ScriptEngine.XMREngine.Loader;  // XMR_Array
 
 /**
  * @brief Parse raw source file string into token list.
@@ -30,7 +31,7 @@ using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
 using System;
 using System.Collections.Generic;
 
-namespace MMR {
+namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 	public delegate void TokenErrorMessage (Token token, string message);
 	public delegate void TokenOutputString (string message);

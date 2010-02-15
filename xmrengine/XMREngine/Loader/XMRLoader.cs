@@ -12,7 +12,6 @@ using System.Runtime.Remoting.Lifetime;
 using OpenSim.Region.ScriptEngine.Shared.Api.Runtime;
 using OpenSim.Region.ScriptEngine.Interfaces;
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
-using MMR;
 
 namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
 {
