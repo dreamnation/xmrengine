@@ -644,6 +644,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         errors.Add(e.ToString());
                     }
                     m_ScriptErrors[itemID] = errors;
+                    foreach (Object err in errors) {
+                        m_log.DebugFormat("[XMREngine]:   {0}", err.ToString());
+                    }
                 }
                 return;
             }
