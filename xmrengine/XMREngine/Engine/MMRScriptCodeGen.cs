@@ -1982,18 +1982,54 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private CompRVal GenerateFromRValList (TokenRValList rValList)
 		{
+
+			/*
+			 * Create a temp array to hold all the initial values.
+			 */
 			string arrayLocstr = "__tmp_" + ScriptCodeGen.GetTempNo ();
 			WriteOutput (rValList, "object[] " + arrayLocstr + " = new object[" + rValList.nItems + "];");
+
+			/*
+			 * Populate the array.
+			 */
 			int i = 0;
 			TokenType tto = new TokenTypeObject (rValList);
 			for (TokenRVal val = rValList.rVal; val != null; val = (TokenRVal)val.nextToken) {
+
+				/*
+				 * Get description of temp array element, ie, where it is and its type.
+				 */
 				CompRVal tRVal = new CompRVal (tto, arrayLocstr + "[" + i + "]");
+
+				/*
+				 * Get description of initialization value, ie, where it is and its type.
+				 */
 				CompRVal eRVal = GenerateFromRVal (tRVal, val);
-				if (eRVal != tRVal) {
+
+				/*
+				 * Store initialization value in array location.
+				 * It is possible that the initialization value was stored in the array
+				 * element in the GenerateFromRVal() call (eg, may it was some call to a
+				 * function that needed a temp to store its return value in), so we might
+				 * not need to do the assignment here.
+				 *
+				 * However, floats and ints need to be converted to LSL_Float and LSL_Integer,
+				 * or things like llSetPayPrice() will puque when they try to cast the elements
+				 * to LSL_Float or LSL_Integer.
+				 */
+				if (eRVal.type is TokenTypeFloat) {
+					WriteOutput (val, tRVal.locstr + " = (object)(" + TypeName (typeof (LSL_Float)) + ")(float)" + eRVal.locstr + ";");
+				} else if (eRVal.type is TokenTypeInt) {
+					WriteOutput (val, tRVal.locstr + " = (object)(" + TypeName (typeof (LSL_Integer)) + ")(int)" + eRVal.locstr + ";");
+				} else if (eRVal != tRVal) {
 					WriteOutput (val, tRVal.locstr + " = (object)" + eRVal.locstr + ";");
 				}
 				i ++;
 			}
+
+			/*
+			 * Create list object from temp initial value array.
+			 */
 			return new CompRVal (new TokenTypeList (rValList.rVal),
 			                     "(new " + TypeName (typeof (LSL_List)) + "(" + arrayLocstr + "))");
 		}
@@ -2221,8 +2257,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ltc.Add ("list*string",     "{0}.ToString()");
 			ltc.Add ("rotation*list",   "new " + TypeName (typeof (LSL_List)) + "({0})");
 			ltc.Add ("rotation*string", "{0}.ToString()");
-			ltc.Add ("string*float",    "((float)new " + TypeName (typeof (LSL_Float)) + "({0}).value)");
-			ltc.Add ("string*integer",  "((int)new " + TypeName (typeof (LSL_Integer)) + "({0}).value)");
+			ltc.Add ("string*float",    "((float)new " + TypeName (typeof (LSL_Float)) + "({0}.Trim()).value)");
+			ltc.Add ("string*integer",  "((int)new " + TypeName (typeof (LSL_Integer)) + "({0}.Trim()).value)");
 			ltc.Add ("string*list",     "new " + TypeName (typeof (LSL_List)) + "({0})");
 			ltc.Add ("vector*list",     "new " + TypeName (typeof (LSL_List)) + "({0})");
 			ltc.Add ("vector*string",   "{0}.ToString()");
