@@ -131,6 +131,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                               XMREngine engine, SceneObjectPart part, 
                               TaskInventoryItem item, string scriptBasePath)
         {
+
+            /*
+             * Save all call parameters in instance vars for easy access.
+             */
             m_LocalID     = localID;
             m_ItemID      = itemID;
             m_SourceCode  = script;
@@ -147,6 +151,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_StateFileName = Path.Combine(scriptBasePath,
                                            m_ItemID.ToString() + ".state");
 
+            /*
+             * Set up a descriptive name string for debug messages.
+             */
             m_DescName = MMRCont.HexString(MMRCont.ObjAddr(this));
             if (m_DescName.Length < 8)
             {
@@ -154,11 +161,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
             m_DescName += " " + part.Name + ":" + item.Name + ":";
 
+            /*
+             * Get DLL loaded, compiling script and reading .state file as necessary.
+             */
             InstantiateScript();
             m_SourceCode = null;
 
+            /*
+             * Set up list of API calls it has available.
+             */
             ApiManager am = new ApiManager();
-
             foreach (string api in am.GetApis())
             {
                 IScriptApi scriptApi;
@@ -173,6 +185,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 m_Loader.InitApi(api, scriptApi);
             }
 
+            /*
+             * Declare which events the script can handle.
+             */
             m_Part.SetScriptEvents(m_ItemID, m_Loader.GetStateEventFlags(0));
         }
 
@@ -426,7 +441,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if (m_PostOnRez)
                 {
                     PostEvent(new EventParams("on_rez",
-                            new Object[] { StartParam }, 
+                            new Object[] { m_StartParam }, 
                             new DetectParams[0]));
                 }
 
@@ -504,9 +519,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             // Get various attributes
-            XmlElement startParamN = (XmlElement)scriptStateN.SelectSingleNode("StartParam");
-            int startparam = int.Parse(startParamN.InnerText);
-
             XmlElement runningN = (XmlElement)scriptStateN.SelectSingleNode("Running");
             m_Running = bool.Parse(runningN.InnerText);
 
@@ -526,7 +538,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (m_PostOnRez)
             {
                 PostEvent(new EventParams("on_rez",
-                        new Object[] { startparam }, new DetectParams[0]));
+                        new Object[] { m_StartParam }, new DetectParams[0]));
             }
 
             // Maybe an 'attach' event too
@@ -548,7 +560,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_LocalID, m_ItemID, m_Part.UUID,
                     pluginData);
             m_DetectParams = detParams;
-            m_StartParam   = startparam;
         }
 
         /**
@@ -751,7 +762,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         //   <ScriptState Asset=m_AssetID>
         //     <Snapshot>stackdump</Snapshot>
         //     <Running>m_Running</Running>
-        //     <StartParam>m_StartParam</StartParam>
         //     <Detect ...
         //     <Permissions ...
         //     <Plugins />
@@ -774,11 +784,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             XmlElement runningN = doc.CreateElement("", "Running", "");
             runningN.AppendChild(doc.CreateTextNode(m_Running.ToString()));
             scriptStateN.AppendChild(runningN);
-
-            XmlElement startParamN = doc.CreateElement("", "StartParam", "");
-            startParamN.AppendChild(doc.CreateTextNode(m_StartParam.ToString()));
-
-            scriptStateN.AppendChild(startParamN);
 
             DetectParams[] detect = m_DetectParams;
 

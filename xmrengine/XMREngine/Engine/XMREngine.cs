@@ -320,11 +320,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             lock (m_Instances)
             {
-                if (!m_Instances.ContainsKey(itemID))
+                if (!m_Instances.TryGetValue(itemID, out instance)) {
                     return 0;
-
-                instance = m_Instances[itemID];
-
+                }
             }
 
             return instance.StartParam;
@@ -626,8 +624,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (engine != ScriptEngineName)
                 return;
 
-            m_log.DebugFormat("[XMREngine]: Running script {0}, asset {1}",
-                    item.Name, item.AssetID);
+            m_log.DebugFormat("[XMREngine]: Running script {0}, asset {1}, param {2}",
+                    item.Name, item.AssetID, startParam.ToString());
 
             XMRInstance instance = new XMRInstance();
             try {
