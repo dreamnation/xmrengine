@@ -50,6 +50,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private static readonly ILog m_log =
             LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
+        private bool m_TraceCalls;
         private Scene m_Scene;
         private IConfigSource m_ConfigSource;
         private IConfig m_Config;
@@ -75,6 +76,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public XMREngine()
         {
+            string envar = Environment.GetEnvironmentVariable("XMREngineTraceCalls");
+            m_TraceCalls = (envar != null) && ((envar[0] & 1) != 0);
         }
 
         public string Name
@@ -124,6 +127,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (!m_Enabled)
                 return;
 
+            if (m_TraceCalls)
+            {
+                m_log.DebugFormat("[XMREngine]: XMREngine.AddRegion({0})", scene.RegionInfo.RegionName);
+            }
+
             m_Scene = scene;
 
             m_Scene.RegisterModuleInterface<IScriptModule>(this);
@@ -143,13 +151,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_Scene.EventManager.OnRezScript += OnRezScript;
         }
 
+        /**
+         * @brief Called late in shutdown procedure,
+         *        after the 'Shutting down..." message.
+         */
         public void RemoveRegion(Scene scene)
         {
             if (!m_Enabled)
                 return;
 
-            DoMaintenance(null, null);
+            if (m_TraceCalls)
+            {
+                m_log.DebugFormat("[XMREngine]: XMREngine.RemoveRegion({0})", scene.RegionInfo.RegionName);
+            }
 
+            /*
+             * Stop executing script threads and wait for final
+             * one to finish (ie, script gets to CheckRun() call).
+             */
             if (m_Scheduler != null)
             {
                 m_Scheduler.Stop();
@@ -157,6 +176,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 m_Scheduler.Shutdown();
             }
             m_Scheduler = null;
+
+            /*
+             * Write their state out to .state files so it will be
+             * available when the region is restarted.
+             */
+            DoMaintenance(null, null);
 
             m_Events = null;
 
@@ -177,6 +202,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (!m_Enabled)
                 return;
 
+            if (m_TraceCalls)
+            {
+                m_log.DebugFormat("[XMREngine]: XMREngine.RegionLoaded({0})", scene.RegionInfo.RegionName);
+            }
+
             m_Scene.EventManager.OnRemoveScript += OnRemoveScript;
             m_Scene.EventManager.OnScriptReset += OnScriptReset;
             m_Scene.EventManager.OnStartScript += OnStartScript;
@@ -192,6 +222,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void Close()
         {
+            if (m_TraceCalls)
+            {
+                m_log.DebugFormat("[XMREngine]: XMREngine.Close()");
+            }
         }
 
         private void RunTest(string module, string[] args)
@@ -257,11 +291,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             lock (m_Instances)
             {
-                if (!m_Instances.ContainsKey(itemID)) {
+                if (!m_Instances.TryGetValue(itemID, out instance))
+                {
                     return false;
                 }
+            }
 
-                instance = m_Instances[itemID];
+            if (m_TraceCalls)
+            {
+                m_log.DebugFormat("[XMREngine]: XMREngine.PostScriptEvent({0},{1})", itemID.ToString(), parms.EventName);
             }
 
             instance.PostEvent(parms);
@@ -278,6 +316,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             if (part == null)
                 return false;
+
+            if (m_TraceCalls)
+            {
+                m_log.DebugFormat("[XMREngine]: XMREngine.PostObjectEvent({0},{1})", localID.ToString(), parms.EventName);
+            }
 
             if (!m_Objects.ContainsKey(part.UUID))
                 return false;
@@ -301,10 +344,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             lock (m_Instances)
             {
-                if (!m_Instances.ContainsKey(item))
+                if (!m_Instances.TryGetValue(item, out instance))
                     return null;
-
-                instance = m_Instances[item];
             }
 
             return instance.GetDetectParams(number);
@@ -336,11 +377,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             lock (m_Instances)
             {
-                if (!m_Instances.ContainsKey(itemID))
+                if (!m_Instances.TryGetValue(itemID, out instance))
                     return;
+            }
 
-                instance = m_Instances[itemID];
-
+            if (m_TraceCalls)
+            {
+                m_log.DebugFormat("[XMREngine]: XMREngine.SetScriptState({0},{1})", itemID.ToString(), state.ToString());
             }
 
             instance.Running = state;
@@ -354,11 +397,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             lock (m_Instances)
             {
-                if (!m_Instances.ContainsKey(itemID))
+                if (!m_Instances.TryGetValue(itemID, out instance))
                     return false;
-
-                instance = m_Instances[itemID];
-
             }
 
             return instance.Running;
@@ -374,10 +414,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             lock (m_Instances)
             {
-                if (!m_Instances.ContainsKey(itemID))
+                if (!m_Instances.TryGetValue(itemID, out instance))
                     return;
+            }
 
-                instance = m_Instances[itemID];
+            if (m_TraceCalls)
+            {
+                m_log.DebugFormat("[XMREngine]: XMREngine.ApiResetScript({0})", itemID.ToString());
             }
 
             instance.ApiReset();
@@ -389,10 +432,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             lock (m_Instances)
             {
-                if (!m_Instances.ContainsKey(itemID))
+                if (!m_Instances.TryGetValue(itemID, out instance))
                     return;
+            }
 
-                instance = m_Instances[itemID];
+            if (m_TraceCalls)
+            {
+                m_log.DebugFormat("[XMREngine]: XMREngine.ResetScript({0})", itemID.ToString());
             }
 
             instance.Suspend();
@@ -434,6 +480,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     return String.Empty;
                 }
             }
+            if (m_TraceCalls)
+            {
+                m_log.DebugFormat("[XMREngine]: XMREngine.GetXMLState({0})", itemID.ToString());
+            }
             XmlDocument doc = new XmlDocument();
             if (instance.GetXMLState(doc) == null)
             {
@@ -459,6 +509,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             catch
             {
                 return false;
+            }
+            if (m_TraceCalls)
+            {
+                m_log.DebugFormat("[XMREngine]: XMREngine.SetXMLState({0})", itemID.ToString());
             }
 
             // Make sure <State Engine="XMREngine"> so we know it is in our
@@ -517,6 +571,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (!m_Enabled)
                 return false;
 
+            if (m_TraceCalls)
+            {
+                m_log.DebugFormat("[XMREngine]: XMREngine.PostScriptEvent({0},{1})", itemID.ToString(), name);
+            }
+
             Object[] lsl_p = new Object[p.Length];
             for (int i = 0; i < p.Length ; i++)
             {
@@ -535,6 +594,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             if (!m_Enabled)
                 return false;
+
+            if (m_TraceCalls)
+            {
+                m_log.DebugFormat("[XMREngine]: XMREngine.PostObjectEvent({0},{1})", itemID.ToString(), name);
+            }
 
             SceneObjectPart part = m_Scene.GetSceneObjectPart(itemID);
             if (part == null)
@@ -569,6 +633,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             if (script.StartsWith("//MRM:"))
                 return;
+
+            if (m_TraceCalls)
+            {
+                m_log.DebugFormat("[XMREngine]: XMREngine.OnRezScript({0},{1},{2},{3})", 
+                        localID.ToString(), itemID.ToString(), startParam.ToString(), postOnRez.ToString());
+            }
 
             List<IScriptModule> engines =
                     new List<IScriptModule>(
@@ -679,6 +749,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             SceneObjectPart part =
                     m_Scene.GetSceneObjectPart(localID);
+            if (m_TraceCalls)
+            {
+                m_log.DebugFormat("[XMREngine]: XMREngine.OnRemoveScript({0},{1})", localID.ToString(), itemID.ToString());
+            }
 
             lock (m_Instances)
             {
@@ -711,6 +785,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void OnScriptReset(uint localID, UUID itemID)
         {
+            if (m_TraceCalls)
+            {
+                m_log.DebugFormat("[XMREngine]: XMREngine.OnScriptReset({0},{1})", localID.ToString(), itemID.ToString());
+            }
             ResetScript(itemID);
         }
 
@@ -720,10 +798,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             lock (m_Instances)
             {
-                if (!m_Instances.ContainsKey(itemID))
+                if (!m_Instances.TryGetValue(itemID, out instance))
                     return;
-
-                instance = m_Instances[itemID];
+            }
+            if (m_TraceCalls)
+            {
+                m_log.DebugFormat("[XMREngine]: XMREngine.OnStartScript({0},{1})", localID.ToString(), itemID.ToString());
             }
 
             instance.Running = true;
@@ -735,12 +815,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             lock (m_Instances)
             {
-                if (!m_Instances.ContainsKey(itemID))
+                if (!m_Instances.TryGetValue(itemID, out instance))
                     return;
-
             }
-
-            instance = m_Instances[itemID];
+            if (m_TraceCalls)
+            {
+                m_log.DebugFormat("[XMREngine]: XMREngine.OnStopScript({0},{1})", localID.ToString(), itemID.ToString());
+            }
 
             instance.Running = false;
         }
@@ -752,11 +833,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             lock (m_Instances)
             {
-                if (!m_Instances.ContainsKey(itemID))
+                if (!m_Instances.TryGetValue(itemID, out instance))
                     return;
-
-                instance = m_Instances[itemID];
-
+            }
+            if (m_TraceCalls)
+            {
+                m_log.DebugFormat("[XMREngine]: XMREngine.OnGetScriptRunning({0},{1})", objectID.ToString(), itemID.ToString());
             }
 
             IEventQueue eq = World.RequestModuleInterface<IEventQueue>();
@@ -773,8 +855,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
         }
 
+        /**
+         * @brief Gets called early as part of shutdown,
+         *        right after "Persisting changed objects" message.
+         */
         public void OnShutdown()
         {
+            if (m_TraceCalls)
+            {
+                m_log.DebugFormat("[XMREngine]: XMREngine.OnShutdown()");
+            }
         }
 
         public void WakeUp()
@@ -853,13 +943,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             lock (m_Instances)
             {
-                if (!m_Instances.ContainsKey(itemID))
+                if (!m_Instances.TryGetValue(itemID, out instance))
                     return;
-
-                instance = m_Instances[itemID];
-
             }
-
+            if (m_TraceCalls)
+            {
+                m_log.DebugFormat("[XMREngine]: XMREngine.Die({0})", itemID.ToString());
+            }
             instance.Die();
         }
 
