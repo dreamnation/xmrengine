@@ -769,10 +769,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader {
 				this.migrateOutWriter.Write ((int)graph);
 			} else if (graph is LSL_Float) {
 				this.migrateOutWriter.Write ((byte)Ser.LSLFLOAT);
-				this.migrateOutWriter.Write ((float)graph);
+				this.migrateOutWriter.Write ((float)((LSL_Float)graph).value);
 			} else if (graph is LSL_Integer) {
 				this.migrateOutWriter.Write ((byte)Ser.LSLINT);
-				this.migrateOutWriter.Write ((int)graph);
+				this.migrateOutWriter.Write ((int)((LSL_Integer)graph).value);
 			} else if (graph is LSL_Key) {
 				this.migrateOutWriter.Write ((byte)Ser.LSLKEY);
 				LSL_Key key = (LSL_Key)graph;
