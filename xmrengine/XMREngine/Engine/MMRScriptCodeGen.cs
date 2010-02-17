@@ -2612,7 +2612,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static void DefineBinOpsRotation (Dictionary<string, BinOpStr> bos)
 		{
 			bos.Add ("rotation==rotation", new BinOpStr (typeof (bool), "{0} == {1}"));
-			bos.Add ("rotation!=rotation", new BinOpStr (typeof (bool), "{0} == {1}"));
+			bos.Add ("rotation!=rotation", new BinOpStr (typeof (bool), "{0} != {1}"));
 			bos.Add ("rotation+rotation",  new BinOpStr (typeof (LSL_Rotation), "{0} +# {1}"));
 			bos.Add ("rotation-rotation",  new BinOpStr (typeof (LSL_Rotation), "{0} -# {1}"));
 			bos.Add ("rotation*rotation",  new BinOpStr (typeof (LSL_Rotation), "{0} *# {1}"));
