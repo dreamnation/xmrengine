@@ -15,30 +15,13 @@ using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 
 namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
 {
-    public class XMRLoader : MarshalByRefObject, IDisposable, ISponsor
+    public class XMRLoader : IDisposable
     {
         private ScriptBaseClass m_ScriptBase;
-        private int m_Renew = 10;
         private ScriptWrapper m_Wrapper = null;
-        private string m_DllName;
+        private ScriptObjCode m_ObjCode = null;
         private string m_DescName;
         public StateChangeDelegate m_StateChange;
-
-        public override Object InitializeLifetimeService()
-        {
-            ILease lease = (ILease)base.InitializeLifetimeService();
-
-            if (lease.CurrentState == LeaseState.Initial)
-            {
-                lease.InitialLeaseTime = TimeSpan.FromSeconds(10);
-                lease.RenewOnCallTime = TimeSpan.FromSeconds(10);
-                lease.SponsorshipTimeout = TimeSpan.FromSeconds(20);
-
-                lease.Register(this);
-            }
-
-            return lease;
-        }
 
         public XMRLoader()
         {
@@ -59,17 +42,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
             if (m_Wrapper != null)
                 m_Wrapper.Dispose();
             m_Wrapper = null;
-
-            ILease lease = (ILease)GetLifetimeService();
-            lease.Unregister(this);
-            m_Renew = 0;
-        }
-
-        public TimeSpan Renewal(ILease lease)
-        {
-            if (m_Renew == 0)
-                lease.Unregister(this);
-            return TimeSpan.FromSeconds(m_Renew);
         }
 
         public void InitApi(string name, IScriptApi api)
@@ -77,14 +49,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
             m_ScriptBase.InitApi(name, api);
         }
 
-        public Exception Load(string dllName, string descName)
+        public Exception Load(ScriptObjCode objCode, string descName)
         {
-            m_DllName  = dllName;
+            m_ObjCode  = objCode;
             m_DescName = descName;
 
             try
             {
-                m_Wrapper = ScriptWrapper.CreateScriptInstance(dllName, descName);
+                m_Wrapper = new ScriptWrapper(objCode, descName);
             }
             catch (Exception e)
             {
@@ -131,7 +103,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
             m_Wrapper.Dispose();
             m_Wrapper = null;
 
-            Load(m_DllName, m_DescName);
+            Load(m_ObjCode, m_DescName);
         }
 
         public int StateCode
@@ -142,7 +114,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
         public int GetStateEventFlags(int stateCode)
         {
             if ((stateCode < 0) ||
-                (stateCode >= m_Wrapper.scriptEventHandlerTable.GetLength(0)))
+                (stateCode >= m_Wrapper.objCode.scriptEventHandlerTable.GetLength(0)))
             {
                 return 0;
             }
@@ -150,7 +122,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
             int code = 0;
             for (int i = 0 ; i < 32; i ++)
             {
-                if (m_Wrapper.scriptEventHandlerTable[stateCode, i] != null)
+                if (m_Wrapper.objCode.scriptEventHandlerTable[stateCode, i] != null)
                 {
                     code |= 1 << i;
                 }

@@ -24,24 +24,21 @@ using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 namespace OpenSim.Region.ScriptEngine.XMREngine.Loader {
 
 	/*
-	 * Every compiled event handler method has this signature.
-	 * It is passed a pointer to the ScriptWrapper struct, where it can access other context.
-	 */
-	public delegate void ScriptEventHandler (ScriptWrapper __sw);
-
-	/*
 	 * Whenever a script changes state, it calls this method.
 	 */
 	public delegate void StateChangeDelegate (string newState);
 
 	/*
+	 * Entrypoint to script event handlers.
+	 */
+	public delegate void ScriptEventHandler (ScriptWrapper scriptWrapper);
+
+	/*
 	 * All scripts must inherit from this class.
 	 */
-	public abstract class ScriptWrapper : IDisposable {
-		public static UIntPtr stackSize = (UIntPtr)(2*1024*1024);                    // microthreads get this stack size
-
-		public static readonly string COMPILED_VERSION_NAME = "XMRCompiledVersion";  // name of script var that hold COMPILED_VERSION_VALUE
-		public static readonly int COMPILED_VERSION_VALUE = 3;                       // incrmented when compiler changes for compatibility testing
+	public class ScriptWrapper : IDisposable {
+		public static UIntPtr stackSize = (UIntPtr)(2*1024*1024);  // microthreads get this stack size
+		public static readonly int COMPILED_VERSION_VALUE = 4;     // incrmented when compiler changes for compatibility testing
 
 		public string instanceNo;                 // debugging use only
 
@@ -57,22 +54,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader {
 		public int memUsage = 0;                  // script's current memory usage
 		public int memLimit = 100000;             // CheckRun() throws exception if memUsage > memLimit
 		public bool stateChanged = false;         // script sets this if/when it executes a 'state' statement
+		public ScriptObjCode objCode;             // the script's object code pointer
 
 		public bool debPrint = false;
 
 		/*
-		 * Info about the script DLL itself as a whole.
+		 * These arrays hold the global variable values for the script instance.
+		 * The array lengths are determined by the script compilation.
 		 */
-		public string scriptDLLName;
-		public string scriptDescName;
-
-		/*
-		 * Every script DLL must define this matrix of event handler delegates.
-		 * There is only one of these for the whole script.
-		 * The first subscript is the state.
-		 * The second subscript is the event.
-		 */
-		public ScriptEventHandler[,] scriptEventHandlerTable;
+		public XMR_Array[]    gblArrays;
+		public float[]        gblFloats;
+		public int[]          gblIntegers;
+		public LSL_List[]     gblLists;
+		public LSL_Rotation[] gblRotations;
+		public string[]       gblStrings;
+		public LSL_Vector[]   gblVectors;
 
 		/*
 		 * We will use this microthread to run the scripts event handlers.
@@ -157,19 +153,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader {
 		/*
 		 * Makes sure migration data version is same on both ends.
 		 */
-		public static readonly byte migrationVersion = 2;
+		public static readonly byte migrationVersion = 3;
 
 		/*
 		 * Whether or not we are using the microthread.
 		 */
 		private int usingMicrothread = 0;
-
-		/*
-		 * All script classes must define these methods.
-		 * They migrate the script's global variables whether it is idle or not.
-		 */
-		public abstract void MigrateScriptOut (System.IO.Stream stream, Mono.Tasklets.MMRContSendObj sendObj);
-		public abstract void MigrateScriptIn (System.IO.Stream stream, Mono.Tasklets.MMRContRecvObj recvObj);
 
 		/*
 		 * Open the script DLL and get ready to run event handlers.
@@ -178,95 +167,51 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader {
 		 * Caller should call StartEventHandler() or MigrateInEventHandler() next.
 		 * If calling StartEventHandler(), use ScriptEventCode.state_entry with no args.
 		 */
-		public static ScriptWrapper CreateScriptInstance (string dllName, string descName)
+		public ScriptWrapper (ScriptObjCode objCode, string descName)
 		{
-			Assembly scriptAssembly;
-			ScriptEventHandler[,] scriptEventHandlerTable;
+			string envar = Environment.GetEnvironmentVariable ("MMRScriptWrapperDebPrint");
+			this.debPrint = ((envar != null) && ((envar[0] & 1) != 0));
+			instanceNo = MMRCont.HexString (MMRCont.ObjAddr (this));
+			if (instanceNo.Length < 8) {
+				instanceNo = "00000000".Substring (0, 8 - instanceNo.Length) + instanceNo;
+			}
+			DebPrint ("ScriptWrapper*: {0} created", instanceNo);
+
+			this.objCode      = objCode;
+
+			this.gblArrays    = new XMR_Array[objCode.numGblArrays];
+			this.gblFloats    = new float[objCode.numGblFloats];
+			this.gblIntegers  = new int[objCode.numGblIntegers];
+			this.gblLists     = new LSL_List[objCode.numGblLists];
+			this.gblRotations = new LSL_Rotation[objCode.numGblRotations];
+			this.gblStrings   = new string[objCode.numGblStrings];
+			this.gblVectors   = new LSL_Vector[objCode.numGblVectors];
 
 			/*
-			 * Get DLL loaded in memory.
+			 * Set up debug name string.
 			 */
-			scriptAssembly = Assembly.LoadFrom (dllName);
-			if (scriptAssembly == null) {
-				throw new Exception (dllName + " load failed");
-			}
-
-			/*
-			 * Look for a public class definition called "ScriptModule".
-			 */
-			Type scriptModule = scriptAssembly.GetType ("ScriptModule");
-			if (scriptModule == null) {
-				throw new Exception (dllName + " has no ScriptModule class");
-			}
-
-			/*
-			 * Look for a "public static const int" field called "compiledVersion",
-			 * and make sure it matches COMPILED_VERSION so we know we aren't dealing
-			 * with an .DLL that we can't support.
-			 */
-			FieldInfo cvField = scriptModule.GetField (COMPILED_VERSION_NAME);
-			if (cvField == null) {
-				throw new Exception (dllName + " has no compiledVersion field");
-			}
-			int cvValue = (int)cvField.GetValue (null);
-			if (cvValue != COMPILED_VERSION_VALUE) {
-				throw new Exception (dllName + " compiled version " + cvValue.ToString () +
-				                     ", but require " + COMPILED_VERSION_VALUE.ToString ());
-			}
-
-			/*
-			 * Look for a public static method in that class called "GetScriptEventHandlerTable".
-			 */
-			MethodInfo gseht = scriptModule.GetMethod ("GetScriptEventHandlerTable");
-			if (gseht == null) {
-				throw new Exception (dllName + " has no GetScriptEventHandlerTable() method");
-			}
-			if (!gseht.IsStatic) {
-				throw new Exception (dllName + " GetScriptEventHandlerTable() is not static");
-			}
-
-			/*
-			 * Call its GetScriptEventHandlerTable() method.
-			 * It should return its scriptEventHandlerTable that contains all its event handler entrypoints.
-			 */
-			if (gseht.ReturnType != typeof (ScriptEventHandler[,])) {
-				throw new Exception (dllName + " GetScriptEventHandlerTable() does not return ScriptEventHandler[,]");
-			}
-			scriptEventHandlerTable = (ScriptEventHandler[,])gseht.Invoke (null, null);
-
-			/*
-			 * Call its default constructor.  It creates the script object which is derived from ScriptWrapper.
-			 */
-			ScriptWrapper scriptWrapper = (ScriptWrapper)Activator.CreateInstance (scriptModule);
-			scriptWrapper.instanceNo += "/" + descName;
-
-			/*
-			 * Save important things we want to remember, like where its event handlers are.
-			 */
-			scriptWrapper.scriptDLLName           = dllName;
-			scriptWrapper.scriptDescName          = descName;
-			scriptWrapper.scriptEventHandlerTable = scriptEventHandlerTable;
+			this.instanceNo += "/" + descName;
 
 			/*
 			 * Set up sub-objects and cross-polinate so everything can access everything.
 			 */
-			scriptWrapper.microthread  = new ScriptUThread (descName);
-			scriptWrapper.continuation = new ScriptContinuation ();
-			scriptWrapper.microthread.scriptWrapper  = scriptWrapper;
-			scriptWrapper.continuation.scriptWrapper = scriptWrapper;
+			this.microthread  = new ScriptUThread (descName);
+			this.continuation = new ScriptContinuation ();
+			this.microthread.scriptWrapper  = this;
+			this.continuation.scriptWrapper = this;
 
 			/*
 			 * We do our own object serialization.
 			 * It avoids null pointer refs and is much more efficient because we
 			 * have a limited number of types to deal with.
 			 */
-			scriptWrapper.continuation.sendObj = scriptWrapper.SendObjInterceptor;
-			scriptWrapper.continuation.recvObj = scriptWrapper.RecvObjInterceptor;
+			this.continuation.sendObj = this.SendObjInterceptor;
+			this.continuation.recvObj = this.RecvObjInterceptor;
 
 			/*
 			 * Constant subsArray values...
 			 */
-			scriptWrapper.subsArray[(int)SubsArray.SCRIPT] = scriptWrapper;
+			this.subsArray[(int)SubsArray.SCRIPT] = this;
 
 			/*
 			 * All the DLL filenames should be known at this point,
@@ -276,24 +221,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader {
 			 * To find out which DLLs are needed, set envar MMRCONTSAVEDEBUG=1 and observe
 			 * debug output to see which DLLs are referenced.
 			 */
-			scriptWrapper.dllsArray = new string[4];
-			scriptWrapper.dllsArray[0] = MMRCont.GetDLLName (scriptModule);            // ...<uuid>.dll
-			scriptWrapper.dllsArray[1] = MMRCont.GetDLLName (typeof (ScriptWrapper));  // ...MMRCont.dll
-			scriptWrapper.dllsArray[2] = MMRCont.GetDLLName (typeof (MMRCont));        // ...Mono.Tasklets.dll
-			scriptWrapper.dllsArray[3] = MMRCont.GetDLLName (typeof (LSL_Vector));     // ...ScriptEngine.Shared.dll
-
-			return scriptWrapper;
-		}
-
-		protected ScriptWrapper ()
-		{
-			string envar = Environment.GetEnvironmentVariable ("MMRScriptWrapperDebPrint");
-			this.debPrint = ((envar != null) && ((envar[0] & 1) != 0));
-			instanceNo = MMRCont.HexString (MMRCont.ObjAddr (this));
-			if (instanceNo.Length < 8) {
-				instanceNo = "00000000".Substring (0, 8 - instanceNo.Length) + instanceNo;
-			}
-			DebPrint ("ScriptWrapper*: {0} created", instanceNo);
+			this.dllsArray = new string[3];
+			this.dllsArray[0] = MMRCont.GetDLLName (typeof (ScriptWrapper));  // ...MMRCont.dll
+			this.dllsArray[1] = MMRCont.GetDLLName (typeof (MMRCont));        // ...Mono.Tasklets.dll
+			this.dllsArray[2] = MMRCont.GetDLLName (typeof (LSL_Vector));     // ...ScriptEngine.Shared.dll
 		}
 
 		public void DebPrint (string format, object arg0)
@@ -360,9 +291,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader {
 				this.beAPI = null;
 				this.stateCode = 12345678;
 				this.eventCode = ScriptEventCode.Garbage;
-				this.ehArgs = null;
-				this.scriptDLLName = null;
-				this.scriptEventHandlerTable = null;
+				this.ehArgs  = null;
+				this.objCode = null;
 				this.migrateInStream  = null;
 				this.migrateInReader  = null;
 				this.migrateOutStream = null;
@@ -371,30 +301,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader {
 			}
 		}
 
-		/*
-		 * Retrieve name of DLL the script is in.
-		 */
-		public string ScriptDLLName ()
-		{
-			return scriptDLLName;
-		}
-
-		/*
-		 * Overridden by script to decode state code (int) to state name (string).
-		 */
-		public virtual string GetStateName (int stateCode)
-		{
-			return stateCode.ToString ();
-		}
-
 		/**
-		 * @brief translate line number as reported in script DLL exception message
-		 *        to line number in script source file
-		 * This method is overridden by scripts to perform translation using their numbers.
+		 * @brief Decode state code (int) to state name (string).
 		 */
-		public virtual int DLLToSrcLineNo (int dllLineNo)
+		public string GetStateName (int stateCode)
 		{
-			return dllLineNo;
+			if ((objCode.stateNames != null) && (stateCode >= 0) && (stateCode < objCode.stateNames.Length)) {
+				return objCode.stateNames[stateCode];
+			}
+			return stateCode.ToString ();
 		}
 
 		/*
@@ -462,7 +377,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader {
 			/*
 			 * Silly to even try if there is no handler defined for this event.
 			 */
-			else if (this.scriptEventHandlerTable[this.stateCode,(int)eventCode] != null) {
+			else if (this.objCode.scriptEventHandlerTable[this.stateCode,(int)eventCode] != null) {
 
 				/*
 				 * Save eventCode so we know what event handler to run in the microthread.
@@ -941,6 +856,52 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader {
 				if (except != null) throw except;
 			}
 		}
+
+		/**
+		 * @brief Write script global variables to the output stream.
+		 */
+		public void MigrateScriptOut (System.IO.Stream stream, MMRContSendObj sendObj)
+		{
+			SendGblArray (stream, sendObj, gblArrays);
+			SendGblArray (stream, sendObj, gblFloats);
+			SendGblArray (stream, sendObj, gblIntegers);
+			SendGblArray (stream, sendObj, gblLists);
+			SendGblArray (stream, sendObj, gblRotations);
+			SendGblArray (stream, sendObj, gblStrings);
+			SendGblArray (stream, sendObj, gblVectors);
+		}
+
+		private void SendGblArray (System.IO.Stream stream, MMRContSendObj sendObj, Array array)
+		{
+			sendObj (stream, (object)(int)array.Length);
+			for (int i = 0; i < array.Length; i ++) {
+				sendObj (stream, array.GetValue (i));
+			}
+		}
+
+		/**
+		 * @brief Read script global variables from the input stream.
+		 */
+		public void MigrateScriptIn (System.IO.Stream stream, MMRContRecvObj recvObj)
+		{
+			gblArrays    = (XMR_Array[])   RecvGblArray (stream, recvObj, typeof (XMR_Array));
+			gblFloats    = (float[])       RecvGblArray (stream, recvObj, typeof (float));
+			gblIntegers  = (int[])         RecvGblArray (stream, recvObj, typeof (int));
+			gblLists     = (LSL_List[])    RecvGblArray (stream, recvObj, typeof (LSL_List));
+			gblRotations = (LSL_Rotation[])RecvGblArray (stream, recvObj, typeof (LSL_Rotation));
+			gblStrings   = (string[])      RecvGblArray (stream, recvObj, typeof (string));
+			gblVectors   = (LSL_Vector[])  RecvGblArray (stream, recvObj, typeof (LSL_Vector));
+		}
+
+		private Array RecvGblArray (System.IO.Stream stream, MMRContRecvObj recvObj, Type eleType)
+		{
+			int length = (int)recvObj (stream);
+			Array array = Array.CreateInstance (eleType, length);
+			for (int i = 0; i < length; i ++) {
+				array.SetValue (recvObj (stream), i);
+			}
+			return array;
+		}
 	}
 
 
@@ -959,9 +920,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader {
 		[MMRContableAttribute ()]
 		public override Exception RunContEx ()
 		{
-			Exception except = null;
-			int oldStateCode = -1;
-			ScriptWrapper sw = scriptWrapper;
+			Exception except  = null;
+			int oldStateCode  = -1;
+			ScriptWrapper sw  = scriptWrapper;
 
 			try {
 				int newStateCode;
@@ -988,7 +949,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader {
 						sw.instanceNo, 
 						sw.GetStateName (oldStateCode), 
 						sw.eventCode);
-				seh = sw.scriptEventHandlerTable[oldStateCode,(int)sw.eventCode];
+				seh = sw.objCode.scriptEventHandlerTable[oldStateCode,(int)sw.eventCode];
 				seh (sw);
 
 				sw.ehArgs = null;  // we are done with them and no args for
@@ -1024,7 +985,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader {
 					sw.stateChanged = false;
 					sw.eventCode = ScriptEventCode.state_exit;
 					sw.stateCode = oldStateCode;
-					seh = sw.scriptEventHandlerTable[oldStateCode,(int)ScriptEventCode.state_exit];
+					seh = sw.objCode.scriptEventHandlerTable[oldStateCode,(int)ScriptEventCode.state_exit];
 					if (seh != null) seh (sw);
 
 					/*
@@ -1054,7 +1015,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader {
 					sw.stateChanged = false;
 					sw.eventCode = ScriptEventCode.state_entry;
 					sw.stateCode = newStateCode;
-					seh = sw.scriptEventHandlerTable[newStateCode,(int)ScriptEventCode.state_entry];
+					seh = sw.objCode.scriptEventHandlerTable[newStateCode,(int)ScriptEventCode.state_entry];
 					if (seh != null) seh (sw);
 				}
 			} catch (Exception e) {
@@ -1145,6 +1106,31 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader {
 
 			scriptWrapper.DebPrint ("CheckRun*: {0} {1}:{2} exit", 
 					scriptWrapper.instanceNo, scriptWrapper.GetStateName (scriptWrapper.stateCode), scriptWrapper.eventCode);
+		}
+
+		/**
+		 * @brief Called by internals of Load() to see if we know where the new method is
+		 *        for a given old method.
+		 * @param methName = method name, eg, "Save"
+		 * @param sigDesc = signature, eg, "object,System.IO.BinaryWriter"
+		 * @param className = class, eg, "Continuation"
+		 * @param classNameSpace = name space, eg, "Mono.Tasklets"
+		 * @param imageName = image name, eg, ".../gac/Mono.Tasklets/2.0.0.0__0738eb9f132ed756/Mono.Tasklets.dll"
+		 * @returns 0: not known, go find it in DLL somewhere
+		 *       else: methodInfo.MethodHandle.Value of corresponding method = MonoMethod struct pointer
+		 */
+		public IntPtr LoadFindMethod (string methName, string sigDesc, string className, string classNameSpace, string imageName)
+		{
+			MethodInfo methodInfo;
+
+			/*
+			 * All our names are superfunky with $MMRContableAttribute$ and the asset ID, so
+			 * all we do is catalog them by function name which is always going to be unique.
+			 */
+			if (scriptWrapper.objCode.dynamicMethods.TryGetValue (methName, out methodInfo)) {
+				return methodInfo.MethodHandle.Value;
+			}
+			return (IntPtr)0;
 		}
 	}
 

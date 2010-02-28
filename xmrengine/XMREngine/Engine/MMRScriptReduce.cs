@@ -24,6 +24,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
+using System.Reflection.Emit;
 
 namespace OpenSim.Region.ScriptEngine.XMREngine {
 
@@ -1436,15 +1438,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	 */
 	public class TokenDeclFunc : Token {
 
-		public TokenType retType;     // new TokenTypeVoid (token) if void; NEVER null
-		public TokenName funcName;    // function name
-		public TokenArgDecl argDecl;  // argument list prototypes
-		public TokenStmtBlock body;   // statements
+		public TokenType retType;            // new TokenTypeVoid (token) if void; NEVER null
+		public TokenName funcName;           // function name
+		public TokenArgDecl argDecl;         // argument list prototypes
+		public TokenStmtBlock body;          // statements
 		public Dictionary<string, TokenStmtLabel> labels = new Dictionary<string, TokenStmtLabel> ();
-		                              // all labels defined in the function
-		public bool changesState;     // contains a 'state' statement somewhere
+		                                     // all labels defined in the function
+		public bool changesState;            // contains a 'state' statement somewhere
 		public Dictionary<string, TokenName> calledFuncs = new Dictionary<string, TokenName> ();
-		                              // all functions called by this function
+		                                     // all functions called by this function
+
+		public DynamicMethod dynamicMethod;  // codegen stores emitted code here
 
 		public TokenDeclFunc (Token original) : base (original) { }
 
@@ -1902,6 +1906,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenName name;        // the label's name
 		public TokenStmtBlock block;  // which block it is defined in
 		public bool hasBkwdRefs = false;
+
+		public bool labelTagged;      // code gen: location of label
+		public ScriptMyLabel labelStruct;
 
 		public TokenStmtLabel (Token original) : base (original) { }
 	}

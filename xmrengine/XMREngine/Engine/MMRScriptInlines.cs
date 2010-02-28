@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Reflection.Emit;
 using System.Text;
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 
@@ -19,15 +20,22 @@ using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
 
 
 /**
- * @brief Backend API call definitions.
+ * @brief Generate code for the backend API calls.
  */
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
+	public delegate void CodeGenCall (ScriptCodeGen scg, CompValu result, CompValu[] args);
+
 	public class InlineFunction {
 		public string signature;      // name(arglsltypes,...)
-		public Type retType;          // return value system type (typeof (void) for void)
-		public TokenType[] argTypes;  // argument types
-		public string code;           // code to be inlined
+		public TokenType retType;     // return value type (TokenTypeVoid for void)
+		public TokenType[] argTypes;  // argument types (valid only for CodeGenBEApi);
+		public CodeGenCall codeGen;   // method that generates code
+		public MethodInfo methInfo;   // function called by the inline
+		public bool doCheckRun;       // valid for CodeGenBEApi only
+
+		private static MethodInfo roundMethInfo = ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Round", 
+				new Type[] { typeof (double), typeof (MidpointRounding) });
 
 		/**
 		 * @brief Create a dictionary of inline backend API functions.
@@ -89,27 +97,29 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public static Dictionary<string, InlineFunction> CreateDictionary ()
 		{
 			Dictionary<string, InlineFunction> ifd = new Dictionary<string, InlineFunction> ();
+			InlineFunction inf;
+
+			Type[] oneDoub  = new Type[] { typeof (double) };
+			Type[] twoDoubs = new Type[] { typeof (double), typeof (double) };
 
 			/*
 			 * Mono generates an FPU instruction for many math calls.
 			 */
-			new InlineFunction (ifd, "llAbs(integer)",       typeof (int),   "({0} < 0 ? -{0} : {0})");
-			new InlineFunction (ifd, "llAcos(float)",        typeof (float), "(float)System.Math.Acos({0})");
-			new InlineFunction (ifd, "llAsin(float)",        typeof (float), "(float)System.Math.Asin({0})");
-			new InlineFunction (ifd, "llAtan2(float,float)", typeof (float), "(float)System.Math.Atan2({0},{1})");
-			new InlineFunction (ifd, "llCeil(float)",        typeof (float), "(float)System.Math.Ceiling({0})");
-			new InlineFunction (ifd, "llCos(float)",         typeof (float), "(float)System.Math.Cos({0})");
-			new InlineFunction (ifd, "llFabs(float)",        typeof (float), "(float)System.Math.Abs({0})");
-			new InlineFunction (ifd, "llFloor(float)",       typeof (float), "(float)System.Math.Floor({0})");
-			new InlineFunction (ifd, "llLog(float)",         typeof (float), "(float)System.Math.Log({0})");
-			new InlineFunction (ifd, "llLog10(float)",       typeof (float), "(float)System.Math.Log10({0})");
-			new InlineFunction (ifd, "llPow(float,float)",   typeof (float), "(float)System.Math.Pow({0},{1})");
-			new InlineFunction (ifd, "llRound(float)",       typeof (float), "(float)System.Math.Round({0},System.MidpointRounding.AwayFromZero)");
-			new InlineFunction (ifd, "llSin(float)",         typeof (float), "(float)System.Math.Sin({0})");
-			new InlineFunction (ifd, "llSqrt(float)",        typeof (float), "(float)System.Math.Sqrt({0})");
-			new InlineFunction (ifd, "llTan(float)",         typeof (float), "(float)System.Math.Tan({0})");
-
-			new InlineFunction (ifd, "ConsoleWriteLine(string)", typeof (void), "System.Console.WriteLine({0})");
+			inf = new InlineFunction (ifd, "llAbs(integer)",       typeof (int),   null);                                                                      inf.codeGen = inf.CodeGenLLAbs;
+			inf = new InlineFunction (ifd, "llAcos(float)",        typeof (float), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Acos",    oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new InlineFunction (ifd, "llAsin(float)",        typeof (float), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Asin",    oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new InlineFunction (ifd, "llAtan2(float,float)", typeof (float), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Atan2",   twoDoubs)); inf.codeGen = inf.CodeGenStatic;
+			inf = new InlineFunction (ifd, "llCeil(float)",        typeof (float), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Ceiling", oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new InlineFunction (ifd, "llCos(float)",         typeof (float), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Cos",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new InlineFunction (ifd, "llFabs(float)",        typeof (float), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Abs",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new InlineFunction (ifd, "llFloor(float)",       typeof (float), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Floor",   oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new InlineFunction (ifd, "llLog(float)",         typeof (float), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Log",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new InlineFunction (ifd, "llLog10(float)",       typeof (float), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Log10",   oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new InlineFunction (ifd, "llPow(float,float)",   typeof (float), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Pow",     twoDoubs)); inf.codeGen = inf.CodeGenStatic;
+			inf = new InlineFunction (ifd, "llRound(float)",       typeof (float), null);                                                                      inf.codeGen = inf.CodeGenLLRound;
+			inf = new InlineFunction (ifd, "llSin(float)",         typeof (float), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Sin",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new InlineFunction (ifd, "llSqrt(float)",        typeof (float), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Sqrt",    oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new InlineFunction (ifd, "llTan(float)",         typeof (float), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Tan",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
 
 			/*
 			 * Finally for any API functions defined by ScriptBaseClass that are not overridden 
@@ -135,6 +145,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				"llGetListEntryType",
 				"llGetListLength",
 				"llGetSubString",
+				"llGetUnixTime",
 				"llInsertString",
 				"llList2CSV",
 				"llList2Float",
@@ -177,11 +188,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 * Create a corresponding signature.
 					 */
 					ParameterInfo[] parameters = ifaceMethod.GetParameters ();
+					TokenType[] argTypes = new TokenType[parameters.Length];
 					StringBuilder sig = new StringBuilder (key);
 					sig.Append ('(');
 					for (int i = 0; i < parameters.Length; i ++) {
 						if (i > 0) sig.Append (',');
-						sig.Append (TokenType.FromSysType (null, parameters[i].ParameterType).ToString ());
+						argTypes[i] = TokenType.FromSysType (null, parameters[i].ParameterType);
+						sig.Append (argTypes[i].ToString ());
 					}
 					sig.Append (')');
 					key = sig.ToString ();
@@ -191,37 +204,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 */
 					if (!ifd.ContainsKey (key)) {
 						Type retType = ifaceMethod.ReturnType;
-						if (retType == typeof (LSL_Float))   retType = typeof (float);
-						if (retType == typeof (LSL_Integer)) retType = typeof (int);
-						if (retType == typeof (LSL_String))  retType = typeof (string);
-						StringBuilder code = new StringBuilder ();
-						if (Array.IndexOf (noCheckRun, ifaceMethod.Name) < 0) {
-							code.Append ("{ ");
-							if (ifaceMethod.ReturnType != typeof (void)) {
-								code.Append ("{#} = ");
+						InlineFunction inlfun = new InlineFunction (ifd, key, retType, ifaceMethod);
+						inlfun.argTypes   = argTypes;
+						inlfun.codeGen    = inlfun.CodeGenBEApi;
+						inlfun.doCheckRun = true;
+						for (int i = noCheckRun.Length; -- i >= 0;) {
+							if (noCheckRun[i] == ifaceMethod.Name) {
+								inlfun.doCheckRun = false;
+								break;
 							}
-						} else {
-							code.Append ("(");
 						}
-						if (retType == typeof (float)) {
-							code.Append ("(float)");
-						}
-						code.Append ("__be.");
-						code.Append (ifaceMethod.Name);
-						code.Append ('(');
-						for (int i = 0; i < parameters.Length; i ++) {
-							if (i > 0) code.Append (',');
-							code.Append ("{" + i.ToString () + "}");
-						}
-						code.Append (')');
-						if (ifaceMethod.ReturnType == typeof (LSL_Float))   code.Append (".value");
-						if (ifaceMethod.ReturnType == typeof (LSL_Integer)) code.Append (".value");
-						if (Array.IndexOf (noCheckRun, ifaceMethod.Name) < 0) {
-							code.Append ("; __sm.continuation.CheckRun(); }");
-						} else {
-							code.Append (")");
-						}
-						new InlineFunction (ifd, key, retType, code.ToString ());
 					}
 				} catch (Exception except) {
 
@@ -243,31 +235,78 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @param ifd       = dictionary to add inline definition to
 		 * @param signature = inline function signature string, in form <name>(<arglsltypes>,...)
 		 * @param retType   = system return type, use typeof(void) if no return value
-		 * @param code      = C# code (in either single-expression or statement-block form)
+		 * @param methInfo  = used by codeGen to know what backend method to call
 		 */
-		private InlineFunction (Dictionary<string, InlineFunction> ifd, string signature, Type retType, string code)
+		private InlineFunction (Dictionary<string, InlineFunction> ifd, 
+		                        string signature, 
+		                        Type retType, 
+		                        MethodInfo methInfo)
 		{
-			int i, j, nargs;
-
 			this.signature = signature;
-			this.retType   = retType;
-			this.code      = code;
-			nargs = 0;
-			for (i = signature.IndexOf ("("); i < signature.Length; i = j) {
-				j = signature.IndexOf (",", ++ i);
-				if (j < 0) j = signature.IndexOf (")", i);
-				if (j <= i) break;
-				nargs ++;
-			}
-			this.argTypes = new TokenType[nargs];
-			nargs = 0;
-			for (i = signature.IndexOf ("("); i < signature.Length; i = j) {
-				j = signature.IndexOf (",", ++ i);
-				if (j < 0) j = signature.IndexOf (")", i);
-				if (j <= i) break;
-				this.argTypes[nargs++] = TokenType.FromLSLType (null, signature.Substring (i, j - i));
-			}
+			this.retType   = TokenType.FromSysType (null, retType);
+			this.methInfo  = methInfo;
 			ifd.Add (signature, this);
+		}
+
+		/**
+		 * @brief Code generators...
+		 * @param scg = script we are generating code for
+		 * @param result = type/location for result (type matches function definition)
+		 * @param args = type/location of arguments (types match function definition)
+		 */
+
+		private void CodeGenLLAbs (ScriptCodeGen scg, CompValu result, CompValu[] args)
+		{
+			ScriptMyLabel itsPosLabel = scg.ilGen.DefineLabel ("llAbstemp");
+
+			result.PopPre (scg);
+			args[0].PushVal (scg);
+			scg.ilGen.Emit (OpCodes.Dup);
+			scg.ilGen.Emit (OpCodes.Ldc_I4_0);
+			scg.ilGen.Emit (OpCodes.Bge_S, itsPosLabel);
+			scg.ilGen.Emit (OpCodes.Neg);
+			scg.ilGen.MarkLabel (itsPosLabel);
+			result.PopPost (scg, retType);
+		}
+
+		private void CodeGenStatic (ScriptCodeGen scg, CompValu result, CompValu[] args)
+		{
+			result.PopPre (scg);
+			for (int i = 0; i < args.Length; i ++) {
+				args[i].PushVal (scg);
+			}
+			scg.ilGen.Emit (OpCodes.Call, methInfo);
+			result.PopPost (scg, retType);
+		}
+
+		private void CodeGenLLRound (ScriptCodeGen scg, CompValu result, CompValu[] args)
+		{
+			result.PopPre (scg);
+			args[0].PushVal (scg);
+			scg.ilGen.Emit (OpCodes.Ldc_I4, (int)System.MidpointRounding.AwayFromZero);
+			scg.ilGen.Emit (OpCodes.Call, roundMethInfo);
+			result.PopPost (scg, retType);
+		}
+
+		/**
+		 * @brief Generate call to backend API function with a call to CheckRun() as well.
+		 * @param scg = script being compiled
+		 * @param result = where to place result (might be void)
+		 * @param args = arguments to pass to API function
+		 */
+		private void CodeGenBEApi (ScriptCodeGen scg, CompValu result, CompValu[] args)
+		{
+			result.PopPre (scg);
+			scg.ilGen.Emit (OpCodes.Ldarg_0);                              // scriptWrapper
+			scg.ilGen.Emit (OpCodes.Ldfld, ScriptCodeGen.beAPIFieldInfo);  // scriptWrapper.beAPI = 'this' for the API function
+			for (int i = 0; i < args.Length; i ++) {                       // push arguments
+				args[i].PushVal (scg, argTypes[i]);                    // .. boxing/unboxing as needed
+			}
+			scg.ilGen.Emit (OpCodes.Call, methInfo);                       // call API function
+			result.PopPost (scg, retType);                                 // pop result, boxing/unboxing as needed
+			if (doCheckRun) {
+				scg.EmitCallCheckRun ();                               // maybe call CheckRun()
+			}
 		}
 	}
 }

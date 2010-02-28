@@ -3,13 +3,7 @@
  *  All rights reserved.                           *
 \***************************************************/
 
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Text;
-using System.Reflection;
-using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
-using OpenSim.Region.ScriptEngine.XMREngine.Loader;
+using log4net;
 using LSL_Float = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLFloat;
 using LSL_Integer = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLInteger;
 using LSL_Key = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
@@ -17,9 +11,15 @@ using LSL_List = OpenSim.Region.ScriptEngine.Shared.LSL_Types.list;
 using LSL_Rotation = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Quaternion;
 using LSL_String = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
 using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
-using log4net;
-using Microsoft.CSharp;
-using System.CodeDom.Compiler;
+using Mono.Tasklets;
+using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
+using OpenSim.Region.ScriptEngine.XMREngine.Loader;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
+using System.Reflection.Emit;
+using System.Text;
 
 
 /**
@@ -38,84 +38,93 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public static readonly int CALL_FRAME_MEMUSE = 64;
 		public static readonly int STRING_LEN_TO_MEMUSE = 2;
 
-		private static CSharpCodeProvider CSCodeProvider = new CSharpCodeProvider();
-
 		/*
 		 * Static tables that there only needs to be one copy of for all.
 		 */
-		private static Dictionary<string, BinOpStr> binOpStrings = null;
-		private static Dictionary<string, InlineFunction> inlineFunctions = null;
-		private static Dictionary<string, string> legalTypeCasts = null;
-		private static Dictionary<string, TokenDeclFunc> legalEventHandlers = null;
+		private static Dictionary<string, BinOpStr> binOpStrings = BinOpStr.DefineBinOps ();
+		private static Dictionary<string, InlineFunction> inlineFunctions = InlineFunction.CreateDictionary ();
+		private static Dictionary<string, TokenDeclFunc> legalEventHandlers = CreateLegalEventHandlers ();
 		private static TokenTypeBool tokenTypeBool = new TokenTypeBool (null);
+		private static Type[] scriptWrapperTypeArg = new Type[] { typeof (ScriptWrapper) };
 
-		public static bool CodeGen (TokenScript tokenScript, string binaryName,
-				string debugFileName)
+		private static ConstructorInfo lslFloatConstructorInfo = typeof (LSL_Float).GetConstructor (new Type[] { typeof (float) });
+		private static ConstructorInfo lslIntegerConstructorInfo = typeof (LSL_Integer).GetConstructor (new Type[] { typeof (int) });
+		private static ConstructorInfo lslListConstructorInfo = typeof (LSL_List).GetConstructor (new Type[] { typeof (object[]) });
+		public  static ConstructorInfo lslRotationConstructorInfo = typeof (LSL_Rotation).GetConstructor (new Type[] { typeof (double), typeof (double), typeof (double), typeof (double) });
+		private static ConstructorInfo lslStringConstructorInfo = typeof (LSL_String).GetConstructor (new Type[] { typeof (string) });
+		public  static ConstructorInfo lslVectorConstructorInfo = typeof (LSL_Vector).GetConstructor (new Type[] { typeof (double), typeof (double), typeof (double) });
+		private static ConstructorInfo scriptUndefinedStateExceptionConstructorInfo = typeof (ScriptUndefinedStateException).GetConstructor (new Type[0]);
+		private static ConstructorInfo xmrArrayConstructorInfo = typeof (XMR_Array).GetConstructor (new Type[0]);
+		private static FieldInfo arrayCountFieldInfo = typeof (XMR_Array).GetField ("__pub_count");
+		private static FieldInfo arrayIndexFieldInfo = typeof (XMR_Array).GetField ("__pub_index");
+		private static FieldInfo arrayValueFieldInfo = typeof (XMR_Array).GetField ("__pub_value");
+		public  static FieldInfo beAPIFieldInfo = typeof (ScriptWrapper).GetField ("beAPI");
+		private static FieldInfo continuationFieldInfo = typeof (ScriptWrapper).GetField ("continuation");
+		private static FieldInfo ehArgsFieldInfo = typeof (ScriptWrapper).GetField ("ehArgs");
+		private static FieldInfo rotationXFieldInfo = typeof (LSL_Rotation).GetField ("x");
+		private static FieldInfo rotationYFieldInfo = typeof (LSL_Rotation).GetField ("y");
+		private static FieldInfo rotationZFieldInfo = typeof (LSL_Rotation).GetField ("z");
+		private static FieldInfo rotationSFieldInfo = typeof (LSL_Rotation).GetField ("s");
+		private static FieldInfo stateChangedFieldInfo = typeof (ScriptWrapper).GetField ("stateChanged");
+		private static FieldInfo stateCodeFieldInfo    = typeof (ScriptWrapper).GetField ("stateCode");
+		private static FieldInfo vectorXFieldInfo = typeof (LSL_Vector).GetField ("x");
+		private static FieldInfo vectorYFieldInfo = typeof (LSL_Vector).GetField ("y");
+		private static FieldInfo vectorZFieldInfo = typeof (LSL_Vector).GetField ("z");
+
+		private static MethodInfo checkRunMethodInfo = typeof (ScriptContinuation).GetMethod ("CheckRun", new Type[0]);
+		private static MethodInfo forEachMethodInfo = typeof (XMR_Array).GetMethod ("ForEach", new Type[] { typeof (int),
+		                                                                                                    typeof (object).MakeByRefType (),
+		                                                                                                    typeof (object).MakeByRefType () });
+
+		public static ScriptObjCode CodeGen (TokenScript tokenScript, string descName, string ilGenDebugName)
 		{
-
-			/*
-			 * This is a table of methods that take two operands and an operator
-			 * and generate the code to process them.
-			 */
-			if (binOpStrings == null) {
-				Dictionary<string, BinOpStr> bos = DefineBinOps ();
-				//MB()
-				binOpStrings = bos;
-			}
-			//MB()
-
-			if (inlineFunctions == null) {
-				Dictionary<string, InlineFunction> inlfun = InlineFunction.CreateDictionary ();
-				//MB()
-				inlineFunctions = inlfun;
-			}
-			//MB()
-
-			if (legalTypeCasts == null) {
-				Dictionary<string, string> ltc = CreateLegalTypeCasts ();
-				//MB()
-				legalTypeCasts = ltc;
-			}
-			//MB()
-
-			if (legalEventHandlers == null) {
-				Dictionary<string, TokenDeclFunc> leh = CreateLegalEventHandlers ();
-				//MB()
-				legalEventHandlers = leh;
-			}
-			//MB()
+			TypeCast.CreateLegalTypeCasts ();
 
 			/*
 			 * Run compiler such that it has a 'this' context for convenience.
 			 */
-			ScriptCodeGen sc = new ScriptCodeGen (tokenScript, binaryName,
-					debugFileName);
-			return sc.exitCode == 0;
+			ScriptCodeGen scg = new ScriptCodeGen (tokenScript, descName, ilGenDebugName);
+
+			/*
+			 * Return pointer to resultant script object code.
+			 */
+			return (scg.exitCode == 0) ? scg.scriptObjCode : null;
 		}
 
 		/*
 		 * There is one set of these variables for each script being compiled.
 		 */
-		private bool traceAPICalls = false;
 		private bool youveAnError = false;
-		private MemoryStream objectFile;
-		private TextWriter objectWriter;
 		private int exitCode = 0;
 		private int nStates = 0;
-		private string smClassName = null;
 		private Token errorMessageToken = null;
 		private TokenDeclFunc curDeclFunc = null;
 		private TokenStmtBlock curStmtBlock = null;
+		public  StreamWriter ilGenDebugWriter = null;
+		private string descName = null;
+		private TokenScript tokenScript = null;
 
 		private Dictionary<string, TokenDeclFunc> scriptFunctions = null;
 		private Dictionary<string, int> stateIndices = null;
-		private Stack<Dictionary<string, TokenType>> scriptVariablesStack = null;
-		private Dictionary<string, TokenType> scriptInstanceVariables = null;
+		private Stack<Dictionary<string, CompValu>> scriptVariablesStack = null;
+		private Dictionary<string, CompValu> scriptInstanceVariables = null;
 
-		private ScriptCodeGen (TokenScript tokenScript, string binaryName, string debugFileName)
+		// code generation output
+		public ScriptObjCode scriptObjCode = null;
+
+		// These get cleared at beginning of every function definition
+		public  ScriptMyILGen ilGen = null;  // the output instruction stream
+		private ScriptMyLocal beLoc = null;  // "ScriptBase __be" local variable
+
+		private ScriptCodeGen (TokenScript tokenScript, string descName, string ilGenDebugName)
 		{
-			string envar = Environment.GetEnvironmentVariable ("MMRScriptCompileTraceAPICalls");
-			traceAPICalls = (envar != null) && ((envar[0] & 1) != 0);
+			this.tokenScript = tokenScript;
+			this.descName    = descName;
+
+			if (ilGenDebugName == null) ilGenDebugName = "";
+			if (ilGenDebugName != "") {
+				ilGenDebugWriter = File.CreateText (ilGenDebugName);
+			}
 
 			/*
 			 * errorMessageToken is used only when the given token doesn't have a
@@ -143,6 +152,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			nStates = 0;
 			tokenScript.defaultState.body.index = nStates ++;
+			stateIndices.Add ("default", 0);
 			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclState> kvp in tokenScript.states) {
 				TokenDeclState declState = kvp.Value;
 				declState.body.index = nStates ++;
@@ -150,30 +160,39 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
+			 * Make up an array that translates state indices to state name strings.
+			 */
+			scriptObjCode = new ScriptObjCode ();
+			scriptObjCode.stateNames = new string[nStates];
+			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclState> kvp in tokenScript.states) {
+				TokenDeclState declState = kvp.Value;
+				scriptObjCode.stateNames[declState.body.index] = declState.name.val;
+			}
+
+			/*
+			 * This table gets filled in with entrypoints of all the script event handler functions.
+			 */
+			scriptObjCode.scriptEventHandlerTable = new ScriptEventHandler[nStates,(int)ScriptEventCode.Size];
+
+			/*
+			 * This table gets filled in with entrypoints of all dynamic methods that can be encountered
+			 * on the stack by the MMRCont continuation routines.
+			 */
+			scriptObjCode.dynamicMethods = new Dictionary<string, MethodInfo> ();
+
+			/*
 			 * Set up stack of dictionaries to translate variable names to their declaration.
 			 * Then push the first element on the stack that will get any global variables.
 			 */
-			scriptVariablesStack = new Stack<Dictionary<string, TokenType>> ();
+			scriptVariablesStack = new Stack<Dictionary<string, CompValu>> ();
 			scriptInstanceVariables = PushVarDefnBlock ();
-
-			objectFile   = new MemoryStream();
-			objectWriter = new StreamWriter (objectFile);
-
-			/*
-			 * Output script class statement.
-			 * Note we don't put any 'using' statements to avoid nasty tricks,
-			 * so we must use complete names when referencing classes.
-			 */
-			smClassName  = "ScriptModule";
-			WriteOutput (0, "public class " + smClassName + " : " + TypeName (typeof (ScriptWrapper)) + " {");
 
 			/*
 			 * Write out COMPILED_VERSION.  This is used by ScriptWrapper to determine if the
 			 * compilation is suitable for it to use.  If it sees the wrong version, it will
 			 * recompile the script so it has the correct version.
 			 */
-			WriteOutput (0, "public static readonly int " + ScriptWrapper.COMPILED_VERSION_NAME + " = " + 
-			                                                ScriptWrapper.COMPILED_VERSION_VALUE.ToString () + ";");
+			scriptObjCode.compiledVersion = ScriptWrapper.COMPILED_VERSION_VALUE;
 
 			/*
 			 * Put script defined functions in 'scriptFunctions' dictionary so any calls
@@ -214,71 +233,40 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			} while (foundChangedState);
 
 			/*
-			 * Translate all the global variable declarations to private instance variables.
-			 * Prefix them with __gbl_ so scripts can't directly access any vars defined in ScriptWrapper,
-			 * as all script-generated references are done with __sm.__gbl_<name>.
+			 * Translate all the global variable declarations to indices in the ScriptWrapper.gbl<Type>s[] arrays.
 			 */
-			int nGlobals = 0;
 			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclVar> kvp in tokenScript.vars) {
 				TokenDeclVar declVar = kvp.Value;
-				AddVarDefinition (declVar.type, declVar.name.val);
-				WriteOutput (declVar, "private " + TypeName (declVar.type) + " __gbl_" + declVar.name.val + ";");
-				nGlobals ++;
+				AddVarDefinition (declVar.name, new CompValuGlobal (declVar, scriptObjCode));
 			}
 
 			/*
-			 * We only need a default constructor with no arguments.
-			 * All it does is fill in the instance variable declarations initial values.
-			 * We set up __sm in case any of the GenerateFromRVal()s references it.
-			 * Then we use __sm to reference the instance vars so __sm doesn't go unreferenced.
-			 */
-			if (nGlobals > 0) {
-				WriteOutput (0, "public " + smClassName + " () {");
-				WriteOutput (0, smClassName + " __sm = this;");
-				WriteOutput (0, TypeName (typeof (ScriptBaseClass))    + " __be = this.beAPI;");
-
-				/*
-				 * Now fill in field initialization values.
-				 */
-				int initialSize = 0;
-				foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclVar> kvp in tokenScript.vars) {
-					TokenDeclVar declVar = kvp.Value;
-					initialSize += TokenType.StaticSize (declVar.type.typ);
-					if (declVar.init != null) {
-						CompRVal rVal = GenerateFromRVal (null, declVar.init);
-						WriteOutput (declVar, "__sm.__gbl_" + declVar.name.val + " = " + StringWithCast (declVar.type, rVal) + ";");
-					} else {
-						WriteOutput (declVar, "__sm.__gbl_" + declVar.name.val + " = " + DefaultValue (declVar.type) + ";");
-					}
-				}
-
-				/*
-				 * That's all for the constructor.
-				 */
-				WriteOutput (0, "}");
-			}
-
-			/*
-			 * Output each global function as a private method.  We dont need to add them to function
-			 * table because that was done above.
+			 * Output each global function as a private method.
 			 *
 			 * Prefix the names with __fun_ to keep them separate from any ScriptWrapper functions.
 			 */
+
+			/*
+			 * Output function headers then bodies.
+			 * Do all headers first in case bodies do forward references.
+			 */
 			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclFunc> kvp in tokenScript.funcs) {
 				TokenDeclFunc declFunc = kvp.Value;
-				WriteOutput (declFunc, "[Mono.Tasklets.MMRContableAttribute ()]\n");
-				WriteOutput (declFunc, "private static ");
-				GenerateMethod (declFunc);
+				GenerateMethodHeader (declFunc);
+			}
+			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclFunc> kvp in tokenScript.funcs) {
+				TokenDeclFunc declFunc = kvp.Value;
+				GenerateMethodBody (declFunc);
 			}
 
 			/*
-			 * Output default state.
+			 * Output default state event handler methods.
 			 * Each event handler is a private static method named __seh_default_<eventname>
 			 */
 			GenerateStateHandler ("default", tokenScript.defaultState.body);
 
 			/*
-			 * Output script-defined states.
+			 * Output script-defined state event handler methods.
 			 * Each event handler is a private static method named __seh_<statename>_<eventname>
 			 */
 			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclState> kvp in tokenScript.states) {
@@ -287,205 +275,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
-			 * Create a static variable to hold the ScriptEventHandlerTable.
-			 */
-			WriteOutput (0, "private static " + TypeName (typeof (ScriptEventHandler)) + "[,] myScriptEventHandlerTable;");
-
-			/*
-			 * Create a method that builds and retrieves a pointer to the matrix:
-			 *
-			 * public static ScriptEventHandler[,] GetScriptEventHandlerTable ()
-			 * {
-			 *    if (scriptEventHandlerTable == null) {
-			 *       ScriptEventHandler[,] seht = new ScriptEventHandler[,];
-			 *       seht[stateIndex,eventIndex] = entrypoint;
-			 *       ...
-			 *       //MB()
-			 *       scriptEventHandlerTable = seht;
-			 *    }
-			 *    //MB()
-			 *    return scriptEventHandlerTable;
-			 * }
-			 * 
-			 * The returned table is what the script engine uses to access the event handlers.
-			 * The table is indexed by the current state and an event code (from enum ScriptEventCode):
-			 *    ScriptEventHandler seh = scriptEventHandlerTable[stateIndex,eventCode];
-			 * ...and each entry is called:
-			 *    object[] args = new object[] { event handler argument list... };
-			 *    seh(this,args);
-			 */
-			WriteOutput (0, "public static " + TypeName (typeof (ScriptEventHandler)) + "[,] GetScriptEventHandlerTable () {");
-			WriteOutput (0, "if (myScriptEventHandlerTable == null) {");
-			WriteOutput (0, TypeName (typeof (ScriptEventHandler)) + "[,] seht = new " + 
-			                TypeName (typeof (ScriptEventHandler)) + "[" + nStates + "," + (int)ScriptEventCode.Size + "];");
-			GenerateSEHTFill ("default", tokenScript.defaultState.body);
-			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclState> kvp in tokenScript.states) {
-				TokenDeclState declState = kvp.Value;
-				GenerateSEHTFill (declState.name.val, declState.body);
-			}
-			WriteOutput (0, "//MB();");
-			WriteOutput (0, "myScriptEventHandlerTable = seht;");
-			WriteOutput (0, "}");
-			WriteOutput (0, "//MB();");
-			WriteOutput (0, "return myScriptEventHandlerTable;");
-			WriteOutput (0, "}");
-
-			/*
-			 * Output a function to convert a stateCode (integer) to a state name (string).
-			 */
-			WriteOutput (0, "private static string[] stateNames = new string[] { \"default\"");
-			int i = 0;
-			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclState> kvp in tokenScript.states) {
-				TokenDeclState declState = kvp.Value;
-				if (declState.body.index != ++ i) {
-					throw new Exception ("state index mismatch");
-				}
-				WriteOutput (0, ", \"" + declState.name.val + "\"");
-			}
-			WriteOutput (0, "};");
-			WriteOutput (0, "public override string GetStateName (int stateCode) {");
-			WriteOutput (0, "if ((stateCode < 0) || (stateCode >= stateNames.Length)) return null;");
-			WriteOutput (0, "return stateNames[stateCode];");
-			WriteOutput (0, "}");
-
-			/*
-			 * Generate a method to migrate the script out, ie, serialize it.
-			 */
-			WriteOutput (0, "public override void MigrateScriptOut (System.IO.Stream stream, Mono.Tasklets.MMRContSendObj sendObj) {");
-			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclVar> kvp in tokenScript.vars) {
-				TokenDeclVar declVar = kvp.Value;
-				WriteOutput (0, "sendObj (stream, (object)__gbl_" + declVar.name.val + ");");
-			}
-			WriteOutput (0, "}");
-
-			/*
-			 * Generate a method to migrate the script in, ie, deserialize it.
-			 */
-			WriteOutput (0, "public override void MigrateScriptIn (System.IO.Stream stream, Mono.Tasklets.MMRContRecvObj recvObj) {");
-			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclVar> kvp in tokenScript.vars) {
-				TokenDeclVar declVar = kvp.Value;
-				WriteOutput (0, "__gbl_" + declVar.name.val + " = (" + TypeName (declVar.type) + ")recvObj (stream);");
-			}
-			WriteOutput (0, "}");
-
-			/*
-			 * Generate a method to dispose the script.
-			 * It writes garbage values to the variables, used for debugging migration.
-			 */
-			WriteOutput (0, "public override void Dispose () {");
-			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclVar> kvp in tokenScript.vars) {
-				TokenDeclVar declVar = kvp.Value;
-				WriteOutput (0, "__gbl_" + declVar.name.val + " = " + 
-				                TypeName (typeof (ScriptWrapper)) + ".disposed_" + declVar.type.ToString () + ";");
-			}
-			WriteOutput (0, "base.Dispose ();");
-			WriteOutput (0, "}");
-
-			/*
-			 * Finally a function to translate a C# line number to an LSL line number, for runtime exception reporting.
-			 */
-			WriteOutput (0, "private static int[] lineNoTrans = new int[] {0");
-			i = 0;
-			int[] lineNoArray = System.Linq.Enumerable.ToArray (lineNoTrans);
-			foreach (int srcLineNo in lineNoArray) {
-				WriteOutput (0, "," + srcLineNo.ToString ());
-				if (++ i == 10) {
-					WriteOutput (0, "\n");
-					i = 0;
-				}
-			}
-			WriteOutput (0, " };");
-			WriteOutput (0, "public override int DLLToSrcLineNo (int dllLineNo) {");
-			WriteOutput (0, "if ((dllLineNo < 0) || (dllLineNo >= lineNoTrans.Length)) return -1;");
-			WriteOutput (0, "return lineNoTrans[dllLineNo];");
-			WriteOutput (0, "}");
-
-			/*
-			 * End of the ScriptModule class definition.
-			 */
-			WriteOutput (0, "}");
-			objectWriter.Flush();
-			objectWriter.Close();
-
-			/*
 			 * Check for error and abort if so.
 			 */
 			if (youveAnError) {
 				exitCode = -1;
-				return;
 			}
 
-			/*
-			 * Convert C# to .DLL by sending to compiler.
-			 * Theoretically, we shouldn't get any errors from the compilation.
-			 */
-			UTF8Encoding encoding = new UTF8Encoding();
-			string text = encoding.GetString(objectFile.ToArray());
-
-			if ((debugFileName != null) && (debugFileName != String.Empty))
-			{
-				FileStream dfs = File.Create(debugFileName);
-				StreamWriter dsw = new StreamWriter(dfs);
-
-				dsw.Write(text);
-
-				dsw.Close();
-				dfs.Close();
-			}
-
-			CompilerParameters parameters = new CompilerParameters();
-
-			parameters.IncludeDebugInformation = true;
-
-			string rootPath =
-				Path.GetDirectoryName(AppDomain.CurrentDomain.BaseDirectory);
-			
-			parameters.ReferencedAssemblies.Add(Path.Combine(rootPath,
-				"OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll"));
-			parameters.ReferencedAssemblies.Add(Path.Combine(rootPath,
-				"OpenSim.Region.ScriptEngine.Shared.dll"));
-			parameters.ReferencedAssemblies.Add(Path.Combine(rootPath,
-				"OpenSim.Region.ScriptEngine.XMREngine.Loader.dll"));
-
-			parameters.ReferencedAssemblies.Add("Mono.Tasklets.dll");
-
-			parameters.GenerateExecutable = false;
-			parameters.OutputAssembly = binaryName;
-
-			CompilerResults results;
-
-			try
-			{
-				lock(CSCodeProvider)
-				{
-					results = CSCodeProvider.CompileAssemblyFromSource(parameters, text);
-				}
-
-				if (results.Errors.Count > 0)
-				{
-					foreach (CompilerError compErr in results.Errors)
-					{
-						if (compErr.IsWarning) continue;
-						tokenScript.line = 0;
-						tokenScript.posn = 0;
-						if ((compErr.Line > 0) && (compErr.Line <= lineNoArray.Length)) {
-				                        tokenScript.line = lineNoArray[compErr.Line - 1];
-				                        tokenScript.posn = compErr.Column - 1;
-						} else {
-							m_log.Error("[XMREngine]: gmcs error in " + binaryName + ": " + compErr.ErrorText);
-						}
-			                        tokenScript.emsg(tokenScript, compErr.ErrorText);
-						exitCode = 1;
-					}
-				}
-			}
-			catch (Exception e)
-			{
-	                        tokenScript.line = 0;
-	                        tokenScript.posn = 0;
-	                        tokenScript.emsg(tokenScript, e.Message);
-				m_log.Error("[XMREngine]: gmcs exception in " + binaryName + ": " + e.Message);
-				exitCode = 1;
+			if (ilGenDebugWriter != null) {
+				ilGenDebugWriter.WriteLine ("\nEnd.");
+				ilGenDebugWriter.Flush ();
+				ilGenDebugWriter.Close ();
 			}
 		}
 
@@ -495,14 +294,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * named __seh_<statename>_<eventname>
 		 *
 		 * However, each has just 'ScriptWrapper __sw' as its single argument
-		 * and each of its user-visible argments is extracted from __sm.ehArgs[].
+		 * and each of its user-visible argments is extracted from __sw.ehArgs[].
 		 *
 		 * So we end up generating something like this:
 		 *
-		 *   private static void __seh_<statename_<eventname>(ScriptWrapper __sw)
+		 *   private static void __seh_<statename_<eventname>$MMRContableAttribute$(ScriptWrapper __sw)
 		 *   {
-		 *      <smClassName> __sm = (ScriptWrapper)__sw;
-		 *      ScriptBaseClass __be    = __sm.beAPI;
+		 *      ScriptBaseClass __be  = __sw.beAPI;
 		 *      <typeArg0> <namearg0> = (<typeArg0>)__sw.ehArgs[0];
 		 *      <typeArg1> <nameArg1> = (<typeArg1>)__sw.ehArgs[1];
 		 *
@@ -563,64 +361,71 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Output function header.
+			 * They just have the ScriptWrapper pointer as the one argument.
 			 */
-			WriteOutput (declFunc, "[Mono.Tasklets.MMRContableAttribute ()]\n");
-			WriteOutput (declFunc, "private static void __seh_");
-			WriteOutput (declFunc, statename);
-			WriteOutput (declFunc, "_");
-			WriteOutput (declFunc, eventname);
-			WriteOutput (declFunc, "(" + TypeName (typeof (ScriptWrapper)) + " __sw) {");
+			string functionName = "__seh_" + statename + "_" + eventname + "$MMRContableAttribute$" + descName;
+			DynamicMethod functionMethodInfo = new DynamicMethod (functionName,
+			                                                      typeof (void),
+			                                                      scriptWrapperTypeArg,
+			                                                      typeof (ScriptWrapper));
+			scriptObjCode.dynamicMethods.Add (functionName, functionMethodInfo);
+			ilGen = new ScriptMyILGen (functionMethodInfo, ilGenDebugWriter);
 
 			/*
-			 * We use a __sm variable to access the script's user-defined fields and methods.
-			 * And __be is a cache for calling the backend API functions.
+			 * Set up __be local variable for calling the backend API functions = scriptWrapper.beAPI
 			 */
-			WriteOutput (declFunc, smClassName + " __sm = (" + smClassName + ")__sw;");
-			WriteOutput (declFunc, TypeName (typeof (ScriptBaseClass))    + " __be = __sw.beAPI;");
+			beLoc = ilGen.DeclareLocal (typeof (ScriptBaseClass), "__be");
+			ilGen.Emit (OpCodes.Ldarg_0);                // scriptWrapper
+			ilGen.Emit (OpCodes.Ldfld, beAPIFieldInfo);  // scriptWrapper.beAPI
+			ilGen.Emit (OpCodes.Stloc, beLoc);
+
+			/*
+			 * If this is the default state_entry() handler, output code to set all global
+			 * variables to their initial values.  Note that every script must have a
+			 * default state_entry() handler.
+			 */
+			if ((statename == "default") && (eventname == "state_entry")) {
+				foreach (KeyValuePair<string, TokenDeclVar> kvp in tokenScript.vars) {
+					TokenDeclVar gblDeclVar = kvp.Value;
+
+					CompValu var = scriptInstanceVariables[gblDeclVar.name.val];
+					var.PopPre (this);
+					if (gblDeclVar.init != null) {
+						CompValu rVal = GenerateFromRVal (gblDeclVar.init);
+						rVal.PushVal (this, gblDeclVar.type);
+					} else {
+						PushDefaultValue (gblDeclVar.type);
+					}
+					var.PopPost (this);
+				}
+			}
 
 			/*
 			 * Output args as variable definitions and initialize each from __sw.ehArgs[].
 			 * If the script writer goofed, the typecast will complain.
-			 * ??? add arg count and static type checking to match our type using reflection
 			 */
 			if (argDecl.types.Length > 0) {
-				string tempObj = null;
+				ScriptMyLocal swehArgs = ilGen.DeclareLocal (typeof (object[]), "ehArgs");
 
-				// warning CS0219: The variable `__lcl_change' is assigned but its value is never used
-				WriteOutput (0, "#pragma warning disable 219\n");
+				ilGen.Emit (OpCodes.Ldarg_0);                 // scriptWrapper
+				ilGen.Emit (OpCodes.Ldfld, ehArgsFieldInfo);  // scriptWrapper.ehArgs
+				ilGen.Emit (OpCodes.Stloc, swehArgs);
+
 				for (int i = 0; i < nargs; i ++) {
 
-					///////////////////////////////////////////////////////////////////////////////
-					/// Tell script to print out the argument type
-					///WriteOutput (argDecl, "System.Console.WriteLine(\"" + eventname + "[" + i + 
-					///                      "]=\"+__sw.ehArgs[" + i + "].GetType().ToString());");
-					///////////////////////////////////////////////////////////////////////////////
-
-					/*
-					 * Integers might come in as uints and the idiot runtime will throw exception,
-					 * so we have to klump in a test and select which conversion to use.
-					 */
-					if (false && (argDecl.types[i] is TokenTypeInt)) {
-						if (tempObj == null) {
-							tempObj = new CompRVal (null).locstr;
-							WriteOutput (argDecl, "object ");
-						}
-						WriteOutput (argDecl, tempObj + " = __sw.ehArgs[" + i + "];");
-						WriteOutput (argDecl, TypeName (argDecl.types[i]) + " __lcl_" + argDecl.names[i].val + " = ");
-						WriteOutput (argDecl, "(" + tempObj + " is uint) ? ");
-						WriteOutput (argDecl, "(int)(uint)" + tempObj + " : ");
-						WriteOutput (argDecl, "(int)" + tempObj + ";");
-					} else {
-						WriteOutput (argDecl, TypeName (argDecl.types[i]) + " __lcl_" + argDecl.names[i].val + " = ");
-						WriteOutput (argDecl, "(" + TypeName (argDecl.types[i]) + ")__sw.ehArgs[" + i + "];");
-					}
+					// <argtype> __lcl_<argname> = (<argtype>)__sw.ehArgs[i];
+					CompValu local = new CompValuTemp (argDecl.types[i], argDecl.names[i].val, this);
+					local.PopPre (this);
+					ilGen.Emit (OpCodes.Ldloc, swehArgs);          // __sw.ehArgs
+					PushConstantI4 (i);                            // array index = i
+					ilGen.Emit (OpCodes.Ldelem, typeof (object));  // it is an array of objects
+					local.PopPost (this, new TokenTypeObject (argDecl.names[i]));
 
 					/*
 					 * The argument is now defined as a local variable accessible to the function body.
 					 */
-					AddVarDefinition (argDecl.types[i], argDecl.names[i].val);
+					AddVarDefinition (argDecl.names[i], local);
 				}
-				WriteOutput (0, "#pragma warning restore 219\n");
 			}
 
 			/*
@@ -628,6 +433,47 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			GenerateFuncBody (declFunc);
 			curDeclFunc = oldDeclFunc;
+
+			/*
+			 * Now that we have all the code generated, fill in table entry to point to the entrypoint.
+			 */
+			scriptObjCode.scriptEventHandlerTable[stateIndices[statename],
+			                                      (int)Enum.Parse(typeof(ScriptEventCode),eventname)] = 
+					(ScriptEventHandler)functionMethodInfo.CreateDelegate (typeof (ScriptEventHandler));
+			////IntPtr monoMethod = functionMethodInfo.MethodHandle.Value;
+			////m_log.DebugFormat ("[XMREngine]: {0} MonoMethod={1}", functionName, monoMethod.ToString ("X8"));
+		}
+
+		/**
+		 * @brief generate header for an arbitrary script-defined function.
+		 * @param name = name of the function
+		 * @param argDecl = argument declarations
+		 * @param body = function's code body
+		 */
+		private void GenerateMethodHeader (TokenDeclFunc declFunc)
+		{
+			string name = declFunc.funcName.val;
+			TokenArgDecl argDecl = declFunc.argDecl;
+
+			/*
+			 * Make up array of all argument types.
+			 * We splice in ScriptWrapper for the first arg as the function is static.
+			 */
+			Type[] argTypes = new Type[argDecl.types.Length+1];
+			argTypes[0] = typeof (ScriptWrapper);
+			for (int i = 0; i < argDecl.types.Length; i ++) {
+				argTypes[i+1] = argDecl.types[i].typ;
+			}
+
+			/*
+			 * Set up entrypoint.
+			 */
+			string methodName = "__fun_" + name + "$MMRContableAttribute$" + descName;
+			declFunc.dynamicMethod = new DynamicMethod (methodName,
+			                                            declFunc.retType.typ,
+			                                            argTypes,
+			                                            typeof (ScriptWrapper));
+			scriptObjCode.dynamicMethods.Add (methodName, declFunc.dynamicMethod);
 		}
 
 		/**
@@ -636,9 +482,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @param argDecl = argument declarations
 		 * @param body = function's code body
 		 */
-		private void GenerateMethod (TokenDeclFunc declFunc)
+		private void GenerateMethodBody (TokenDeclFunc declFunc)
 		{
-			string name = declFunc.funcName.val;
 			TokenArgDecl argDecl = declFunc.argDecl;
 
 			/*
@@ -653,30 +498,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			PushVarDefnBlock ();
 
 			/*
-			 * Output function header.
-			 * We splice in <smClassName> __sm as the first argument as all our functions are static.
+			 * Define all arguments as named variables so script body can reference them.
+			 * The argument indices need to have +1 added to them because ScriptWrapper is spliced in at arg 0.
 			 */
-			if (declFunc.retType is TokenTypeVoid) {
-				WriteOutput (declFunc, "void");
-			} else {
-				WriteOutput (declFunc, TypeName (declFunc.retType));
+			for (int i = 0; i < argDecl.types.Length; i ++) {
+				AddVarDefinition (argDecl.names[i], new CompValuArg (argDecl.types[i], i + 1));
 			}
-			WriteOutput (declFunc, " __fun_");
-			WriteOutput (declFunc, name);
-			WriteOutput (declFunc, "(" + smClassName + " __sm");
-			if (argDecl.types.Length > 0) {
-				for (int i = 0; i < argDecl.types.Length; i ++) {
-					WriteOutput (argDecl, "," + TypeName (argDecl.types[i]) + " __lcl_" + argDecl.names[i].val);
-					AddVarDefinition (argDecl.types[i], argDecl.names[i].val);
-				}
-			}
-			WriteOutput (declFunc, ") {");
+
+			/*
+			 * Set up code generator for the function's contents.
+			 */
+			ilGen = new ScriptMyILGen (declFunc.dynamicMethod, ilGenDebugWriter);
+
+			/*
+			 * Set up local var 'ScriptBaseClass __be = __sw.beAPI;'
+			 */
+			beLoc = ilGen.DeclareLocal (typeof (ScriptBaseClass), "__be");
+			ilGen.Emit (OpCodes.Ldarg_0);                // scriptWrapper
+			ilGen.Emit (OpCodes.Ldfld, beAPIFieldInfo);  // scriptWrapper.beAPI
+			ilGen.Emit (OpCodes.Stloc, beLoc);
 
 			/*
 			 * See if time to suspend in case they are doing a loop with recursion.
 			 */
-			WriteOutput (declFunc.body, TypeName (typeof (ScriptBaseClass)) + " __be = __sm.beAPI;");
-			WriteOutput (declFunc.body, "__sm.continuation.CheckRun();");
+			EmitCallCheckRun ();
 
 			/*
 			 * Output code for the statements and clean up.
@@ -686,35 +531,25 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		/**
-		 * @brief output function body.
-		 *        the open brace has already been output.
+		 * @brief Output function body.
 		 */
 		private void GenerateFuncBody (TokenDeclFunc declFunc)
 		{
-
-			/*
-			 * Set up a local variable to capture return value.
-			 */
-			if (!(declFunc.retType is TokenTypeVoid)) {
-				WriteOutput (declFunc, TypeName (declFunc.retType) + " __retval = " + DefaultValue (declFunc.retType) + ";");
-			}
-
 			/*
 			 * Output code body.
 			 */
 			GenerateStmtBlock (declFunc.body, true);
 
 			/*
-			 * All return statements 'goto __Return' so we can do mem use epilog.
+			 * Just in case it runs off end without a return statement.
 			 */
-			WriteOutput (declFunc.body.closebr, "__Return:;");
-			if (declFunc.retType is TokenTypeVoid) {
-				// I had an example where the moron gmcs didn't generate the 'ret' CIL opcode...
-				WriteOutput (declFunc.body.closebr, "return;");
-			} else {
-				WriteOutput (declFunc.body.closebr, "return __retval;");
-			}
-			WriteOutput (declFunc.body.closebr, "}");
+			EmitDummyReturn ();
+
+			/*
+			 * Don't want to generate any more code for it by mistake.
+			 */
+			ilGen = null;
+			beLoc = null;
 
 			/*
 			 * All done, clean up.
@@ -728,18 +563,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void GenerateStmt (TokenStmt stmt)
 		{
 			errorMessageToken = stmt;
-			if (stmt is TokenStmtBlock)   { GenerateStmtBlock   ((TokenStmtBlock)stmt, false);       return; }
-			if (stmt is TokenStmtDo)      { GenerateStmtDo      ((TokenStmtDo)stmt);                 return; }
-			if (stmt is TokenStmtFor)     { GenerateStmtFor     ((TokenStmtFor)stmt);                return; }
-			if (stmt is TokenStmtForEach) { GenerateStmtForEach ((TokenStmtForEach)stmt);            return; }
-			if (stmt is TokenStmtIf)      { GenerateStmtIf      ((TokenStmtIf)stmt);                 return; }
-			if (stmt is TokenStmtJump)    { GenerateStmtJump    ((TokenStmtJump)stmt);               return; }
-			if (stmt is TokenStmtLabel)   { GenerateStmtLabel   ((TokenStmtLabel)stmt);              return; }
-			if (stmt is TokenStmtNull)    {                                                          return; }
-			if (stmt is TokenStmtRet)     { GenerateStmtRet     ((TokenStmtRet)stmt);                return; }
-			if (stmt is TokenStmtRVal)    { GenerateStmtRVal    ((TokenStmtRVal)stmt);               return; }
-			if (stmt is TokenStmtState)   { GenerateStmtState   ((TokenStmtState)stmt);              return; }
-			if (stmt is TokenStmtWhile)   { GenerateStmtWhile   ((TokenStmtWhile)stmt);              return; }
+			if (stmt is TokenStmtBlock)   { GenerateStmtBlock   ((TokenStmtBlock)stmt, false); return; }
+			if (stmt is TokenStmtDo)      { GenerateStmtDo      ((TokenStmtDo)stmt);           return; }
+			if (stmt is TokenStmtFor)     { GenerateStmtFor     ((TokenStmtFor)stmt);          return; }
+			if (stmt is TokenStmtForEach) { GenerateStmtForEach ((TokenStmtForEach)stmt);      return; }
+			if (stmt is TokenStmtIf)      { GenerateStmtIf      ((TokenStmtIf)stmt);           return; }
+			if (stmt is TokenStmtJump)    { GenerateStmtJump    ((TokenStmtJump)stmt);         return; }
+			if (stmt is TokenStmtLabel)   { GenerateStmtLabel   ((TokenStmtLabel)stmt);        return; }
+			if (stmt is TokenStmtNull)    {                                                    return; }
+			if (stmt is TokenStmtRet)     { GenerateStmtRet     ((TokenStmtRet)stmt);          return; }
+			if (stmt is TokenStmtRVal)    { GenerateStmtRVal    ((TokenStmtRVal)stmt);         return; }
+			if (stmt is TokenStmtState)   { GenerateStmtState   ((TokenStmtState)stmt);        return; }
+			if (stmt is TokenStmtWhile)   { GenerateStmtWhile   ((TokenStmtWhile)stmt);        return; }
 			throw new Exception ("unknown TokenStmt type " + stmt.GetType ().ToString ());
 		}
 
@@ -748,20 +583,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void GenerateStmtBlock (TokenStmtBlock stmtBlock, bool fromFunc)
 		{
-
 			/*
-			 * If this is an inner statement block, generate the { and all that goes with it.
-			 * Don't bother with the actual { if there is exactly one statement in the block.
-			 *
+			 * If this is an inner statement block, start a new variable defintion block.
 			 * If this is a top-level statement block, the caller must do this as necessary.
 			 */
 			if (!fromFunc) {
 				PushVarDefnBlock ();
-				if ((stmtBlock.statements == null) ||
-				    (stmtBlock.statements is TokenDeclVar) ||
-				    (stmtBlock.statements.nextToken != null)) {
-					WriteOutput (stmtBlock, "{");
-				}
 			}
 
 			/*
@@ -769,29 +596,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			TokenStmtBlock oldStmtBlock = curStmtBlock;
 			curStmtBlock = stmtBlock;
-
-			/*
-			 * Declare any variables at the very top of the block in case there
-			 * is a jump or return statement that exits the block, so we can
-			 * account for the used memory.
-			 *
-			 * We will just set them to their default value though as we don't
-			 * want to execute any initialization code out of order.  Then the
-			 * actual initialization will turn into an assignment statement.
-			 *
-			 * Do not put in codegen's list of defined variables for the block
-			 * yet though so we will give proper undefined variable messages.
-			 */
-			bool seenStatements = false;
-			for (Token t = stmtBlock.statements; t != null; t = t.nextToken) {
-				if (!(t is TokenDeclVar)) {
-					seenStatements = true;
-				} else if (seenStatements) {
-					TokenDeclVar declVar = (TokenDeclVar)t;
-					declVar.preDefd = true;
-					WriteOutput (declVar, TypeName (declVar.type) + " __lcl_" + declVar.name.val + " = " + DefaultValue (declVar.type) + ";");
-				}
-			}
 
 			/*
 			 * Output the statements that make up the block.
@@ -810,17 +614,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			curStmtBlock = oldStmtBlock;
 
 			/*
-			 * If this is an inner statement block, generate the } and all that goes with it.
-			 * Don't bother with the actual } if there is exactly one statement in the block.
-			 *
+			 * If this is an inner statement block, pop the local var definition stack.
 			 * If this is a top-level statement block, the caller must do this as necessary.
 			 */
 			if (!fromFunc) {
-				if ((stmtBlock.statements == null) ||
-				    (stmtBlock.statements is TokenDeclVar) ||
-				    (stmtBlock.statements.nextToken != null)) {
-					WriteOutput (stmtBlock.closebr, "}");
-				}
 				PopVarDefnBlock ();
 			}
 		}
@@ -832,16 +629,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void GenerateStmtDo (TokenStmtDo doStmt)
 		{
-			string lbl = GetTempNo ();
+			ScriptMyLabel loopLabel = ilGen.DefineLabel ("doloop_" + doStmt.line + "_" + doStmt.posn);
 
-			string loopLabel = "__DoLoop_" + lbl;
-			WriteOutput (doStmt, loopLabel + ":;");
+			ilGen.MarkLabel (loopLabel);
 			GenerateStmt (doStmt.bodyStmt);
-			WriteOutput (doStmt, "__sm.continuation.CheckRun();");
-			CompRVal testRVal = GenerateFromRVal (null, doStmt.testRVal);
-			WriteOutput (doStmt.testRVal, "if (");
-			OutputWithCastToBool (testRVal);
-			WriteOutput (doStmt.testRVal, ") goto " + loopLabel + ";");
+			EmitCallCheckRun ();
+			CompValu testRVal = GenerateFromRVal (doStmt.testRVal);
+			testRVal.PushVal (this);
+			ilGen.Emit (OpCodes.Brtrue, loopLabel);
 		}
 
 		/**
@@ -852,36 +647,32 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void GenerateStmtFor (TokenStmtFor forStmt)
 		{
-			string lbl = GetTempNo ();
-
-			string doneLabel = "__ForDone_" + lbl;
-			string loopLabel = "__ForLoop_" + lbl;
+			ScriptMyLabel doneLabel = ilGen.DefineLabel ("fordone_" + forStmt.line + "_" + forStmt.posn);
+			ScriptMyLabel loopLabel = ilGen.DefineLabel ("forloop_" + forStmt.line + "_" + forStmt.posn);
 
 			if (forStmt.initStmt != null) {
 				GenerateStmt (forStmt.initStmt);
 			}
-			WriteOutput (forStmt, loopLabel + ":;");
-			WriteOutput (forStmt, "__sm.continuation.CheckRun();");
+			ilGen.MarkLabel (loopLabel);
+			EmitCallCheckRun ();
 			if (forStmt.testRVal != null) {
-				CompRVal testRVal = GenerateFromRVal (null, forStmt.testRVal);
-				WriteOutput (forStmt.testRVal, "if (!");
-				OutputWithCastToBool (testRVal);
-				WriteOutput (forStmt.testRVal, ") goto " + doneLabel + ";");
+				CompValu testRVal = GenerateFromRVal (forStmt.testRVal);
+				testRVal.PushVal (this);
+				ilGen.Emit (OpCodes.Brfalse, doneLabel);
 			}
 			GenerateStmt (forStmt.bodyStmt);
 			if (forStmt.incrRVal != null) {
-				GenerateFromRVal (new CompRVal (new TokenTypeVoid (forStmt), "forIncr"), forStmt.incrRVal);
+				GenerateFromRVal (forStmt.incrRVal);
 			}
-			WriteOutput (forStmt, "goto " + loopLabel + ";");
-			WriteOutput (forStmt, doneLabel + ":;");
+			ilGen.Emit (OpCodes.Br, loopLabel);
+			ilGen.MarkLabel (doneLabel);
 		}
 
 		private void GenerateStmtForEach (TokenStmtForEach forEachStmt)
 		{
-			string lbl = GetTempNo ();
-			CompLVal keyLVal   = null;
-			CompLVal valLVal   = null;
-			CompLVal arrayLVal = GenerateFromLVal (forEachStmt.arrayLVal);
+			CompValu keyLVal   = null;
+			CompValu valLVal   = null;
+			CompValu arrayLVal = GenerateFromLVal (forEachStmt.arrayLVal);
 
 			if (forEachStmt.keyLVal != null) {
 				keyLVal = GenerateFromLVal (forEachStmt.keyLVal);
@@ -899,25 +690,47 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ErrorMsg (forEachStmt.arrayLVal, "must be an array");
 			}
 
-			string doneLabel = "__ForBrk_" + lbl;
-			string loopLabel = "__ForTop_" + lbl;
-			string indexVar  = "__ForIdx_" + lbl;
-			string objectVar = "__ForObj_" + lbl;
+			ScriptMyLabel doneLabel = ilGen.DefineLabel ("foreachdone_" + forEachStmt.line + "_" + forEachStmt.posn);
+			ScriptMyLabel loopLabel = ilGen.DefineLabel ("foreachloop_" + forEachStmt.line + "_" + forEachStmt.posn);
+			ScriptMyLocal indexVar  = ilGen.DeclareLocal (typeof (int), "foreachidx_" + forEachStmt.line + "_" + forEachStmt.posn);
+			ScriptMyLocal objectVar = ((keyLVal == null) || (valLVal == null)) ? ilGen.DeclareLocal (typeof (object), "foreachobj_" + forEachStmt.line + "_" + forEachStmt.posn) : null;
 
-			WriteOutput (forEachStmt, "int " + indexVar + " = 0;");
-			if ((keyLVal == null) || (valLVal == null)) {
-				WriteOutput (forEachStmt, "object " + indexVar + ";");
+			ilGen.MarkLabel (loopLabel);
+
+			// ForEach arg 0: arrayLVal
+			arrayLVal.PushVal (this);
+
+			// ForEach arg 1: indexVar ++
+			ilGen.Emit (OpCodes.Ldloc, indexVar);
+			ilGen.Emit (OpCodes.Dup);
+			PushConstantI4 (1);
+			ilGen.Emit (OpCodes.Stloc, indexVar);
+
+			// ForEach arg 2: ref keyLVal
+			if (keyLVal == null) {
+				ilGen.Emit (OpCodes.Ldloca, objectVar);
+			} else {
+				keyLVal.PushByRef (this);
 			}
-			WriteOutput (forEachStmt, loopLabel + ":;");
-			WriteOutput (forEachStmt, "if (!" + arrayLVal.locstr + ".ForEach(" + indexVar + "++, ref ");
-			WriteOutput (forEachStmt, (keyLVal == null) ? objectVar : keyLVal.locstr);
-			WriteOutput (forEachStmt, ", ref ");
-			WriteOutput (forEachStmt, (valLVal == null) ? objectVar : valLVal.locstr);
-			WriteOutput (forEachStmt, ")) goto " + doneLabel + ";");
-			WriteOutput (forEachStmt, "__sm.continuation.CheckRun();");
+
+			// ForEach arg 3: ref valLVal
+			if (valLVal == null) {
+				ilGen.Emit (OpCodes.Ldloca, objectVar);
+			} else {
+				valLVal.PushByRef (this);
+			}
+
+			// Call XMR_Array.ForEach (arrayLVal, index, ref keyLVal, ref valLVal)
+			ilGen.Emit (OpCodes.Callvirt, forEachMethodInfo);
+			ilGen.Emit (OpCodes.Brfalse, doneLabel);
+
+			/*
+			 * Make sure we aren't hogging the CPU then generate the body and loop back.
+			 */
+			EmitCallCheckRun ();
 			GenerateStmt (forEachStmt.bodyStmt);
-			WriteOutput (forEachStmt, "goto " + loopLabel + ";");
-			WriteOutput (forEachStmt, doneLabel + ":;");
+			ilGen.Emit (OpCodes.Br, loopLabel);
+			ilGen.MarkLabel (doneLabel);
 		}
 
 		/**
@@ -927,16 +740,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void GenerateStmtIf (TokenStmtIf ifStmt)
 		{
-			CompRVal testRVal = GenerateFromRVal (null, ifStmt.testRVal);
-			WriteOutput (ifStmt, "if (");
-			OutputWithCastToBool (testRVal);
-			WriteOutput (ifStmt, ") {");
+			CompValu testRVal = GenerateFromRVal (ifStmt.testRVal);
+			testRVal.PushVal (this);
+			ScriptMyLabel elseLabel = ilGen.DefineLabel ("ifelse_" + ifStmt.line + "_" + ifStmt.posn);
+			ilGen.Emit (OpCodes.Brfalse, elseLabel);
 			GenerateStmt (ifStmt.trueStmt);
-			WriteOutput (ifStmt, "}");
-			if (ifStmt.elseStmt != null) {
-				WriteOutput (ifStmt.elseStmt, "else {");
+			if (ifStmt.elseStmt == null) {
+				ilGen.MarkLabel (elseLabel);
+			} else {
+				ScriptMyLabel doneLabel = ilGen.DefineLabel ("ifdone_" + ifStmt.line + "_" + ifStmt.posn);
+				ilGen.Emit (OpCodes.Br, doneLabel);
+				ilGen.MarkLabel (elseLabel);
 				GenerateStmt (ifStmt.elseStmt);
-				WriteOutput (ifStmt.elseStmt, "}");
+				ilGen.MarkLabel (doneLabel);
 			}
 		}
 
@@ -948,11 +764,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Make sure the target label is defined somewhere in the function.
 			 */
-			if (!curDeclFunc.labels.ContainsKey (jumpStmt.label.val)) {
+			TokenStmtLabel stmtLabel;
+			if (!curDeclFunc.labels.TryGetValue (jumpStmt.label.val, out stmtLabel)) {
 				ErrorMsg (jumpStmt, "undefined label " + jumpStmt.label.val);
 				return;
 			}
-			TokenStmtLabel stmtLabel = curDeclFunc.labels[jumpStmt.label.val];
+			if (!stmtLabel.labelTagged) {
+				stmtLabel.labelStruct = ilGen.DefineLabel ("jump_" + stmtLabel.name.val);
+				stmtLabel.labelTagged = true;
+			}
 
 			/*
 			 * Find which block the target label is in.  Must be in this or an outer block,
@@ -970,17 +790,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Finally output the equivalent 'goto' statement.
 			 */
-			WriteOutput (jumpStmt, "goto __Jump_" + jumpStmt.label.val + ";");
+			ilGen.Emit (OpCodes.Br, stmtLabel.labelStruct);
 		}
 
 		/**
 		 * @brief output code for a jump target label statement.
+		 * If there are any backward jumps to the label, do a CheckRun() also.
 		 */
 		private void GenerateStmtLabel (TokenStmtLabel labelStmt)
 		{
-			WriteOutput (labelStmt, "__Jump_" + labelStmt.name.val + ":;");
+			if (!labelStmt.labelTagged) {
+				labelStmt.labelStruct = ilGen.DefineLabel ("jump_" + labelStmt.name.val);
+				labelStmt.labelTagged = true;
+			}
+			ilGen.MarkLabel (labelStmt.labelStruct);
 			if (labelStmt.hasBkwdRefs) {
-				WriteOutput (labelStmt, " __sm.continuation.CheckRun();");
+				EmitCallCheckRun ();
 			}
 		}
 
@@ -990,23 +815,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void GenerateStmtRet (TokenStmtRet retStmt)
 		{
-			/*
-			 * Set return value variable (if not void).
-			 */
-			if (retStmt.rVal != null) {
-				CompRVal retVal = new CompRVal (curDeclFunc.retType, "__retval");
-				CompRVal rVal = GenerateFromRVal (retVal, retStmt.rVal);
-				if (rVal != retVal) {
-					WriteOutput (retStmt, "__retval = " + StringWithCast (curDeclFunc.retType, rVal) + ";");
+			if (curDeclFunc.retType is TokenTypeVoid) {
+				if (retStmt.rVal != null) {
+					ErrorMsg (retStmt, "function returns void, no value allowed");
+					return;
 				}
-			} else if (!(curDeclFunc.retType is TokenTypeVoid)) {
-				ErrorMsg (retStmt, "function requires return value type " + curDeclFunc.retType.ToString ());
+			} else {
+				if (retStmt.rVal == null) {
+					ErrorMsg (retStmt, "function requires return value type " + curDeclFunc.retType.ToString ());
+					return;
+				}
+				CompValu rVal = GenerateFromRVal (retStmt.rVal);
+				rVal.PushVal (this, curDeclFunc.retType);
 			}
-
-			/*
-			 * Goto function epilog.
-			 */
-			OutputGotoReturn (retStmt);
+			ilGen.Emit (OpCodes.Ret);
 		}
 
 		/**
@@ -1014,13 +836,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void GenerateStmtRVal (TokenStmtRVal rValStmt)
 		{
-			/*
-			 * Tell the expression code generator that the result is going to be
-			 * thrown away by giving it a location of type 'void'.  This will tell
-			 * things like 'i ++' or calls to not bother saving the result in a temp.
-			 */
-			CompRVal rVal = new CompRVal (new TokenTypeVoid (rValStmt), "rValStmt");
-			GenerateFromRVal (rVal, rValStmt.rVal);
+			GenerateFromRVal (rValStmt.rVal);
 		}
 
 		/**
@@ -1029,30 +845,42 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void GenerateStmtState (TokenStmtState stateStmt)
 		{
+			int index = 0;  // 'default' state
 
 			/*
 			 * Set new state value and set the global 'stateChanged' flag.
 			 * The 'stateChanged' flag causes our caller to unwind to its caller.
 			 */
-			if (stateStmt.state == null) {
-				WriteOutput (stateStmt, "__sm.stateCode = 0;");  // default state
-			} else if (!stateIndices.ContainsKey (stateStmt.state.val)) {
+			if ((stateStmt.state != null) && !stateIndices.TryGetValue (stateStmt.state.val, out index)) {
 				// The moron XEngine compiles scripts that reference undefined states.
 				// So rather than produce a compile-time error, we'll throw an exception at runtime.
 				// ErrorMsg (stateStmt, "undefined state " + stateStmt.state.val);
-				WriteOutput (stateStmt, "throw new " + TypeName (typeof (ScriptUndefinedStateException)) + 
-				                        "(\"" + stateStmt.state.val + "\");");
+
+				// throw new UndefinedStateException (stateStmt.state.val);
+				ilGen.Emit (OpCodes.Ldstr, stateStmt.state.val);
+				ilGen.Emit (OpCodes.Newobj, scriptUndefinedStateExceptionConstructorInfo);
+				ilGen.Emit (OpCodes.Throw);
 				return;
-			} else {
-				int index = stateIndices[stateStmt.state.val];
-				WriteOutput (stateStmt, "__sm.stateCode = " + index + ";");
 			}
-			WriteOutput (stateStmt, "__sm.stateChanged = true;");
 
 			/*
-			 * Goto function epilog.
+			 * __sm.stateCode = index
 			 */
-			OutputGotoReturn (stateStmt);
+			ilGen.Emit (OpCodes.Ldarg_0);                    // scriptWrapper
+			ilGen.Emit (OpCodes.Dup);                        // scriptWrapper
+			PushConstantI4 (index);                          // new state's index
+			ilGen.Emit (OpCodes.Stfld, stateCodeFieldInfo);  // scriptWrapper.stateCode
+
+			/*
+			 * __sm.stateChanged = true
+			 */
+			PushConstantI4 (1);
+			ilGen.Emit (OpCodes.Stfld, stateChangedFieldInfo);
+
+			/*
+			 * Return without doing anything more.
+			 */
+			EmitDummyReturn ();
 		}
 
 		/**
@@ -1060,20 +888,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void GenerateStmtWhile (TokenStmtWhile whileStmt)
 		{
-			string lbl = GetTempNo ();
+			ScriptMyLabel contLabel = ilGen.DefineLabel ("whilecont_" + whileStmt.line + "_" + whileStmt.posn);
+			ScriptMyLabel doneLabel = ilGen.DefineLabel ("whiledone_" + whileStmt.line + "_" + whileStmt.posn);
 
-			string breakLabel = "__WhileBot_" + lbl;
-			string contLabel = "__WhileTop_" + lbl;
-
-			WriteOutput (whileStmt, contLabel + ":;");
-			WriteOutput (whileStmt, "__sm.continuation.CheckRun();");
-			CompRVal testRVal = GenerateFromRVal (null, whileStmt.testRVal);
-			WriteOutput (whileStmt.testRVal, "if (!");
-			OutputWithCastToBool (testRVal);
-			WriteOutput (whileStmt.testRVal, ") goto " + breakLabel + ";");
-			GenerateStmt (whileStmt.bodyStmt);
-			WriteOutput (whileStmt, "goto " + contLabel + ";");
-			WriteOutput (whileStmt, breakLabel + ":;");
+			ilGen.MarkLabel (contLabel);                                // cont:
+			CompValu testRVal = GenerateFromRVal (whileStmt.testRVal);  //   testRVal = while test expression
+			testRVal.PushVal (this);                                    //   if (!testRVal)
+			ilGen.Emit (OpCodes.Brfalse, doneLabel);                    //      goto done
+			GenerateStmt (whileStmt.bodyStmt);                          //   while body statement
+			EmitCallCheckRun ();                                        //   __sw.CheckRun()
+			ilGen.Emit (OpCodes.Br, contLabel);                         //   goto cont
+			ilGen.MarkLabel (doneLabel);                                // done:
 		}
 
 		/**
@@ -1081,40 +906,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void GenerateDeclVar (TokenDeclVar declVar)
 		{
+			CompValu local = new CompValuTemp (declVar.type, declVar.name.val, this);
+
+			/*
+			 * Script gave us an initialization value, so just store init value in var like an assignment statement.
+			 */
 			if (declVar.init != null) {
-
-				/*
-				 * Script gave us an initialization value, so just use it.
-				 */
-				CompRVal var;
-				if (declVar.preDefd) {
-					var = new CompRVal (declVar.type, "__lcl_" + declVar.name.val);
-				} else {
-					var = new CompRVal (declVar.type, TypeName (declVar.type) + " __lcl_" + declVar.name.val);
-				}
-				CompRVal rVal = GenerateFromRVal (var, declVar.init);
-				if (rVal != var) {
-					WriteOutput (declVar, var.locstr + " = " + StringWithCast (var.type, rVal) + ";");
-				}
-			} else if (!declVar.preDefd) {
-
-				/*
-				 * Scripts have paths that don't initialize variables.
-				 * So initialize them with something so C# compiler doesn't complain.
-				 */
-				WriteOutput (declVar, TypeName (declVar.type) + " __lcl_" + declVar.name.val + " = " + DefaultValue (declVar.type) + ";");
+				local.PopPre (this);
+				CompValu rVal = GenerateFromRVal (declVar.init);
+				rVal.PushVal (this, declVar.type);
+				local.PopPost (this);
 			}
 
 			/*
 			 * Now it's ok for subsequent expressions in the block to reference the variable.
 			 */
-			AddVarDefinition (declVar.type, declVar.name.val);
+			AddVarDefinition (declVar.name, local);
 		}
 
 		/**
 		 * @brief Get the type and location of an L-value (eg, variable)
 		 */
-		private CompLVal GenerateFromLVal (TokenLVal lVal)
+		private CompValu GenerateFromLVal (TokenLVal lVal)
 		{
 			if (lVal is TokenLValArEle) return GenerateFromLValArEle ((TokenLValArEle)lVal);
 			if (lVal is TokenLValField) return GenerateFromLValField ((TokenLValField)lVal);
@@ -1124,19 +937,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		/**
 		 * @brief we have an L-value token that is an element within an array.
-		 * @returns a CompLVal giving the type and location of the element of the array.
+		 * @returns a CompValu giving the type and location of the element of the array.
 		 */
-		private CompLVal GenerateFromLValArEle (TokenLValArEle lVal)
+		private CompValu GenerateFromLValArEle (TokenLValArEle lVal)
 		{
 			/*
 			 * Compute subscript before rest of lVal in case of multiple subscripts.
 			 */
-			CompRVal subRVal = GenerateFromRVal (null, lVal.subRVal);
+			CompValu subRVal = GenerateFromRVal (lVal.subRVal);
 
 			/*
 			 * Compute location of array itself.
 			 */
-			CompLVal baseLVal = GenerateFromLVal (lVal.baseLVal);
+			CompValu baseLVal = GenerateFromLVal (lVal.baseLVal);
 
 			/*
 			 * It better be an array!
@@ -1149,27 +962,29 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Ok, generate reference.
 			 */
-			return new CompLVal (new TokenTypeObject (lVal), "((" + baseLVal.locstr + ")[" + subRVal.locstr + "])");
+			return new CompValuArEle (new TokenTypeObject (lVal), baseLVal, subRVal);
 		}
 
 		/**
 		 * @brief we have an L-value token that is a field within a struct.
-		 * @returns a CompLVal giving the type and location of the field in the struct.
+		 * @returns a CompValu giving the type and location of the field in the struct.
 		 */
-		private CompLVal GenerateFromLValField (TokenLValField lVal)
+		private CompValu GenerateFromLValField (TokenLValField lVal)
 		{
-			CompLVal baseLVal = GenerateFromLVal (lVal.baseLVal);
+			CompValu baseLVal = GenerateFromLVal (lVal.baseLVal);
 			string fieldName = lVal.field.val;
 
 			/*
 			 * Since we only have a few types with fields, just pound them out.
-			 * To expand, we can make a table, possibly using reflection to look up the baseLVal.type definition.
 			 */
 			if (baseLVal.type is TokenTypeArray) {
 				if (fieldName == "count") {
-					return new CompLVal (new TokenTypeInt (lVal), "(" + baseLVal.locstr + ").__pub_" + fieldName);
+					return new CompValuField (new TokenTypeInt (lVal.field), baseLVal, arrayCountFieldInfo);
 				}
-				if ((fieldName == "index") || (fieldName == "value")) {
+				FieldInfo fi = null;
+				if (fieldName == "index") fi = arrayIndexFieldInfo;
+				if (fieldName == "value") fi = arrayValueFieldInfo;
+				if (fi != null) {
 					TokenTypeMeth ttm             = new TokenTypeMeth (lVal);
 					ttm.funcs                     = new TokenDeclFunc[1];
 					ttm.funcs[0]                  = new TokenDeclFunc (lVal);
@@ -1180,17 +995,26 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					ttm.funcs[0].argDecl.types[0] = new TokenTypeInt (lVal);
 					ttm.funcs[0].argDecl.names    = new TokenName[1];
 					ttm.funcs[0].argDecl.names[0] = new TokenName (lVal, "number");
-					return new CompLVal (ttm, "(" + baseLVal.locstr + ").__pub_" + fieldName);
+					return new CompValuField (ttm, baseLVal, fi);
 				}
 			}
 			if (baseLVal.type is TokenTypeRot) {
-				if ((fieldName.Length == 1) && (((fieldName[0] >= 'x') && (fieldName[0] <= 'z')) || (fieldName[0] == 's'))) {
-					return new CompLVal (new TokenTypeFloat (lVal), "(" + baseLVal.locstr + ")." + fieldName);
+				FieldInfo fi = null;
+				if (fieldName == "x") fi = rotationXFieldInfo;
+				if (fieldName == "y") fi = rotationYFieldInfo;
+				if (fieldName == "z") fi = rotationZFieldInfo;
+				if (fieldName == "s") fi = rotationSFieldInfo;
+				if (fi != null) {
+					return new CompValuField (new TokenTypeFloat (lVal), baseLVal, fi);
 				}
 			}
 			if (baseLVal.type is TokenTypeVec) {
-				if ((fieldName.Length == 1) && (fieldName[0] >= 'x') && (fieldName[0] <= 'z')) {
-					return new CompLVal (new TokenTypeFloat (lVal), "(" + baseLVal.locstr + ")." + fieldName);
+				FieldInfo fi = null;
+				if (fieldName == "x") fi = vectorXFieldInfo;
+				if (fieldName == "y") fi = vectorYFieldInfo;
+				if (fieldName == "z") fi = vectorZFieldInfo;
+				if (fi != null) {
+					return new CompValuField (new TokenTypeFloat (lVal), baseLVal, fi);
 				}
 			}
 
@@ -1200,43 +1024,37 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		/**
 		 * @brief we have an L-value token that is a variable name.
-		 * @returns a CompLVal giving the type and location of the variable.
+		 * @returns a CompValu giving the type and location of the variable.
 		 */
-		private CompLVal GenerateFromLValName (TokenLValName lVal)
+		private CompValu GenerateFromLValName (TokenLValName lVal)
 		{
 			string name = lVal.name.val;
 
-			foreach (Dictionary<string, TokenType> vars in scriptVariablesStack) {
-				if (vars.ContainsKey (name)) {
-					TokenType type = vars[name];
-					if (vars == scriptInstanceVariables) name = "__sm.__gbl_" + name;
-					else name = "__lcl_" + name;
-					return new CompLVal (type, name);
+			foreach (Dictionary<string, CompValu> vars in scriptVariablesStack) {
+				CompValu defn;
+				if (vars.TryGetValue (name, out defn)) {
+					return defn;
 				}
 			}
 
 			ErrorMsg (lVal, "undefined variable " + name);
-			return new CompLVal (new TokenTypeVoid (lVal), name);
+			return new CompValuVoid (lVal);
 		}
 
 		/**
 		 * @brief generate code from an RVal expression and return its type and where the result is stored.
 		 * For anything that has side-effects, statements are generated that perform the computation then
 		 * the result it put in a temp var and the temp var name is returned.
-		 * For anything without side-effects, they are returned as an equivalent string.
-		 * Things like rotations and vectors are returned as a "new <objecttype>(<parameters>)" string.
-		 * @param result = null: result can go anywhere
-		 *                 else: try to put result here rather than create a temp if possible
-		 *                       but if result.type is TokenTypeVoid, throw the result value away
+		 * For anything without side-effects, they are returned as an equivalent sequence of Emits.
 		 * @param rVal = rVal token to be evaluated
-		 * @returns resultant type and location (= result param if result param is used)
+		 * @returns resultant type and location
 		 */
-		private CompRVal GenerateFromRVal (CompRVal result, TokenRVal rVal)
+		private CompValu GenerateFromRVal (TokenRVal rVal)
 		{
 			errorMessageToken = rVal;
-			if (rVal is TokenRValAsnPost)  return GenerateFromRValAsnPost (result, (TokenRValAsnPost)rVal);
-			if (rVal is TokenRValAsnPre)   return GenerateFromRValAsnPre  (result, (TokenRValAsnPre)rVal);
-			if (rVal is TokenRValCall)     return GenerateFromRValCall    (result, (TokenRValCall)rVal);
+			if (rVal is TokenRValAsnPost)  return GenerateFromRValAsnPost ((TokenRValAsnPost)rVal);
+			if (rVal is TokenRValAsnPre)   return GenerateFromRValAsnPre  ((TokenRValAsnPre)rVal);
+			if (rVal is TokenRValCall)     return GenerateFromRValCall    ((TokenRValCall)rVal);
 			if (rVal is TokenRValCast)     return GenerateFromRValCast    ((TokenRValCast)rVal);
 			if (rVal is TokenRValConst)    return GenerateFromRValConst   ((TokenRValConst)rVal);
 			if (rVal is TokenRValFloat)    return GenerateFromRValFloat   ((TokenRValFloat)rVal);
@@ -1244,7 +1062,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (rVal is TokenRValIsType)   return GenerateFromRValIsType  ((TokenRValIsType)rVal);
 			if (rVal is TokenRValList)     return GenerateFromRValList    ((TokenRValList)rVal);
 			if (rVal is TokenRValLVal)     return GenerateFromRValLVal    ((TokenRValLVal)rVal);
-			if (rVal is TokenRValOpBin)    return GenerateFromRValOpBin   (result, (TokenRValOpBin)rVal);
+			if (rVal is TokenRValOpBin)    return GenerateFromRValOpBin   ((TokenRValOpBin)rVal);
 			if (rVal is TokenRValOpUn)     return GenerateFromRValOpUn    ((TokenRValOpUn)rVal);
 			if (rVal is TokenRValParen)    return GenerateFromRValParen   ((TokenRValParen)rVal);
 			if (rVal is TokenRValRot)      return GenerateFromRValRot     ((TokenRValRot)rVal);
@@ -1255,23 +1073,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		/**
-		 * @brief compute the result of a binary operator
+		 * @brief compute the result of a binary operator (eg, add, subtract, multiply, lessthan)
 		 * @param token = binary operator token, includes the left and right operands
 		 * @returns where the resultant R-value is as something that doesn't have side effects
 		 */
-		private CompRVal GenerateFromRValOpBin (CompRVal result, TokenRValOpBin token)
+		private CompValu GenerateFromRValOpBin (TokenRValOpBin token)
 		{
-			CompLVal leftLVal = null;
-			CompRVal left = null;
-			CompRVal right;
+			CompValu leftLVal = null;
+			CompValu left = null;
+			CompValu right;
 
 			/*
 			 * If left operand is an L-value, create an leftLVal location marker for it.
 			 * In either case, create a R-value location marker for it.
 			 */
 			if (token.rValLeft is TokenRValLVal) {
-				leftLVal = GenerateFromLVal (((TokenRValLVal)token.rValLeft).lvToken);
-				left = new CompRVal (leftLVal.type, leftLVal.locstr);
+				left = leftLVal = GenerateFromLVal (((TokenRValLVal)token.rValLeft).lvToken);
 			}
 
 			/*
@@ -1285,12 +1102,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (opcodeIndex == "=") {
 				if (left == null) {
 					ErrorMsg (token, "invalid L-value");
-					left = GenerateFromRVal (null, token.rValLeft);
+					left = GenerateFromRVal (token.rValLeft);
 				} else {
-					right = GenerateFromRVal (left, token.rValRight);
-					if (right != left) {
-						WriteOutput (token, leftLVal.locstr + " = " + StringWithCast (leftLVal.type, right) + ";");
-					}
+					right = GenerateFromRVal (token.rValRight);
+					leftLVal.PopPre (this);
+					right.PushVal (this, leftLVal.type);  // push (leftLVal.type)right
+					leftLVal.PopPost (this);              // pop to leftLVal
 				}
 				return left;
 			}
@@ -1305,14 +1122,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				 * Compute left-hand operand but throw away result (because we say to store in a 'void').
 				 */
 				if (left == null) {
-					CompRVal leftRVal = new CompRVal (new TokenTypeVoid (token.opcode), "comma");
-					GenerateFromRVal (leftRVal, token.rValLeft);
+					GenerateFromRVal (token.rValLeft);
 				}
 
 				/*
 				 * Compute right-hand operand and that is the value of the expression.
 				 */
-				return GenerateFromRVal (result, token.rValRight);
+				return GenerateFromRVal (token.rValRight);
 			}
 
 			/*
@@ -1322,14 +1138,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * If left-hand operand has side effects, force right-hand operand into a temp so
 			 * it will get computed first, and not just stacked for later evaluation.
 			 */
-			right = GenerateFromRVal (null, token.rValRight);
+			right = GenerateFromRVal (token.rValRight);
 			if (token.rValLeft.sideEffects && !right.isFinal) {
-				CompRVal rightTemp = new CompRVal (right.type);
-				WriteOutput (token.rValRight, TypeName (rightTemp.type) + " " + rightTemp.locstr + " = ");
-				WriteOutput (token.rValRight, StringWithCast (rightTemp.type, right) + ";");
+				CompValu rightTemp = new CompValuTemp (right.type, null, this);
+				rightTemp.PopPre (this);
+				right.PushVal (this, right.type);
+				rightTemp.PopPost (this);
 				right = rightTemp;
 			}
-			left = GenerateFromRVal (null, token.rValLeft);
+			left = GenerateFromRVal (token.rValLeft);
 
 			/*
 			 * Formulate key string for binOpStrings = (lefttype)(operator)(righttype)
@@ -1342,40 +1159,32 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * If that key exists in table, then the operation is defined between those types
 			 * ... and it produces an R-value of type as given in the table.
 			 */
-			if (binOpStrings.ContainsKey (key)) {
-				BinOpStr binOpStr = binOpStrings[key];
+			BinOpStr binOpStr;
+			if (binOpStrings.TryGetValue (key, out binOpStr)) {
 
 				/*
 				 * If table contained an explicit assignment type like +=, output the statement without
 				 * casting the L-value, then return the L-value as the resultant value.
 				 *
-				 * Make sure we don't include such things as ==, >=, etc.
+				 * Make sure we don't include comparisons (such as ==, >=, etc).
 				 * Nothing like +=, -=, %=, etc, generate a boolean, only the comparisons.
 				 */
 				if ((binOpStr.outtype != typeof (bool)) && opcodeIndex.EndsWith ("=")) {
-					WriteOutput (token, String.Format (binOpStr.format, left.locstr, right.locstr));
-					WriteOutput (token, ";");
+					binOpStr.emitBO (this, left, right, left);
 					return left;
 				}
 
 				/*
-				 * It's the form left binop right.
+				 * It's of the form left binop right.
 				 * If either the original left or right had side effects, they should have been evaluated
 				 * and put in temps already, so what we have for left and right don't have side effects.
 				 * So we can simply return (outtype)(left binop right) as the location of the result.
+				 *
+				 * ??? optimise by creating a CompValu that can have left.PushVal(),right.PushVal(),EmitBinOpCode() as its PushVal() ???
 				 */
-				string fmt = binOpStr.format;
-				int whack = fmt.IndexOf ('#');
-				if (whack >= 0) {
-					fmt = fmt.Substring (0, whack) + fmt.Substring (whack + 1);
-				}
-				StringBuilder retval = new StringBuilder ("((");
-				retval.Append (TypeName (binOpStr.outtype));
-				retval.Append (")(");
-				retval.Append (String.Format (fmt, left.locstr, right.locstr));
-				retval.Append ("))");
-				CompRVal retRVal = new CompRVal (TokenType.FromSysType (token.opcode, binOpStr.outtype), retval.ToString ());
+				CompValu retRVal = new CompValuTemp (TokenType.FromSysType (token.opcode, binOpStr.outtype), null, this);
 				retRVal.isFinal = left.isFinal && right.isFinal;
+				binOpStr.emitBO (this, left, right, retRVal);
 				return retRVal;
 			}
 
@@ -1387,28 +1196,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			if (opcodeIndex.EndsWith ("=")) {
 				key = leftIndex + opcodeIndex.Substring (0, opcodeIndex.Length - 1) + rightIndex;
-				if (binOpStrings.ContainsKey (key)) {
+				if (binOpStrings.TryGetValue (key, out binOpStr)) {
 
 					/*
 					 * Now we know for something like %= that left%right is legal for the types given.
 					 * We can only actually process it if the resultant type is of the left type.
 					 * So for example, we can't do float += list, as float + list gives a list.
 					 */
-					BinOpStr binOpStr = binOpStrings[key];
 					if (binOpStr.outtype == left.type.typ) {
 
 						/*
-						 * Types are ok, see if the '=' form is allowed...
+						 * Types are ok, see if the '=' (read/modify/write) form is allowed...
 						 */
-						string fmt = binOpStr.format;
-						int whack = fmt.IndexOf ('#');
-						if (whack >= 0) {
+						if (binOpStr.rmwOK) {
 							if (leftLVal == null) {
 								ErrorMsg (token, "invalid L-value");
 							} else {
-								fmt = fmt.Substring (0, whack) + '=' + fmt.Substring (whack + 1);
-								WriteOutput (token, String.Format (fmt, leftLVal.locstr, right.locstr));
-								WriteOutput (token, ";");
+								binOpStr.emitBO (this, leftLVal, right, leftLVal);
 							}
 							return left;
 						}
@@ -1420,7 +1224,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Can't find it, oh well.
 			 */
 			ErrorMsg (token, "op not defined: " + leftIndex + " " + opcodeIndex + " " + rightIndex);
-			return new CompRVal (new TokenTypeVoid (token.opcode), "undefOp");
+			return new CompValuVoid (token);
 		}
 
 		/**
@@ -1428,69 +1232,109 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @param token = unary operator token, includes the operand
 		 * @returns where the resultant R-value is
 		 */
-		private CompRVal GenerateFromRValOpUn (TokenRValOpUn token)
+		private CompValu GenerateFromRValOpUn (TokenRValOpUn token)
 		{
-			CompRVal inRVal = GenerateFromRVal (null, token.rVal);
+			CompValu inRVal = GenerateFromRVal (token.rVal);
 			return UnOpGenerate (inRVal, token.opcode);
 		}
 
 		/**
 		 * @brief postfix operator -- this returns the type and location of the resultant value
 		 */
-		private CompRVal GenerateFromRValAsnPost (CompRVal result, TokenRValAsnPost asnPost)
+		private CompValu GenerateFromRValAsnPost (TokenRValAsnPost asnPost)
 		{
-			CompLVal lVal = GenerateFromLVal (asnPost.lVal);
-			if (result == null) {
+			CompValu lVal = GenerateFromLVal (asnPost.lVal);
 
-				/*
-				 * Caller says they want the resultant value put in a temp.
-				 */
-				result = new CompRVal (lVal.type);
-				WriteOutput (asnPost, TypeName (lVal.type) + " " + result.locstr + " = " + lVal.locstr + " " + asnPost.postfix.ToString () + ";");
-			} else if (result.type is TokenTypeVoid) {
+			/*
+			 * Make up a temp to put result in.
+			 */
+			CompValu result = new CompValuTemp (lVal.type, null, this);
 
-				/*
-				 * Caller says they are going to throw the value away so don't bother putting it anywhere.
-				 */
-				WriteOutput (asnPost, lVal.locstr + " " + asnPost.postfix.ToString () + ";");
-			} else {
+			/*
+			 * Push original value.
+			 */
+			lVal.PopPre (this);
+			lVal.PushVal (this);
 
-				/*
-				 * Caller would like us to put the value in a specific place.
-				 */
-				CompRVal rVal = new CompRVal (lVal.type, "(" + lVal.locstr + " " + asnPost.postfix.ToString () + ")");
-				WriteOutput (asnPost, result.locstr + " = " + StringWithCast (result.type, rVal) + ";");
+			/*
+			 * Maybe caller wants value returned somewhere.
+			 * If so, copy original value and store in result.
+			 */
+			result.PopPre (this);
+			lVal.PushVal (this, result.type);
+			result.PopPost (this);
+
+			/*
+			 * Perform the ++/--.
+			 */
+			PushConstantI4 (1);
+			switch (asnPost.postfix.ToString ()) {
+				case "++": {
+					ilGen.Emit (OpCodes.Add);
+					break;
+				}
+				case "--": {
+					ilGen.Emit (OpCodes.Sub);
+					break;
+				}
+				default: throw new Exception ("unknown asnPost op");
 			}
+
+			/*
+			 * Store new value in original variable.
+			 */
+			lVal.PopPost (this);
+
 			return result;
 		}
 
 		/**
 		 * @brief prefix operator -- this returns the type and location of the resultant value
 		 */
-		private CompRVal GenerateFromRValAsnPre (CompRVal result, TokenRValAsnPre asnPre)
+		private CompValu GenerateFromRValAsnPre (TokenRValAsnPre asnPre)
 		{
-			CompLVal lVal = GenerateFromLVal (asnPre.lVal);
-			if (result == null) {
+			CompValu lVal = GenerateFromLVal (asnPre.lVal);
 
-				/*
-				 * Caller says they want the resultant value put in a temp.
-				 */
-				result = new CompRVal (lVal.type);
-				WriteOutput (asnPre, TypeName (lVal.type) + " " + result.locstr + " = " + asnPre.prefix.ToString () + " " + lVal.locstr + ";");
-			} else if (result.type is TokenTypeVoid) {
+			/*
+			 * Make up a temp to put result in.
+			 */
+			CompValu result = new CompValuTemp (lVal.type, null, this);
 
-				/*
-				 * Caller says they are going to throw the value away so don't bother putting it anywhere.
-				 */
-				WriteOutput (asnPre, asnPre.prefix.ToString () + " " + lVal.locstr + ";");
-			} else {
+			/*
+			 * Push original value.
+			 */
+			lVal.PopPre (this);
+			lVal.PushVal (this);
 
-				/*
-				 * Caller would like us to put the value in a specific place.
-				 */
-				CompRVal rVal = new CompRVal (lVal.type, "(" + asnPre.prefix.ToString () + " " + lVal.locstr + ")");
-				WriteOutput (asnPre, result.locstr + " = " + StringWithCast (result.type, rVal) + ";");
+			/*
+			 * Perform the ++/--.
+			 */
+			PushConstantI4 (1);
+			switch (asnPre.prefix.ToString ()) {
+				case "++": {
+					ilGen.Emit (OpCodes.Add);
+					break;
+				}
+				case "--": {
+					ilGen.Emit (OpCodes.Sub);
+					break;
+				}
+				default: throw new Exception ("unknown asnPost op");
 			}
+
+			/*
+			 * Store new value in original variable.
+			 */
+			lVal.PopPost (this);
+
+			/*
+			 * Maybe caller wants value returned somewhere.
+			 * If so, copy original value and store in result.
+			 */
+			result.PopPre (this);
+			lVal.PushVal (this, result.type);
+			result.PopPost (this);
+
 			return result;
 		}
 
@@ -1498,10 +1342,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief Generate code that calls a function or object's method.
 		 * @returns where the call's return value is stored (a TokenTypeVoid if void)
 		 */
-		private CompRVal GenerateFromRValCall (CompRVal result, TokenRValCall call)
+		private CompValu GenerateFromRValCall (TokenRValCall call)
 		{
-			if (call.meth is TokenLValField) return GenerateFromRValCallField (result, call);
-			if (call.meth is TokenLValName)  return GenerateFromRValCallName  (result, call);
+			if (call.meth is TokenLValField) return GenerateFromRValCallField (call);
+			if (call.meth is TokenLValName)  return GenerateFromRValCallName  (call);
 			throw new Exception ("unknown call type");
 		}
 
@@ -1509,78 +1353,81 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief Generate code that calls a method of an object.
 		 * @returns where the call's return value is stored (a TokenTypeVoid if void)
 		 */
-		private CompRVal GenerateFromRValCallField (CompRVal result, TokenRValCall call)
+		private CompValu GenerateFromRValCallField (TokenRValCall call)
 		{
-			CompRVal[] argRVals = null;
+			CompValu[] argRVals = null;
 			int i, nargs;
-			string name;
-			TokenDeclFunc declFunc;
+			TokenLValField meth = (TokenLValField)call.meth;
+			Type[] argTypes = null;
 
 			/*
-			 * Compute the values of all the function's call arguments.
-			 * Save where the computation results are in the argRVals[] array.
-			 * We can't generate these inline with the call itself as GenerateFromRVal() may
-			 * output complete statements to compute some particular argument.
+			 * Get method's entrypoint and signature.
+			 */
+			CompValu baseObj = GenerateFromLVal (meth.baseLVal);
+			CompValu method = GenerateFromLVal (meth);
+			if (((TokenTypeMeth)method.type).funcs.Length != 1) throw new Exception ("tu stOOpid");
+			TokenDeclFunc declFunc = ((TokenTypeMeth)method.type).funcs[0];
+
+			/*
+			 * Make sure we have a place to put return value and prepare to pop return value into it.
+			 * The PopPre() call must be done before pushing anything else so PopPost() will work.
+			 */
+			CompValu result = SetupReturnLocation (declFunc.retType);
+
+			/*
+			 * Push 'this' pointer as first arg to function.
+			 */
+			baseObj.PushVal (this);
+
+			/*
+			 * Compute and push the values of all the function's call arguments, left-to-right.
 			 */
 			nargs = call.nArgs;
+			argTypes = new Type[nargs];
 			if (nargs > 0) {
-				argRVals = new CompRVal[nargs];
+				argRVals = new CompValu[nargs];
 				i = 0;
 				for (TokenRVal arg = call.args; arg != null; arg = (TokenRVal)arg.nextToken) {
-					argRVals[i] = GenerateFromRVal (null, arg);
+					argRVals[i] = GenerateFromRVal (arg);
+					argRVals[i].PushVal (this);
+					argTypes[i] = argRVals[i].type.typ;
 					i ++;
 				}
 			}
 
 			/*
-			 * Get method's entrypoint and signature.
-			 */
-			CompLVal method = GenerateFromLVal (call.meth);
-			name = method.locstr;
-			if (((TokenTypeMeth)method.type).funcs.Length != 1) throw new Exception ("tu stOOpid");
-			declFunc = ((TokenTypeMeth)method.type).funcs[0];
-
-			/*
 			 * Number of arguments passed should match number of params the function was declared with.
 			 */
 			if (nargs != declFunc.argDecl.types.Length) {
-				ErrorMsg (call, name + " has " + declFunc.argDecl.types.Length.ToString () + " param(s), but call has " + nargs.ToString ());
+				ErrorMsg (call, "method has " + declFunc.argDecl.types.Length.ToString () + " param(s), but call has " + nargs.ToString ());
 				if (nargs > declFunc.argDecl.types.Length) nargs = declFunc.argDecl.types.Length;
 			}
 
 			/*
-			 * Generate call.
+			 * Generate call, leaving the return value (if any) on the stack.
 			 */
-			StringBuilder callString = new StringBuilder ();
-			if (declFunc.retType.lslBoxing == typeof (LSL_Float)) {
-				callString.Append ("(float)");  // because LSL_Float.value is a 'double'
-			}
-			callString.Append (name + "(");
-			for (i = 0; i < nargs; i ++) {
-				if (i > 0) callString.Append (",");
-				callString.Append (StringWithCast (declFunc.argDecl.types[i], argRVals[i]));
-			}
-			callString.Append (")");
+			MethodInfo methodInfo = baseObj.type.typ.GetMethod (meth.field.val, argTypes);
+			ilGen.Emit (OpCodes.Callvirt, methodInfo);
 
-			return OutputCallStatement (result, call, declFunc.retType, callString);
+			/*
+			 * Deal with return value by putting it in 'result'.
+			 */
+			result.PopPost (this, declFunc.retType);
+			return result;
 		}
 
 		/**
 		 * @brief Generate code that calls a function.
 		 * @returns where the call's return value is stored (a TokenTypeVoid if void)
 		 */
-		private CompRVal GenerateFromRValCallName (CompRVal result, TokenRValCall call)
+		private CompValu GenerateFromRValCallName (TokenRValCall call)
 		{
-			CompRVal[] argRVals = null;
+			CompValu[] argRVals = null;
 			int i, nargs;
 			string name;
 			StringBuilder signature;
 			TokenDeclFunc declFunc = null;
 
-			if (!(call.meth is TokenLValName)) {
-				ErrorMsg (call, "cannot call a field");
-				return GenerateFromRValLVal (new TokenRValLVal (call.meth));
-			}
 			name = ((TokenLValName)call.meth).name.val;
 
 			/*
@@ -1591,11 +1438,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			nargs = call.nArgs;
 			signature = new StringBuilder (name);
 			signature.Append ("(");
-			argRVals = new CompRVal[nargs];
+			argRVals = new CompValu[nargs];
 			if (nargs > 0) {
 				i = 0;
 				for (TokenRVal arg = call.args; arg != null; arg = (TokenRVal)arg.nextToken) {
-					argRVals[i] = GenerateFromRVal (null, arg);
+					argRVals[i] = GenerateFromRVal (arg);
 					if (i > 0) signature.Append (",");
 					signature.Append (argRVals[i].type.ToString ());
 					i ++;
@@ -1609,11 +1456,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * ... not signature, as we don't allow overloaded script-defined functions.
 			 * Then try inline functions by signature.
 			 */
-			string sig  = signature.ToString ();
+			string sig = signature.ToString ();
 			if (scriptFunctions.ContainsKey (name)) {
 				declFunc = scriptFunctions[name];
 			} else if (inlineFunctions.ContainsKey (sig)) {
-				return GenerateFromRValCallInline (result, call, inlineFunctions[sig], argRVals);
+				return GenerateFromRValCallInline (call, inlineFunctions[sig], argRVals);
 			} else {
 
 				/*
@@ -1632,7 +1479,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					}
 				}
 				if (foundInline != null) {
-					return GenerateFromRValCallInline (result, call, foundInline, argRVals);
+					return GenerateFromRValCallInline (call, foundInline, argRVals);
 				}
 
 				/*
@@ -1659,274 +1506,71 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
-			 * First arg is __sm to pass context along as it is static.
+			 * Make sure we have a place to put return value and prepare to pop return value into it.
+			 * The PopPre() call must be done before pushing anything else so PopPost() will work.
 			 */
-			StringBuilder callString = new StringBuilder ();
-			callString.Append ("__fun_" + name + "(__sm");
+			CompValu result = SetupReturnLocation (declFunc.retType);
+
+			/*
+			 * First arg is scriptWrapper to pass context along as the function is static.
+			 * Then push the remainder of the args, left-to-right.
+			 */
+			ilGen.Emit (OpCodes.Ldarg_0);                  // this function's scriptWrapper gets passed as arg[0]
 			for (i = 0; i < nargs; i ++) {
-				callString.Append (",");
-				if (declFunc.argDecl.types == null) callString.Append (argRVals[i].locstr);
-				else callString.Append (StringWithCast (declFunc.argDecl.types[i], argRVals[i]));
+				if (declFunc.argDecl.types == null) {
+					argRVals[i].PushVal (this);
+				} else {
+					argRVals[i].PushVal (this, declFunc.argDecl.types[i]);
+				}
 			}
-			callString.Append (")");
-			result = OutputCallStatement (result, call, declFunc.retType, callString);
+
+			ilGen.Emit (OpCodes.Call, declFunc.dynamicMethod);
+
+			/*
+			 * Deal with the return value (if any), by putting it in 'result'.
+			 */
+			result.PopPost (this, declFunc.retType);
 
 			/*
 			 * Also, unwind out if the called function changed state.
+			 * ???? optimize by putting just one 'dummyreturn' label at end of function ????
 			 */
 			if (declFunc.changesState) {
-				WriteOutput (call, "if (__sm.stateChanged) {");
-				OutputGotoReturn (call);
-				WriteOutput (call, "}");
+
+				// if (__sw.StateChanged) return;
+				ScriptMyLabel noStateChangeLabel = ilGen.DefineLabel ("nostatechg_" + call.line + "_" + call.posn);
+				ilGen.Emit (OpCodes.Ldarg_0);                       // scriptWrapper
+				ilGen.Emit (OpCodes.Ldfld, stateChangedFieldInfo);  // scriptWrapper.stateChanged
+				ilGen.Emit (OpCodes.Brfalse, noStateChangeLabel);
+				EmitDummyReturn ();
+				ilGen.MarkLabel (noStateChangeLabel);
 			}
 			return result;
 		}
 
 		/**
 		 * @brief Generate call to inline function.
-		 * @param result     = suggested place for return value
 		 * @param call       = calling script token, encapsulates call and parameters
 		 * @param inlineFunc = what inline function is being called
 		 * @param argRVals   = arguments to pass to function
 		 * @returns where the call's return value is stored (a TokenTypeVoid if void)
 		 */
-		private CompRVal GenerateFromRValCallInline (CompRVal result, TokenRValCall call, InlineFunction inlineFunc, CompRVal[] argRVals)
+		private CompValu GenerateFromRValCallInline (TokenRValCall call, InlineFunction inlineFunc, CompValu[] argRVals)
 		{
-			/*
-			 * API calls have __be. in them somewhere.  No big deal if we get a false positive because this is just debug output.
-			 * Note that things like inlined math calls don't have __be. anywhere but who needs to trace those anyway?
-			 * If needed, just put __be. as a comment in them somewhere.
-			 */
-			bool traceIt = traceAPICalls && (inlineFunc.code.IndexOf ("__be.") >= 0);
-
-			/*
-			 * Generate code for the inline call by substituting in the locations of the parameters for {0}, {1}, {2}, etc.
-			 */
-			StringBuilder callString = new StringBuilder (inlineFunc.code);
-			int nArgs = argRVals.Length;
-			if (nArgs != inlineFunc.argTypes.Length) {
-				ErrorMsg (call, "function requires " + inlineFunc.argTypes.Length.ToString () + " argument(s), not " + nArgs.ToString ());
-				if (nArgs > inlineFunc.argTypes.Length) nArgs = inlineFunc.argTypes.Length;
-			}
-			for (int i = 0; i < nArgs; i ++) {
-				callString.Replace ("{" + i.ToString () + "}", StringWithCast (inlineFunc.argTypes[i], argRVals[i], false));
-			}
-
-			/*
-			 * If resultant code doesn't begin with a '{', we just output it as a standard call.
-			 */
-			if (callString.ToString ()[0] != '{') {
-				if (!traceIt) {
-					return OutputCallStatement (result, call, TokenType.FromSysType (call, inlineFunc.retType), callString);
-				}
-
-				/*
-				 * Tracing enabled, convert to '{' ... '}' form so we can splice a trace call before and after the API call.
-				 */
-				if (inlineFunc.retType == typeof (void)) {
-					callString.Insert (0, "{ ");
-				} else {
-					callString.Insert (0, "{ {#} = ");
-				}
-				callString.Append ("; }");
-			}
-
-			/*
-			 * Begins with a '{', output it as a statement block.
-			 * Substitute any '{#}' with output location as they represent where the return value goes.
-			 */
-			string traceTemp = null;
-			if (traceIt) {
-				traceTemp = "__trc_" + call.line.ToString () + "_" + call.posn.ToString ();
-				WriteOutput (call, "object[] " + traceTemp + " = new object[" + nArgs.ToString () + "];");
-				for (int i = 0; i < nArgs; i ++) {
-					WriteOutput (call, traceTemp + "[" + i.ToString () + "] = " + argRVals[i].locstr + ";");
-				}
-				traceTemp = "__sm.TraceAPICall(" + call.line.ToString () + ", \"" + inlineFunc.signature + "\", " + traceTemp + ", ";
-				WriteOutput (call, traceTemp + "true, null);");
-			}
-			string retLocation;
-			if (inlineFunc.retType == typeof (void)) {
-
-				/*
-				 * Function is defined to return void.  So either the caller can accept a void
-				 * value, or we have to tell caller that we generate a void value.
-				 */
-				if (result == null) {
-					result = new CompRVal (TokenType.FromSysType (call, inlineFunc.retType));
-				} else if (!(result.type is TokenTypeVoid)) {
-					ErrorMsg (call, "function doesn't return a value");
-				}
-				retLocation = "null";
-			} else {
-
-				/*
-				 * Function is defined to return a non-void.  So figure out where to put value.
-				 */
-				if ((result == null) || (result.type.typ != inlineFunc.retType)) {
-
-					/*
-					 * Caller either didn't give us a location for the result or gave us a
-					 * location of the wrong type.  So create a temporary for the inline to
-					 * put it's value in, so it has something that is the exact correct type.
-					 */
-					CompRVal tempVar = new CompRVal (TokenType.FromSysType (call, inlineFunc.retType));
-					retLocation = tempVar.locstr;
-	 				WriteOutput (call, TypeName (inlineFunc.retType) + " " + retLocation + ";");
-
-					/*
-					 * That temp is where the result is.  Our caller will have to move it if
-					 * it wants it somewhere else.
-					 */
-					result = tempVar;
-				} else {
-
-					/*
-					 * Get where our caller told us to put the result.
-					 */
-					retLocation = result.locstr;
-
-					/*
-					 * If the location is also a declaration, output the declaration separately,
-					 * or the declaration will be muted by the braces.  And also it would get
-					 * hosed if there were more than one {#} in the inline code string.
-					 */
-					for (int i = 0; i < retLocation.Length; i ++) {
-						char c = retLocation[i];
-						if (c == ' ') {
-							WriteOutput (call, retLocation + ";");
-							retLocation = retLocation.Substring (++ i);
-							break;
-						}
-						if ((c >= 'a') && (c <= 'z')) continue;
-						if ((c >= 'A') && (c <= 'Z')) continue;
-						if ((c >= '0') && (c <= '9')) continue;
-						if (c == '_') continue;
-						if (c == '.') continue;
-						break;
-					}
-				}
-
-				/*
-				 * Substitute location of return value for '{#}'.
-				 */
-				callString.Replace ("{#}", retLocation);
-			}
-
-			/*
-			 * We're finally ready to output the code.
-			 */
-			WriteOutput (call, callString.ToString ());
-			if (traceIt) {
-				WriteOutput (call, traceTemp + "false, " + retLocation + ");");
-			}
+			CompValu result = SetupReturnLocation (inlineFunc.retType);
+			inlineFunc.codeGen (this, result, argRVals);
 			return result;
 		}
 
-		/**
-		 * @brief Output the C# call statement itself, including a semi-colon.
-		 *        If function returns a value, then put return value in a variable and return name of variable.
-		 * @param result = suggested place of where to put result
-		 * @param call = the call statement token
-		 * @param retType = return type as defined by function being called
-		 * @param callString = string giving the C# equivalent call, up to and including the ")"
-		 * @returns where the result is (a TokenTypeVoid if void)
-		 */
-		private CompRVal OutputCallStatement (CompRVal result, TokenRValCall call, TokenType retType, StringBuilder callString)
+		private CompValu SetupReturnLocation (TokenType retType)
 		{
-
-			/*
-			 * If function returns void, just output the call by itself.
-			 */
+			CompValu result;
 			if (retType is TokenTypeVoid) {
-				callString.Append (";");
-				WriteOutput (call, callString.ToString ());
-				if (result == null) {
-					result = new CompRVal (retType, "voidCall");
-				} else if (!(result.type is TokenTypeVoid)) {
-					ErrorMsg (call, "function doesn't return a value");
-				}
-				return result;
-			}
-
-			/*
-			 * If function returns a value but caller doesn't want it, just output call by itself.
-			 */
-			if ((result != null) && (result.type is TokenTypeVoid)) {
-				callString.Append (";");
-				WriteOutput (call, callString.ToString ());
-				return result;
-			}
-
-			/*
-			 * Put the result somewhere, either in given result location or a temp.
-			 */
-			if (result == null) {
-
-				/*
-				 * We need to make up a location to put the return value in.
-				 * So make a temp of the same type that the call returns,
-				 * except make it the unboxed type.
-				 */
-				result = new CompRVal (TokenType.FromSysType (call, retType.typ)); // unboxed type
-				if (retType.lslBoxing != null) {
-					callString.Append (".value");
-				}
-				callString.Append (";");
-				WriteOutput (call, TypeName (retType) + " " + result.locstr + " = " + callString.ToString ());
+				result = new CompValuVoid (retType);
 			} else {
-
-				/*
-				 * We have a location to put return value in (like a local variable),
-				 * so make a statement to put the return value in that location.  It
-				 * may require a type cast.
-				 */
-				WriteOutput (call, result.locstr + " = ");
-				if ((result.type.typ == retType.typ) && (result.type.lslBoxing == retType.lslBoxing)) {
-
-					/*
-					 * Return value and location are same type, no casting required,
-					 * except if return value is float, it may be a double in disguise,
-					 * so we have to cast to float.
-					 */
-					if ((retType is TokenTypeFloat) && (retType.lslBoxing == null)) {
-						WriteOutput (call, "(float)");
-					}
-					callString.Append (";");
-					WriteOutput (call, callString.ToString ());
-				} else if (result.type.typ == retType.typ) {
-
-					/*
-					 * Types are the same but the boxing is different.
-					 * So box/unbox as needed.
-					 */
-					if (result.type.lslBoxing != null) {
-						if (retType.lslBoxing != null) throw new Exception ("assert fail");
-						WriteOutput (call, "new " + TypeName (result.type.lslBoxing) + "(" + callString.ToString () + ");");
-					} else {
-						if (retType.lslBoxing == null) throw new Exception ("assert fail");
-						callString.Append (".value;");
-						WriteOutput (call, callString.ToString ());
-					}
-				} else {
-
-					/*
-					 * Types are completely different.
-					 * Make sure implicit cast is legal, then output call with cast.
-					 */
-					string key = retType.ToString () + " " + result.type.ToString ();
-					if (!legalTypeCasts.ContainsKey (key)) {
-						ErrorMsg (call, "can't cast " + retType.ToString () + " to " + result.type.ToString ());
-					} else {
-						WriteOutput (call, "(" + TypeName (result.type) + ")(");
-						WriteOutput (call, callString.ToString ());
-						if (retType.lslBoxing != null) {
-							callString.Append (".value");
-						}
-						WriteOutput (call, ");");
-					}
-				}
+				result = new CompValuTemp (retType, null, this);
 			}
+			result.PopPre (this);
 			return result;
 		}
 
@@ -1934,15 +1578,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief Generate code that casts a value to a particular type.
 		 * @returns where the result of the conversion is stored.
 		 */
-		private CompRVal GenerateFromRValCast (TokenRValCast cast)
+		private CompValu GenerateFromRValCast (TokenRValCast cast)
 		{
-			CompRVal inRVal = GenerateFromRVal (null, cast.rVal);
+			CompValu inRVal = GenerateFromRVal (cast.rVal);
 			TokenType outType = cast.castTo;
 
 			if (inRVal.type == outType) return inRVal;
 
-			CompRVal outRVal = new CompRVal (outType, "(" + StringWithCast (outType, inRVal, true) + ")");
+			//??? optimize by having CompValu.PushVal() emit code for the conversion instead of needing a temp ???//
+			CompValu outRVal = new CompValuTemp (outType, null, this);
 			outRVal.isFinal = inRVal.isFinal;
+			outRVal.PopPre (this);
+			inRVal.PushVal (this, outType, true);
+			outRVal.PopPost (this);
 			return outRVal;
 		}
 
@@ -1950,7 +1598,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief Constant in MMRScriptConsts.cs
 		 * @returns where the constants value is stored
 		 */
-		private CompRVal GenerateFromRValConst (TokenRValConst rValConst)
+		private CompValu GenerateFromRValConst (TokenRValConst rValConst)
 		{
 			ScriptConst sc = rValConst.val;
 			return sc.rVal;
@@ -1959,142 +1607,138 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		/**
 		 * @brief floating-point constant.
 		 */
-		private CompRVal GenerateFromRValFloat (TokenRValFloat rValFloat)
+		private CompValu GenerateFromRValFloat (TokenRValFloat rValFloat)
 		{
-			CompRVal rVal = new CompRVal (new TokenTypeFloat (rValFloat), rValFloat.flToken.ToString ());
-			rVal.isFinal = true;
-			return rVal;
+			return new CompValuFloat (new TokenTypeFloat (rValFloat), (float)rValFloat.flToken.val);
 		}
 
 		/**
 		 * @brief integer constant.
 		 */
-		private CompRVal GenerateFromRValInt (TokenRValInt rValInt)
+		private CompValu GenerateFromRValInt (TokenRValInt rValInt)
 		{
-			CompRVal rVal = new CompRVal (new TokenTypeInt (rValInt), rValInt.inToken.ToString ());
-			rVal.isFinal = true;
-			return rVal;
+			return new CompValuInteger (new TokenTypeInt (rValInt), rValInt.inToken.val);
 		}
 
 		/**
 		 * @brief generate a new list object
 		 * @param rValList = an rVal to create it from
 		 */
-		private CompRVal GenerateFromRValList (TokenRValList rValList)
+		private CompValu GenerateFromRValList (TokenRValList rValList)
 		{
+			CompValu newList = new CompValuTemp (new TokenTypeList (rValList.rVal), null, this);
+			newList.PopPre (this);
 
 			/*
 			 * Create a temp array to hold all the initial values.
 			 */
-			string arrayLocstr = "__tmp_" + ScriptCodeGen.GetTempNo ();
-			WriteOutput (rValList, "object[] " + arrayLocstr + " = new object[" + rValList.nItems + "];");
+			PushConstantI4 (rValList.nItems);
+			ilGen.Emit (OpCodes.Newarr, typeof (object));
 
 			/*
 			 * Populate the array.
 			 */
 			int i = 0;
-			TokenType tto = new TokenTypeObject (rValList);
 			for (TokenRVal val = rValList.rVal; val != null; val = (TokenRVal)val.nextToken) {
 
 				/*
-				 * Get description of temp array element, ie, where it is and its type.
+				 * Get pointer to temp array object.
 				 */
-				CompRVal tRVal = new CompRVal (tto, arrayLocstr + "[" + i + "]");
+				ilGen.Emit (OpCodes.Dup);
 
 				/*
-				 * Get description of initialization value, ie, where it is and its type.
+				 * Get index in that array.
 				 */
-				CompRVal eRVal = GenerateFromRVal (tRVal, val);
+				PushConstantI4 (i);
+
+				/*
+				 * Emit code to compute initial value for the element.
+				 */
+				CompValu eRVal = GenerateFromRVal (val);
 
 				/*
 				 * Store initialization value in array location.
-				 * It is possible that the initialization value was stored in the array
-				 * element in the GenerateFromRVal() call (eg, may it was some call to a
-				 * function that needed a temp to store its return value in), so we might
-				 * not need to do the assignment here.
-				 *
 				 * However, floats and ints need to be converted to LSL_Float and LSL_Integer,
 				 * or things like llSetPayPrice() will puque when they try to cast the elements
-				 * to LSL_Float or LSL_Integer.
+				 * to LSL_Float or LSL_Integer.  Likewise with string/LSL_String.
 				 */
+				eRVal.PushVal (this);
 				if (eRVal.type is TokenTypeFloat) {
-					WriteOutput (val, tRVal.locstr + " = (object)(" + TypeName (typeof (LSL_Float)) + ")(float)" + eRVal.locstr + ";");
+					ilGen.Emit (OpCodes.Newobj, lslFloatConstructorInfo);
+					ilGen.Emit (OpCodes.Box, typeof (LSL_Float));
 				} else if (eRVal.type is TokenTypeInt) {
-					WriteOutput (val, tRVal.locstr + " = (object)(" + TypeName (typeof (LSL_Integer)) + ")(int)" + eRVal.locstr + ";");
-				} else if (eRVal != tRVal) {
-					WriteOutput (val, tRVal.locstr + " = (object)" + eRVal.locstr + ";");
+					ilGen.Emit (OpCodes.Newobj, lslIntegerConstructorInfo);
+					ilGen.Emit (OpCodes.Box, typeof (LSL_Integer));
+				} else if (eRVal.type is TokenTypeStr) {
+					ilGen.Emit (OpCodes.Newobj, lslStringConstructorInfo);
+					ilGen.Emit (OpCodes.Box, typeof (LSL_String));
+				} else if (eRVal.type.typ.IsValueType) {
+					ilGen.Emit (OpCodes.Box, eRVal.type.typ);
 				}
+				ilGen.Emit (OpCodes.Stelem, typeof (object));
 				i ++;
 			}
 
 			/*
-			 * Create list object from temp initial value array.
+			 * Create new list object from temp initial value array (whose ref is still on the stack).
 			 */
-			return new CompRVal (new TokenTypeList (rValList.rVal),
-			                     "(new " + TypeName (typeof (LSL_List)) + "(" + arrayLocstr + "))");
+			ilGen.Emit (OpCodes.Newobj, lslListConstructorInfo);
+			newList.PopPost (this);
+			return newList;
 		}
 
 		/**
 		 * @brief get the R-value from an L-value
 		 *        this happens when doing things like reading a variable
 		 */
-		private CompRVal GenerateFromRValLVal (TokenRValLVal rValLVal)
+		private CompValu GenerateFromRValLVal (TokenRValLVal rValLVal)
 		{
 			if (!(rValLVal.lvToken is TokenLValName)) {
-				CompLVal compLVal = GenerateFromLVal (rValLVal.lvToken);
-				return new CompRVal (compLVal.type, compLVal.locstr);
+				return GenerateFromLVal (rValLVal.lvToken);
 			}
 
 			string name = ((TokenLValName)rValLVal.lvToken).name.val;
 
-			foreach (Dictionary<string, TokenType> vars in scriptVariablesStack) {
-				if (vars.ContainsKey (name)) {
-					TokenType type = vars[name];
-					if (vars == scriptInstanceVariables) name = "__sm.__gbl_" + name;
-					else name = "__lcl_" + name;
-					return new CompRVal (type, name);
+			foreach (Dictionary<string, CompValu> vars in scriptVariablesStack) {
+				CompValu defn;
+				if (vars.TryGetValue (name, out defn)) {
+					return defn;
 				}
 			}
 
 			ErrorMsg (rValLVal, "undefined variable " + name);
-			return new CompRVal (new TokenTypeVoid (rValLVal), name);
+			return new CompValuVoid (rValLVal);
 		}
 
 		/**
 		 * @brief parenthesized expression
 		 * @returns type and location of the result of the computation.
 		 */
-		private CompRVal GenerateFromRValParen (TokenRValParen rValParen)
+		private CompValu GenerateFromRValParen (TokenRValParen rValParen)
 		{
-			return GenerateFromRVal (null, rValParen.rVal);
+			return GenerateFromRVal (rValParen.rVal);
 		}
 
 		/**
 		 * @brief create a rotation object from the x,y,z,w value expressions.
 		 */
-		private CompRVal GenerateFromRValRot (TokenRValRot rValRot)
+		private CompValu GenerateFromRValRot (TokenRValRot rValRot)
 		{
-			CompRVal xRVal, yRVal, zRVal, wRVal;
-			TokenTypeFloat flToken = new TokenTypeFloat (rValRot);
+			CompValu xRVal, yRVal, zRVal, wRVal;
 
-			xRVal = GenerateFromRVal (null, rValRot.xRVal);
-			yRVal = GenerateFromRVal (null, rValRot.yRVal);
-			zRVal = GenerateFromRVal (null, rValRot.zRVal);
-			wRVal = GenerateFromRVal (null, rValRot.wRVal);
-			return new CompRVal (new TokenTypeRot (rValRot),
-			                     "(new " + TypeName (typeof (LSL_Rotation)) + "(" + StringWithCast (flToken, xRVal) + "," + 
-			                     StringWithCast (flToken, yRVal) + "," +
-					     StringWithCast (flToken, zRVal) + "," + StringWithCast (flToken, wRVal) + "))");
+			xRVal = GenerateFromRVal (rValRot.xRVal);
+			yRVal = GenerateFromRVal (rValRot.yRVal);
+			zRVal = GenerateFromRVal (rValRot.zRVal);
+			wRVal = GenerateFromRVal (rValRot.wRVal);
+			return new CompValuRot (new TokenTypeRot (rValRot), xRVal, yRVal, zRVal, wRVal);
 		}
 
 		/**
 		 * @brief string constant.
 		 */
-		private CompRVal GenerateFromRValStr (TokenRValStr rValStr)
+		private CompValu GenerateFromRValStr (TokenRValStr rValStr)
 		{
-			CompRVal rVal = new CompRVal (new TokenTypeStr (rValStr), rValStr.strToken.ToString ());
-			rVal.isFinal = true;
-			return rVal;
+			return new CompValuString (new TokenTypeStr (rValStr), rValStr.strToken.val);
 		}
 
 		/**
@@ -2104,166 +1748,99 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 *        This value can be stored in and retrieved from variables of type 'object'.
 		 *        It is a runtime error to cast this value to any type, eg, we don't allow string variables to be null pointers.
 		 */
-		private CompRVal GenerateFromRValUndef (TokenRValUndef rValUndef)
+		private CompValu GenerateFromRValUndef (TokenRValUndef rValUndef)
 		{
-			CompRVal rVal = new CompRVal (new TokenTypeObject (rValUndef), "null");
-			rVal.isFinal = true;
-			return rVal;
+			return new CompValuNull (new TokenTypeObject (rValUndef));
 		}
 
 		/**
 		 * @brief create a vector object from the x,y,z value expressions.
 		 */
-		private CompRVal GenerateFromRValVec (TokenRValVec rValVec)
+		private CompValu GenerateFromRValVec (TokenRValVec rValVec)
 		{
-			CompRVal xRVal, yRVal, zRVal;
-			TokenTypeFloat flToken = new TokenTypeFloat (rValVec);
+			CompValu xRVal, yRVal, zRVal;
 
-			xRVal = GenerateFromRVal (null, rValVec.xRVal);
-			yRVal = GenerateFromRVal (null, rValVec.yRVal);
-			zRVal = GenerateFromRVal (null, rValVec.zRVal);
-			return new CompRVal (new TokenTypeVec (rValVec),
-					"(new " + TypeName (typeof (LSL_Vector)) + "(" + StringWithCast (flToken, xRVal) + "," +
-					StringWithCast (flToken, yRVal) + "," + StringWithCast (flToken, zRVal) + "))");
+			xRVal = GenerateFromRVal (rValVec.xRVal);
+			yRVal = GenerateFromRVal (rValVec.yRVal);
+			zRVal = GenerateFromRVal (rValVec.zRVal);
+			return new CompValuVec (new TokenTypeVec (rValVec), xRVal, yRVal, zRVal);
 		}
 
 		/**
 		 * @brief Generate code to process an <rVal> is <type> expression, and produce a boolean value.
 		 */
-		private CompRVal GenerateFromRValIsType (TokenRValIsType rValIsType)
+		private CompValu GenerateFromRValIsType (TokenRValIsType rValIsType)
 		{
-			CompRVal rValExp = GenerateFromRVal (null, rValIsType.rValExp);
-			CompRVal rValRet = new CompRVal (tokenTypeBool, "(" + CheckTypeIsExp (rValExp, rValIsType.typeExp) + ")");
-			return rValRet;
-		}
-
-		private string CheckTypeIsExp (CompRVal rValExp, TokenTypeExp typeExp)
-		{
-			if (typeExp is TokenTypeExpBinOp) {
-				return CheckTypeIsExp (rValExp, ((TokenTypeExpBinOp)typeExp).leftOp) + 
-				       " " + ((TokenTypeExpBinOp)typeExp).binOp.ToString () + 
-				       ((TokenTypeExpBinOp)typeExp).binOp.ToString () + " " +
-				       CheckTypeIsExp (rValExp, ((TokenTypeExpBinOp)typeExp).rightOp);
-			}
-
-			if (typeExp is TokenTypeExpNot) {
-				return "!(" + CheckTypeIsExp (rValExp, ((TokenTypeExpNot)typeExp).typeExp) + ")";
-			}
-
-			if (typeExp is TokenTypeExpPar) {
-				return "(" + CheckTypeIsExp (rValExp, ((TokenTypeExpPar)typeExp).typeExp) + ")";
-			}
-
-			if (typeExp is TokenTypeExpType) {
-				return "(" + rValExp.locstr + " is " + TypeName (((TokenTypeExpType)typeExp).typeToken.typ) + ")";
-			}
-
-			if (typeExp is TokenTypeExpUndef) {
-				return "(" + rValExp.locstr + " == null)";
-			}
-
-			throw new Exception ("unknown type expression");
+			ErrorMsg (rValIsType, "not supported");
+			return new CompValuVoid (rValIsType);
 		}
 
 		/**
-		 * @brief output the "goto __Return;" statement that jumps to the function epilog.
-		 * @param stmt = source statement that's causing the return to happen
-		 * Note that __retval has already been updated with return value, if any.
+		 * @brief Output a return statement with a null value.
+		 *        This is used when unwinding, such as from a changed state.
 		 */
-		private void OutputGotoReturn (Token stmt)
+		private void EmitDummyReturn ()
 		{
-			/*
-			 * Now we can jump to the common epilog where it will pop memory usage for the outermost block.
-			 */
-			WriteOutput (stmt, "goto __Return;");
+			PushDefaultValue (curDeclFunc.retType);
+			ilGen.Emit (OpCodes.Ret);
 		}
 
 		/**
-		 * @brief get the default (null) value for a particular type
+		 * @brief Push the default (null) value for a particular type
 		 * @param type = type to get the default value for
-		 * @returns default value string for that type
+		 * @returns with value pushed on stack
 		 */
-		private string DefaultValue (TokenType type)
+		private void PushDefaultValue (TokenType type)
 		{
 			if (type is TokenTypeArray) {
-				return "new " + TypeName (typeof (XMR_Array)) + "()";
-			}
-			if (type is TokenTypeKey) {
-				return TypeName (typeof (ScriptBaseClass)) + ".NULL_KEY";
+				ilGen.Emit (OpCodes.Newobj, xmrArrayConstructorInfo);
+				return;
 			}
 			if (type is TokenTypeList) {
-				return "new " + TypeName (typeof (LSL_List)) + "()";
+				PushConstantI4 (0);
+				ilGen.Emit (OpCodes.Newarr, typeof (object));
+				ilGen.Emit (OpCodes.Newobj, lslListConstructorInfo);
+				return;
 			}
 			if (type is TokenTypeRot) {
-				return TypeName (typeof (ScriptBaseClass)) + ".ZERO_ROTATION";
+				// Mono is tOO stOOpid to allow: ilGen.Emit (OpCodes.Ldsfld, zeroRotationFieldInfo);
+				ilGen.Emit (OpCodes.Ldc_R8, ScriptBaseClass.ZERO_ROTATION.x);
+				ilGen.Emit (OpCodes.Ldc_R8, ScriptBaseClass.ZERO_ROTATION.y);
+				ilGen.Emit (OpCodes.Ldc_R8, ScriptBaseClass.ZERO_ROTATION.z);
+				ilGen.Emit (OpCodes.Ldc_R8, ScriptBaseClass.ZERO_ROTATION.s);
+				ilGen.Emit (OpCodes.Newobj, lslRotationConstructorInfo);
+				return;
 			}
 			if (type is TokenTypeStr) {
-				return "\"\"";
+				ilGen.Emit (OpCodes.Ldstr, "");
+				return;
 			}
 			if (type is TokenTypeVec) {
-				return TypeName (typeof (ScriptBaseClass)) + ".ZERO_VECTOR";
+				// Mono is tOO stOOpid to allow: ilGen.Emit (OpCodes.Ldsfld, zeroVectorFieldInfo);
+				ilGen.Emit (OpCodes.Ldc_R8, ScriptBaseClass.ZERO_VECTOR.x);
+				ilGen.Emit (OpCodes.Ldc_R8, ScriptBaseClass.ZERO_VECTOR.y);
+				ilGen.Emit (OpCodes.Ldc_R8, ScriptBaseClass.ZERO_VECTOR.z);
+				ilGen.Emit (OpCodes.Newobj, lslVectorConstructorInfo);
+				return;
 			}
-			return "(" + type.typ + ")0";
-		}
+			if (type is TokenTypeInt) {
+				PushConstantI4 (0);
+				return;
+			}
+			if (type is TokenTypeFloat) {
+				ilGen.Emit (OpCodes.Ldc_R4, 0.0f);
+				return;
+			}
 
-		/**
-		 * @brief create a dictionary of legal type casts.
-		 * Defines what EXPLICIT type casts are allowed in addition to the IMPLICIT ones.
-		 * Key is of the form <oldtype> <newtype> for IMPLICIT casting.
-		 * Key is of the form <oldtype>*<newtype> for EXPLICIT casting.
-		 * Value is a format string to convert the old value to new value.
-		 */
-		private static Dictionary<string, string> CreateLegalTypeCasts ()
-		{
-			Dictionary<string, string> ltc = new Dictionary<string, string> ();
+			/*
+			 * Void is pushed as the default return value of a void function.
+			 * So just push nothing as expected of void functions.
+			 */
+			if (type is TokenTypeVoid) {
+				return;
+			}
 
-			// IMPLICIT type casts (a space is in middle of the key)
-			ltc.Add ("array object",    "((object){0})");
-			ltc.Add ("bool float",      "({0}?1f:0f)");
-			ltc.Add ("bool integer",    "({0}?1:0)");
-			ltc.Add ("float bool",      "({0}!=0.0)");
-			ltc.Add ("float integer",   "((int){0})");
-			ltc.Add ("float object",    "((object){0})");
-			ltc.Add ("integer bool",    "({0}!=0)");
-			ltc.Add ("integer float",   "((float){0})");
-			ltc.Add ("integer object",  "((object){0})");
-			ltc.Add ("key bool",        "({0}!=NULL_KEY)");
-			ltc.Add ("key object",      "((object){0})");
-			ltc.Add ("key string",      "{0}");
-			ltc.Add ("list object",     "((object){0})");
-			ltc.Add ("object array",    TypeName (typeof (XMR_Array)) + ".Obj2Array({0})");   // disallow null
-			ltc.Add ("object float",    "(" + TypeName (typeof (float))        + "){0}");     // value type disallows null
-			ltc.Add ("object integer",  "(" + TypeName (typeof (int))          + "){0}");     // value type disallows null
-			ltc.Add ("object key",      TypeName (typeof (XMR_Array)) + ".Obj2Key({0})");     // disallow null
-			ltc.Add ("object list",     TypeName (typeof (XMR_Array)) + ".Obj2List({0})");    // disallow null
-			ltc.Add ("object rotation", "(" + TypeName (typeof (LSL_Rotation)) + "){0}");     // value type disallows null
-			ltc.Add ("object string",   TypeName (typeof (XMR_Array)) + ".Obj2String({0})");  // disallow null
-			ltc.Add ("object vector",   "(" + TypeName (typeof (LSL_Vector))   + "){0}");     // value type disallows null
-			ltc.Add ("rotation object", "((object){0})");
-			ltc.Add ("string bool",     "({0}!=\"\")");
-			ltc.Add ("string key",      "new " + TypeName (typeof (LSL_Key)) + "({0})");
-			ltc.Add ("string object",   "((object){0})");
-			ltc.Add ("string rotation", "new " + TypeName (typeof (LSL_Rotation)) + "({0})");
-			ltc.Add ("vector list",     "new " + TypeName (typeof (LSL_List)) + "((object){0})");
-			ltc.Add ("string vector",   "new " + TypeName (typeof (LSL_Vector)) + "({0})");   // LSL_Types says explicit
-			ltc.Add ("vector object",   "((object){0})");
-
-			// EXPLICIT type casts (an * is in middle of the key)
-			ltc.Add ("bool*string",     "({0}?\"true\":\"false\")");
-			ltc.Add ("float*list",      "new " + TypeName (typeof (LSL_List)) + "({0})");
-			ltc.Add ("float*string",    "{0}.ToString()");
-			ltc.Add ("integer*list",    "new " + TypeName (typeof (LSL_List)) + "({0})");
-			ltc.Add ("integer*string",  "{0}.ToString()");
-			ltc.Add ("list*string",     "{0}.ToString()");
-			ltc.Add ("rotation*list",   "new " + TypeName (typeof (LSL_List)) + "({0})");
-			ltc.Add ("rotation*string", "{0}.ToString()");
-			ltc.Add ("string*float",    "((float)new " + TypeName (typeof (LSL_Float)) + "({0}.Trim()).value)");
-			ltc.Add ("string*integer",  "((int)new " + TypeName (typeof (LSL_Integer)) + "({0}.Trim()).value)");
-			ltc.Add ("string*list",     "new " + TypeName (typeof (LSL_List)) + "({0})");
-			ltc.Add ("vector*list",     "new " + TypeName (typeof (LSL_List)) + "({0})");
-			ltc.Add ("vector*string",   "{0}.ToString()");
-
-			return ltc;
+			throw new Exception ("unknown type " + type.ToString ());
 		}
 
 		/**
@@ -2277,112 +1854,77 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		/**
-		 * @brief output an implicit cast to cast the 'inRVal' to the 'outType'.
-		 * If inRVal is already the correct type, output it as is.
-		 * @param explicitAllowed = false: only allow implicit casts
-		 *                           true: accept implicit and explicit casts
+		 * @brief Push an integer constant
 		 */
-		private void OutputWithCastToBool (CompRVal inRVal)
+		public void PushConstantI4 (int c)
 		{
-			OutputWithCast (tokenTypeBool, inRVal);
-		}
-		private void OutputWithCast (TokenType outType, CompRVal inRVal)
-		{
-			WriteOutput (outType, StringWithCast (outType, inRVal));
-		}
-		private string StringWithCast (TokenType outType, CompRVal inRVal)
-		{
-			return StringWithCast (outType, inRVal, false);
-		}
-		private string StringWithCast (TokenType outType, CompRVal inRVal, bool explicitAllowed)
-		{
-			string result;
-			string inName = inRVal.type.ToString();
-			string outName = outType.ToString();
-
-			/*
-			 * If output type is 'void', just use the input value as is,
-			 * as it is going to be discarded.
-			 */
-			if (outName == "void") {
-				return inRVal.locstr;
-			}
-
-			/*
-			 * Get inRVal converted to the type that outType says.
-			 */
-			if (inName != outName) {
-
-				/*
-				 * Different types, see if we allow implicit casting.
-				 */
-				string key = inName + " " + outName;
-				if (!legalTypeCasts.ContainsKey (key)) {
-
-					/*
-					 * See if we even know how to cast explicitly.
-					 */
-					key = inName + "*" + outName;
-					bool explicitExists = legalTypeCasts.ContainsKey (key);
-					string qualif = explicitExists ? " implicitly" : "";
-					if (!explicitAllowed || !explicitExists) {
-						qualif = " implicitly";
-						if (!explicitExists) qualif = "";
-						ErrorMsg (inRVal.type, "cannot" + qualif + " convert " + inName + " to " + outName);
-						return inRVal.locstr;
-					}
+			switch (c) {
+				case -1: {
+					ilGen.Emit (OpCodes.Ldc_I4_M1);
+					return;
 				}
-
-				/*
-				 * Cast is allowed, generate code.
-				 */
-				string fmt = legalTypeCasts[key];
-				result = String.Format (fmt, inRVal.locstr);
-			} else if (inName == "float") {
-
-				/*
-				 * If both claim to be float, output cast anyway in case inRVal is really a double in disguise.
-				 */
-				result = "(float)" + inRVal.locstr;
-			} else {
-
-				/*
-				 * All others just output without any casting at all.
-				 */
-				result = inRVal.locstr;
+				case 0: {
+					ilGen.Emit (OpCodes.Ldc_I4_0);
+					return;
+				}
+				case 1: {
+					ilGen.Emit (OpCodes.Ldc_I4_1);
+					return;
+				}
+				case 2: {
+					ilGen.Emit (OpCodes.Ldc_I4_2);
+					return;
+				}
+				case 3: {
+					ilGen.Emit (OpCodes.Ldc_I4_3);
+					return;
+				}
+				case 4: {
+					ilGen.Emit (OpCodes.Ldc_I4_4);
+					return;
+				}
+				case 5: {
+					ilGen.Emit (OpCodes.Ldc_I4_5);
+					return;
+				}
+				case 6: {
+					ilGen.Emit (OpCodes.Ldc_I4_6);
+					return;
+				}
+				case 7: {
+					ilGen.Emit (OpCodes.Ldc_I4_7);
+					return;
+				}
+				case 8: {
+					ilGen.Emit (OpCodes.Ldc_I4_8);
+					return;
+				}
+				default: break;
 			}
-
-			/*
-			 * Now maybe we have to box it LSL style.
-			 * This converts things like 'int' to LSL_Integer.
-			 */
-			if (outType.lslBoxing != null) {
-				result = "new " + TypeName (outType.lslBoxing) + "(" + result + ")";
+			if ((c >= 0) && (c <= 127)) {  // negatives dont seem to work
+				ilGen.Emit (OpCodes.Ldc_I4_S, c);
+				return;
 			}
-			return result;
+			ilGen.Emit (OpCodes.Ldc_I4, c);
 		}
 
 		/**
-		 * @brief output code to fill in a row of the ScriptEventHandlerTable
-		 * @param name = state name string, "default" for default state
-		 * @param body = state declaration, all emitted
+		 * @brief Emit a call to CheckRun(), (voluntary multitasking switch)
 		 */
-		private void GenerateSEHTFill (string name, TokenStateBody body)
+		public void EmitCallCheckRun ()
 		{
-			for (Token t = body.eventFuncs; t != null; t = t.nextToken) {
-				TokenDeclFunc tdf = (TokenDeclFunc)t;
-				WriteOutput (0, "seht[" + body.index + "," + (int)Enum.Parse(typeof (ScriptEventCode), tdf.funcName.val));
-				WriteOutput (0, "] = __seh_" + name + "_" + tdf.funcName.val + ";");
-			}
+			ilGen.Emit (OpCodes.Ldarg_0);                       // scriptWrapper
+			ilGen.Emit (OpCodes.Ldfld, continuationFieldInfo);  // scriptWrapper.continuation
+			ilGen.Emit (OpCodes.Call, checkRunMethodInfo);      // scriptWrapper.continuation.CheckRun()
 		}
 
 		/**
 		 * @brief maintain variable definition stack.
 		 * It translates a variable name string to its declaration.
 		 */
-		private Dictionary<string, TokenType> PushVarDefnBlock ()
+		private Dictionary<string, CompValu> PushVarDefnBlock ()
 		{
-			Dictionary<string, TokenType> frame = new Dictionary<string, TokenType> ();
+			Dictionary<string, CompValu> frame = new Dictionary<string, CompValu> ();
 			scriptVariablesStack.Push (frame);
 			return frame;
 		}
@@ -2390,282 +1932,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			scriptVariablesStack.Pop ();
 		}
-		private void AddVarDefinition (TokenType type, string name)
+		private void AddVarDefinition (TokenName name, CompValu var)
 		{
-			Dictionary<string, TokenType> vars = scriptVariablesStack.Peek ();
+			Dictionary<string, CompValu> vars = scriptVariablesStack.Peek ();
 
-			if (vars.ContainsKey (name)) {
-				ErrorMsg (type, "duplicate var definition " + name);
+			if (vars.ContainsKey (name.val)) {
+				ErrorMsg (name, "duplicate var definition " + name);
 			} else {
-				vars.Add (name, type);
-			}
-		}
-
-		/**
-		 * @brief Get a string for use in creating temporary variable names.
-		 */
-		private static Int64 tempNo = 0;
-		public static string GetTempNo ()
-		{
-			return System.Threading.Interlocked.Increment (ref tempNo).ToString ();
-		}
-
-		/**
-		 * @brief Create a dictionary for processing binary operators.
-		 *        This tells us, for a given type, an operator and another type,
-		 *        is the operation permitted, and if so, what is the type of the result?
-		 * The key is <lefttype><opcode><righttype>,
-		 *   where <lefttype> and <righttype> are strings returned by (TokenType...).ToString()
-		 *   and <opcode> is string returned by (TokenKw...).ToString()
-		 * The value is a BinOpStr struct giving the resultant type and how to format the computation.
-		 * Operand {0} to the format is the left value and is of type lefttype.
-		 * Operand {1} to the format is the right value and is of type righttype.
-		 * The '#' indicates where an optional '=' may be substituted for read-modify-write assignments.
-		 */
-		private static Dictionary<string, BinOpStr> DefineBinOps ()
-		{
-			Dictionary<string, BinOpStr> bos = new Dictionary<string, BinOpStr> ();
-
-			string[] booltypes = new string[] { "bool", "float", "integer", "key", "list", "string" };
-			string[] boolcasts = new string[] { "{0}", "({0}!=0.0)", "({0}!=0)", "({0}!=NULL_KEY.val)", "(!{0}.IsEmpty())", "({0}!=\"\")" };
-
-			/*
-			 * Get the && and || all out of the way...
-			 * Simply cast their left and right operands to boolean then process.
-			 */
-			for (int i = 0; i < booltypes.Length; i++) {
-				for (int j = 0; j < booltypes.Length; j++) {
-					int k = boolcasts[j].IndexOf ('0');
-					string r = boolcasts[j].Substring (0, k) + "1" + boolcasts[j].Substring (k + 1);
-					bos.Add (booltypes[i] + "&&" + booltypes[j], new BinOpStr (typeof (bool), boolcasts[i] + " && " + r));
-					bos.Add (booltypes[i] + "||" + booltypes[j], new BinOpStr (typeof (bool), boolcasts[i] + " || " + r));
-				}
-			}
-
-			/*
-			 * Pound through all the other combinations we support.
-			 */
-
-			// boolean : somethingelse
-			DefineBinOpsBoolX (bos, "bool",    "{1}");
-			DefineBinOpsBoolX (bos, "float",   "({1} != 0.0)");
-			DefineBinOpsBoolX (bos, "integer", "({1} != 0)");
-			DefineBinOpsBoolX (bos, "key",     "({1} != NULL_KEY.val)");
-			DefineBinOpsBoolX (bos, "list",    "!{1}.IsEmpty()");
-			DefineBinOpsBoolX (bos, "string",  "({1} != \"\")");
-
-			// somethingelse : boolean
-			DefineBinOpsXBool (bos, "float",   "({0} != 0.0)");
-			DefineBinOpsXBool (bos, "integer", "({0} != 0)");
-			DefineBinOpsXBool (bos, "key",     "({0} != NULL_KEY.val)");
-			DefineBinOpsXBool (bos, "list",    "!{0}.IsEmpty()");
-			DefineBinOpsXBool (bos, "string",  "({0} != \"\")");
-
-			// float : somethingelse
-			DefineBinOpsFloatX (bos, "float",   "(float){1}");
-			DefineBinOpsFloatX (bos, "integer", "(float){1}");
-
-			// integer : float
-			DefineBinOpsXFloat (bos, "integer", "(float){0}");
-
-			// things with integers
-			DefineBinOpsInteger (bos);
-
-			// key : somethingelse
-			DefineBinOpsKeyX (bos, "key", "{1}");
-			DefineBinOpsKeyX (bos, "string", "{1}");
-
-			// string : key
-			DefineBinOpsXKey (bos, "string", "{0}");
-
-			// things with lists
-			DefineBinOpsList (bos);
-
-			// things with rotations
-			DefineBinOpsRotation (bos);
-
-			// things with strings
-			DefineBinOpsString (bos);
-
-			// things with vectors
-			DefineBinOpsVector (bos);
-
-			return bos;
-		}
-
-		private static void DefineBinOpsBoolX (Dictionary<string, BinOpStr> bos, string x, string y)
-		{
-			bos.Add ("bool|"  + x, new BinOpStr (typeof (bool), "{0} |# " + y));
-			bos.Add ("bool^"  + x, new BinOpStr (typeof (bool), "{0} ^# " + y));
-			bos.Add ("bool&"  + x, new BinOpStr (typeof (bool), "{0} &# " + y));
-			bos.Add ("bool==" + x, new BinOpStr (typeof (bool), "{0} == " + y));
-			bos.Add ("bool!=" + x, new BinOpStr (typeof (bool), "{0} != " + y));
-		}
-
-		private static void DefineBinOpsXBool (Dictionary<string, BinOpStr> bos, string x, string y)
-		{
-			bos.Add (x + "|bool",  new BinOpStr (typeof (bool), y + " |# {1}"));
-			bos.Add (x + "^bool",  new BinOpStr (typeof (bool), y + " ^# {1}"));
-			bos.Add (x + "&bool",  new BinOpStr (typeof (bool), y + " &# {1}"));
-			bos.Add (x + "==bool", new BinOpStr (typeof (bool), y + " == {1}"));
-			bos.Add (x + "!=bool", new BinOpStr (typeof (bool), y + " != {1}"));
-		}
-
-		private static void DefineBinOpsFloatX (Dictionary<string, BinOpStr> bos, string x, string y)
-		{
-			bos.Add ("float==" + x, new BinOpStr (typeof (bool),  "(float){0} == " + y));
-			bos.Add ("float!=" + x, new BinOpStr (typeof (bool),  "(float){0} != " + y));
-			bos.Add ("float<"  + x, new BinOpStr (typeof (bool),  "(float){0} <  " + y));
-			bos.Add ("float<=" + x, new BinOpStr (typeof (bool),  "(float){0} <= " + y));
-			bos.Add ("float>"  + x, new BinOpStr (typeof (bool),  "(float){0} >  " + y));
-			bos.Add ("float>=" + x, new BinOpStr (typeof (bool),  "(float){0} >= " + y));
-			bos.Add ("float+"  + x, new BinOpStr (typeof (float), "(float){0} +  " + y));
-			bos.Add ("float-"  + x, new BinOpStr (typeof (float), "(float){0} -  " + y));
-			bos.Add ("float*"  + x, new BinOpStr (typeof (float), "(float){0} *  " + y));
-			bos.Add ("float/"  + x, new BinOpStr (typeof (float), "(float){0} /  " + y));
-			bos.Add ("float%"  + x, new BinOpStr (typeof (float), "(float){0} %  " + y));
-			bos.Add ("float+=" + x, new BinOpStr (typeof (float), "{0} += " + y));
-			bos.Add ("float-=" + x, new BinOpStr (typeof (float), "{0} -= " + y));
-			bos.Add ("float*=" + x, new BinOpStr (typeof (float), "{0} *= " + y));
-			bos.Add ("float/=" + x, new BinOpStr (typeof (float), "{0} /= " + y));
-			bos.Add ("float%=" + x, new BinOpStr (typeof (float), "{0} %= " + y));
-		}
-
-		private static void DefineBinOpsXFloat (Dictionary<string, BinOpStr> bos, string x, string y)
-		{
-			bos.Add (x + "==float", new BinOpStr (typeof (bool),  y + " == (float){1}"));
-			bos.Add (x + "!=float", new BinOpStr (typeof (bool),  y + " != (float){1}"));
-			bos.Add (x + "<float",  new BinOpStr (typeof (bool),  y + " <  (float){1}"));
-			bos.Add (x + "<=float", new BinOpStr (typeof (bool),  y + " <= (float){1}"));
-			bos.Add (x + ">float",  new BinOpStr (typeof (bool),  y + " >  (float){1}"));
-			bos.Add (x + ">=float", new BinOpStr (typeof (bool),  y + " >= (float){1}"));
-			bos.Add (x + "+float",  new BinOpStr (typeof (float), y + " +# (float){1}"));
-			bos.Add (x + "-float",  new BinOpStr (typeof (float), y + " -# (float){1}"));
-			bos.Add (x + "*float",  new BinOpStr (typeof (float), y + " *# (float){1}"));
-			bos.Add (x + "/float",  new BinOpStr (typeof (float), y + " /# (float){1}"));
-			bos.Add (x + "%float",  new BinOpStr (typeof (float), y + " %# (float){1}"));
-		}
-
-		private static void DefineBinOpsInteger (Dictionary<string, BinOpStr> bos)
-		{
-			bos.Add ("integer|integer",  new BinOpStr (typeof (int),  "{0} |# {1}"));
-			bos.Add ("integer^integer",  new BinOpStr (typeof (int),  "{0} ^# {1}"));
-			bos.Add ("integer&integer",  new BinOpStr (typeof (int),  "{0} &# {1}"));
-			bos.Add ("integer==integer", new BinOpStr (typeof (bool), "{0} == {1}"));
-			bos.Add ("integer!=integer", new BinOpStr (typeof (bool), "{0} != {1}"));
-			bos.Add ("integer<integer",  new BinOpStr (typeof (bool), "{0} <  {1}"));
-			bos.Add ("integer<=integer", new BinOpStr (typeof (bool), "{0} <= {1}"));
-			bos.Add ("integer>integer",  new BinOpStr (typeof (bool), "{0} >  {1}"));
-			bos.Add ("integer>=integer", new BinOpStr (typeof (bool), "{0} >= {1}"));
-			bos.Add ("integer+integer",  new BinOpStr (typeof (int),  "{0} +# {1}"));
-			bos.Add ("integer-integer",  new BinOpStr (typeof (int),  "{0} -# {1}"));
-			bos.Add ("integer*integer",  new BinOpStr (typeof (int),  "{0} *# {1}"));
-			bos.Add ("integer/integer",  new BinOpStr (typeof (int),  "{0} /# {1}"));
-			bos.Add ("integer%integer",  new BinOpStr (typeof (int),  "{0} %# {1}"));
-		}
-
-		private static void DefineBinOpsKeyX (Dictionary<string, BinOpStr> bos, string x, string y)
-		{
-			bos.Add ("key==" + x, new BinOpStr (typeof (bool), "{0} == " + y));
-			bos.Add ("key!=" + x, new BinOpStr (typeof (bool), "{0} != " + y));
-		}
-
-		private static void DefineBinOpsXKey (Dictionary<string, BinOpStr> bos, string x, string y)
-		{
-			bos.Add (x + "==key", new BinOpStr (typeof (bool), y + " == {1}"));
-			bos.Add (x + "!=key", new BinOpStr (typeof (bool), y + " != {1}"));
-		}
-
-		private static void DefineBinOpsList (Dictionary<string, BinOpStr> bos)
-		{
-			BinOpStr add    = new BinOpStr (typeof (LSL_List), "{0}+{1}");
-			bos.Add ("list+float",     new BinOpStr (typeof (LSL_List), "{0}+(float){1}"));
-			bos.Add ("list+integer",   add);
-			bos.Add ("list+key",       add);
-			bos.Add ("list+list",      add);
-			bos.Add ("list+rotation",  add);
-			bos.Add ("list+string",    add);
-			bos.Add ("list+vector",    add);
-
-			BinOpStr revadd = new BinOpStr (typeof (LSL_List), "new " + TypeName (typeof (LSL_List)) + "((object){0})+{1}");
-			bos.Add ("float+list",     new BinOpStr (typeof (LSL_List), "new " + TypeName (typeof (LSL_List)) + "((object)(float){0})+{1}"));
-			bos.Add ("integer+list",   revadd);
-			bos.Add ("key+list",       revadd);
-			bos.Add ("rotation+list",  revadd);
-			bos.Add ("string+list",    revadd);
-			bos.Add ("vector+list",    revadd);
-
-			BinOpStr addto  = new BinOpStr (typeof (LSL_List), "{0} += {1}");
-			bos.Add ("list+=float",    addto);
-			bos.Add ("list+=integer",  addto);
-			bos.Add ("list+=key",      addto);
-			bos.Add ("list+=list",     addto);
-			bos.Add ("list+=rotation", addto);
-			bos.Add ("list+=string",   addto);
-			bos.Add ("list+=vector",   addto);
-
-			bos.Add ("list==list",     new BinOpStr (typeof (bool), "{0}=={1}"));
-			bos.Add ("list!=list",     new BinOpStr (typeof (bool), "{0}!={1}"));
-		}
-
-		// all operations allowed by LSL_Rotation definition
-		private static void DefineBinOpsRotation (Dictionary<string, BinOpStr> bos)
-		{
-			bos.Add ("rotation==rotation", new BinOpStr (typeof (bool), "{0} == {1}"));
-			bos.Add ("rotation!=rotation", new BinOpStr (typeof (bool), "{0} != {1}"));
-			bos.Add ("rotation+rotation",  new BinOpStr (typeof (LSL_Rotation), "{0} +# {1}"));
-			bos.Add ("rotation-rotation",  new BinOpStr (typeof (LSL_Rotation), "{0} -# {1}"));
-			bos.Add ("rotation*rotation",  new BinOpStr (typeof (LSL_Rotation), "{0} *# {1}"));
-			bos.Add ("rotation/rotation",  new BinOpStr (typeof (LSL_Rotation), "{0} /# {1}"));
-		}
-
-		private static void DefineBinOpsString (Dictionary<string, BinOpStr> bos)
-		{
-			bos.Add ("string==string", new BinOpStr (typeof (bool),   "{0} == {1}"));
-			bos.Add ("string!=string", new BinOpStr (typeof (bool),   "{0} != {1}"));
-			bos.Add ("string<string",  new BinOpStr (typeof (bool),   "{0} <  {1}"));
-			bos.Add ("string<=string", new BinOpStr (typeof (bool),   "{0} <= {1}"));
-			bos.Add ("string>string",  new BinOpStr (typeof (bool),   "{0} >  {1}"));
-			bos.Add ("string>=string", new BinOpStr (typeof (bool),   "{0} >= {1}"));
-			bos.Add ("string+string",  new BinOpStr (typeof (string), "{0} +# {1}"));
-		}
-
-		// all operations allowed by LSL_Vector definition
-		private static void DefineBinOpsVector (Dictionary<string, BinOpStr> bos)
-		{
-			bos.Add ("vector==vector",  new BinOpStr (typeof (bool),       "{0} == {1}"));
-			bos.Add ("vector!=vector",  new BinOpStr (typeof (bool),       "{0} != {1}"));
-			bos.Add ("vector+vector",   new BinOpStr (typeof (LSL_Vector), "{0} +# {1}"));
-			bos.Add ("vector-vector",   new BinOpStr (typeof (LSL_Vector), "{0} -# {1}"));
-			bos.Add ("vector*vector",   new BinOpStr (typeof (float),      "{0} * {1}"));
-			bos.Add ("vector%vector",   new BinOpStr (typeof (LSL_Vector), "{0} %# {1}"));
-
-			bos.Add ("vector*float",    new BinOpStr (typeof (LSL_Vector), "{0} *# {1}"));
-			bos.Add ("float*vector",    new BinOpStr (typeof (LSL_Vector), "{0} * {1}"));
-			bos.Add ("vector/float",    new BinOpStr (typeof (LSL_Vector), "{0} /# {1}"));
-
-			bos.Add ("vector*integer",  new BinOpStr (typeof (LSL_Vector), "{0} *# (float){1}"));
-			bos.Add ("integer*vector",  new BinOpStr (typeof (LSL_Vector), "(float){0} * {1}"));
-			bos.Add ("vector/integer",  new BinOpStr (typeof (LSL_Vector), "{0} /# (float){1}"));
-
-			bos.Add ("vector*rotation", new BinOpStr (typeof (LSL_Vector), "{0} *# {1}"));
-			bos.Add ("vector/rotation", new BinOpStr (typeof (LSL_Vector), "{0} /# {1}"));
-		}
-
-		private class BinOpStr {
-			public Type outtype;   // type of result of computation
-			public string format;  // {0} = left operand; {1} = right operand
-			public BinOpStr (Type outtype, string format)
-			{
-				this.outtype = outtype;
-				this.format = format;
+				vars.Add (name.val, var);
 			}
 		}
 
 		/**
 		 * @brief handle a unary operator, such as -x.
 		 */
-		private CompRVal UnOpGenerate (CompRVal inRVal, Token opcode)
+		private CompValu UnOpGenerate (CompValu inRVal, Token opcode)
 		{
 			/*
 			 * - Negate
@@ -2673,8 +1954,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (opcode is TokenKwSub) {
 				if ((inRVal.type is TokenTypeFloat) || (inRVal.type is TokenTypeInt) ||
 				    (inRVal.type is TokenTypeRot) || (inRVal.type is TokenTypeVec)) {
-					CompRVal outRVal = new CompRVal (inRVal.type, "(-" + inRVal.locstr + ")");
+					CompValu outRVal = new CompValuTemp (inRVal.type, null, this);
 					outRVal.isFinal = inRVal.isFinal;
+					outRVal.PopPre (this);
+					inRVal.PushVal (this);
+					ilGen.Emit (OpCodes.Neg);
+					outRVal.PopPost (this);
 					return outRVal;
 				}
 				ErrorMsg (opcode, "can't negate " + inRVal.type.ToString ());
@@ -2686,8 +1971,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			if (opcode is TokenKwTilde) {
 				if (inRVal.type is TokenTypeInt) {
-					CompRVal outRVal = new CompRVal (inRVal.type, "(~" + inRVal.locstr + ")");
+					CompValu outRVal = new CompValuTemp (inRVal.type, null, this);
 					outRVal.isFinal = inRVal.isFinal;
+					outRVal.PopPre (this);
+					inRVal.PushVal (this);
+					ilGen.Emit (OpCodes.Not);
+					outRVal.PopPost (this);
 					return outRVal;
 				}
 				ErrorMsg (opcode, "can't complement " + inRVal.type.ToString ());
@@ -2698,8 +1987,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * ! Not (boolean)
 			 */
 			if (opcode is TokenKwExclam) {
-				CompRVal outRVal = new CompRVal (tokenTypeBool, "(!" + StringWithCast (tokenTypeBool, inRVal) + ")");
+				CompValu outRVal = new CompValuTemp (tokenTypeBool, null, this);
 				outRVal.isFinal = inRVal.isFinal;
+				outRVal.PopPre (this);
+				inRVal.PushVal (this, tokenTypeBool);
+				PushConstantI4 (1);
+				ilGen.Emit (OpCodes.Xor);
+				outRVal.PopPost (this);
 				return outRVal;
 			}
 
@@ -2707,111 +2001,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		/**
-		 * @brief get type name string suitable for output to C# file.
-		 */
-		private static string TypeName (TokenType tokenType)
-		{
-			return TypeName (tokenType.typ);
-		}
-		private static string TypeName (Type type)
-		{
-			return type.FullName.Replace("+", ".");
-		}
-
-		/**
-		 * @brief Write text to output file.
-		 * It keeps track of output->source line number translations
-		 * as well as format the output for braces and semi-colons.
-		 */
-		private bool atBegOfLine = true;
-		private bool quoted      = false;
-		private int indentLevel  = 0;
-		private int outputLineNo = 1;
-		private LinkedList<int> lineNoTrans = new LinkedList<int> ();
-
-		private void WriteOutput (Token token, string text)
-		{
-			WriteOutput (token.line, text);
-		}
-		private void WriteOutput (int sourceLineNo, string text)
-		{
-			bool lastWasBackslash, thisIsBackslash;
-			char c;
-			int i, j;
-
-			j = 0;
-			thisIsBackslash = false;
-			for (i = 0; i < text.Length; i ++) {
-				c = text[i];
-				lastWasBackslash = thisIsBackslash;
-				thisIsBackslash  = (c == '\\');
-				if (c == '\n') {
-					if (quoted) throw new Exception ("quoted newline in <" + text + "> at " + sourceLineNo.ToString ());
-					WriteOutputLine (sourceLineNo, text.Substring (j, i - j));
-					j = i + 1;
-					continue;
-				}
-				if (!quoted && (c == ';')) {
-					WriteOutputLine (sourceLineNo, text.Substring (j, i - j + 1));
-					j = i + 1;
-					continue;
-				}
-				if (!quoted && (c == '{')) {
-					WriteOutputLine (sourceLineNo, text.Substring (j, i - j + 1));
-					j = i + 1;
-					indentLevel += 3;
-					continue;
-				}
-				if (!quoted && (c == '}')) {
-					indentLevel -= 3;
-					WriteOutputLine (sourceLineNo, text.Substring (j, i - j + 1));
-					j = i + 1;
-					continue;
-				}
-				if (c == '"') {
-					if (!lastWasBackslash) quoted = !quoted;
-					continue;
-				}
-			}
-			if (i > j) {
-				if (atBegOfLine) {
-					while ((j < text.Length) && (text[j] == ' ')) j ++;
-					if (j >= text.Length) return;
-					lineNoTrans.AddLast (sourceLineNo);
-					objectWriter.Write ("/*{0,5}:{1,5}*/ ", outputLineNo, sourceLineNo);
-					objectWriter.Write ("".PadLeft (indentLevel));
-				}
-				objectWriter.Write (text.Substring (j, i - j));
-				atBegOfLine = false;
-			}
-		}
-
-		/**
-		 * @brief output line of code and finish the line off
-		 * @param line = line of code to output
-		 * @returns with position set to beginning of next line
-		 */
-		private void WriteOutputLine (int sourceLineNo, string line)
-		{
-			if (atBegOfLine && (!line.TrimStart (' ').StartsWith("#"))) {
-				lineNoTrans.AddLast (sourceLineNo);
-				objectWriter.Write ("/*{0,5}:{1,5}*/ ", outputLineNo, sourceLineNo);
-				if (line.EndsWith (":;") && (indentLevel >= 3)) {
-					objectWriter.Write ("".PadLeft (indentLevel - 3));
-				} else {
-					objectWriter.Write ("".PadLeft (indentLevel));
-				}
-				line = line.TrimStart (' ');
-			}
-			objectWriter.WriteLine (line);
-			atBegOfLine = true;
-			outputLineNo ++;
-		}
-
-		/**
 		 * @brief output error message and remember that we did
 		 */
-		private void ErrorMsg (Token token, string message)
+		public void ErrorMsg (Token token, string message)
 		{
 			if ((token == null) || (token.emsg == null)) token = errorMessageToken;
 			token.ErrorMsg (message);
@@ -2819,60 +2011,38 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		/**
-		 * @brief L-value location
-		 *        For now, all we have are simple variables
-		 *        But someday, this will include array elements, etc.
+		 * @brief Find a private static method.
+		 * @param owner = class the method is part of
+		 * @param name = name of method to find
+		 * @param args = array of argument types
+		 * @returns pointer to method
 		 */
-		private class CompLVal {
-			public TokenType type;  // type contained in the location
-			public string locstr;   // where the variable is
-			                        // = its name
+		public static MethodInfo GetStaticMethod (Type owner, string name, Type[] args)
+		{
+			MethodInfo mi = owner.GetMethod (name, BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic, null, args, null);
+			if (mi == null) {
+				Console.Write ("GetStaticMethod*: " + owner.ToString () + "." + name + " (");
+				for (int i = 0; i < args.Length; i ++) {
+					if (i > 0) Console.Write (", ");
+					Console.Write (args[i].ToString ());
+				}
+				Console.WriteLine (")");
 
-			public CompLVal (TokenType type, string locstr)
-			{
-				this.type = type;
-				this.locstr = locstr;
+				MethodInfo[] methods = owner.GetMethods (BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+				for (int j = 0; j < methods.Length; j ++) {
+					mi = methods[j];
+					ParameterInfo[] pis = mi.GetParameters ();
+					Console.Write ("GetStaticMethod*:   ." + mi.Name + " (");
+					for (int i = 0; i < args.Length; i ++) {
+						if (i > 0) Console.Write (", ");
+						Console.Write (pis[i].ParameterType.ToString ());
+					}
+					Console.WriteLine (")");
+				}
+
+				throw new Exception ("undefined method " + owner.ToString () + "." + name);
 			}
-		};
-	}
-
-	/**
-	 * @brief R-value location
-	 *        Includes constants, expressions and temp variables.
-	 *        Can also be anything an L-value can be, 
-	 *            when the L-value is being used as an R-value.
-	 */
-	public class CompRVal {
-		public TokenType type;  // type of the value
-		public string locstr;   // where the value is
-		                        // = could a constant itself
-		                        //   or an expression in parentheses
-		                        //   or name of temp variable
-		                        // ... anything that's a single C# value
-		public bool isFinal;    // true iff value cannot be changed by any side effects
-		                        // - temps do not change because we allocate a new one each time
-		                        // - constants never change because they are constant
-		                        // - expressions consisting of all isFinal operands are final
-
-		/*
-		 * Create a temp variable to hold the given type.
-		 */
-		public CompRVal (TokenType type)
-		{
-			this.type    = type;
-			this.locstr  = "__tmp_" + ScriptCodeGen.GetTempNo ();
-			this.isFinal = true;
-		}
-
-		/*
-		 * We already have a place for the value and
-		 * know what its type is.
-		 */
-		public CompRVal (TokenType type, string locstr)
-		{
-			this.type    = type;
-			this.locstr  = locstr;
-			this.isFinal = false;
+			return mi;
 		}
 	}
 

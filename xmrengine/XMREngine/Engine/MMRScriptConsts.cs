@@ -50,7 +50,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * Specifically, we want the ones defined in LSL_Constants.cs.
 			 */
 			FieldInfo[] constFields = typeof (ScriptBaseClass).GetFields ();
-			string scriptBaseClassFullName = typeof (ScriptBaseClass).FullName.Replace ("+", ".");
 
 			foreach (FieldInfo constField in constFields) {
 
@@ -67,20 +66,32 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					Type fieldType = constField.FieldType;
 
 					/*
-					 * The location of a simple number is the number's string as such.
+					 * The location of a simple number is the number itself.
 					 */
 					if (fieldType == typeof (double)) {
-						new ScriptConst (sc, fieldName, typeof (float), ((double)constField.GetValue (null)).ToString ());
+						new ScriptConst (sc, 
+						                 fieldName, 
+						                 new CompValuFloat (new TokenTypeFloat (null),
+						                                    (float)(double)constField.GetValue (null)));
 					} else if (fieldType == typeof (int)) {
-						new ScriptConst (sc, fieldName, typeof (int), ((int)constField.GetValue (null)).ToString ());
+						new ScriptConst (sc, 
+						                 fieldName, 
+						                 new CompValuInteger (new TokenTypeFloat (null),
+						                                      (int)constField.GetValue (null)));
 					} else if (fieldType == typeof (LSL_Integer)) {
-						new ScriptConst (sc, fieldName, typeof (int), ((LSL_Integer)constField.GetValue (null)).ToString ());
+						new ScriptConst (sc, 
+						                 fieldName, 
+						                 new CompValuInteger (new TokenTypeFloat (null),
+						                                      ((LSL_Integer)constField.GetValue (null)).value));
 					}
 
 					/*
 					 * The location of everything else (objects) is the static field in the ScriptBaseClass definition.
 					 */
-					else new ScriptConst (sc, fieldName, fieldType, scriptBaseClassFullName + "." + fieldName);
+					else new ScriptConst (sc, 
+					                      fieldName, 
+					                      new CompValuSField (TokenType.FromSysType (null, fieldType),
+					                                          constField));
 				}
 			}
 
@@ -92,15 +103,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 * Instance variables
 		 */
 		public string name;
-		public Type type;
-		public CompRVal rVal;
+		public CompValu rVal;
 
-		private ScriptConst (Dictionary<string, ScriptConst> lc, string name, Type type, string location)
+		private ScriptConst (Dictionary<string, ScriptConst> lc, string name, CompValu rVal)
 		{
 			lc.Add (name, this);
 			this.name = name;
-			this.type = type;
-			this.rVal = new CompRVal (TokenType.FromSysType (null, type), location);
+			this.rVal = rVal;
 		}
 	}
 }

@@ -248,13 +248,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
                 break;
             case "ls":
+                int numScripts = 0;
                 lock (m_Instances)
                 {
                     foreach (XMRInstance ins in m_Instances.Values)
                     {
                         ins.RunTestLs();
+                        numScripts ++;
                     }
                 }
+                Console.WriteLine("total of {0} script(s)", numScripts);
                 break;
             default:
                 Console.WriteLine("xmr test: unknown command " + args[2]);
@@ -705,6 +708,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             } catch (Exception e) {
                 m_log.DebugFormat("[XMREngine]: Error starting script: {0}",
                                   e.Message);
+                m_log.DebugFormat("[XMREngine]*:  {0}", e.ToString());
                 lock (m_ScriptErrors) {
                     ArrayList errors = instance.GetScriptErrors();
                     if (errors == null) {

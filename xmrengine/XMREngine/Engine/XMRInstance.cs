@@ -36,19 +36,19 @@ using log4net;
 //
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
-    public class XMRInstance : MarshalByRefObject, IDisposable, ISponsor
+    public class XMRInstance : IDisposable
     {
         public const int MAXEVENTQUEUE = 64;
 
-        public static object m_CompileLock = new object();
 
         private static readonly ILog m_log =
             LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
-        private static Dictionary<UUID, int> m_AppDomRefs =
-                new Dictionary<UUID, int>();
-        private static Dictionary<UUID, AppDomain> m_AppDomains =
-                new Dictionary<UUID, AppDomain>();
+        // for a given m_AssetID, do we have the compiled object code and where is it?
+        // m_CompiledScriptRefCount keeps track of how many m_ObjCode pointers are valid.
+        public static object m_CompileLock = new object();
+        private static Dictionary<UUID, ScriptObjCode> m_CompiledScriptObjCode = new Dictionary<UUID, ScriptObjCode>();
+        private static Dictionary<UUID, int> m_CompiledScriptRefCount = new Dictionary<UUID, int>();
 
         private XMRLoader m_Loader = null;
         private XMREngine m_Engine = null;
@@ -57,11 +57,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private TaskInventoryItem m_Item = null;
         private UUID m_ItemID;
         private UUID m_AssetID;
-        private string m_DllFileName;
         private string m_StateFileName;
         private string m_SourceCode;
+        private ScriptObjCode m_ObjCode;
         private bool m_PostOnRez;
-        private AppDomain m_AppDomain;
         private DetectParams[] m_DetectParams = null;
         private bool m_Reset = false;
         private bool m_Die = false;
@@ -70,7 +69,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private StateSource m_StateSource;
         private string m_DescName;
         private ArrayList m_CompilerErrors;
-        private int m_Renew = 10;
 
         // If code needs to have both m_QueueLock and m_RunLock,
         // be sure to lock m_RunLock first then m_QueueLock, as
@@ -110,22 +108,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 new Dictionary<string,IScriptApi>();
 
 
-        public override Object InitializeLifetimeService()
-        {
-            ILease lease = (ILease)base.InitializeLifetimeService();
-            if (lease.CurrentState == LeaseState.Initial)
-            {
-                lease.InitialLeaseTime = TimeSpan.FromSeconds(10);
-                lease.RenewOnCallTime = TimeSpan.FromSeconds(10);
-                lease.SponsorshipTimeout = TimeSpan.FromSeconds(20);
-
-                lease.Register(this);
-            }
-
-            return lease;
-        }
-
-
         public void Construct(uint localID, UUID itemID, string script,
                               int startParam, bool postOnRez, int stateSource,
                               XMREngine engine, SceneObjectPart part, 
@@ -146,8 +128,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_Item        = item;
             m_AssetID     = item.AssetID;
 
-            m_DllFileName   = Path.Combine(scriptBasePath,
-                                           m_AssetID.ToString() + ".dll");
             m_StateFileName = Path.Combine(scriptBasePath,
                                            m_ItemID.ToString() + ".state");
 
@@ -191,33 +171,47 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_Part.SetScriptEvents(m_ItemID, m_Loader.GetStateEventFlags(0));
         }
 
-        ////~XMRInstance()
-        ////{
-        ////    m_log.Debug("[XMREngine] ~XMRInstance*: gc " + m_ItemID.ToString() + " " + m_DescName);
-        ////}
+        // In case Dispose() doesn't get called, we want to be sure to clean up.
+        ~XMRInstance()
+        {
+            Dispose();
+        }
 
+        // Clean up stuff
         public void Dispose()
         {
-            m_Part.RemoveScriptEvents(m_ItemID);
-            AsyncCommandManager.RemoveScript(m_Engine, m_LocalID, m_ItemID);
+            // Don't send us any more events
+            if (m_Part != null)
+            {
+                m_Part.RemoveScriptEvents(m_ItemID);
+                AsyncCommandManager.RemoveScript(m_Engine, m_LocalID, m_ItemID);
+                m_Part = null;
+            }
+
+            // Let script methods get garbage collected if no one else is using them.
+            if (m_ObjCode != null)
+            {
+                lock (m_CompileLock)
+                {
+                    ScriptObjCode objCode;
+
+                    if (m_CompiledScriptObjCode.TryGetValue(m_AssetID, out objCode) &&
+                        (objCode == m_ObjCode) && 
+                        (-- m_CompiledScriptRefCount[m_AssetID] == 0))
+                    {
+                        m_CompiledScriptObjCode.Remove(m_AssetID);
+                        m_CompiledScriptRefCount.Remove(m_AssetID);
+                    }
+                }
+                m_ObjCode = null;
+            }
+
+            // Unload the script instance struct (ScriptWrapper)
             if (m_Loader != null)
             {
                 m_Loader.Dispose();
                 m_Loader = null;
             }
-            AppDomDecRefs(true);
-
-            ILease lease = (ILease)GetLifetimeService();
-            lease.Unregister(this);
-            m_Renew = 0;
-        }
-
-        public TimeSpan Renewal(ILease lease)
-        {
-            if (m_Renew == 0) {
-                lease.Unregister(this);
-            }
-            return TimeSpan.FromSeconds(m_Renew);
         }
 
         // Called by 'xmr test ls' console command
@@ -255,45 +249,71 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             lock (m_CompileLock)
             {
-                string envar = Environment.GetEnvironmentVariable("XMREngineForceCompile");
-                bool forceCompile = (envar != null) && ((envar[0] & 1) != 0);
-                if (forceCompile)
+                bool compiledIt = false;
+                ScriptObjCode objCode;
+
+                /*
+                 * There may already be an ScriptObjCode struct in memory that we can use.
+                 * So try to get an existing one.  If not, try to compile it.
+                 */
+                if (!m_CompiledScriptObjCode.TryGetValue (m_AssetID, out objCode))
                 {
-                    File.Delete(m_DllFileName);
+                    objCode = TryToCompile();
+                    compiledIt = true;
                 }
 
-                if (!File.Exists(m_DllFileName))
-                {
-                    TryToCompile();
-                }
-
-                if (TryToLoad())
+                /*
+                 * Get a new instance of that script object code loaded in memory and
+                 * try to fill in its initial state from the saved state file.
+                 */
+                if (TryToLoad(objCode))
                 {
                     m_log.DebugFormat("[XMREngine]: load successful {0}",
-                            m_DllFileName);
-                    return;
+                            m_DescName);
+                } else if (compiledIt) {
+                    throw new Exception("script load failed");
+                } else {
+
+                    /*
+                     * If it didn't load, maybe it's because of a version mismatch somewhere.
+                     * So try recompiling and reload.
+                     */
+                    m_log.DebugFormat("[XMREngine]: attempting recompile {0}",
+                            m_DescName);
+                    objCode = TryToCompile();
+                    compiledIt = true;
+                    m_log.DebugFormat("[XMREngine]: attempting reload {0}",
+                            m_DescName);
+                    if (!TryToLoad(objCode))
+                    {
+                        throw new Exception("script reload failed");
+                    }
+                    m_log.DebugFormat("[XMREngine]: reload successful {0}",
+                            m_DescName);
                 }
 
-                m_log.DebugFormat("[XMREngine]: attempting recompile {0}",
-                        m_DllFileName);
-                File.Delete(m_DllFileName);
-                TryToCompile();
-                m_log.DebugFormat("[XMREngine]: attempting reload {0}",
-                        m_DllFileName);
-                if (!TryToLoad())
-                {
-                    throw new Exception("script reload failed");
+                /*
+                 * (Re)loaded successfully, increment reference count.
+                 *
+                 * If we just compiled it though, reset count to 0 first as
+                 * this is the one-and-only existance of this objCode struct,
+                 * and we want any old ones for this assetID to be garbage
+                 * collected.
+                 */
+                if (compiledIt) {
+                    m_CompiledScriptObjCode[m_AssetID]  = objCode;
+                    m_CompiledScriptRefCount[m_AssetID] = 0;
                 }
-                m_log.DebugFormat("[XMREngine]: reload successful {0}",
-                        m_DllFileName);
+                m_ObjCode = objCode;
+                m_CompiledScriptRefCount[m_AssetID] ++;
             }
         }
 
-        // Try to create DLL file from source code
+        // Try to create object code from source code
         // If error, just throw exception
-        private void TryToCompile()
+        private ScriptObjCode TryToCompile()
         {
-            bool ok;
+            ScriptObjCode objCode;
 
             if (m_SourceCode == String.Empty)
             {
@@ -302,34 +322,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             try
             {
-                ok = ScriptCompile.Compile(m_SourceCode, 
-                                           m_DllFileName,
-                                           m_AssetID.ToString(), 
-                                           null, 
-                                           ErrorHandler);
+                objCode = ScriptCompile.Compile(m_SourceCode, 
+                                                m_DescName,
+                                                m_AssetID.ToString(), 
+                                                null, 
+                                                ErrorHandler);
             }
             catch (Exception e)
             {
-                File.Delete(m_DllFileName);
                 throw e;
             }
 
             if (m_CompilerErrors != null)
             {
-                File.Delete(m_DllFileName);
                 throw new Exception ("compilation errors");
             }
 
-            if (!ok)
+            if (objCode == null)
             {
-                File.Delete(m_DllFileName);
                 throw new Exception ("compilation failed");
             }
 
-            if (!File.Exists(m_DllFileName))
-            {
-                throw new Exception ("compile successful but failed to create .DLL");
-            }
+            return objCode;
         }
 
         // Output error message when compiling a script
@@ -366,7 +380,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         //  TryToLoad()
-        //      get app domain unique to this script .DLL file
         //      create loader instance
         //      create script instance
         //      if no state XML file exists for the asset,
@@ -375,42 +388,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         //          try to restore from .state file
         //          if unable, delete .state file and retry
         //
-        private bool TryToLoad()
+        private bool TryToLoad(ScriptObjCode objCode)
         {
-            // Get an App Domain for the .DLL file.
-            // The same .DLL might be in use somewhere else,
-            // so we might already have an App Domain for it.
-            lock (m_AppDomRefs)
-            {
-                if (!m_AppDomains.TryGetValue (m_AssetID, out m_AppDomain)) {
-                    AppDomainSetup appSetup = new AppDomainSetup();
-                    Evidence baseEvidence = AppDomain.CurrentDomain.Evidence;
-                    Evidence evidence = new Evidence(baseEvidence);
-
-                    m_AppDomain = AppDomain.CreateDomain(
-                            m_AssetID.ToString(), evidence, appSetup);
-
-                    m_AppDomain.AssemblyResolve +=
-                            m_Engine.m_AssemblyResolver.OnAssemblyResolve;
-
-                    m_AppDomains[m_AssetID] = m_AppDomain;
-                    m_AppDomRefs[m_AssetID] = 0;
-                }
-                m_AppDomRefs[m_AssetID] ++;
-            }
-
-            // Get DLL loaded in memory at initial state or a new instance of
-            // the same DLL.
+            // Instantiate the script to its initial state.
             try
             {
-                m_Loader =
-                        (XMRLoader)m_AppDomain.CreateInstanceAndUnwrap(
-                        "OpenSim.Region.ScriptEngine.XMREngine.Loader",
-                        "OpenSim.Region.ScriptEngine.XMREngine.Loader.XMRLoader");
-
+                m_Loader = new XMRLoader ();
                 m_Loader.m_StateChange = StateChange;
-
-                Exception e = m_Loader.Load(m_DllFileName, m_DescName);
+                Exception e = m_Loader.Load(objCode, m_DescName);
                 if (e != null)
                 {
                     throw e;
@@ -419,10 +404,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             catch (Exception e)
             {
                 m_log.Error("[XMREngine]: error loading script " + 
-                        m_DllFileName + ": " + e.Message);
+                        m_DescName + ": " + e.Message);
+                m_log.Error("[XMREngine]*: " + e.ToString());
                 m_Loader.Dispose();
                 m_Loader = null;
-                AppDomDecRefs(true);
                 return false;
             }
 
@@ -486,15 +471,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             catch (Exception e)
             {
                 m_log.Error("[XMREngine]: error restoring " +
-                        m_DllFileName + ": " + e.Message);
+                        m_DescName + ": " + e.Message);
 
                 // Failed to load state, delete bad .state file and reload
                 // instance so we get a script at default state.
                 File.Delete(m_StateFileName);
                 m_Loader.Dispose();
                 m_Loader = null;
-                AppDomDecRefs(false);
-                return TryToLoad();
+                return TryToLoad(objCode);
             }
         }
 
@@ -728,9 +712,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             assetA.Value = m_AssetID.ToString();
             stateN.Attributes.Append(assetA);
 
-            if (File.Exists(m_DllFileName))
+            if (File.Exists(m_DescName))
             {
-                FileInfo fi = new FileInfo(m_DllFileName);
+                FileInfo fi = new FileInfo(m_DescName);
                 if (fi == null)
                     return null;
 
@@ -738,7 +722,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                 try
                 {
-                    FileStream fs = File.Open(m_DllFileName, FileMode.Open, FileAccess.Read);
+                    FileStream fs = File.Open(m_DescName, FileMode.Open, FileAccess.Read);
                     fs.Read(assemblyData, 0, assemblyData.Length);
                     fs.Close();
                 }
@@ -923,30 +907,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             parent.AppendChild(n);
-        }
-
-        // If this instance incremented the app domain's ref count, decrement 
-        // it.
-        private void AppDomDecRefs(bool del)
-        {
-            lock (m_AppDomRefs)
-            {
-                if (m_AppDomain != null)
-                {
-                    if (-- m_AppDomRefs[m_AssetID] <= 0)
-                    {
-                        AppDomain.Unload(m_AppDomain);
-                        m_AppDomains.Remove(m_AssetID);
-                        m_AppDomRefs.Remove(m_AssetID);
-                        if (del)
-                        {
-                            File.Delete(m_DllFileName);
-                            File.Delete(m_DllFileName + ".mdb");
-                        }
-                    }
-                    m_AppDomain = null;
-                }
-            }
         }
 
         public int StartParam

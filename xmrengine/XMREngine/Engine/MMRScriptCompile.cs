@@ -28,16 +28,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * @param binaryName = where to write .DLL file to
          * @param assetID = the script asset ID, for error messages
          * @param errorMessage = where to write error messages to
-         * @returns true: successful
+         * @returns object code pointer or null if compile error
          *         false: failure
          */
-        public static bool Compile (string source, 
-                                    string binaryName,
-                                    string assetID,
-                                    string debugFileName,
-                                    TokenErrorMessage errorMessage)
+        public static ScriptObjCode Compile (string source, 
+                                             string binaryName,
+                                             string assetID,
+                                             string debugFileName,
+                                             TokenErrorMessage errorMessage)
         {
             string fname = assetID + "_" + (++ fileno).ToString () + "_script_compile";
+
             string envar = Environment.GetEnvironmentVariable ("MMRScriptCompileSaveSource");
             if ((envar != null) && ((envar[0] & 1) != 0)) {
                 m_log.DebugFormat("[XMREngine]: MMRScriptCopmileSaveSource: saving to {0}.lsl", fname);
@@ -49,30 +50,29 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (tokenBegin == null)
             {
                 m_log.DebugFormat("[XMREngine]: Tokenizing error on {0}", assetID);
-                return false;
+                return null;
             }
 
             TokenScript tokenScript = ScriptReduce.Reduce(tokenBegin);
             if (tokenScript == null)
             {
                 m_log.DebugFormat("[XMREngine]: Reducing error on {0}", assetID);
-                return false;
+                return null;
             }
 
-            envar = Environment.GetEnvironmentVariable ("MMRScriptCompileSaveCSharp");
+            envar = Environment.GetEnvironmentVariable ("MMRScriptCompileSaveILGen");
+            string ilGenDebugName = null;
             if ((envar != null) && ((envar[0] & 1) != 0)) {
-                m_log.DebugFormat("[XMREngine]: MMRScriptCopmileSaveCSharp: saving to {0}.cs", fname);
-                debugFileName = fname + ".cs";
+                ilGenDebugName = fname + ".ilgen";
+                m_log.DebugFormat("[XMREngine]: MMRScriptCopmileSaveILGen: saving to {0}", ilGenDebugName);
             }
 
-            bool ok = ScriptCodeGen.CodeGen(tokenScript, binaryName, debugFileName);
-            if (!ok)
+            ScriptObjCode objCode = ScriptCodeGen.CodeGen(tokenScript, assetID, ilGenDebugName);
+            if (objCode == null)
             {
                 m_log.DebugFormat("[XMREngine]: Codegen error on {0}", assetID);
-                return false;
             }
-
-            return true;
+            return objCode;
         }
     }
 }

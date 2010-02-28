@@ -606,7 +606,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				kws.Add ("integer",  GetTokenCtor (typeof (TokenTypeInt)));
 				kws.Add ("list",     GetTokenCtor (typeof (TokenTypeList)));
 				kws.Add ("jump",     GetTokenCtor (typeof (TokenKwJump)));
-				kws.Add ("key",      GetTokenCtor (typeof (TokenTypeKey)));
+				kws.Add ("key",      GetTokenCtor (typeof (TokenTypeStr)));
 				kws.Add ("return",   GetTokenCtor (typeof (TokenKwRet)));
 				kws.Add ("rotation", GetTokenCtor (typeof (TokenTypeRot)));
 				kws.Add ("state",    GetTokenCtor (typeof (TokenKwState)));
@@ -785,9 +785,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	public class TokenType : Token {
 		public System.Type typ;
 		public System.Type lslBoxing;  // null: normal
-		                               // else: LSL-style boxing, ie, LSL_Integer, LSL_Float
-		                               //       typ=System.Int32; lslBoxing=LSL_Integer
-		                               //       typ=System.Float; lslBoxing=LSL_Float
+		                               // else: LSL-style boxing, ie, LSL_Integer, LSL_Float, LSL_String
+		                               //       typ=System.Int32;  lslBoxing=LSL_Integer
+		                               //       typ=System.Float;  lslBoxing=LSL_Float
+		                               //       typ=System.String; lslBoxing=LSL_String
 
 		public TokenType (TokenErrorMessage emsg, int line, int posn, System.Type typ) : base (emsg, line, posn)
 		{
@@ -806,7 +807,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			if (typ == typeof (LSL_Vector)) return new TokenTypeVec (original);
 			if (typ == typeof (float)) return new TokenTypeFloat (original);
 			if (typ == typeof (int)) return new TokenTypeInt (original);
-			if (typ == typeof (LSL_Key)) return new TokenTypeKey (original);
 			if (typ == typeof (string)) return new TokenTypeStr (original);
 			if (typ == typeof (double)) return new TokenTypeFloat (original);
 			if (typ == typeof (bool)) return new TokenTypeBool (original);
@@ -823,6 +823,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				tokenType.lslBoxing = typ;
 				return tokenType;
 			}
+			if (typ == typeof (LSL_String)) {
+				TokenType tokenType = new TokenTypeStr (original);
+				tokenType.lslBoxing = typ;
+				return tokenType;
+			}
 
 			throw new Exception ("unknown type " + typ.ToString ());
 		}
@@ -834,7 +839,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			if (typ == "vector")   return new TokenTypeVec    (original);
 			if (typ == "float")    return new TokenTypeFloat  (original);
 			if (typ == "integer")  return new TokenTypeInt    (original);
-			if (typ == "key")      return new TokenTypeKey    (original);
+			if (typ == "key")      return new TokenTypeStr    (original);
 			if (typ == "string")   return new TokenTypeStr    (original);
 			if (typ == "object")   return new TokenTypeObject (original);
 			if (typ == "array")    return new TokenTypeArray  (original);
@@ -864,6 +869,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 			if (typ == typeof (LSL_Integer))  return  32;
 			if (typ == typeof (LSL_Float))    return  32;
+			if (typ == typeof (LSL_String))   return  40;
 
 			throw new Exception ("unknown type " + typ.ToString ());
 		}
@@ -887,11 +893,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenTypeInt (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn, typeof (int)) { }
 		public TokenTypeInt (Token original) : base (original, typeof (int)) { }
 		public override string ToString () { return "integer"; }
-	}
-	public class TokenTypeKey : TokenType {
-		public TokenTypeKey (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn, typeof (string)) { }
-		public TokenTypeKey (Token original) : base (original, typeof (string)) { }
-		public override string ToString () { return "string"; }
 	}
 	public class TokenTypeList : TokenType {
 		public TokenTypeList (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn, typeof (LSL_List)) { }
