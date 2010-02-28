@@ -265,7 +265,7 @@ namespace Careminster.Modules.Groups
             }
         }
 
-        private string GetRoleTitle(UUID RoleID)
+        private string GetRoleTitle(UUID GroupID, UUID RoleID)
         {
             lock(m_Connection)
             {
@@ -275,9 +275,10 @@ namespace Careminster.Modules.Groups
                 MySqlCommand cmd = c.CreateCommand();
 
                 cmd.CommandText = "select RoleTitle from roles where "+
-                        "RoleID = ?RoleID";
+                        "GroupUD = ?GroupID and RoleID = ?RoleID";
 
                 cmd.Parameters.AddWithValue("RoleID", RoleID.ToString());
+                cmd.Parameters.AddWithValue("GroupID", GroupID.ToString());
 
                 IDataReader r = ExecuteReader(cmd);
 
@@ -541,7 +542,7 @@ namespace Careminster.Modules.Groups
                     g.Active = Convert.ToInt32(r["Active"]) > 0 ?
                             true : false;
                     UUID.TryParse(r["ActiveRole"].ToString(), out g.ActiveRole);
-                    g.GroupTitle = GetRoleTitle(g.ActiveRole);
+                    g.GroupTitle = GetRoleTitle(g.GroupID, g.ActiveRole);
 
                     m_ActiveRoles[UserID] = g.ActiveRole;
 
@@ -607,7 +608,7 @@ namespace Careminster.Modules.Groups
                     g.Active = Convert.ToInt32(r["Active"]) > 0 ?
                             true : false;
                     UUID.TryParse(r["ActiveRole"].ToString(), out g.ActiveRole);
-                    g.GroupTitle = GetRoleTitle(g.ActiveRole);
+                    g.GroupTitle = GetRoleTitle(g.GroupID, g.ActiveRole);
 
                     m_ActiveRoles[UserID] = g.ActiveRole;
 
@@ -648,7 +649,7 @@ namespace Careminster.Modules.Groups
 
                     remoteClient.SendAgentDataUpdate(remoteClient.AgentId,
                             g.GroupID, firstname, lastname, g.GroupPowers,
-                            g.GroupName, GetRoleTitle(g.ActiveRole));
+                            g.GroupName, GetRoleTitle(g.GroupID, g.ActiveRole));
                     return;
                 }
             }
@@ -958,7 +959,7 @@ Console.WriteLine("==> Session ID {0} UUID {1}", imSessionID.ToString(), id.ToSt
             d.ShowInList = gr.ShowInList;
             if (m != null)
             {
-                d.MemberTitle = GetRoleTitle(m.ActiveRole);
+                d.MemberTitle = GetRoleTitle(groupID, m.ActiveRole);
                 d.PowersMask = m.GroupPowers;
             }
             d.InsigniaID = gr.GroupPicture;
@@ -1008,7 +1009,7 @@ Console.WriteLine("==> Session ID {0} UUID {1}", imSessionID.ToString(), id.ToSt
                     d.AgentPowers = Convert.ToUInt64(r["AgentPowers"]);
                     UUID roleID = UUID.Zero;
                     UUID.TryParse(r["ActiveRole"].ToString(), out roleID);
-                    d.Title = GetRoleTitle(roleID);
+                    d.Title = GetRoleTitle(groupID, roleID);
                     d.IsOwner = IsMember(groupID, gr.OwnerRoleID, d.AgentID);
                     d.AcceptNotices = Convert.ToInt32(r["AcceptNotices"]) > 0 ?
                             true : false;

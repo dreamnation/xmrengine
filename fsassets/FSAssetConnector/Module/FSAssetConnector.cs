@@ -356,7 +356,7 @@ namespace Careminster
                 {
                 }
             }
-            return null;
+            return new Byte[0];
 
         }
 
