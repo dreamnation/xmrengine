@@ -75,7 +75,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				throw new Exception ("can't ldloc field " + field.FieldType.Name + ":" + field.Name);
 			}
 			if (debug != null) {
-				debug.WriteLine (OpcodeString (opcode) + "  " + field.FieldType.Name + ":" + field.Name + "  (field)");
+				debug.WriteLine (OpcodeString (opcode) + "  " + 
+				                 field.ReflectedType.Name + ":" + field.Name + " -> " + 
+				                 field.FieldType.Name + "  (field)");
 			}
 			realILGen.Emit (opcode, field);
 		}
@@ -83,7 +85,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public void Emit (OpCode opcode, ScriptMyLocal myLocal)
 		{
 			if (debug != null) {
-				debug.WriteLine (OpcodeString (opcode) + "  " + myLocal.type.Name + ":" + myLocal.name + "  (local)");
+				debug.WriteLine (OpcodeString (opcode) + "  " + ":" + myLocal.name + " -> " + 
+				                 myLocal.type.Name + "  (local)");
 			}
 			realILGen.Emit (opcode, myLocal.realLocal);
 		}
@@ -110,10 +113,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public void Emit (OpCode opcode, MethodInfo method)
 		{
 			if (debug != null) {
-				string typeStr = null;
-				if (method.DeclaringType != null) typeStr = method.DeclaringType.Name;
-				if (typeStr == null) typeStr = "";
-				debug.WriteLine (OpcodeString (opcode) + "  " + typeStr + ":" + method.Name + "() -> " + method.ReturnType.Name);
+				StringBuilder sb = new StringBuilder ();
+
+				sb.Append (OpcodeString (opcode));
+				sb.Append ("  ");
+				if (method.ReflectedType != null) {
+					sb.Append (method.ReflectedType.Name);
+				}
+				sb.Append (":");
+				sb.Append (method.Name);
+				sb.Append ("(");
+				if (!method.IsStatic) sb.Append ("<this>");
+
+				ParameterInfo[] parms = method.GetParameters ();
+				for (int i = 0; i < parms.Length; i ++) {
+					if ((i > 0) || !method.IsStatic) sb.Append (",");
+					sb.Append (parms[i].ParameterType.Name);
+				}
+				sb.Append (") -> ");
+				sb.Append (method.ReturnType.Name);
+
+				debug.WriteLine (sb.ToString ());
 			}
 			realILGen.Emit (opcode, method);
 		}

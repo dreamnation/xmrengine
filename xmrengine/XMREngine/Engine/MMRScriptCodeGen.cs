@@ -44,7 +44,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static Dictionary<string, BinOpStr> binOpStrings = BinOpStr.DefineBinOps ();
 		private static Dictionary<string, InlineFunction> inlineFunctions = InlineFunction.CreateDictionary ();
 		private static Dictionary<string, TokenDeclFunc> legalEventHandlers = CreateLegalEventHandlers ();
-		private static TokenTypeBool tokenTypeBool = new TokenTypeBool (null);
+		private static TokenTypeBool  tokenTypeBool  = new TokenTypeBool  (null);
+		private static TokenTypeFloat tokenTypeFloat = new TokenTypeFloat (null);
+		private static TokenTypeInt   tokenTypeInt   = new TokenTypeInt   (null);
 		private static Type[] scriptWrapperTypeArg = new Type[] { typeof (ScriptWrapper) };
 
 		private static ConstructorInfo lslFloatConstructorInfo = typeof (LSL_Float).GetConstructor (new Type[] { typeof (float) });
@@ -72,9 +74,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static FieldInfo vectorZFieldInfo = typeof (LSL_Vector).GetField ("z");
 
 		private static MethodInfo checkRunMethodInfo = typeof (ScriptContinuation).GetMethod ("CheckRun", new Type[0]);
-		private static MethodInfo forEachMethodInfo = typeof (XMR_Array).GetMethod ("ForEach", new Type[] { typeof (int),
-		                                                                                                    typeof (object).MakeByRefType (),
-		                                                                                                    typeof (object).MakeByRefType () });
+		private static MethodInfo forEachMethodInfo = typeof (XMR_Array).GetMethod ("ForEach", 
+		                                                                            new Type[] { typeof (int),
+		                                                                                         typeof (object).MakeByRefType (),
+		                                                                                         typeof (object).MakeByRefType () });
+		private static MethodInfo lslVectorNegateMethodInfo = GetStaticMethod (typeof (ScriptCodeGen), 
+		                                                                       "LSLVectorNegate", 
+		                                                                       new Type[] { typeof (LSL_Vector) });
 
 		public static ScriptObjCode CodeGen (TokenScript tokenScript, string descName, string ilGenDebugName)
 		{
@@ -125,6 +131,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (ilGenDebugName != "") {
 				ilGenDebugWriter = File.CreateText (ilGenDebugName);
 			}
+
+			try {
+				this.PerformCompilation ();
+			} finally {
+				if (ilGenDebugWriter != null) {
+					ilGenDebugWriter.Flush ();
+					ilGenDebugWriter.Close ();
+				}
+			}
+		}
+
+		private void PerformCompilation ()
+		{
 
 			/*
 			 * errorMessageToken is used only when the given token doesn't have a
@@ -282,9 +301,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			if (ilGenDebugWriter != null) {
-				ilGenDebugWriter.WriteLine ("\nEnd.");
-				ilGenDebugWriter.Flush ();
-				ilGenDebugWriter.Close ();
+				ilGenDebugWriter.WriteLine ("\nThe End.");
 			}
 		}
 
@@ -1661,19 +1678,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				 * However, floats and ints need to be converted to LSL_Float and LSL_Integer,
 				 * or things like llSetPayPrice() will puque when they try to cast the elements
 				 * to LSL_Float or LSL_Integer.  Likewise with string/LSL_String.
+				 *
+				 * Maybe it's already LSL-boxed so we don't do anything with it except make sure
+				 * it is an object, not a struct.
 				 */
 				eRVal.PushVal (this);
-				if (eRVal.type is TokenTypeFloat) {
-					ilGen.Emit (OpCodes.Newobj, lslFloatConstructorInfo);
-					ilGen.Emit (OpCodes.Box, typeof (LSL_Float));
-				} else if (eRVal.type is TokenTypeInt) {
-					ilGen.Emit (OpCodes.Newobj, lslIntegerConstructorInfo);
-					ilGen.Emit (OpCodes.Box, typeof (LSL_Integer));
-				} else if (eRVal.type is TokenTypeStr) {
-					ilGen.Emit (OpCodes.Newobj, lslStringConstructorInfo);
-					ilGen.Emit (OpCodes.Box, typeof (LSL_String));
-				} else if (eRVal.type.typ.IsValueType) {
-					ilGen.Emit (OpCodes.Box, eRVal.type.typ);
+				if (eRVal.type.lslBoxing == null) {
+					if (eRVal.type is TokenTypeFloat) {
+						ilGen.Emit (OpCodes.Newobj, lslFloatConstructorInfo);
+						ilGen.Emit (OpCodes.Box, typeof (LSL_Float));
+					} else if (eRVal.type is TokenTypeInt) {
+						ilGen.Emit (OpCodes.Newobj, lslIntegerConstructorInfo);
+						ilGen.Emit (OpCodes.Box, typeof (LSL_Integer));
+					} else if (eRVal.type is TokenTypeStr) {
+						ilGen.Emit (OpCodes.Newobj, lslStringConstructorInfo);
+						ilGen.Emit (OpCodes.Box, typeof (LSL_String));
+					} else if (eRVal.type.typ.IsValueType) {
+						ilGen.Emit (OpCodes.Box, eRVal.type.typ);
+					}
+				} else if (eRVal.type.lslBoxing.IsValueType) {
+
+					// Convert the LSL value structs to an object of the LSL-boxed type
+					ilGen.Emit (OpCodes.Box, eRVal.type.lslBoxing);
 				}
 				ilGen.Emit (OpCodes.Stelem, typeof (object));
 				i ++;
@@ -1952,49 +1978,65 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * - Negate
 			 */
 			if (opcode is TokenKwSub) {
-				if ((inRVal.type is TokenTypeFloat) || (inRVal.type is TokenTypeInt) ||
-				    (inRVal.type is TokenTypeRot) || (inRVal.type is TokenTypeVec)) {
-					CompValu outRVal = new CompValuTemp (inRVal.type, null, this);
-					outRVal.isFinal = inRVal.isFinal;
-					outRVal.PopPre (this);
-					inRVal.PushVal (this);
-					ilGen.Emit (OpCodes.Neg);
-					outRVal.PopPost (this);
-					return outRVal;
+				if (inRVal.type is TokenTypeFloat) {
+					CompValu outRVal = new CompValuTemp (new TokenTypeFloat (opcode), null, this);
+					outRVal.PopPre (this);                // set up for a pop
+					inRVal.PushVal (this, outRVal.type);  // push value to negate, make sure not LSL-boxed
+					ilGen.Emit (OpCodes.Neg);             // compute the negative
+					outRVal.PopPost (this);               // pop into result
+					return outRVal;                       // tell caller where we put it
 				}
-				ErrorMsg (opcode, "can't negate " + inRVal.type.ToString ());
+				if (inRVal.type is TokenTypeInt) {
+					CompValu outRVal = new CompValuTemp (new TokenTypeInt (opcode), null, this);
+					outRVal.PopPre (this);                // set up for a pop
+					inRVal.PushVal (this, outRVal.type);  // push value to negate, make sure not LSL-boxed
+					ilGen.Emit (OpCodes.Neg);             // compute the negative
+					outRVal.PopPost (this);               // pop into result
+					return outRVal;                       // tell caller where we put it
+				}
+				if (inRVal.type is TokenTypeVec) {
+					CompValu outRVal = new CompValuTemp (inRVal.type, null, this);
+					outRVal.PopPre (this);                // set up for a pop
+					inRVal.PushVal (this);                // push vector, then call negate routine
+					ilGen.Emit (OpCodes.Call, lslVectorNegateMethodInfo);
+					outRVal.PopPost (this);               // pop into result
+					return outRVal;                       // tell caller where we put it
+				}
+				ErrorMsg (opcode, "can't negate a " + inRVal.type.ToString ());
 				return inRVal;
 			}
 
 			/*
-			 * ~ Complement
+			 * ~ Complement (bitwise integer)
 			 */
 			if (opcode is TokenKwTilde) {
 				if (inRVal.type is TokenTypeInt) {
-					CompValu outRVal = new CompValuTemp (inRVal.type, null, this);
-					outRVal.isFinal = inRVal.isFinal;
-					outRVal.PopPre (this);
-					inRVal.PushVal (this);
-					ilGen.Emit (OpCodes.Not);
-					outRVal.PopPost (this);
-					return outRVal;
+					CompValu outRVal = new CompValuTemp (new TokenTypeInt (opcode), null, this);
+					outRVal.PopPre (this);                // set up for a pop
+					inRVal.PushVal (this, outRVal.type);  // push value to negate, make sure not LSL-boxed
+					ilGen.Emit (OpCodes.Not);             // compute the complement
+					outRVal.PopPost (this);               // pop into result
+					return outRVal;                       // tell caller where we put it
 				}
-				ErrorMsg (opcode, "can't complement " + inRVal.type.ToString ());
+				ErrorMsg (opcode, "can't complement a " + inRVal.type.ToString ());
 				return inRVal;
 			}
 
 			/*
 			 * ! Not (boolean)
+			 *
+			 * We stuff the 0/1 result in an int because I've seen x+!y in scripts
+			 * and we don't want to have to create tables to handle int+bool and
+			 * everything like that.
 			 */
 			if (opcode is TokenKwExclam) {
-				CompValu outRVal = new CompValuTemp (tokenTypeBool, null, this);
-				outRVal.isFinal = inRVal.isFinal;
-				outRVal.PopPre (this);
-				inRVal.PushVal (this, tokenTypeBool);
-				PushConstantI4 (1);
+				CompValu outRVal = new CompValuTemp (new TokenTypeInt (opcode), null, this);
+				outRVal.PopPre (this);                 // set up for a pop
+				inRVal.PushVal (this, tokenTypeBool);  // anything converts to boolean
+				PushConstantI4 (1);                    // then XOR with 1 to flip it
 				ilGen.Emit (OpCodes.Xor);
-				outRVal.PopPost (this);
-				return outRVal;
+				outRVal.PopPost (this);                // pop into result
+				return outRVal;                        // tell caller where we put it
 			}
 
 			throw new Exception ("unhandled opcode " + opcode.ToString ());
@@ -2044,6 +2086,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 			return mi;
 		}
+
+		public static LSL_Vector LSLVectorNegate (LSL_Vector v) { return -v; }
 	}
 
 	/**

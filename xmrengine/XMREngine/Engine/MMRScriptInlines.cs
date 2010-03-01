@@ -34,6 +34,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public MethodInfo methInfo;   // function called by the inline
 		public bool doCheckRun;       // valid for CodeGenBEApi only
 
+		private static TokenTypeFloat tokenTypeFloat = new TokenTypeFloat (null);
 		private static MethodInfo roundMethInfo = ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Round", 
 				new Type[] { typeof (double), typeof (MidpointRounding) });
 
@@ -282,7 +283,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void CodeGenLLRound (ScriptCodeGen scg, CompValu result, CompValu[] args)
 		{
 			result.PopPre (scg);
-			args[0].PushVal (scg);
+			args[0].PushVal (scg, tokenTypeFloat);
 			scg.ilGen.Emit (OpCodes.Ldc_I4, (int)System.MidpointRounding.AwayFromZero);
 			scg.ilGen.Emit (OpCodes.Call, roundMethInfo);
 			result.PopPost (scg, retType);

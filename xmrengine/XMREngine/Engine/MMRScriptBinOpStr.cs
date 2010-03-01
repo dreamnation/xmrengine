@@ -105,9 +105,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 * The key is <lefttype><opcode><righttype>,
 		 *   where <lefttype> and <righttype> are strings returned by (TokenType...).ToString()
 		 *   and <opcode> is string returned by (TokenKw...).ToString()
-		 * The value is a BinOpStr struct giving the resultant type and how to format the computation.
-		 * Operand {0} to the format is the left value and is of type lefttype.
-		 * Operand {1} to the format is the right value and is of type righttype.
+		 * The value is a BinOpStr struct giving the resultant type and a method to generate the code.
 		 */
 		public static Dictionary<string, BinOpStr> DefineBinOps ()
 		{
