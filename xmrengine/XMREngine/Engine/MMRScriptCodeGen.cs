@@ -453,12 +453,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Now that we have all the code generated, fill in table entry to point to the entrypoint.
+			 * Don't bother if there has been a compilation error because CreateDelegate() might throw
+			 * an exception if it sees faulty generated code (and the user won't see the compile error
+			 * messages).
 			 */
-			scriptObjCode.scriptEventHandlerTable[stateIndices[statename],
+			if (!youveAnError) {
+				scriptObjCode.scriptEventHandlerTable[stateIndices[statename],
 			                                      (int)Enum.Parse(typeof(ScriptEventCode),eventname)] = 
-					(ScriptEventHandler)functionMethodInfo.CreateDelegate (typeof (ScriptEventHandler));
-			////IntPtr monoMethod = functionMethodInfo.MethodHandle.Value;
-			////m_log.DebugFormat ("[XMREngine]: {0} MonoMethod={1}", functionName, monoMethod.ToString ("X8"));
+						(ScriptEventHandler)functionMethodInfo.CreateDelegate 
+								(typeof (ScriptEventHandler));
+			}
 		}
 
 		/**
@@ -652,7 +656,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			GenerateStmt (doStmt.bodyStmt);
 			EmitCallCheckRun ();
 			CompValu testRVal = GenerateFromRVal (doStmt.testRVal);
-			testRVal.PushVal (this);
+			testRVal.PushVal (this, tokenTypeBool);
 			ilGen.Emit (OpCodes.Brtrue, loopLabel);
 		}
 
@@ -674,7 +678,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			EmitCallCheckRun ();
 			if (forStmt.testRVal != null) {
 				CompValu testRVal = GenerateFromRVal (forStmt.testRVal);
-				testRVal.PushVal (this);
+				testRVal.PushVal (this, tokenTypeBool);
 				ilGen.Emit (OpCodes.Brfalse, doneLabel);
 			}
 			GenerateStmt (forStmt.bodyStmt);
@@ -758,7 +762,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void GenerateStmtIf (TokenStmtIf ifStmt)
 		{
 			CompValu testRVal = GenerateFromRVal (ifStmt.testRVal);
-			testRVal.PushVal (this);
+			testRVal.PushVal (this, tokenTypeBool);
 			ScriptMyLabel elseLabel = ilGen.DefineLabel ("ifelse_" + ifStmt.line + "_" + ifStmt.posn);
 			ilGen.Emit (OpCodes.Brfalse, elseLabel);
 			GenerateStmt (ifStmt.trueStmt);
@@ -910,7 +914,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			ilGen.MarkLabel (contLabel);                                // cont:
 			CompValu testRVal = GenerateFromRVal (whileStmt.testRVal);  //   testRVal = while test expression
-			testRVal.PushVal (this);                                    //   if (!testRVal)
+			testRVal.PushVal (this, tokenTypeBool);                     //   if (!testRVal)
 			ilGen.Emit (OpCodes.Brfalse, doneLabel);                    //      goto done
 			GenerateStmt (whileStmt.bodyStmt);                          //   while body statement
 			EmitCallCheckRun ();                                        //   __sw.CheckRun()

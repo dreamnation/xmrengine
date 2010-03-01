@@ -87,20 +87,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ltc.Add ("vector list",     TypeCastVector2List);
 				ltc.Add ("vector object",   TypeCastVector2Object);
 
+				ltc.Add ("bool string",     TypeCastBool2String);
+				ltc.Add ("float string",    TypeCastFloat2String);
+				ltc.Add ("integer string",  TypeCastInteger2String);
+				ltc.Add ("rotation string", TypeCastRotation2String);
+				ltc.Add ("string float",    TypeCastString2Float);
+				ltc.Add ("string integer",  TypeCastString2Integer);
+				ltc.Add ("string list",     TypeCastString2List);
+				ltc.Add ("vector string",   TypeCastVector2String);
+
 				// EXPLICIT type casts (an * is in middle of the key)
-				ltc.Add ("bool*string",     TypeCastBool2String);
 				ltc.Add ("float*list",      TypeCastFloat2List);
-				ltc.Add ("float*string",    TypeCastFloat2String);
 				ltc.Add ("integer*list",    TypeCastInteger2List);
-				ltc.Add ("integer*string",  TypeCastInteger2String);
 				ltc.Add ("list*string",     TypeCastList2String);
 				ltc.Add ("rotation*list",   TypeCastRotation2List);
-				ltc.Add ("rotation*string", TypeCastRotation2String);
-				ltc.Add ("string*float",    TypeCastString2Float);
-				ltc.Add ("string*integer",  TypeCastString2Integer);
-				ltc.Add ("string*list",     TypeCastString2List);
 				ltc.Add ("vector*list",     TypeCastVector2List);
-				ltc.Add ("vector*string",   TypeCastVector2String);
 				//MB()
 				legalTypeCasts = ltc;
 			}

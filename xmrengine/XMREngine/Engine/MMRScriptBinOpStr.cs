@@ -174,6 +174,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			// things with vectors
 			DefineBinOpsVector (bos);
 
+			// Contrary to some beliefs, scripts do things like string+integer and integer+string
+			bos.Add ("bool+string",    new BinOpStr (typeof (string), BinOpStrStrAddStr));
+			bos.Add ("float+string",   new BinOpStr (typeof (string), BinOpStrStrAddStr));
+			bos.Add ("integer+string", new BinOpStr (typeof (string), BinOpStrStrAddStr));
+			bos.Add ("string+bool",    new BinOpStr (typeof (string), BinOpStrStrAddStr));
+			bos.Add ("string+float",   new BinOpStr (typeof (string), BinOpStrStrAddStr));
+			bos.Add ("string+integer", new BinOpStr (typeof (string), BinOpStrStrAddStr));
+
 			return bos;
 		}
 
@@ -1031,6 +1039,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPost (scg, tokenTypeBool);
 		}
 
+		// Called by many type combinations so both operands need to be cast to strings
 		private static void BinOpStrStrAddStr (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
 		{
 			result.PopPre (scg);
