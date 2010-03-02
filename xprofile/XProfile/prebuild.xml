@@ -30,6 +30,7 @@
      <Reference name="OpenSim.Framework.Statistics"/>
      <Reference name="OpenSim.Framework.Communications"/>
      <Reference name="OpenSim.Region.Physics.Manager"/>
+     <Reference name="OpenSim.Services.Interfaces"/>
      <Reference name="XGroupchat.Module"/>
      <Reference name="System.Data" />
      <Reference name="MySql.Data.dll" />

@@ -18,6 +18,7 @@ using OpenMetaverse;
 using Nini.Config;
 using log4net;
 using Mono.Addins;
+using OpenSim.Services.Interfaces;
 
 [assembly: Addin("XProfile", "0.1")]
 [assembly: AddinDependency("OpenSim", "0.5")]
@@ -181,30 +182,31 @@ namespace Careminster.Profile
         private void OnRequestAvatarProperties(IClientAPI remoteClient,
                 UUID avatarID)
         {
-            UserProfileData profile =
-                    m_Scene.CommsManager.UserService.GetUserProfile(avatarID);
+            UserAccount account = m_Scene.UserAccountService.GetUserAccount(
+                    m_Scene.RegionInfo.ScopeID, avatarID);
 
-            if (profile == null)
+            if (account == null)
                 return;
 
             Byte[] charterMember;
-            if (profile.CustomType == "")
+            if (account.UserTitle == "")
             {
                 charterMember = new Byte[1];
-                charterMember[0] = (Byte)((profile.UserFlags & 0xf00) >> 8);
+                charterMember[0] = (Byte)((account.UserFlags & 0xf00) >> 8);
             }
             else
             {
-                charterMember = Utils.StringToBytes(profile.CustomType);
+                charterMember = Utils.StringToBytes(account.UserTitle);
             }
 
             XProfileData[] data = m_ProfileTable.Get("UserID", avatarID.ToString());
-            uint flags = (uint)profile.UserFlags & 0x0c;
+            uint flags = (uint)account.UserFlags & 0x0c;
 
             if (data.Length == 0)
             {
-                remoteClient.SendAvatarProperties(profile.ID, String.Empty,
-                        Util.ToDateTime(profile.Created).ToString("M/d/yyyy",
+                remoteClient.SendAvatarProperties(account.PrincipalID,
+                        String.Empty,
+                        Util.ToDateTime(account.Created).ToString("M/d/yyyy",
                                 CultureInfo.InvariantCulture),
                         charterMember, String.Empty,
                         flags,
@@ -217,9 +219,9 @@ namespace Careminster.Profile
 // TODO: Add when it becomes available:
 //                flags |= online ? 16 : 0;
 //
-                remoteClient.SendAvatarProperties(profile.ID,
+                remoteClient.SendAvatarProperties(account.PrincipalID,
                         data[0].Data["ProfileText"],
-                        Util.ToDateTime(profile.Created).ToString("M/d/yyyy",
+                        Util.ToDateTime(account.Created).ToString("M/d/yyyy",
                                 CultureInfo.InvariantCulture),
                         charterMember, data[0].Data["FirstLifeText"],
                         flags,
