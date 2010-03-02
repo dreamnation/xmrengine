@@ -135,7 +135,7 @@ namespace Careminster
             meta.Name = reader["name"].ToString();
             meta.Description = reader["description"].ToString();
             meta.Type = (sbyte)Convert.ToInt32(reader["type"]);
-            meta.ContentType = ServerUtils.SLAssetTypeToContentType(meta.Type);
+            meta.ContentType = SLUtil.SLAssetTypeToContentType(meta.Type);
             meta.CreationDate = Util.ToDateTime(Convert.ToInt32(reader["create_time"]));
 
             reader.Close();
@@ -270,7 +270,7 @@ namespace Careminster
                 meta.Name = reader["name"].ToString();
                 meta.Description = reader["description"].ToString();
                 meta.Type = (sbyte)Convert.ToInt32(reader["assetType"]);
-                meta.ContentType = ServerUtils.SLAssetTypeToContentType(meta.Type);
+                meta.ContentType = SLUtil.SLAssetTypeToContentType(meta.Type);
                 meta.CreationDate = Util.ToDateTime(Convert.ToInt32(reader["create_time"]));
 
                 asset.Metadata = meta;

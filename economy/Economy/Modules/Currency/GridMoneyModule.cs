@@ -23,8 +23,8 @@ using OpenSim.Framework;
 using OpenSim.Region.Framework.Interfaces;
 using OpenSim.Framework.Servers.HttpServer;
 using OpenSim.Framework.Servers;
+using OpenSim.Services.Interfaces;
 using OpenSim.Region.Framework.Scenes;
-using OpenSim.Framework.Communications.Cache;
 using System.Data;
 using MySql.Data.MySqlClient;
 using Mono.Addins;
@@ -406,11 +406,9 @@ namespace Careminster.Modules.Currency
         {
             Scene scene=LocateSceneClientIn(agentID);
 
-            CachedUserInfo profile =
-                    scene.CommsManager.UserProfileCacheService.GetUserDetails(
-                    agentID);
+            UserAccount account = scene.UserAccountService.GetUserAccount(scene.RegionInfo.ScopeID, agentID);
 
-            if (profile != null && ((profile.UserProfile.UserFlags & 0xf00) >> 8) > UserLevelPaysFees)
+            if (account != null && ((account.UserFlags & 0xf00) >> 8) > UserLevelPaysFees)
                 return;
 
             MoveMoney(agentID, EconomyBaseAccount, amount);
@@ -1124,14 +1122,10 @@ namespace Careminster.Modules.Currency
 
             // Try avatar username surname
             scene = GetRandomScene();
-            CachedUserInfo profile =
-                    scene.CommsManager.UserProfileCacheService.GetUserDetails(
-                    agentID);
-            if (profile != null && profile.UserProfile != null)
-            {
-                string avatarname = profile.UserProfile.FirstName + " " + profile.UserProfile.SurName;
-                return avatarname;
-            }
+            UserAccount account = scene.UserAccountService.GetUserAccount(scene.RegionInfo.ScopeID, agentID);
+            if (account != null)
+                return account.FirstName + " " + account.LastName;
+
             return String.Empty;
         }
 
@@ -1487,11 +1481,9 @@ namespace Careminster.Modules.Currency
         {
             Scene scene=LocateSceneClientIn(client.AgentId);
 
-            CachedUserInfo profile =
-                    scene.CommsManager.UserProfileCacheService.GetUserDetails(
-                    client.AgentId);
+            UserAccount account = scene.UserAccountService.GetUserAccount(scene.RegionInfo.ScopeID, client.AgentId);
 
-            if (profile != null && ((profile.UserProfile.UserFlags & 0xf00) >> 8) > UserLevelPaysFees)
+            if (account != null && ((account.UserFlags & 0xf00) >> 8) > UserLevelPaysFees)
                 return true;
 
             if(GetAvailableAgentFunds(client.AgentId) < amount)
@@ -1503,11 +1495,9 @@ namespace Careminster.Modules.Currency
         {
             Scene scene=LocateSceneClientIn(client.AgentId);
 
-            CachedUserInfo profile =
-                    scene.CommsManager.UserProfileCacheService.GetUserDetails(
-                    client.AgentId);
+            UserAccount account = scene.UserAccountService.GetUserAccount(scene.RegionInfo.ScopeID, client.AgentId);
 
-            if (profile != null && ((profile.UserProfile.UserFlags & 0xf00) >> 8) > UserLevelPaysFees)
+            if (account != null && ((account.UserFlags & 0xf00) >> 8) > UserLevelPaysFees)
                 return true;
 
             if(GetAgentFunds(client.AgentId) < PriceUpload)

@@ -14,7 +14,6 @@ using OpenSim.Region.CoreModules.Framework.EventQueue;
 using OpenMetaverse;
 using OpenMetaverse.StructuredData;
 using OpenSim.Region.Framework.Scenes;
-using OpenSim.Framework.Communications.Cache;
 using MySql.Data.MySqlClient;
 using System.Data;
 using OpenSim.Services.Interfaces;

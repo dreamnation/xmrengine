@@ -18,7 +18,6 @@ using OpenSim.Region.Framework.Interfaces;
 using OpenMetaverse;
 using OpenMetaverse.StructuredData;
 using OpenSim.Region.Framework.Scenes;
-using OpenSim.Framework.Communications.Cache;
 
 namespace Careminster.Modules.Groups
 {

@@ -261,7 +261,7 @@ namespace Careminster
                     if (asset != null)
                     {
                         asset.Metadata.ContentType =
-                                ServerUtils.SLAssetTypeToContentType((int)asset.Type);
+                                SLUtil.SLAssetTypeToContentType((int)asset.Type);
                         sha = GetSHA1Hash(asset.Data);
                         m_log.InfoFormat("[FALLBACK]: Added asset {0} from fallback to local store", id);
                         Store(asset);
