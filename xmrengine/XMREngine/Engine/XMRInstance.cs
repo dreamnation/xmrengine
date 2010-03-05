@@ -395,7 +395,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             {
                 m_Loader = new XMRLoader ();
                 m_Loader.m_StateChange = StateChange;
-                Exception e = m_Loader.Load(objCode, m_DescName);
+                Exception e = m_Loader.Load(objCode, m_DescName, m_AssetID.ToString());
                 if (e != null)
                 {
                     throw e;
@@ -418,9 +418,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
             if (!File.Exists(m_StateFileName))
             {
-                m_Running = true;  // event processing is enabled
-                m_IsIdle  = true;  // not processing any event handler
+                m_Running = true;           // event processing is enabled
+                m_IsIdle  = true;           // not processing any event handler
 
+                m_Loader.DoGblInit = true;  // default state_entry() must initialize global variables
                 PostEvent(new EventParams("state_entry", new Object[0], new DetectParams[0]));
 
                 if (m_PostOnRez)
@@ -505,6 +506,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             // Get various attributes
             XmlElement runningN = (XmlElement)scriptStateN.SelectSingleNode("Running");
             m_Running = bool.Parse(runningN.InnerText);
+
+            XmlElement doGblInitN = (XmlElement)scriptStateN.SelectSingleNode("DoGblInit");
+            m_Loader.DoGblInit = bool.Parse(doGblInitN.InnerText);
 
             XmlElement permissionsN = (XmlElement)scriptStateN.SelectSingleNode("Permissions");
             m_Item.PermsGranter = new UUID(permissionsN.GetAttribute("granter"));
@@ -768,6 +772,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             XmlElement runningN = doc.CreateElement("", "Running", "");
             runningN.AppendChild(doc.CreateTextNode(m_Running.ToString()));
             scriptStateN.AppendChild(runningN);
+
+            XmlElement doGblInitN = doc.CreateElement("", "DoGblInit", "");
+            doGblInitN.AppendChild(doc.CreateTextNode(m_Loader.DoGblInit.ToString()));
+            scriptStateN.AppendChild(doGblInitN);
 
             DetectParams[] detect = m_DetectParams;
 

@@ -5,6 +5,7 @@
 // All rights reserved
 //
 
+using Mono.Tasklets;
 using System;
 using System.IO;
 using System.Runtime.Remoting;
@@ -21,6 +22,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
         private ScriptWrapper m_Wrapper = null;
         private ScriptObjCode m_ObjCode = null;
         private string m_DescName;
+        private string m_AssetID;
         public StateChangeDelegate m_StateChange;
 
         public XMRLoader()
@@ -49,10 +51,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
             m_ScriptBase.InitApi(name, api);
         }
 
-        public Exception Load(ScriptObjCode objCode, string descName)
+        public Exception Load(ScriptObjCode objCode, string descName, string assetID)
         {
             m_ObjCode  = objCode;
             m_DescName = descName;
+            m_AssetID  = assetID;
 
             try
             {
@@ -103,7 +106,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
             m_Wrapper.Dispose();
             m_Wrapper = null;
 
-            Load(m_ObjCode, m_DescName);
+            Load(m_ObjCode, m_DescName, m_AssetID);
         }
 
         public int StateCode
@@ -129,6 +132,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
             }
 
             return code;
+        }
+
+        public bool DoGblInit
+        {
+            get { return m_Wrapper.doGblInit; }
+            set { m_Wrapper.doGblInit = value; }
         }
 
         public Byte[] GetSnapshot()

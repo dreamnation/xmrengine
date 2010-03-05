@@ -43,6 +43,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static MethodInfo listToStringMethodInfo     = typeof (TypeCast).GetMethod ("ListToString",     new Type[] { typeof (LSL_List) });
 		private static MethodInfo rotationToStringMethodInfo = typeof (TypeCast).GetMethod ("RotationToString", new Type[] { typeof (LSL_Rotation) });
 		private static MethodInfo vectorToStringMethodInfo   = typeof (TypeCast).GetMethod ("VectorToString",   new Type[] { typeof (LSL_Vector) });
+		private static MethodInfo listOfOneObjMethodInfo     = typeof (TypeCast).GetMethod ("ListOfOneObj",     new Type[] { typeof (object) });
 
 		/*
 		 * List of all allowed type casts and how to perform the casting.
@@ -292,7 +293,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static void TypeCastVector2List (ScriptMyILGen ilGen)
 		{
 			ilGen.Emit (OpCodes.Box, typeof (LSL_Vector));
-			ilGen.Emit (OpCodes.Newobj, lslListConstructorInfo);
+			ilGen.Emit (OpCodes.Call, listOfOneObjMethodInfo);
 		}
 		private static void TypeCastVector2Object (ScriptMyILGen ilGen)
 		{
@@ -305,7 +306,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static void TypeCastFloat2List (ScriptMyILGen ilGen)
 		{
 			ilGen.Emit (OpCodes.Box, typeof (float));
-			ilGen.Emit (OpCodes.Newobj, lslListConstructorInfo);
+			ilGen.Emit (OpCodes.Call, listOfOneObjMethodInfo);
 		}
 		private static void TypeCastFloat2String (ScriptMyILGen ilGen)
 		{
@@ -314,7 +315,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static void TypeCastInteger2List (ScriptMyILGen ilGen)
 		{
 			ilGen.Emit (OpCodes.Box, typeof (int));
-			ilGen.Emit (OpCodes.Newobj, lslListConstructorInfo);
+			ilGen.Emit (OpCodes.Call, listOfOneObjMethodInfo);
 		}
 		private static void TypeCastInteger2String (ScriptMyILGen ilGen)
 		{
@@ -327,7 +328,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static void TypeCastRotation2List (ScriptMyILGen ilGen)
 		{
 			ilGen.Emit (OpCodes.Box, typeof (LSL_Rotation));
-			ilGen.Emit (OpCodes.Newobj, lslListConstructorInfo);
+			ilGen.Emit (OpCodes.Call, listOfOneObjMethodInfo);
 		}
 		private static void TypeCastRotation2String (ScriptMyILGen ilGen)
 		{
@@ -345,7 +346,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		private static void TypeCastString2List (ScriptMyILGen ilGen)
 		{
-			ilGen.Emit (OpCodes.Newobj, lslListConstructorInfo);
+			ilGen.Emit (OpCodes.Call, listOfOneObjMethodInfo);
 		}
 		private static void TypeCastVector2String (ScriptMyILGen ilGen)
 		{
@@ -360,5 +361,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public static string ListToString     (LSL_List x)     { return x.ToString (); }
 		public static string RotationToString (LSL_Rotation x) { return x.ToString (); }
 		public static string VectorToString   (LSL_Vector x)   { return x.ToString (); }
+		public static LSL_List ListOfOneObj   (object x)       { return new LSL_List (new object[1] { x }); }
 	}
 }
