@@ -882,6 +882,9 @@ Console.WriteLine("==> Session ID {0} UUID {1}", imSessionID.ToString(), id.ToSt
                     }
                 }
 
+                if (RoleID == GroupID)
+                    RoleID = UUID.Zero;
+
                 AddToGroup(client.AgentId, GroupID, RoleID);
 
                 ActivateGroup(client, GroupID);
@@ -1894,6 +1897,9 @@ Console.WriteLine("==> Session ID {0} UUID {1}", imSessionID.ToString(), id.ToSt
 
             while (m_PendingInvites.Count >= 10)
                 m_PendingInvites.RemoveAt(0);
+
+            if (RoleID == UUID.Zero)
+                RoleID = GroupID;
 
             m_PendingInvites.Add(GroupID ^ InviteeID ^ RoleID);
             m_log.DebugFormat("Adding invitiation {0}, agent {1}, role {2}", (InviteeID ^ RoleID).ToString(), InviteeID.ToString(), RoleID.ToString());
