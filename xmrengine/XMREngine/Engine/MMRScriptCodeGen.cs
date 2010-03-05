@@ -62,6 +62,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static FieldInfo arrayValueFieldInfo = typeof (XMR_Array).GetField ("__pub_value");
 		public  static FieldInfo beAPIFieldInfo = typeof (ScriptWrapper).GetField ("beAPI");
 		private static FieldInfo continuationFieldInfo = typeof (ScriptWrapper).GetField ("continuation");
+		private static FieldInfo doGblInitFieldInfo = typeof (ScriptWrapper).GetField ("doGblInit");
 		private static FieldInfo ehArgsFieldInfo = typeof (ScriptWrapper).GetField ("ehArgs");
 		private static FieldInfo rotationXFieldInfo = typeof (LSL_Rotation).GetField ("x");
 		private static FieldInfo rotationYFieldInfo = typeof (LSL_Rotation).GetField ("y");
@@ -402,6 +403,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * default state_entry() handler.
 			 */
 			if ((statename == "default") && (eventname == "state_entry")) {
+				ScriptMyLabel skipGblInitLabel = ilGen.DefineLabel ("__skipGblInit");
+				ilGen.Emit (OpCodes.Ldarg_0);                    // scriptWrapper
+				ilGen.Emit (OpCodes.Ldfld, doGblInitFieldInfo);  // scriptWrapper.doGblInit
+				ilGen.Emit (OpCodes.Brfalse, skipGblInitLabel);
 				foreach (KeyValuePair<string, TokenDeclVar> kvp in tokenScript.vars) {
 					TokenDeclVar gblDeclVar = kvp.Value;
 
@@ -415,6 +420,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					}
 					var.PopPost (this);
 				}
+				ilGen.Emit (OpCodes.Ldarg_0);                    // scriptWrapper
+				PushConstantI4 (0);
+				ilGen.Emit (OpCodes.Stfld, doGblInitFieldInfo);  // scriptWrapper.doGblInit
+				ilGen.MarkLabel (skipGblInitLabel);
 			}
 
 			/*

@@ -54,6 +54,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader {
 		public int memUsage = 0;                  // script's current memory usage
 		public int memLimit = 100000;             // CheckRun() throws exception if memUsage > memLimit
 		public bool stateChanged = false;         // script sets this if/when it executes a 'state' statement
+		public bool doGblInit = true;             // default state_entry() needs to initialize global variables
 		public ScriptObjCode objCode;             // the script's object code pointer
 
 		public bool debPrint = false;
@@ -186,6 +187,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader {
 			this.gblRotations = new LSL_Rotation[objCode.numGblRotations];
 			this.gblStrings   = new string[objCode.numGblStrings];
 			this.gblVectors   = new LSL_Vector[objCode.numGblVectors];
+
+			for (int i = 0; i < objCode.numGblArrays; i ++) {
+				this.gblArrays[i]  = new XMR_Array ();
+			}
+			for (int i = 0; i < objCode.numGblLists; i ++) {
+				this.gblLists[i]   = new LSL_List (new object[0]);
+			}
+			for (int i = 0; i < objCode.numGblStrings; i ++) {
+				this.gblStrings[i] = String.Empty;
+			}
 
 			/*
 			 * Set up debug name string.

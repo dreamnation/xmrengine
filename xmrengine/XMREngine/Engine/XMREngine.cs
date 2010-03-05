@@ -708,7 +708,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             } catch (Exception e) {
                 m_log.DebugFormat("[XMREngine]: Error starting script: {0}",
                                   e.Message);
-                m_log.DebugFormat("[XMREngine]*:  {0}", e.ToString());
+                if (e.Message != "compilation errors") {
+                    m_log.DebugFormat("[XMREngine]*:  {0}", e.ToString());
+                }
                 lock (m_ScriptErrors) {
                     ArrayList errors = instance.GetScriptErrors();
                     if (errors == null) {
