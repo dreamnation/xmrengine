@@ -13,7 +13,6 @@ using System.Reflection;
 using log4net;
 using OpenSim.Framework;
 using OpenSim.Region.Framework.Interfaces;
-using OpenSim.Framework.Communications.Cache;
 using OpenSim.Region.Framework.Scenes;
 using OpenSim.Services.Interfaces;
 using Mono.Addins;
@@ -36,9 +35,28 @@ namespace Careminster.Modules.Permissions
         private uint PERM_LOCKED = (uint)540672;
 
         private bool m_AllowGridGods = true;
+        private bool m_EstateOwnerIsGod = false;
+        private bool m_EstateManagerIsGod = false;
         private bool m_Enabled = false;
+        private InventoryFolderImpl m_LibraryRootFolder;
 
         private IFriendsModule m_friendsModule = null;
+
+        protected InventoryFolderImpl LibraryRootFolder
+        {
+            get
+            {
+                if (m_LibraryRootFolder != null)
+                    return m_LibraryRootFolder;
+
+                ILibraryService lib = m_Scene.RequestModuleInterface<ILibraryService>();
+                if (lib != null)
+                {
+                    m_LibraryRootFolder = lib.LibraryRootFolder;
+                }
+                return m_LibraryRootFolder;
+            }
+        }
 
         #endregion
 
@@ -56,6 +74,8 @@ namespace Careminster.Modules.Permissions
                 return;
 
             m_AllowGridGods = myConfig.GetBoolean("allow_grid_gods", true);
+            m_EstateOwnerIsGod = myConfig.GetBoolean("estate_owner_is_god", false);
+            m_EstateManagerIsGod = myConfig.GetBoolean("estate_manager_is_god", false);
 
             m_Enabled = true;
         }
@@ -158,21 +178,20 @@ namespace Careminster.Modules.Permissions
 
         protected bool IsAdministrator(UUID user)
         {
-            CachedUserInfo profile = m_Scene.CommsManager.UserProfileCacheService.GetUserDetails(user);
+            if (user == UUID.Zero)
+                return false;
 
-            if(profile != null && profile.UserProfile != null)
+            UserAccount account = m_Scene.UserAccountService.GetUserAccount(m_Scene.RegionInfo.ScopeID, user);
+            if (account != null)
             {
-                if(profile.UserProfile.GodLevel >= 200 && m_AllowGridGods)
-                {
+                if (account.UserLevel >= 200 && m_AllowGridGods)
                     return true;
-                }
             }
 
-            // If there is no master avatar, return false
-            if (m_Scene.RegionInfo.MasterAvatarAssignedUUID != UUID.Zero)
-            {
-                return m_Scene.RegionInfo.MasterAvatarAssignedUUID == user;
-            }
+            if (m_EstateOwnerIsGod && IsEstateOwner(user))
+                return true;
+            if (m_EstateManagerIsGod && IsEstateManager(user))
+                return true;
 
             return false;
         }
@@ -209,13 +228,10 @@ namespace Careminster.Modules.Permissions
             if (m_friendsModule == null)
                 return false;
 
-            List<FriendListItem> profile = m_friendsModule.GetUserFriends(user);
+            uint friendPerms = m_friendsModule.GetFriendPerms(user, objectOwner);
+            if ((friendPerms & (uint)FriendRights.CanModifyObjects) != 0)
+                return true;
 
-            foreach (FriendListItem item in profile)
-            {
-                if(item.Friend == objectOwner && (item.FriendPerms & (uint)FriendRights.CanModifyObjects) != 0)
-                    return true;
-            }
             return false;
         }
 
@@ -609,7 +625,7 @@ namespace Careminster.Modules.Permissions
                     assetRequestItem = invService.GetItem(assetRequestItem);
                     if (assetRequestItem == null) // Library item
                     {
-                        assetRequestItem = scene.CommsManager.UserProfileCacheService.LibraryRoot.FindItem(notecard);
+                        assetRequestItem = LibraryRootFolder.FindItem(notecard);
 
                         if (assetRequestItem != null) // Implicitly readable
                             return true;
@@ -899,7 +915,7 @@ namespace Careminster.Modules.Permissions
                 assetRequestItem = invService.GetItem(assetRequestItem);
                 if (assetRequestItem == null) // Library item
                 {
-                    assetRequestItem = scene.CommsManager.UserProfileCacheService.LibraryRoot.FindItem(script);
+                    assetRequestItem = LibraryRootFolder.FindItem(script);
 
                     if (assetRequestItem != null) // Implicitly readable
                         return true;
@@ -972,7 +988,7 @@ namespace Careminster.Modules.Permissions
 
                 if (assetRequestItem == null) // Library item
                 {
-                    assetRequestItem = scene.CommsManager.UserProfileCacheService.LibraryRoot.FindItem(notecard);
+                    assetRequestItem = LibraryRootFolder.FindItem(notecard);
 
                     if (assetRequestItem != null) // Implicitly readable
                         return true;
