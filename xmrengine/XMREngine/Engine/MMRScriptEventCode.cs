@@ -54,9 +54,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		no_sensor            = 35,
 		on_rez               = 36,
 		sensor               = 37,
+		http_request         = 38,
 
 		// marks highest numbered event, ie, number of columns in seht.
-		Size                 = 38,
+		Size                 = 39,
 		Garbage        = 12345678
 	}
 }

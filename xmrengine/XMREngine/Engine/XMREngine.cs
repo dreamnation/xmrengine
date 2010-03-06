@@ -700,14 +700,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_log.DebugFormat("[XMREngine]: Running script {0}, asset {1}, param {2}",
                     item.Name, item.AssetID, startParam.ToString());
 
+            lock (m_ScriptErrors) {
+                m_ScriptErrors.Remove(itemID);
+            }
             XMRInstance instance = new XMRInstance();
             try {
                 instance.Construct(localID, itemID, script, 
                                    startParam, postOnRez, stateSource, 
                                    this, part, item, m_ScriptBasePath);
             } catch (Exception e) {
-                m_log.DebugFormat("[XMREngine]: Error starting script: {0}",
-                                  e.Message);
+                m_log.DebugFormat("[XMREngine]: Error starting script {0}: {1}",
+                                  itemID.ToString(), e.Message);
                 if (e.Message != "compilation errors") {
                     m_log.DebugFormat("[XMREngine]*:  {0}", e.ToString());
                 }
@@ -990,7 +993,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
             }
             if (errors == null) {
+                m_log.DebugFormat("XMREngine:GetScriptErrors*: {0} successful", itemID.ToString());
                 errors = new ArrayList();
+            } else {
+                m_log.DebugFormat("XMREngine:GetScriptErrors*: {0} has {1} error(s)", itemID.ToString(), errors.Count.ToString());
             }
             return errors;
         }

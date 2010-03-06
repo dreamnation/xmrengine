@@ -25,8 +25,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 	/*
 	 * Whenever a script changes state, it calls this method.
+	 * scriptWrapper.stateCode is already set to the new state.
 	 */
-	public delegate void StateChangeDelegate (string newState);
+	public delegate void StateChangeDelegate ();
 
 	/*
 	 * Entrypoint to script event handlers.
@@ -1012,20 +1013,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					 * Now that the old state can't possibly start any more activity,
 					 * cancel any listening handlers, etc, of the old state.
 					 */
-					sw.stateChange (sw.GetStateName (newStateCode));
+					sw.stateCode = newStateCode;
+					sw.stateChange ();
 
 					/*
-					 * Now the new state becomes the old state in case the new state_entry() changes state again.
+					 * Now the new state becomes the old state in case the new state_entry() 
+					 * changes state again.
 					 */
 					oldStateCode = newStateCode;
 
 					/*
 					 * Call the new state's state_entry() handler.
-					 * I've seen scripts that change state in the state_entry() handler, so allow for that.
+					 * I've seen scripts that change state in the state_entry() handler, 
+					 * so allow for that by looping back to check sw.stateChanged again.
 					 */
 					sw.stateChanged = false;
 					sw.eventCode = ScriptEventCode.state_entry;
-					sw.stateCode = newStateCode;
 					seh = sw.objCode.scriptEventHandlerTable[newStateCode,(int)ScriptEventCode.state_entry];
 					if (seh != null) seh (sw);
 				}
