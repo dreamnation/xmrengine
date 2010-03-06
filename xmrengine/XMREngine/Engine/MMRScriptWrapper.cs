@@ -21,7 +21,7 @@ using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 
 
-namespace OpenSim.Region.ScriptEngine.XMREngine.Loader {
+namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 	/*
 	 * Whenever a script changes state, it calls this method.

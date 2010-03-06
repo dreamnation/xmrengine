@@ -3,7 +3,7 @@
  *  All rights reserved.                           *
 \***************************************************/
 
-using OpenSim.Region.ScriptEngine.XMREngine.Loader;
+using OpenSim.Region.ScriptEngine.XMREngine;
 using System.Collections.Generic;
 using System.Reflection;
 

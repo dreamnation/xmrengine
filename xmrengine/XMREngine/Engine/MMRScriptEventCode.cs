@@ -3,7 +3,7 @@
  *  All rights reserved.                           *
 \***************************************************/
 
-namespace OpenSim.Region.ScriptEngine.XMREngine.Loader {
+namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 	/**
 	 * @brief List of event codes that can be passed to StartEventHandler().

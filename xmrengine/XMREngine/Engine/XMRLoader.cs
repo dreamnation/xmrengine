@@ -14,7 +14,7 @@ using OpenSim.Region.ScriptEngine.Shared.Api.Runtime;
 using OpenSim.Region.ScriptEngine.Interfaces;
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 
-namespace OpenSim.Region.ScriptEngine.XMREngine.Loader
+namespace OpenSim.Region.ScriptEngine.XMREngine
 {
     public class XMRLoader : IDisposable
     {
