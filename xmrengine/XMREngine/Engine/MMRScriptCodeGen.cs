@@ -253,7 +253,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			} while (foundChangedState);
 
 			/*
-			 * Translate all the global variable declarations to indices in the ScriptWrapper.gbl<Type>s[] arrays.
+			 * Assign all global variables a slot in its corresponding ScriptWrapper.gbl<Type>s[] array.
+			 * Global variables are simply elements of those arrays at runtime, thus we don't need to create
+			 * an unique class for each script, we can just use ScriptWrapper as is for all.
 			 */
 			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclVar> kvp in tokenScript.vars) {
 				TokenDeclVar declVar = kvp.Value;
@@ -940,11 +942,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Script gave us an initialization value, so just store init value in var like an assignment statement.
+			 * If no init given, set to default value so we always have vaid non-null pointers to strings and lists, etc.
 			 */
 			if (declVar.init != null) {
 				local.PopPre (this);
 				CompValu rVal = GenerateFromRVal (declVar.init);
 				rVal.PushVal (this, declVar.type);
+				local.PopPost (this);
+			} else {
+				local.PopPre (this);
+				PushDefaultValue (declVar.type);
 				local.PopPost (this);
 			}
 
