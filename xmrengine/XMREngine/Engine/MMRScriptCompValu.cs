@@ -139,7 +139,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		public override void PopPost (ScriptCodeGen scg)
 		{
-			scg.ilGen.Emit (OpCodes.Stloc, index);
+			scg.ilGen.Emit (OpCodes.Starg, index);
 		}
 	}
 

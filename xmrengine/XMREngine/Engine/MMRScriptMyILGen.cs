@@ -165,7 +165,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public void Emit (OpCode opcode, int value)
 		{
 			if (debug != null) {
-				debug.WriteLine (OpcodeString (opcode) + "  " + value.ToString ());
+				debug.WriteLine (OpcodeString (opcode) + "  " + value.ToString () + "  (int)");
 			}
 			realILGen.Emit (opcode, value);
 		}
