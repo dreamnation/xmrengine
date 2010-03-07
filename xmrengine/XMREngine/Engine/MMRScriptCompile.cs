@@ -40,6 +40,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             string envar = null;
             string fname = Path.Combine (scriptBasePath, assetID);
             string objFileName = GetObjFileName (assetID, scriptBasePath);
+            StreamWriter asmFileWriter = null;
 
             /*
              * If we already have an object file, don't bother compiling.
@@ -85,6 +86,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     File.Delete (objFileName);
                     return null;
                 }
+
+                /*
+                 * Since we just compiled from source, maybe save disassembly.
+                 */
+                envar = Environment.GetEnvironmentVariable ("MMRScriptCompileSaveILGen");
+                if ((envar != null) && ((envar[0] & 1) != 0)) {
+                    string asmFileName = fname + ".xmrasm";
+                    m_log.DebugFormat("[XMREngine]: MMRScriptCopmileSaveILGen: saving to {0}", asmFileName);
+                    asmFileWriter = File.CreateText (asmFileName);
+                }
             }
 
             /*
@@ -92,14 +103,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * Maybe also write disassembly to a file for debugging.
              */
             BinaryReader objFileReader = new BinaryReader (File.OpenRead (objFileName));
-
-            envar = Environment.GetEnvironmentVariable ("MMRScriptCompileSaveILGen");
-            StreamWriter asmFileWriter = null;
-            if ((envar != null) && ((envar[0] & 1) != 0)) {
-                string asmFileName = fname + ".xmrasm";
-                m_log.DebugFormat("[XMREngine]: MMRScriptCopmileSaveILGen: saving to {0}", asmFileName);
-                asmFileWriter = File.CreateText (asmFileName);
-            }
 
             ScriptObjCode scriptObjCode = null;
             try {
