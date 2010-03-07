@@ -57,6 +57,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private TaskInventoryItem m_Item = null;
         private UUID m_ItemID;
         private UUID m_AssetID;
+        private string m_ScriptBasePath;
         private string m_StateFileName;
         private string m_SourceCode;
         private ScriptObjCode m_ObjCode;
@@ -117,19 +118,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Save all call parameters in instance vars for easy access.
              */
-            m_LocalID     = localID;
-            m_ItemID      = itemID;
-            m_SourceCode  = script;
-            m_StartParam  = startParam;
-            m_PostOnRez   = postOnRez;
-            m_StateSource = (StateSource)stateSource;
-            m_Engine      = engine;
-            m_Part        = part;
-            m_Item        = item;
-            m_AssetID     = item.AssetID;
+            m_LocalID        = localID;
+            m_ItemID         = itemID;
+            m_SourceCode     = script;
+            m_StartParam     = startParam;
+            m_PostOnRez      = postOnRez;
+            m_StateSource    = (StateSource)stateSource;
+            m_Engine         = engine;
+            m_Part           = part;
+            m_Item           = item;
+            m_AssetID        = item.AssetID;
+            m_ScriptBasePath = scriptBasePath;
 
-            m_StateFileName = Path.Combine(scriptBasePath,
-                                           m_ItemID.ToString() + ".state");
+            m_StateFileName  = Path.Combine(scriptBasePath,
+                                            m_ItemID.ToString() + ".state");
 
             /*
              * Set up a descriptive name string for debug messages.
@@ -147,6 +149,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
             InstantiateScript();
             m_SourceCode = null;
+            if (m_Wrapper == null) throw new ArgumentNullException ("m_Wrapper");
+            if (m_Wrapper.objCode == null) throw new ArgumentNullException ("m_Wrapper.objCode");
+            if (m_Wrapper.objCode.scriptEventHandlerTable == null) throw new ArgumentNullException ("m_Wrapper.objCode.scriptEventHandlerTable");
 
             /*
              * Set up list of API calls it has available.
@@ -286,7 +291,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if (!m_CompiledScriptObjCode.TryGetValue (m_AssetID, 
                                                           out objCode))
                 {
-                    objCode = TryToCompile();
+                    objCode = TryToCompile(false);
                     compiledIt = true;
                 }
 
@@ -309,7 +314,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      */
                     m_log.DebugFormat("[XMREngine]: attempting recompile {0}",
                             m_DescName);
-                    objCode = TryToCompile();
+                    objCode = TryToCompile(true);
                     compiledIt = true;
                     m_log.DebugFormat("[XMREngine]: attempting reload {0}",
                             m_DescName);
@@ -340,12 +345,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         // Try to create object code from source code
         // If error, just throw exception
-        private ScriptObjCode TryToCompile()
+        private ScriptObjCode TryToCompile(bool forceCompile)
         {
-            ScriptObjCode objCode;
+            string objName = ScriptCompile.GetObjFileName(m_AssetID.ToString(),
+                                                          m_ScriptBasePath);
 
             m_CompilerErrors = null;
-            if (m_SourceCode == String.Empty)
+
+            /*
+             * If told to force compilation (presumably because object file 
+             * is old version or corrupt), delete the object file which will 
+             * make ScriptCompile.Compile() create a new one from the source.
+             */
+            if (forceCompile) {
+                File.Delete(objName);
+            }
+
+            /*
+             * If we have neither the source nor the object file, not much we
+             * can do to create the ScriptObjCode object.
+             */
+            if ((m_SourceCode == String.Empty) && !File.Exists(objName))
             {
                 throw new Exception("Compile of asset " +
                                     m_AssetID.ToString() +
@@ -353,11 +373,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                                     "present and no assembly was found");
             }
 
-            objCode = ScriptCompile.Compile(m_SourceCode, 
-                                            m_DescName,
-                                            m_AssetID.ToString(), 
-                                            null, 
-                                            ErrorHandler);
+            /*
+             * If object file exists, create ScriptObjCode directly from that.
+             * Otherwise, compile the source to create object file then create
+             * ScriptObjCode from that.
+             */
+            ScriptObjCode objCode = ScriptCompile.Compile(m_SourceCode, 
+                                                          m_DescName,
+                                                          m_AssetID.ToString(), 
+                                                          m_ScriptBasePath, 
+                                                          ErrorHandler);
             if (m_CompilerErrors != null)
             {
                 throw new Exception ("compilation errors");

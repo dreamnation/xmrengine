@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Reflection.Emit;
 using System.Runtime.Remoting;
 using System.Text;
 using System.Threading;
@@ -39,7 +40,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	 */
 	public class ScriptWrapper : IDisposable {
 		public static UIntPtr stackSize = (UIntPtr)(2*1024*1024);  // microthreads get this stack size
-		public static readonly int COMPILED_VERSION_VALUE = 4;     // incrmented when compiler changes for compatibility testing
 
 		public string instanceNo;                 // debugging use only
 
@@ -171,6 +171,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		public ScriptWrapper (ScriptObjCode objCode, string descName)
 		{
+			if (objCode  == null) throw new ArgumentNullException ("objCode");
+			if (descName == null) throw new ArgumentNullException ("descName");
+
 			string envar = Environment.GetEnvironmentVariable ("MMRScriptWrapperDebPrint");
 			this.debPrint = ((envar != null) && ((envar[0] & 1) != 0));
 			instanceNo = MMRCont.HexString (MMRCont.ObjAddr (this));
@@ -1135,7 +1138,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		public IntPtr LoadFindMethod (string methName, string sigDesc, string className, string classNameSpace, string imageName)
 		{
-			MethodInfo methodInfo;
+			DynamicMethod methodInfo;
 
 			/*
 			 * All our names are superfunky with $MMRContableAttribute$ and the asset ID, so

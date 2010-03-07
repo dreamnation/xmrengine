@@ -6,6 +6,7 @@
 using OpenSim.Region.ScriptEngine.XMREngine;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Reflection.Emit;
 
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
@@ -20,8 +21,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	 */
 	public class ScriptObjCode
 	{
-		public int compiledVersion;     // what COMPILED_VERSION was when it got compiled
-
 		public int numGblArrays;        // number of array global variables it has
 		public int numGblFloats;        // number of float global variables it has
 		public int numGblIntegers;      // number of integer global variables it has
@@ -38,7 +37,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		                                // 2nd subscript = event code number
 		                                // null entry means no handler defined for that state,event
 
-		public Dictionary<string, MethodInfo> dynamicMethods;
+		public Dictionary<string, DynamicMethod> dynamicMethods;
 		                                // all dyanmic methods that could be encountered by checkpointing
 	}
 }

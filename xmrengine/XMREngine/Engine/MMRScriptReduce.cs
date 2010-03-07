@@ -1448,7 +1448,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public Dictionary<string, TokenName> calledFuncs = new Dictionary<string, TokenName> ();
 		                                     // all functions called by this function
 
-		public DynamicMethod dynamicMethod;  // codegen stores emitted code here
+		public ScriptMyILGen ilGen;          // codegen stores emitted code here
 
 		public TokenDeclFunc (Token original) : base (original) { }
 

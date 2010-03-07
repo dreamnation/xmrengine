@@ -35,6 +35,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static readonly ILog m_log =
 			LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
+		public static readonly string OBJECT_CODE_MAGIC = "XMRObjectCode";
+		public static readonly int COMPILED_VERSION_VALUE = 4;  // incremented when compiler changes for compatibility testing
+
 		public static readonly int CALL_FRAME_MEMUSE = 64;
 		public static readonly int STRING_LEN_TO_MEMUSE = 2;
 
@@ -83,31 +86,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		                                                                       "LSLVectorNegate", 
 		                                                                       new Type[] { typeof (LSL_Vector) });
 
-		public static ScriptObjCode CodeGen (TokenScript tokenScript, string descName, string ilGenDebugName)
+		public static bool CodeGen (TokenScript tokenScript, string descName, string objFileName)
 		{
 			TypeCast.CreateLegalTypeCasts ();
 
 			/*
 			 * Run compiler such that it has a 'this' context for convenience.
 			 */
-			ScriptCodeGen scg = new ScriptCodeGen (tokenScript, descName, ilGenDebugName);
+			ScriptCodeGen scg = new ScriptCodeGen (tokenScript, descName, objFileName);
 
 			/*
 			 * Return pointer to resultant script object code.
 			 */
-			return (scg.exitCode == 0) ? scg.scriptObjCode : null;
+			return !scg.youveAnError;
 		}
 
 		/*
 		 * There is one set of these variables for each script being compiled.
 		 */
 		private bool youveAnError = false;
-		private int exitCode = 0;
 		private int nStates = 0;
 		private Token errorMessageToken = null;
 		private TokenDeclFunc curDeclFunc = null;
 		private TokenStmtBlock curStmtBlock = null;
-		public  StreamWriter ilGenDebugWriter = null;
+		private BinaryWriter objFileWriter = null;
 		private string descName = null;
 		private TokenScript tokenScript = null;
 
@@ -121,28 +123,29 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		// These get cleared at beginning of every function definition
 		public  ScriptMyILGen ilGen = null;  // the output instruction stream
-		private ScriptMyLocal beLoc = null;  // "ScriptBase __be" local variable
 
-		private ScriptCodeGen (TokenScript tokenScript, string descName, string ilGenDebugName)
+		private ScriptCodeGen (TokenScript tokenScript, string descName, string objFileName)
 		{
 			this.tokenScript = tokenScript;
 			this.descName    = descName;
 
-			if (ilGenDebugName == null) ilGenDebugName = "";
-			if (ilGenDebugName != "") {
-				ilGenDebugWriter = File.CreateText (ilGenDebugName);
-			}
-
+			objFileWriter = new BinaryWriter (File.Create (objFileName));
 			try {
-				this.PerformCompilation ();
+				PerformCompilation ();
 			} finally {
-				if (ilGenDebugWriter != null) {
-					ilGenDebugWriter.Flush ();
-					ilGenDebugWriter.Close ();
-				}
+				objFileWriter.Close ();
+				objFileWriter = null;
+				scriptObjCode = null;
 			}
 		}
 
+		/**
+		 * @brief Convert 'tokenScript' to 'objFileWriter' format.
+		 *   'tokenScript' is a parsed/reduced abstract syntax tree of the script source file
+		 *   'objFileWriter' is a serialized form of the CIL code that we generate
+		 * Note:  The scriptObjCode herein is only temporary and is discarded on return.
+		 *        Use PerformGeneration() to create the 'real' one.
+		 */
 		private void PerformCompilation ()
 		{
 
@@ -184,21 +187,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			scriptObjCode = new ScriptObjCode ();
 			scriptObjCode.stateNames = new string[nStates];
+			scriptObjCode.stateNames[0] = "default";
 			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclState> kvp in tokenScript.states) {
 				TokenDeclState declState = kvp.Value;
 				scriptObjCode.stateNames[declState.body.index] = declState.name.val;
 			}
-
-			/*
-			 * This table gets filled in with entrypoints of all the script event handler functions.
-			 */
-			scriptObjCode.scriptEventHandlerTable = new ScriptEventHandler[nStates,(int)ScriptEventCode.Size];
-
-			/*
-			 * This table gets filled in with entrypoints of all dynamic methods that can be encountered
-			 * on the stack by the MMRCont continuation routines.
-			 */
-			scriptObjCode.dynamicMethods = new Dictionary<string, MethodInfo> ();
 
 			/*
 			 * Set up stack of dictionaries to translate variable names to their declaration.
@@ -206,13 +199,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			scriptVariablesStack = new Stack<Dictionary<string, CompValu>> ();
 			scriptInstanceVariables = PushVarDefnBlock ();
-
-			/*
-			 * Write out COMPILED_VERSION.  This is used by ScriptWrapper to determine if the
-			 * compilation is suitable for it to use.  If it sees the wrong version, it will
-			 * recompile the script so it has the correct version.
-			 */
-			scriptObjCode.compiledVersion = ScriptWrapper.COMPILED_VERSION_VALUE;
 
 			/*
 			 * Put script defined functions in 'scriptFunctions' dictionary so any calls
@@ -263,6 +249,25 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
+			 * Write fixed portion of object file.
+			 */
+			objFileWriter.Write (OBJECT_CODE_MAGIC.ToCharArray ());
+			objFileWriter.Write (COMPILED_VERSION_VALUE);
+
+			objFileWriter.Write (scriptObjCode.numGblArrays);
+			objFileWriter.Write (scriptObjCode.numGblFloats);
+			objFileWriter.Write (scriptObjCode.numGblIntegers);
+			objFileWriter.Write (scriptObjCode.numGblLists);
+			objFileWriter.Write (scriptObjCode.numGblRotations);
+			objFileWriter.Write (scriptObjCode.numGblStrings);
+			objFileWriter.Write (scriptObjCode.numGblVectors);
+
+			objFileWriter.Write (nStates);
+			for (int i = 0; i < nStates; i ++) {
+				objFileWriter.Write (scriptObjCode.stateNames[i]);
+			}
+
+			/*
 			 * Output each global function as a private method.
 			 *
 			 * Prefix the names with __fun_ to keep them separate from any ScriptWrapper functions.
@@ -285,7 +290,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Output default state event handler methods.
 			 * Each event handler is a private static method named __seh_default_<eventname>
 			 */
-			GenerateStateHandler ("default", tokenScript.defaultState.body);
+			GenerateStateEventHandlers ("default", tokenScript.defaultState.body);
 
 			/*
 			 * Output script-defined state event handler methods.
@@ -293,18 +298,95 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclState> kvp in tokenScript.states) {
 				TokenDeclState declState = kvp.Value;
-				GenerateStateHandler (declState.name.val, declState.body);
+				GenerateStateEventHandlers (declState.name.val, declState.body);
+			}
+
+			ScriptMyILGen.TheEnd (objFileWriter);
+
+			scriptObjCode = null;
+		}
+
+		/**
+		 * @brief Convert 'objFileReader' format to 'scriptObjCode' format.
+		 *   'objFileReader' is a serialized form of the CIL code we generated
+		 *   'asmFileWriter' is where we write the disassembly to (or null if not wanted)
+		 *   'scriptObjCode' is an in-memory object with methods filled in from the CIL code
+		 * Throws an exception if there is any error (theoretically).
+		 */
+		public static ScriptObjCode PerformGeneration (BinaryReader objFileReader, 
+		                                               StreamWriter asmFileWriter)
+		{
+			/*
+			 * Check version number to make sure we know how to process file contents.
+			 */
+			char[] ocm = objFileReader.ReadChars (OBJECT_CODE_MAGIC.Length);
+			if (new String (ocm) != OBJECT_CODE_MAGIC) {
+				throw new Exception ("not an XMR object file (bad magic)");
+			}
+			int cvv = objFileReader.ReadInt32 ();
+			if (cvv != COMPILED_VERSION_VALUE) {
+				throw new Exception ("object version is " + cvv.ToString () + 
+				                     " but accept only " + COMPILED_VERSION_VALUE.ToString ());
 			}
 
 			/*
-			 * Check for error and abort if so.
+			 * Fill in simple parts of scriptObjCode object.
 			 */
-			if (youveAnError) {
-				exitCode = -1;
+			ScriptObjCode scriptObjCode = new ScriptObjCode ();
+			scriptObjCode.numGblArrays    = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblFloats    = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblIntegers  = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblLists     = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblRotations = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblStrings   = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblVectors   = objFileReader.ReadInt32 ();
+
+			int nStates = objFileReader.ReadInt32 ();
+
+			scriptObjCode.stateNames = new string[nStates];
+			for (int i = 0; i < nStates; i ++) {
+				scriptObjCode.stateNames[i] = objFileReader.ReadString ();
 			}
 
-			if (ilGenDebugWriter != null) {
-				ilGenDebugWriter.WriteLine ("\nThe End.");
+			/*
+			 * Now fill in the methods (the hard part).
+			 */
+			EndMethodWrapper endMethodWrapper = new EndMethodWrapper ();
+			endMethodWrapper.scriptObjCode = scriptObjCode;
+			scriptObjCode.scriptEventHandlerTable = new ScriptEventHandler[nStates,(int)ScriptEventCode.Size];
+			scriptObjCode.dynamicMethods = new Dictionary<string, DynamicMethod> ();
+			ScriptMyILGen.CreateObjCode (objFileReader, endMethodWrapper.EndMethod, asmFileWriter);
+
+			return scriptObjCode;
+		}
+
+		/**
+		 * @brief Called once for every method found in objFileReader file.
+		 *        It enters the method in the ScriptObjCode object so it can be called.
+		 */
+		private class EndMethodWrapper {
+			public ScriptObjCode scriptObjCode;
+			public void EndMethod (DynamicMethod method)
+			{
+				string methName = method.Name;
+
+				/*
+				 * We catalog all dynamic methods so MMRCont.Load() can find them.
+				 */
+				scriptObjCode.dynamicMethods.Add (methName, method);
+
+				/*
+				 * We enter all script event handler methods in the ScriptEventHandler table.
+				 * They are named:  __seh_<statenumber>_<eventnumber>_<bunchofstuffwedontcareabout>
+				 */
+				if (methName.Substring (0, 6) == "__seh_") {
+					int j = methName.IndexOf ('_', 6);      // terminates <statenumber>
+					int k = methName.IndexOf ('_', j + 1);  // terminates <eventnumber>
+					int stateCode = Int32.Parse (methName.Substring (6, j - 6));
+					int eventCode = Int32.Parse (methName.Substring (j + 1, k - j - 1));
+					scriptObjCode.scriptEventHandlerTable[stateCode,eventCode] = 
+							(ScriptEventHandler)method.CreateDelegate (typeof (ScriptEventHandler));
+				}
 			}
 		}
 
@@ -333,7 +415,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * from ehArgs[] that are being used will be in local stack variables and
 		 * thus preserved that way.
 		 */
-		private void GenerateStateHandler (string statename, TokenStateBody body)
+		private void GenerateStateEventHandlers (string statename, TokenStateBody body)
 		{
 			for (Token t = body.eventFuncs; t != null; t = t.nextToken) {
 				GenerateEventHandler (statename, (TokenDeclFunc)t);
@@ -383,21 +465,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Output function header.
 			 * They just have the ScriptWrapper pointer as the one argument.
 			 */
-			string functionName = "__seh_" + statename + "_" + eventname + "$MMRContableAttribute$" + descName;
-			DynamicMethod functionMethodInfo = new DynamicMethod (functionName,
-			                                                      typeof (void),
-			                                                      scriptWrapperTypeArg,
-			                                                      typeof (ScriptWrapper));
-			scriptObjCode.dynamicMethods.Add (functionName, functionMethodInfo);
-			ilGen = new ScriptMyILGen (functionMethodInfo, ilGenDebugWriter);
-
-			/*
-			 * Set up __be local variable for calling the backend API functions = scriptWrapper.beAPI
-			 */
-			beLoc = ilGen.DeclareLocal (typeof (ScriptBaseClass), "__be");
-			ilGen.Emit (OpCodes.Ldarg_0);                // scriptWrapper
-			ilGen.Emit (OpCodes.Ldfld, beAPIFieldInfo);  // scriptWrapper.beAPI
-			ilGen.Emit (OpCodes.Stloc, beLoc);
+			int statecode = stateIndices[statename];
+			int eventcode = (int)Enum.Parse (typeof (ScriptEventCode), eventname);
+			string functionName = "__seh_" + statecode.ToString() + "_" + eventcode.ToString () + "_" + 
+			                                 statename + "_" + eventname + "$MMRContableAttribute$" + descName;
+			ilGen = new ScriptMyILGen (functionName,
+			                           typeof (void),
+			                           scriptWrapperTypeArg,
+			                           objFileWriter);
+			ilGen.BegMethod ();
 
 			/*
 			 * If this is the default state_entry() handler, output code to set all global
@@ -461,19 +537,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			GenerateFuncBody (declFunc);
 			curDeclFunc = oldDeclFunc;
-
-			/*
-			 * Now that we have all the code generated, fill in table entry to point to the entrypoint.
-			 * Don't bother if there has been a compilation error because CreateDelegate() might throw
-			 * an exception if it sees faulty generated code (and the user won't see the compile error
-			 * messages).
-			 */
-			if (!youveAnError) {
-				scriptObjCode.scriptEventHandlerTable[stateIndices[statename],
-			                                      (int)Enum.Parse(typeof(ScriptEventCode),eventname)] = 
-						(ScriptEventHandler)functionMethodInfo.CreateDelegate 
-								(typeof (ScriptEventHandler));
-			}
 		}
 
 		/**
@@ -501,11 +564,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Set up entrypoint.
 			 */
 			string methodName = "__fun_" + name + "$MMRContableAttribute$" + descName;
-			declFunc.dynamicMethod = new DynamicMethod (methodName,
-			                                            declFunc.retType.typ,
-			                                            argTypes,
-			                                            typeof (ScriptWrapper));
-			scriptObjCode.dynamicMethods.Add (methodName, declFunc.dynamicMethod);
+			declFunc.ilGen = new ScriptMyILGen (methodName,
+			                                    declFunc.retType.typ,
+			                                    argTypes,
+			                                    objFileWriter);
 		}
 
 		/**
@@ -540,15 +602,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Set up code generator for the function's contents.
 			 */
-			ilGen = new ScriptMyILGen (declFunc.dynamicMethod, ilGenDebugWriter);
-
-			/*
-			 * Set up local var 'ScriptBaseClass __be = __sw.beAPI;'
-			 */
-			beLoc = ilGen.DeclareLocal (typeof (ScriptBaseClass), "__be");
-			ilGen.Emit (OpCodes.Ldarg_0);                // scriptWrapper
-			ilGen.Emit (OpCodes.Ldfld, beAPIFieldInfo);  // scriptWrapper.beAPI
-			ilGen.Emit (OpCodes.Stloc, beLoc);
+			ilGen = declFunc.ilGen;
+			ilGen.BegMethod ();
 
 			/*
 			 * See if time to suspend in case they are doing a loop with recursion.
@@ -580,8 +635,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Don't want to generate any more code for it by mistake.
 			 */
+			ilGen.EndMethod ();
 			ilGen = null;
-			beLoc = null;
 
 			/*
 			 * All done, clean up.
@@ -1520,17 +1575,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				}
 
 				/*
-				 * No hope, output error message.
+				 * No hope, output error message and return void value 
+				 * because we don't know what type the return value is.
 				 */
 			nohope:
 				ErrorMsg (call, "undefined function " + sig);
 				foreach (KeyValuePair<string, InlineFunction> kvp in inlineFunctions) {
 					if (kvp.Key.StartsWith (shortSig)) ErrorMsg (call, "  have " + kvp.Key);
 				}
-				declFunc = new TokenDeclFunc (call);
-				declFunc.retType  = new TokenTypeObject (call);
-				declFunc.funcName = new TokenName (call, name);
-				declFunc.argDecl  = new TokenArgDecl (call);
+				return new CompValuVoid (call);
 			}
 
 			/*
@@ -1561,7 +1614,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				}
 			}
 
-			ilGen.Emit (OpCodes.Call, declFunc.dynamicMethod);
+			ilGen.Emit (OpCodes.Call, declFunc.ilGen);
 
 			/*
 			 * Deal with the return value (if any), by putting it in 'result'.
@@ -2083,25 +2136,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			MethodInfo mi = owner.GetMethod (name, BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic, null, args, null);
 			if (mi == null) {
-				Console.Write ("GetStaticMethod*: " + owner.ToString () + "." + name + " (");
-				for (int i = 0; i < args.Length; i ++) {
-					if (i > 0) Console.Write (", ");
-					Console.Write (args[i].ToString ());
-				}
-				Console.WriteLine (")");
-
-				MethodInfo[] methods = owner.GetMethods (BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-				for (int j = 0; j < methods.Length; j ++) {
-					mi = methods[j];
-					ParameterInfo[] pis = mi.GetParameters ();
-					Console.Write ("GetStaticMethod*:   ." + mi.Name + " (");
-					for (int i = 0; i < args.Length; i ++) {
-						if (i > 0) Console.Write (", ");
-						Console.Write (pis[i].ParameterType.ToString ());
-					}
-					Console.WriteLine (")");
-				}
-
 				throw new Exception ("undefined method " + owner.ToString () + "." + name);
 			}
 			return mi;
