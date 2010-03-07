@@ -68,6 +68,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private int m_StartParam = 0;
         private StateSource m_StateSource;
         private string m_DescName;
+        private UIntPtr m_StackSize;
         private ArrayList m_CompilerErrors;
         private ScriptWrapper m_Wrapper = null;
 
@@ -112,7 +113,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public void Construct(uint localID, UUID itemID, string script,
                               int startParam, bool postOnRez, int stateSource,
                               XMREngine engine, SceneObjectPart part, 
-                              TaskInventoryItem item, string scriptBasePath)
+                              TaskInventoryItem item, string scriptBasePath,
+                              UIntPtr stackSize)
         {
 
             /*
@@ -129,6 +131,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_Item           = item;
             m_AssetID        = item.AssetID;
             m_ScriptBasePath = scriptBasePath;
+            m_StackSize      = stackSize;
 
             m_StateFileName  = Path.Combine(scriptBasePath,
                                             m_ItemID.ToString() + ".state");
@@ -442,7 +445,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             // The script is in a "never-ever-has-run-before" state.
             try
             {
-                m_Wrapper       = new ScriptWrapper(objCode, m_DescName);
+                m_Wrapper       = new ScriptWrapper(objCode, 
+                                                    m_StackSize, 
+                                                    m_DescName);
                 m_Wrapper.beAPI = new ScriptBaseClass();
             }
             catch (Exception e)

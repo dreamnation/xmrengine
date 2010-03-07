@@ -39,8 +39,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	 * All scripts must inherit from this class.
 	 */
 	public class ScriptWrapper : IDisposable {
-		public static UIntPtr stackSize = (UIntPtr)(2*1024*1024);  // microthreads get this stack size
-
 		public string instanceNo;                 // debugging use only
 
 		public int stateCode = 0;                 // state the script is in (0 = 'default')
@@ -169,9 +167,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 * Caller should call StartEventHandler() or MigrateInEventHandler() next.
 		 * If calling StartEventHandler(), use ScriptEventCode.state_entry with no args.
 		 */
-		public ScriptWrapper (ScriptObjCode objCode, string descName)
+		public ScriptWrapper (ScriptObjCode objCode, UIntPtr stackSize, string descName)
 		{
 			if (objCode  == null) throw new ArgumentNullException ("objCode");
+			if (stackSize.ToUInt64() < 16384) stackSize = (UIntPtr)16384;
 			if (descName == null) throw new ArgumentNullException ("descName");
 
 			string envar = Environment.GetEnvironmentVariable ("MMRScriptWrapperDebPrint");
@@ -210,7 +209,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			/*
 			 * Set up sub-objects and cross-polinate so everything can access everything.
 			 */
-			this.microthread  = new ScriptUThread (descName);
+			this.microthread  = new ScriptUThread (stackSize, descName);
 			this.continuation = new ScriptContinuation ();
 			this.microthread.scriptWrapper  = this;
 			this.continuation.scriptWrapper = this;
@@ -831,7 +830,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 			public ScriptWrapper scriptWrapper;  // script wrapper we belong to
 
-			public ScriptUThread (string descName) : base (ScriptWrapper.stackSize, descName) { }
+			public ScriptUThread (UIntPtr stackSize, string descName) : base (stackSize, descName) { }
 
 			/*
 			 * Called on the microthread stack as part of Start().

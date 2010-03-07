@@ -69,6 +69,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 new Dictionary<UUID, List<UUID>>();
         private Dictionary<UUID, UUID> m_Partmap =
                 new Dictionary<UUID, UUID>();
+        private UIntPtr m_StackSize;
 
         private int m_MaintenanceInterval = 10;
         
@@ -104,7 +105,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (!m_Enabled)
                 return;
 
-            m_log.Info("[XMREngine]: Enabled");
+            m_StackSize = (UIntPtr)m_Config.GetInt("ScriptStackSize", 
+                                                   2*1024*1024);
+
+            m_log.InfoFormat("[XMREngine]: Enabled, {0}.{1} Meg (0x{2}) stacks",
+                    (m_StackSize.ToUInt64() >> 20).ToString (),
+                    (((m_StackSize.ToUInt64() % 0x100000) * 1000) 
+                            >> 20).ToString ("D3"),
+                    m_StackSize.ToUInt64().ToString ("X"));
 
             m_MaintenanceInterval = m_Config.GetInt("MaintenanceInterval", 10);
 
@@ -707,7 +715,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             try {
                 instance.Construct(localID, itemID, script, 
                                    startParam, postOnRez, stateSource, 
-                                   this, part, item, m_ScriptBasePath);
+                                   this, part, item, m_ScriptBasePath,
+                                   m_StackSize);
             } catch (Exception e) {
                 m_log.DebugFormat("[XMREngine]: Error starting script {0}: {1}",
                                   itemID.ToString(), e.Message);
