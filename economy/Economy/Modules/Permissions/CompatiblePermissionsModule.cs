@@ -181,17 +181,26 @@ namespace Careminster.Modules.Permissions
             if (user == UUID.Zero)
                 return false;
 
+            if (m_EstateOwnerIsGod && IsEstateOwner(user))
+                return true;
+            if (m_EstateManagerIsGod && IsEstateManager(user))
+                return true;
+
+            ScenePresence sp = m_scene.GetScenePresence(user);
+            if (sp != null)
+            {
+                if (sp.UserLevel >= 200)
+                    return true;
+
+                return false;
+            }
+
             UserAccount account = m_Scene.UserAccountService.GetUserAccount(m_Scene.RegionInfo.ScopeID, user);
             if (account != null)
             {
                 if (account.UserLevel >= 200 && m_AllowGridGods)
                     return true;
             }
-
-            if (m_EstateOwnerIsGod && IsEstateOwner(user))
-                return true;
-            if (m_EstateManagerIsGod && IsEstateManager(user))
-                return true;
 
             return false;
         }
