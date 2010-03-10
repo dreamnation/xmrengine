@@ -10,7 +10,8 @@ using LSL_List = OpenSim.Region.ScriptEngine.Shared.LSL_Types.list;
 using LSL_Rotation = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Quaternion;
 using LSL_String = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
 using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
-using OpenSim.Region.ScriptEngine.XMREngine.Loader;  // XMR_Array
+
+using System.Text;
 
 /**
  * @brief Parse raw source file string into token list.
@@ -213,6 +214,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				 * Check for quoted strings.
 				 */
 				if (c == '"') {
+					StringBuilder sb = new StringBuilder ();
 					bool backslash;
 					int j;
 
@@ -221,20 +223,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						c = source[j];
 						if (c == '\\') {
 							backslash = true;
-						} else if (c == '\n') {
-							TokenError (i, "string runs off end of line");
+							continue;
+						}
+						if (c == '\n') {
 							lineNo ++;
 							bolIdx = j + 1;
-							break;
 						} else {
 							if (!backslash && (c == '"')) break;
-							backslash = false;
+							if (backslash && (c == 'n')) c = '\n';
 						}
+						backslash = false;
+						sb.Append (c);
 					}
 					if (j - i > MAX_STRING_LEN) {
 						TokenError (i, "string too long, max " + MAX_STRING_LEN);
 					} else {
-						AppendToken (new TokenStr (emsg, lineNo, i - bolIdx, source.Substring (i + 1, j - i - 1)));
+						AppendToken (new TokenStr (emsg, lineNo, i - bolIdx, sb.ToString ()));
 					}
 					i = j;
 					continue;

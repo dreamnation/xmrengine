@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Reflection.Emit;
 using System.Runtime.Remoting;
 using System.Text;
 using System.Threading;
@@ -21,12 +22,13 @@ using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 
 
-namespace OpenSim.Region.ScriptEngine.XMREngine.Loader {
+namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 	/*
 	 * Whenever a script changes state, it calls this method.
+	 * scriptWrapper.stateCode is already set to the new state.
 	 */
-	public delegate void StateChangeDelegate (string newState);
+	public delegate void StateChangeDelegate ();
 
 	/*
 	 * Entrypoint to script event handlers.
@@ -37,9 +39,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader {
 	 * All scripts must inherit from this class.
 	 */
 	public class ScriptWrapper : IDisposable {
-		public static UIntPtr stackSize = (UIntPtr)(2*1024*1024);  // microthreads get this stack size
-		public static readonly int COMPILED_VERSION_VALUE = 4;     // incrmented when compiler changes for compatibility testing
-
 		public string instanceNo;                 // debugging use only
 
 		public int stateCode = 0;                 // state the script is in (0 = 'default')
@@ -168,8 +167,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader {
 		 * Caller should call StartEventHandler() or MigrateInEventHandler() next.
 		 * If calling StartEventHandler(), use ScriptEventCode.state_entry with no args.
 		 */
-		public ScriptWrapper (ScriptObjCode objCode, string descName)
+		public ScriptWrapper (ScriptObjCode objCode, UIntPtr stackSize, string descName)
 		{
+			if (objCode  == null) throw new ArgumentNullException ("objCode");
+			if (stackSize.ToUInt64() < 16384) stackSize = (UIntPtr)16384;
+			if (descName == null) throw new ArgumentNullException ("descName");
+
 			string envar = Environment.GetEnvironmentVariable ("MMRScriptWrapperDebPrint");
 			this.debPrint = ((envar != null) && ((envar[0] & 1) != 0));
 			instanceNo = MMRCont.HexString (MMRCont.ObjAddr (this));
@@ -206,7 +209,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader {
 			/*
 			 * Set up sub-objects and cross-polinate so everything can access everything.
 			 */
-			this.microthread  = new ScriptUThread (descName);
+			this.microthread  = new ScriptUThread (stackSize, descName);
 			this.continuation = new ScriptContinuation ();
 			this.microthread.scriptWrapper  = this;
 			this.continuation.scriptWrapper = this;
@@ -827,7 +830,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader {
 
 			public ScriptWrapper scriptWrapper;  // script wrapper we belong to
 
-			public ScriptUThread (string descName) : base (ScriptWrapper.stackSize, descName) { }
+			public ScriptUThread (UIntPtr stackSize, string descName) : base (stackSize, descName) { }
 
 			/*
 			 * Called on the microthread stack as part of Start().
@@ -1012,20 +1015,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader {
 					 * Now that the old state can't possibly start any more activity,
 					 * cancel any listening handlers, etc, of the old state.
 					 */
-					sw.stateChange (sw.GetStateName (newStateCode));
+					sw.stateCode = newStateCode;
+					sw.stateChange ();
 
 					/*
-					 * Now the new state becomes the old state in case the new state_entry() changes state again.
+					 * Now the new state becomes the old state in case the new state_entry() 
+					 * changes state again.
 					 */
 					oldStateCode = newStateCode;
 
 					/*
 					 * Call the new state's state_entry() handler.
-					 * I've seen scripts that change state in the state_entry() handler, so allow for that.
+					 * I've seen scripts that change state in the state_entry() handler, 
+					 * so allow for that by looping back to check sw.stateChanged again.
 					 */
 					sw.stateChanged = false;
 					sw.eventCode = ScriptEventCode.state_entry;
-					sw.stateCode = newStateCode;
 					seh = sw.objCode.scriptEventHandlerTable[newStateCode,(int)ScriptEventCode.state_entry];
 					if (seh != null) seh (sw);
 				}
@@ -1132,7 +1137,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine.Loader {
 		 */
 		public IntPtr LoadFindMethod (string methName, string sigDesc, string className, string classNameSpace, string imageName)
 		{
-			MethodInfo methodInfo;
+			DynamicMethod methodInfo;
 
 			/*
 			 * All our names are superfunky with $MMRContableAttribute$ and the asset ID, so

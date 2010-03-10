@@ -11,7 +11,7 @@ using LSL_Rotation = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Quaternion;
 using LSL_String = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
 using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
-using OpenSim.Region.ScriptEngine.XMREngine.Loader;
+using OpenSim.Region.ScriptEngine.XMREngine;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -139,7 +139,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		public override void PopPost (ScriptCodeGen scg)
 		{
-			scg.ilGen.Emit (OpCodes.Stloc, index);
+			scg.ilGen.Emit (OpCodes.Starg, index);
 		}
 	}
 

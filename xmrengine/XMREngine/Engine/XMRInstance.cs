@@ -21,7 +21,7 @@ using OpenSim.Region.ScriptEngine.Interfaces;
 using OpenSim.Region.ScriptEngine.Shared;
 using OpenSim.Region.ScriptEngine.Shared.Api;
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
-using OpenSim.Region.ScriptEngine.XMREngine.Loader;
+using OpenSim.Region.ScriptEngine.XMREngine;
 using OpenSim.Region.Framework.Scenes;
 using LSL_Float = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLFloat;
 using LSL_Integer = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLInteger;
@@ -44,19 +44,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private static readonly ILog m_log =
             LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
-        // for a given m_AssetID, do we have the compiled object code and where is it?
-        // m_CompiledScriptRefCount keeps track of how many m_ObjCode pointers are valid.
+        // For a given m_AssetID, do we have the compiled object code and where
+        // is it?  m_CompiledScriptRefCount keeps track of how many m_ObjCode
+        // pointers are valid.
         public static object m_CompileLock = new object();
         private static Dictionary<UUID, ScriptObjCode> m_CompiledScriptObjCode = new Dictionary<UUID, ScriptObjCode>();
         private static Dictionary<UUID, int> m_CompiledScriptRefCount = new Dictionary<UUID, int>();
 
-        private XMRLoader m_Loader = null;
         private XMREngine m_Engine = null;
         private SceneObjectPart m_Part = null;
         private uint m_LocalID = 0;
         private TaskInventoryItem m_Item = null;
         private UUID m_ItemID;
         private UUID m_AssetID;
+        private string m_ScriptBasePath;
         private string m_StateFileName;
         private string m_SourceCode;
         private ScriptObjCode m_ObjCode;
@@ -64,11 +65,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private DetectParams[] m_DetectParams = null;
         private bool m_Reset = false;
         private bool m_Die = false;
-        private int m_StateCode = 0;
         private int m_StartParam = 0;
         private StateSource m_StateSource;
         private string m_DescName;
+        private UIntPtr m_StackSize;
         private ArrayList m_CompilerErrors;
+        private ScriptWrapper m_Wrapper = null;
 
         // If code needs to have both m_QueueLock and m_RunLock,
         // be sure to lock m_RunLock first then m_QueueLock, as
@@ -111,25 +113,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public void Construct(uint localID, UUID itemID, string script,
                               int startParam, bool postOnRez, int stateSource,
                               XMREngine engine, SceneObjectPart part, 
-                              TaskInventoryItem item, string scriptBasePath)
+                              TaskInventoryItem item, string scriptBasePath,
+                              UIntPtr stackSize)
         {
 
             /*
              * Save all call parameters in instance vars for easy access.
              */
-            m_LocalID     = localID;
-            m_ItemID      = itemID;
-            m_SourceCode  = script;
-            m_StartParam  = startParam;
-            m_PostOnRez   = postOnRez;
-            m_StateSource = (StateSource)stateSource;
-            m_Engine      = engine;
-            m_Part        = part;
-            m_Item        = item;
-            m_AssetID     = item.AssetID;
+            m_LocalID        = localID;
+            m_ItemID         = itemID;
+            m_SourceCode     = script;
+            m_StartParam     = startParam;
+            m_PostOnRez      = postOnRez;
+            m_StateSource    = (StateSource)stateSource;
+            m_Engine         = engine;
+            m_Part           = part;
+            m_Item           = item;
+            m_AssetID        = item.AssetID;
+            m_ScriptBasePath = scriptBasePath;
+            m_StackSize      = stackSize;
 
-            m_StateFileName = Path.Combine(scriptBasePath,
-                                           m_ItemID.ToString() + ".state");
+            m_StateFileName  = Path.Combine(scriptBasePath,
+                                            m_ItemID.ToString() + ".state");
 
             /*
              * Set up a descriptive name string for debug messages.
@@ -142,10 +147,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_DescName += " " + part.Name + ":" + item.Name + ":";
 
             /*
-             * Get DLL loaded, compiling script and reading .state file as necessary.
+             * Get DLL loaded, compiling script and reading .state file as
+             * necessary.
              */
             InstantiateScript();
             m_SourceCode = null;
+            if (m_Wrapper == null) throw new ArgumentNullException ("m_Wrapper");
+            if (m_Wrapper.objCode == null) throw new ArgumentNullException ("m_Wrapper.objCode");
+            if (m_Wrapper.objCode.scriptEventHandlerTable == null) throw new ArgumentNullException ("m_Wrapper.objCode.scriptEventHandlerTable");
 
             /*
              * Set up list of API calls it has available.
@@ -162,16 +171,41 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                 m_Apis[api] = scriptApi;
                 scriptApi.Initialize(m_Engine, m_Part, m_LocalID, m_ItemID);
-                m_Loader.InitApi(api, scriptApi);
+                m_Wrapper.beAPI.InitApi(api, scriptApi);
             }
 
             /*
              * Declare which events the script can handle.
              */
-            m_Part.SetScriptEvents(m_ItemID, m_Loader.GetStateEventFlags(0));
+            m_Part.SetScriptEvents(m_ItemID, GetStateEventFlags(0));
         }
 
-        // In case Dispose() doesn't get called, we want to be sure to clean up.
+        /**
+         * @brief For a given stateCode, get a mask of the low 32 event codes
+         *        that the state has handlers defined for.
+         */
+        public int GetStateEventFlags(int stateCode)
+        {
+            if ((stateCode < 0) ||
+                (stateCode >= m_Wrapper.objCode.scriptEventHandlerTable.GetLength(0)))
+            {
+                return 0;
+            }
+
+            int code = 0;
+            for (int i = 0 ; i < 32; i ++)
+            {
+                if (m_Wrapper.objCode.scriptEventHandlerTable[stateCode, i] != null)
+                {
+                    code |= 1 << i;
+                }
+            }
+
+            return code;
+        }
+
+        // In case Dispose() doesn't get called, we want to be sure to clean
+        // up.  This makes sure we decrement m_CompiledScriptRefCount.
         ~XMRInstance()
         {
             Dispose();
@@ -188,14 +222,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 m_Part = null;
             }
 
-            // Let script methods get garbage collected if no one else is using them.
+            // Let script methods get garbage collected if no one else is using
+            // them.
             if (m_ObjCode != null)
             {
                 lock (m_CompileLock)
                 {
                     ScriptObjCode objCode;
 
-                    if (m_CompiledScriptObjCode.TryGetValue(m_AssetID, out objCode) &&
+                    if (m_CompiledScriptObjCode.TryGetValue(m_AssetID, 
+                                                            out objCode) &&
                         (objCode == m_ObjCode) && 
                         (-- m_CompiledScriptRefCount[m_AssetID] == 0))
                     {
@@ -207,10 +243,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             // Unload the script instance struct (ScriptWrapper)
-            if (m_Loader != null)
+            if (m_Wrapper != null)
             {
-                m_Loader.Dispose();
-                m_Loader = null;
+                m_Wrapper.Dispose();
+                m_Wrapper = null;
             }
         }
 
@@ -229,8 +265,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Console.WriteLine("    m_IsIdle       = " + m_IsIdle);
             Console.WriteLine("    m_Reset        = " + m_Reset);
             Console.WriteLine("    m_Die          = " + m_Die);
-            string sc = m_Loader.GetStateName(m_StateCode);
-            if (sc == null) sc = m_StateCode.ToString();
+            string sc = m_Wrapper.GetStateName(m_Wrapper.stateCode);
             Console.WriteLine("    m_StateCode    = " + sc);
             lock (m_QueueLock)
             {
@@ -253,18 +288,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 ScriptObjCode objCode;
 
                 /*
-                 * There may already be an ScriptObjCode struct in memory that we can use.
-                 * So try to get an existing one.  If not, try to compile it.
+                 * There may already be an ScriptObjCode struct in memory that
+                 * we can use.  If not, try to compile it.
                  */
-                if (!m_CompiledScriptObjCode.TryGetValue (m_AssetID, out objCode))
+                if (!m_CompiledScriptObjCode.TryGetValue (m_AssetID, 
+                                                          out objCode))
                 {
-                    objCode = TryToCompile();
+                    objCode = TryToCompile(false);
                     compiledIt = true;
                 }
 
                 /*
-                 * Get a new instance of that script object code loaded in memory and
-                 * try to fill in its initial state from the saved state file.
+                 * Get a new instance of that script object code loaded in
+                 * memory and try to fill in its initial state from the saved
+                 * state file.
                  */
                 if (TryToLoad(objCode))
                 {
@@ -275,12 +312,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 } else {
 
                     /*
-                     * If it didn't load, maybe it's because of a version mismatch somewhere.
-                     * So try recompiling and reload.
+                     * If it didn't load, maybe it's because of a version
+                     * mismatch somewhere.  So try recompiling and reload.
                      */
                     m_log.DebugFormat("[XMREngine]: attempting recompile {0}",
                             m_DescName);
-                    objCode = TryToCompile();
+                    objCode = TryToCompile(true);
                     compiledIt = true;
                     m_log.DebugFormat("[XMREngine]: attempting reload {0}",
                             m_DescName);
@@ -311,33 +348,48 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         // Try to create object code from source code
         // If error, just throw exception
-        private ScriptObjCode TryToCompile()
+        private ScriptObjCode TryToCompile(bool forceCompile)
         {
-            ScriptObjCode objCode;
+            string objName = ScriptCompile.GetObjFileName(m_AssetID.ToString(),
+                                                          m_ScriptBasePath);
 
-            if (m_SourceCode == String.Empty)
-            {
-                throw new Exception("Compile of asset " + m_AssetID.ToString() + " was requested but source text is not present and no assembly was found");
+            m_CompilerErrors = null;
+
+            /*
+             * If told to force compilation (presumably because object file 
+             * is old version or corrupt), delete the object file which will 
+             * make ScriptCompile.Compile() create a new one from the source.
+             */
+            if (forceCompile) {
+                File.Delete(objName);
             }
 
-            try
+            /*
+             * If we have neither the source nor the object file, not much we
+             * can do to create the ScriptObjCode object.
+             */
+            if ((m_SourceCode == String.Empty) && !File.Exists(objName))
             {
-                objCode = ScriptCompile.Compile(m_SourceCode, 
-                                                m_DescName,
-                                                m_AssetID.ToString(), 
-                                                null, 
-                                                ErrorHandler);
-            }
-            catch (Exception e)
-            {
-                throw e;
+                throw new Exception("Compile of asset " +
+                                    m_AssetID.ToString() +
+                                    " was requested but source text is not " +
+                                    "present and no assembly was found");
             }
 
+            /*
+             * If object file exists, create ScriptObjCode directly from that.
+             * Otherwise, compile the source to create object file then create
+             * ScriptObjCode from that.
+             */
+            ScriptObjCode objCode = ScriptCompile.Compile(m_SourceCode, 
+                                                          m_DescName,
+                                                          m_AssetID.ToString(), 
+                                                          m_ScriptBasePath, 
+                                                          ErrorHandler);
             if (m_CompilerErrors != null)
             {
                 throw new Exception ("compilation errors");
             }
-
             if (objCode == null)
             {
                 throw new Exception ("compilation failed");
@@ -380,7 +432,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         //  TryToLoad()
-        //      create loader instance
         //      create script instance
         //      if no state XML file exists for the asset,
         //          post initial default state events
@@ -390,26 +441,31 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         //
         private bool TryToLoad(ScriptObjCode objCode)
         {
-            // Instantiate the script to its initial state.
+            // Create a ScriptWrapper with script loaded.
+            // The script is in a "never-ever-has-run-before" state.
             try
             {
-                m_Loader = new XMRLoader ();
-                m_Loader.m_StateChange = StateChange;
-                Exception e = m_Loader.Load(objCode, m_DescName, m_AssetID.ToString());
-                if (e != null)
-                {
-                    throw e;
-                }
+                m_Wrapper       = new ScriptWrapper(objCode, 
+                                                    m_StackSize, 
+                                                    m_DescName);
+                m_Wrapper.beAPI = new ScriptBaseClass();
             }
             catch (Exception e)
             {
                 m_log.Error("[XMREngine]: error loading script " + 
                         m_DescName + ": " + e.Message);
                 m_log.Error("[XMREngine]*: " + e.ToString());
-                m_Loader.Dispose();
-                m_Loader = null;
+                if (m_Wrapper != null) {
+                    m_Wrapper.Dispose();
+                    m_Wrapper = null;
+                }
                 return false;
             }
+            // have CheckRun() always return out to scheduler
+            m_Wrapper.alwaysSuspend = true;
+
+            // tell script what to call when it does a 'state <newstate>;' stmt
+            m_Wrapper.stateChange   = StateChange;
 
             // If no .state file exists, start from default state
             string envar = Environment.GetEnvironmentVariable("XMREngineIgnoreState");
@@ -421,8 +477,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 m_Running = true;           // event processing is enabled
                 m_IsIdle  = true;           // not processing any event handler
 
+<<<<<<< HEAD
                 m_Loader.DoGblInit = true;  // default state_entry() must initialize global variables
                 PostEvent(new EventParams("state_entry", new Object[0], new DetectParams[0]));
+=======
+                // default state_entry() must initialize global variables
+                m_Wrapper.doGblInit = true;
+                m_Wrapper.stateCode = 0;
+                PostEvent(new EventParams("state_entry", 
+                                          new Object[0], 
+                                          new DetectParams[0]));
+>>>>>>> legacy
 
                 if (m_PostOnRez)
                 {
@@ -477,8 +542,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 // Failed to load state, delete bad .state file and reload
                 // instance so we get a script at default state.
                 File.Delete(m_StateFileName);
-                m_Loader.Dispose();
-                m_Loader = null;
+                m_Wrapper.Dispose();
+                m_Wrapper = null;
                 return TryToLoad(objCode);
             }
         }
@@ -508,7 +573,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_Running = bool.Parse(runningN.InnerText);
 
             XmlElement doGblInitN = (XmlElement)scriptStateN.SelectSingleNode("DoGblInit");
+<<<<<<< HEAD
             m_Loader.DoGblInit = bool.Parse(doGblInitN.InnerText);
+=======
+            m_Wrapper.doGblInit = bool.Parse(doGblInitN.InnerText);
+>>>>>>> legacy
 
             XmlElement permissionsN = (XmlElement)scriptStateN.SelectSingleNode("Permissions");
             m_Item.PermsGranter = new UUID(permissionsN.GetAttribute("granter"));
@@ -540,8 +609,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             // Script's global variables and stack contents
             XmlElement snapshotN = 
                     (XmlElement)scriptStateN.SelectSingleNode("Snapshot");
+
             Byte[] data = Convert.FromBase64String(snapshotN.InnerText);
-            m_IsIdle = !m_Loader.RestoreSnapshot(data);
+            MemoryStream ms = new MemoryStream();
+            ms.Write(data, 0, data.Length);
+            ms.Seek(0, SeekOrigin.Begin);
+            m_Wrapper.MigrateInEventHandler(ms);
+            m_IsIdle = ms.ReadByte() == 0;
+            ms.Close();
 
             // Now that we can't throw an exception, do final updates
             AsyncCommandManager.CreateFromData(m_Engine,
@@ -726,7 +801,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                 try
                 {
-                    FileStream fs = File.Open(m_DescName, FileMode.Open, FileAccess.Read);
+                    FileStream fs = File.Open(m_DescName, FileMode.Open,
+                                              FileAccess.Read);
                     fs.Read(assemblyData, 0, assemblyData.Length);
                     fs.Close();
                 }
@@ -774,7 +850,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             scriptStateN.AppendChild(runningN);
 
             XmlElement doGblInitN = doc.CreateElement("", "DoGblInit", "");
+<<<<<<< HEAD
             doGblInitN.AppendChild(doc.CreateTextNode(m_Loader.DoGblInit.ToString()));
+=======
+            doGblInitN.AppendChild(doc.CreateTextNode(m_Wrapper.doGblInit.ToString()));
+>>>>>>> legacy
             scriptStateN.AppendChild(doGblInitN);
 
             DetectParams[] detect = m_DetectParams;
@@ -1031,12 +1111,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         /*
-         * This is called in the script thread to step script until it calls CheckRun().
+         * This is called in the script thread to step script until it calls
+         * CheckRun().
          */
         public DateTime RunOne()
         {
             /*
-             * If script has called llSleep(), don't do any more until time is up.
+             * If script has called llSleep(), don't do any more until time is
+             * up.
              */
             if (m_SuspendUntil > DateTime.UtcNow)
             {
@@ -1083,18 +1165,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_IsIdle = false;
                     m_DetectParams = evt.DetectParams;
 
-                    Exception ex = null;
                     try
                     {
-                        ex = m_Loader.PostEvent(evt.EventName, evt.Params);
+                        m_Wrapper.StartEventHandler(evt.EventName, evt.Params);
                     }
                     catch (Exception e)
                     {
-                        ex = e;
-                    }
-                    if (ex != null)
-                    {
-                        m_log.Error("[XMREngine]: Exception while starting script event. Disabling script.\n" + ex.ToString());
+                        m_log.Error("[XMREngine]: Exception while starting script event. Disabling script.\n" + e.ToString());
                         Interlocked.Increment(ref m_SuspendCount);
                         return DateTime.MaxValue;
                     }
@@ -1105,35 +1182,40 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  */
                 try
                 {
-                    m_IsIdle = m_Loader.RunOne();
+                    m_IsIdle = m_Wrapper.ResumeEventHandler();
                 }
                 catch (Exception e)
                 {
                     m_log.Error("[XMREngine]: Exception while running script event. Disabling script.\n" + e.ToString());
                     Interlocked.Increment(ref m_SuspendCount);
                 }
-                if (m_IsIdle)
-                    m_DetectParams = null;
 
+                /*
+                 * If event handler completed, get rid of detect params.
+                 */
+                if (m_IsIdle)
+                {
+                    m_DetectParams = null;
+                }
+
+                /*
+                 * Maybe script called llResetScript().
+                 * If so, reset script to initial state.
+                 */
                 if (m_Reset)
                 {
                     m_Reset = false;
                     Reset();
                 }
 
+                /*
+                 * Maybe script called llDie().
+                 * If so, perform deletion and get out.
+                 */
                 if (m_Die)
                 {
                     m_Engine.World.DeleteSceneObject(m_Part.ParentGroup, false);
                     return DateTime.MinValue;
-                }
-
-                ///??? can this be done via StateChange() ???///
-                ///??? and simply pass the new mask to StateChange() ???///
-                if (m_Loader.StateCode != m_StateCode)
-                {
-                    m_StateCode = m_Loader.StateCode;
-                    m_Part.SetScriptEvents(m_ItemID,
-                            m_Loader.GetStateEventFlags(m_StateCode));
                 }
             }
 
@@ -1160,11 +1242,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             ((XMREngine)m_Engine).WakeUp();
         }
 
+        /**
+         * @brief The script is calling llResetReset().
+         *        We want to set a flag and exit out of the script immediately.
+         *        The script will exit immediately as we compile in a call to
+         *        CheckRun() immediately following the llResetScript() api call.
+         */
         public void ApiReset()
         {
+            // tell RunOne() that script called llResetScript()
             m_Reset = true;
+
+            // tell CheckRun() to suspend microthread so RunOne() will check
+            // m_Reset
+            m_Wrapper.suspendOnCheckRun = true;
         }
 
+        /**
+         * @brief The script called llResetScript() while it was running and
+         *        has suspended.  We want to reset the script to a never-has-
+         *        ever-run-before state.
+         */
         public void Reset()
         {
             ReleaseControls();
@@ -1180,9 +1278,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
             m_DetectParams = null;
 
-            m_Loader.Reset();
+            /*
+             * Tell next call do 'default state_entry()' to reset all global
+             * vars to their initial values.
+             */
+            m_Wrapper.doGblInit = true;
 
-            PostEvent(new EventParams("state_entry", new Object[0], new DetectParams[0]));
+            /*
+             * Set script to 'default' state and queue call to its 
+             * 'state_entry()' event handler.
+             */
+            m_Wrapper.stateCode = 0;
+            m_Part.SetScriptEvents(m_ItemID, GetStateEventFlags(0));
+            PostEvent(new EventParams("state_entry", 
+                                      new Object[0], 
+                                      new DetectParams[0]));
         }
 
         public void Die()
@@ -1225,7 +1335,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
             lock (m_RunLock)
             {
-                snapshot = m_Loader.GetSnapshot();
+                MemoryStream ms = new MemoryStream();
+                bool suspended = m_Wrapper.MigrateOutEventHandler(ms);
+                ms.WriteByte((byte)(suspended ? 1 : 0));
+                snapshot = ms.ToArray();
+                ms.Close();
             }
             return snapshot;
         }
@@ -1234,9 +1348,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * The script is executing a 'state <newState>;' command.
          * Tell outer layers to cancel any event triggers, like llListen().
          */
-        public void StateChange(string newState)
+        public void StateChange()
         {
             AsyncCommandManager.RemoveScript(m_Engine, m_LocalID, m_ItemID);
+            m_Part.SetScriptEvents(m_ItemID, 
+                                   GetStateEventFlags(m_Wrapper.stateCode));
         }
     }
 

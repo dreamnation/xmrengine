@@ -29,7 +29,7 @@ using Nini.Config;
 using Mono.Addins;
 using OpenMetaverse;
 using log4net;
-using OpenSim.Region.ScriptEngine.XMREngine.Loader;
+using OpenSim.Region.ScriptEngine.XMREngine;
 using LSL_Float = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLFloat;
 using LSL_Integer = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLInteger;
 using LSL_Key = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
@@ -69,6 +69,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 new Dictionary<UUID, List<UUID>>();
         private Dictionary<UUID, UUID> m_Partmap =
                 new Dictionary<UUID, UUID>();
+        private UIntPtr m_StackSize;
 
         private int m_MaintenanceInterval = 10;
         
@@ -104,7 +105,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (!m_Enabled)
                 return;
 
-            m_log.Info("[XMREngine]: Enabled");
+            m_StackSize = (UIntPtr)m_Config.GetInt("ScriptStackSize", 
+                                                   2*1024*1024);
+
+            m_log.InfoFormat("[XMREngine]: Enabled, {0}.{1} Meg (0x{2}) stacks",
+                    (m_StackSize.ToUInt64() >> 20).ToString (),
+                    (((m_StackSize.ToUInt64() % 0x100000) * 1000) 
+                            >> 20).ToString ("D3"),
+                    m_StackSize.ToUInt64().ToString ("X"));
 
             m_MaintenanceInterval = m_Config.GetInt("MaintenanceInterval", 10);
 
@@ -700,14 +708,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_log.DebugFormat("[XMREngine]: Running script {0}, asset {1}, param {2}",
                     item.Name, item.AssetID, startParam.ToString());
 
+            lock (m_ScriptErrors) {
+                m_ScriptErrors.Remove(itemID);
+            }
             XMRInstance instance = new XMRInstance();
             try {
                 instance.Construct(localID, itemID, script, 
                                    startParam, postOnRez, stateSource, 
-                                   this, part, item, m_ScriptBasePath);
+                                   this, part, item, m_ScriptBasePath,
+                                   m_StackSize);
             } catch (Exception e) {
-                m_log.DebugFormat("[XMREngine]: Error starting script: {0}",
-                                  e.Message);
+                m_log.DebugFormat("[XMREngine]: Error starting script {0}: {1}",
+                                  itemID.ToString(), e.Message);
                 if (e.Message != "compilation errors") {
                     m_log.DebugFormat("[XMREngine]*:  {0}", e.ToString());
                 }
@@ -990,7 +1002,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
             }
             if (errors == null) {
+                m_log.DebugFormat("XMREngine:GetScriptErrors*: {0} successful", itemID.ToString());
                 errors = new ArrayList();
+            } else {
+                m_log.DebugFormat("XMREngine:GetScriptErrors*: {0} has {1} error(s)", itemID.ToString(), errors.Count.ToString());
             }
             return errors;
         }

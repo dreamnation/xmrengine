@@ -12,7 +12,7 @@ using LSL_String = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
 using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
 using Mono.Tasklets;
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
-using OpenSim.Region.ScriptEngine.XMREngine.Loader;
+using OpenSim.Region.ScriptEngine.XMREngine;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -64,12 +64,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		private static MethodInfo infoMethListAddRot   = GetBinOpsMethod ("MethListAddRot",   new Type[] { typeof (LSL_List),     typeof (LSL_Rotation) });
 		private static MethodInfo infoMethListAddStr   = GetBinOpsMethod ("MethListAddStr",   new Type[] { typeof (LSL_List),     typeof (string)       });
 		private static MethodInfo infoMethListAddVec   = GetBinOpsMethod ("MethListAddVec",   new Type[] { typeof (LSL_List),     typeof (LSL_Vector)   });
-		private static MethodInfo infoMethFloatAddList = GetBinOpsMethod ("MethFloatAddList", new Type[] { typeof (LSL_List),     typeof (float)        });
-		private static MethodInfo infoMethIntAddList   = GetBinOpsMethod ("MethIntAddList",   new Type[] { typeof (LSL_List),     typeof (int)          });
-		private static MethodInfo infoMethKeyAddList   = GetBinOpsMethod ("MethKeyAddList",   new Type[] { typeof (LSL_List),     typeof (LSL_Key)      });
-		private static MethodInfo infoMethRotAddList   = GetBinOpsMethod ("MethRotAddList",   new Type[] { typeof (LSL_List),     typeof (LSL_Rotation) });
-		private static MethodInfo infoMethStrAddList   = GetBinOpsMethod ("MethStrAddList",   new Type[] { typeof (LSL_List),     typeof (string)       });
-		private static MethodInfo infoMethVecAddList   = GetBinOpsMethod ("MethVecAddList",   new Type[] { typeof (LSL_List),     typeof (LSL_Vector)   });
+		private static MethodInfo infoMethFloatAddList = GetBinOpsMethod ("MethFloatAddList", new Type[] { typeof (float),        typeof (LSL_List)     });
+		private static MethodInfo infoMethIntAddList   = GetBinOpsMethod ("MethIntAddList",   new Type[] { typeof (int),          typeof (LSL_List)     });
+		private static MethodInfo infoMethKeyAddList   = GetBinOpsMethod ("MethKeyAddList",   new Type[] { typeof (LSL_Key),      typeof (LSL_List)     });
+		private static MethodInfo infoMethRotAddList   = GetBinOpsMethod ("MethRotAddList",   new Type[] { typeof (LSL_Rotation), typeof (LSL_List)     });
+		private static MethodInfo infoMethStrAddList   = GetBinOpsMethod ("MethStrAddList",   new Type[] { typeof (string),       typeof (LSL_List)     });
+		private static MethodInfo infoMethVecAddList   = GetBinOpsMethod ("MethVecAddList",   new Type[] { typeof (LSL_Vector),   typeof (LSL_List)     });
 		private static MethodInfo infoMethListEqList   = GetBinOpsMethod ("MethListEqList",   new Type[] { typeof (LSL_List),     typeof (LSL_List)     });
 		private static MethodInfo infoMethListNeList   = GetBinOpsMethod ("MethListNeList",   new Type[] { typeof (LSL_List),     typeof (LSL_List)     });
 		private static MethodInfo infoMethRotEqRot     = GetBinOpsMethod ("MethRotEqRot",     new Type[] { typeof (LSL_Rotation), typeof (LSL_Rotation) });
@@ -1180,69 +1180,69 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 *        Needed to pick up functionality defined by overloaded operators of LSL_ types.
 		 *        They need to be marked public or runtime says they are inaccessible.
 		 */
-		public static LSL_List MethListAddFloat (LSL_List list, float addend)
+		public static LSL_List MethListAddFloat (LSL_List left, float right)
 		{
-			return list + addend;
+			return left + right;
 		}
 
-		public static LSL_List MethListAddInt (LSL_List list, int addend)
+		public static LSL_List MethListAddInt (LSL_List left, int right)
 		{
-			return list + addend;
+			return left + right;
 		}
 
-		public static LSL_List MethListAddKey (LSL_List list, LSL_Key addend)
+		public static LSL_List MethListAddKey (LSL_List left, LSL_Key right)
 		{
-			return list + addend;
+			return left + right;
 		}
 
-		public static LSL_List MethListAddList (LSL_List list, LSL_List addend)
+		public static LSL_List MethListAddList (LSL_List left, LSL_List right)
 		{
-			return list + addend;
+			return left + right;
 		}
 
-		public static LSL_List MethListAddRot (LSL_List list, LSL_Rotation addend)
+		public static LSL_List MethListAddRot (LSL_List left, LSL_Rotation right)
 		{
-			return list + addend;
+			return left + right;
 		}
 
-		public static LSL_List MethListAddStr (LSL_List list, string addend)
+		public static LSL_List MethListAddStr (LSL_List left, string right)
 		{
-			return list + addend;
+			return left + right;
 		}
 
-		public static LSL_List MethListAddVec (LSL_List list, LSL_Vector addend)
+		public static LSL_List MethListAddVec (LSL_List left, LSL_Vector right)
 		{
-			return list + addend;
+			return left + right;
 		}
 
-		public static LSL_List MethFloatAddList (LSL_List list, float addend)
+		public static LSL_List MethFloatAddList (float left, LSL_List right)
 		{
-			return (LSL_Float)addend + list;
+			return (LSL_Float)left + right;
 		}
 
-		public static LSL_List MethIntAddList (LSL_List list, int addend)
+		public static LSL_List MethIntAddList (int left, LSL_List right)
 		{
-			return (LSL_Integer)addend + list;
+			return (LSL_Integer)left + right;
 		}
 
-		public static LSL_List MethKeyAddList (LSL_List list, LSL_Key addend)
+		public static LSL_List MethKeyAddList (LSL_Key left, LSL_List right)
 		{
-			return addend + list;
+			return left + right;
 		}
 
-		public static LSL_List MethRotAddList (LSL_List list, LSL_Rotation addend)
+		public static LSL_List MethRotAddList (LSL_Rotation left, LSL_List right)
 		{
-			return addend + list;
+			return left + right;
 		}
 
-		public static LSL_List MethStrAddList (LSL_List list, string addend)
+		public static LSL_List MethStrAddList (string left, LSL_List right)
 		{
-			return (LSL_String)addend + list;
+			return (LSL_String)left + right;
 		}
 
-		public static LSL_List MethVecAddList (LSL_List list, LSL_Vector addend)
+		public static LSL_List MethVecAddList (LSL_Vector left, LSL_List right)
 		{
-			return addend + list;
+			return left + right;
 		}
 
 		public static bool MethListEqList (LSL_List left, LSL_List right)
