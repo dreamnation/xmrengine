@@ -13,6 +13,7 @@ using System.IO;
 using System.Runtime.Remoting;
 using System.Runtime.Remoting.Lifetime;
 using System.Reflection;
+using System.Threading;
 using System.Collections.Generic;
 using System.Collections;
 using System.Security.Policy;
@@ -70,10 +71,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private Dictionary<UUID, UUID> m_Partmap =
                 new Dictionary<UUID, UUID>();
         private UIntPtr m_StackSize;
+        private object m_SuspendScriptThreadLock = new object();
+        private bool m_SuspendScriptThreadFlag = false;
 
         private int m_MaintenanceInterval = 10;
         
-        private Timer m_MaintenanceTimer;
+        private System.Timers.Timer m_MaintenanceTimer;
 
         public XMREngine()
         {
@@ -118,14 +121,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             if (m_MaintenanceInterval > 0)
             {
-                m_MaintenanceTimer = new Timer(m_MaintenanceInterval * 60000);
+                m_MaintenanceTimer = new System.Timers.Timer(m_MaintenanceInterval * 60000);
                 m_MaintenanceTimer.Elapsed += DoMaintenance;
                 m_MaintenanceTimer.Start();
             }
 
             MainConsole.Instance.Commands.AddCommand("xmr", false,
                     "xmr test",
-                    "xmr test [backup|gc|ls]",
+                    "xmr test [backup|gc|ls|resume|suspend]",
                     "Run current xmr test",
                     RunTest);
         }
@@ -266,6 +269,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     }
                 }
                 Console.WriteLine("total of {0} script(s)", numScripts);
+                break;
+            case "resume":
+                m_log.Debug("[XMREngine]: resuming scripts");
+                m_SuspendScriptThreadFlag = false;
+                Monitor.Enter (m_SuspendScriptThreadLock);
+                Monitor.PulseAll (m_SuspendScriptThreadLock);
+                Monitor.Exit (m_SuspendScriptThreadLock);
+                break;
+            case "suspend":
+                m_log.Debug("[XMREngine]: suspending scripts");
+                m_SuspendScriptThreadFlag = true;
+                Monitor.Enter (m_WakeUpLock);
+                Monitor.PulseAll (m_WakeUpLock);
+                Monitor.Exit (m_WakeUpLock);
                 break;
             default:
                 Console.WriteLine("xmr test: unknown command " + args[2]);
@@ -936,6 +953,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         System.Threading.Monitor.Wait(m_WakeUpLock, deltaMS);
                     }
                 }
+            }
+
+            /*
+             * Handle 'xmr test resume/suspend' commands.
+             */
+            if (m_SuspendScriptThreadFlag) {
+                m_log.Debug ("[XMREngine]: scripts suspended");
+                Monitor.Enter (m_SuspendScriptThreadLock);
+                while (m_SuspendScriptThreadFlag) {
+                    Monitor.Wait (m_SuspendScriptThreadLock);
+                }
+                Monitor.Exit (m_SuspendScriptThreadLock);
+                m_log.Debug ("[XMREngine]: scripts resumed");
             }
         }
 
