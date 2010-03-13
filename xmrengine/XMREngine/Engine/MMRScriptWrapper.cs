@@ -206,8 +206,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 			/*
 			 * This is how many total heap bytes script is allowed to use.
+			 * Start with some fixed amount then subtract off static global sizes.
 			 */
 			this.heapLimit  = (int)(uint)stackSize / 2;
+			this.heapLimit -= 16 * objCode.numGblArrays;
+			this.heapLimit -=  4 * objCode.numGblFloats;
+			this.heapLimit -=  4 * objCode.numGblIntegers;
+			this.heapLimit -= 16 * objCode.numGblLists;
+			this.heapLimit -= 16 * objCode.numGblRotations;
+			this.heapLimit -= 16 * objCode.numGblStrings;
+			this.heapLimit -= 12 * objCode.numGblVectors;
 
 			/*
 			 * Set up sub-objects and cross-polinate so everything can access everything.
