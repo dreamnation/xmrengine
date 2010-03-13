@@ -504,6 +504,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 							argTypes[i] = GetTypeFromStr (objReader.ReadString ());
 						}
 						MethodInfo methInfo = methType.GetMethod (methName, argTypes);
+						if (methInfo == null) {
+							Console.WriteLine ("CreateObjCode*: methName={0}", methName);
+							Console.WriteLine ("CreateObjCode*: methType={0}", methType.Name);
+							Console.WriteLine ("CreateObjCode*:    nArgs={0}", nArgs.ToString());
+							for (int i = 0; i < nArgs; i ++) {
+								Console.WriteLine ("CreateObjCode*:   arg{0}={1}", i, argTypes[i].Name);
+							}
+						}
 						ilGen.Emit (opCode, methInfo);
 
 						LinePrefix (dbg, ilGenArg, opCode);
@@ -695,6 +703,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			s2t.Add ("bool",     typeof (bool));
 			s2t.Add ("double",   typeof (double));
 			s2t.Add ("float",    typeof (float));
+			s2t.Add ("inlfunc",  typeof (InlineFunction));
 			s2t.Add ("int",      typeof (int));
 			s2t.Add ("lslfloat", typeof (LSL_Float));
 			s2t.Add ("lslint",   typeof (LSL_Integer));
@@ -714,6 +723,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			s2t.Add ("typecast", typeof (TypeCast));
 			s2t.Add ("void",     typeof (void));
 			s2t.Add ("xmrarray", typeof (XMR_Array));
+			s2t.Add ("xmrhelps", typeof (XMRHelpers));
 
 			return s2t;
 		}

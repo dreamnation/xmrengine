@@ -8,6 +8,8 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Text;
+
+using Mono.Tasklets;
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 
 using LSL_Float = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLFloat;
@@ -27,16 +29,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	public delegate void CodeGenCall (ScriptCodeGen scg, CompValu result, CompValu[] args);
 
 	public class InlineFunction {
+
 		public string signature;      // name(arglsltypes,...)
 		public TokenType retType;     // return value type (TokenTypeVoid for void)
 		public TokenType[] argTypes;  // argument types (valid only for CodeGenBEApi);
 		public CodeGenCall codeGen;   // method that generates code
 		public MethodInfo methInfo;   // function called by the inline
 		public bool doCheckRun;       // valid for CodeGenBEApi only
+		public int keepNulls;         // valid for CodeGenLLParseString2List only
 
-		private static TokenTypeFloat tokenTypeFloat = new TokenTypeFloat (null);
+		private static TokenTypeFloat tokenTypeFloat  = new TokenTypeFloat (null);
+		private static TokenTypeStr   tokenTypeString = new TokenTypeStr (null);
+
 		private static MethodInfo roundMethInfo = ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Round", 
 				new Type[] { typeof (double), typeof (MidpointRounding) });
+		private static MethodInfo parseString2ListMethInfo = ScriptCodeGen.GetStaticMethod (typeof (XMRHelpers), 
+		                                                                                    "ParseString2List",
+				new Type[] { typeof (string), typeof (LSL_List), typeof (LSL_List), typeof (bool) });
 
 		/**
 		 * @brief Create a dictionary of inline backend API functions.
@@ -123,17 +132,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			inf = new InlineFunction (ifd, "llTan(float)",         typeof (float), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Tan",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
 
 			/*
+			 * These are replaced by code in xmrhelpers.so so they don't generate a lot of shitty malloc's and memcpy's.
+			 */
+			string envar = Environment.GetEnvironmentVariable ("XMRHelpersEnable");
+			if ((envar != null) && ((envar[0] & 1) != 0)) {
+				inf = new InlineFunction (ifd, "llParseString2List(string,list,list)",     typeof (LSL_List), null); inf.codeGen = inf.CodeGenLLParseString2List; inf.keepNulls = 0;
+				inf = new InlineFunction (ifd, "llParseStringKeepNulls(string,list,list)", typeof (LSL_List), null); inf.codeGen = inf.CodeGenLLParseString2List; inf.keepNulls = 1;
+			}
+
+			/*
 			 * Finally for any API functions defined by ScriptBaseClass that are not overridden 
 			 * by anything already defined above, create an inline definition to call it.
 			 *
-			 * We create statement-block forms like this for each:
-			 *    {
-			 *       {#} = __be.methodname({0},{1},...);
-			 *       __sm.continuation.CheckRun();
-			 *    }
-			 *
-			 * But for those listed in noCheckRun, we generate:
-			 *    (__be.methodname({0},{1},...))
+			 * For those listed in noCheckRun, we just generate the call (simple computations).
+			 * For all others, we generate the call then a call to wrapper.continuation.CheckRun().
 			 */
 			string[] noCheckRun = new string[] {
 				"llBase64ToString",
@@ -287,6 +299,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			scg.ilGen.Emit (OpCodes.Ldc_I4, (int)System.MidpointRounding.AwayFromZero);
 			scg.ilGen.Emit (OpCodes.Call, roundMethInfo);
 			result.PopPost (scg, retType);
+		}
+
+		private void CodeGenLLParseString2List (ScriptCodeGen scg, CompValu result, CompValu[] args)
+		{
+			result.PopPre (scg);
+			args[0].PushVal (scg, tokenTypeString);  // converts from LSL_String -> string
+			args[1].PushVal (scg);                   // it can only be LSL_List
+			args[2].PushVal (scg);                   // it can only be LSL_List
+			scg.PushConstantI4 (this.keepNulls);     // 0:ParseString2List, 1:ParseStringKeepNulls
+			scg.ilGen.Emit (OpCodes.Call, parseString2ListMethInfo);
+			result.PopPost (scg);                    // it can only be LSL_List
 		}
 
 		/**
