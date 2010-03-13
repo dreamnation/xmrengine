@@ -288,8 +288,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Output default state event handler methods.
-			 * Each event handler is a private static method named __seh_default_<eventname>
+			 * Each event handler is a private static method named __seh_default_<eventname>.
+			 * Splice in a default state_entry() handler if none defined so we init global vars.
 			 */
+			TokenDeclFunc defaultStateEntry = null;
+			for (defaultStateEntry = tokenScript.defaultState.body.eventFuncs;
+			     defaultStateEntry != null;
+			     defaultStateEntry = (TokenDeclFunc)defaultStateEntry.nextToken) {
+				if (defaultStateEntry.funcName.val == "state_entry") break;
+			}
+			if (defaultStateEntry == null) {
+				defaultStateEntry = new TokenDeclFunc (tokenScript.defaultState.body);
+				defaultStateEntry.retType  = new TokenTypeVoid  (tokenScript.defaultState.body);
+				defaultStateEntry.funcName = new TokenName      (tokenScript.defaultState.body, "state_entry");
+				defaultStateEntry.argDecl  = new TokenArgDecl   (tokenScript.defaultState.body);
+				defaultStateEntry.argDecl.types = new TokenType[0];
+				defaultStateEntry.argDecl.names = new TokenName[0];
+				defaultStateEntry.body     = new TokenStmtBlock (tokenScript.defaultState.body);
+				defaultStateEntry.body.function = defaultStateEntry;
+
+				defaultStateEntry.nextToken = tokenScript.defaultState.body.eventFuncs;
+				tokenScript.defaultState.body.eventFuncs = defaultStateEntry;
+			}
 			GenerateStateEventHandlers ("default", tokenScript.defaultState.body);
 
 			/*
@@ -478,7 +498,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * If this is the default state_entry() handler, output code to set all global
 			 * variables to their initial values.  Note that every script must have a
-			 * default state_entry() handler.
+			 * default state_entry() handler, we provide one if the script doesn't explicitly
+			 * define one.
 			 */
 			if ((statename == "default") && (eventname == "state_entry")) {
 				ScriptMyLabel skipGblInitLabel = ilGen.DefineLabel ("__skipGblInit");
