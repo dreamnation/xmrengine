@@ -141,6 +141,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
+			 * Our internally defined functions.
+			 */
+			inf = new InlineFunction (ifd, "xmrHeapLeft()",  typeof (int), null); inf.codeGen = inf.CodeGenXMRHeapLeft;
+			inf = new InlineFunction (ifd, "xmrStackLeft()", typeof (int), null); inf.codeGen = inf.CodeGenXMRStackLeft;
+
+			/*
 			 * Finally for any API functions defined by ScriptBaseClass that are not overridden 
 			 * by anything already defined above, create an inline definition to call it.
 			 *
@@ -310,6 +316,33 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			scg.PushConstantI4 (this.keepNulls);     // 0:ParseString2List, 1:ParseStringKeepNulls
 			scg.ilGen.Emit (OpCodes.Call, parseString2ListMethInfo);
 			result.PopPost (scg);                    // it can only be LSL_List
+		}
+
+		/**
+		 * @brief Generate code to return number of bytes of heap they have left.
+		 *        Script-level prototype:  integer xmrHeapLeft()
+		 */
+		private void CodeGenXMRHeapLeft (ScriptCodeGen scg, CompValu result, CompValu[] args)
+		{
+			result.PopPre (scg);
+			scg.ilGen.Emit (OpCodes.Ldarg_0);
+			scg.ilGen.Emit (OpCodes.Ldfld, ScriptCodeGen.heapLeftFieldInfo);
+			result.PopPost (scg, retType);
+		}
+
+		/**
+		 * @brief Generate code to return number of bytes of stack they have left.
+		 *        Script-level prototype:  integer xmrStackLeft()
+		 */
+		private void CodeGenXMRStackLeft (ScriptCodeGen scg, CompValu result, CompValu[] args)
+		{
+			result.PopPre (scg);
+			scg.ilGen.Emit (OpCodes.Call, ScriptCodeGen.stackLeftMethodInfo);
+			scg.ilGen.Emit (OpCodes.Conv_I4);
+			scg.ilGen.Emit (OpCodes.Ldarg_0);
+			scg.ilGen.Emit (OpCodes.Ldfld, ScriptCodeGen.stackLimitFieldInfo);
+			scg.ilGen.Emit (OpCodes.Sub);
+			result.PopPost (scg, retType);
 		}
 
 		/**

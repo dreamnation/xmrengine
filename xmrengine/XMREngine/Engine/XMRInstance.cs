@@ -267,6 +267,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Console.WriteLine("    m_Die          = " + m_Die);
             string sc = m_Wrapper.GetStateName(m_Wrapper.stateCode);
             Console.WriteLine("    m_StateCode    = " + sc);
+            Console.WriteLine("    heapLeft/Limit = " + m_Wrapper.heapLeft + "/" + m_Wrapper.heapLimit);
             lock (m_QueueLock)
             {
                 Console.WriteLine("    m_Running      = " + m_Running);
@@ -284,6 +285,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             lock (m_CompileLock)
             {
+                bool compileFailed = false;
                 bool compiledIt = false;
                 ScriptObjCode objCode;
 
@@ -294,8 +296,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if (!m_CompiledScriptObjCode.TryGetValue (m_AssetID, 
                                                           out objCode))
                 {
-                    objCode = TryToCompile(false);
-                    compiledIt = true;
+                    try {
+                        objCode = TryToCompile(false);
+                        compiledIt = true;
+                    } catch (Exception e) {
+                        compileFailed = true;
+                    }
                 }
 
                 /*
@@ -303,7 +309,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * memory and try to fill in its initial state from the saved
                  * state file.
                  */
-                if (TryToLoad(objCode))
+                if (!compileFailed && TryToLoad(objCode))
                 {
                     m_log.DebugFormat("[XMREngine]: load successful {0}",
                             m_DescName);

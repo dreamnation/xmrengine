@@ -212,8 +212,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 	// The value is in a script-global variable = ScriptModule instance variable
 	public class CompValuGlobal : CompValu {
-		private FieldInfo field;
-		private int index;
+		public FieldInfo field;
+		public int index;
 
 		private static FieldInfo gblArraysFieldInfo    = typeof (ScriptWrapper).GetField ("gblArrays");
 		private static FieldInfo gblFloatsFieldInfo    = typeof (ScriptWrapper).GetField ("gblFloats");
