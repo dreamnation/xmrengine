@@ -55,6 +55,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public bool stateChanged = false;         // script sets this if/when it executes a 'state' statement
 		public bool doGblInit = true;             // default state_entry() needs to initialize global variables
 		public ScriptObjCode objCode;             // the script's object code pointer
+		public uint stackLimit;                   // CheckRun() must always see this much stack available
 
 		public bool debPrint = false;
 
@@ -205,6 +206,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * Set up debug name string.
 			 */
 			this.instanceNo += "/" + descName;
+
+			/*
+			 * Script must leave this much stack remaining on calls to CheckRun().
+			 */
+			this.stackLimit = (uint)stackSize / 2;
 
 			/*
 			 * Set up sub-objects and cross-polinate so everything can access everything.
@@ -1068,10 +1074,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 *
 			 * Thus any checkpoint/restart save/resume code can assume stateChanged = false.
 			 */
-			if (scriptWrapper.stateChanged) throw new Exception ("CheckRun() called with stateChanged set");
+			if (scriptWrapper.stateChanged) {
+				throw new Exception ("CheckRun() called with stateChanged set");
+			}
 
 			/*
-			 * Make sure script isn't hogging too much memory.
+			 * Make sure script isn't about to run out of stack.
+			 */
+			if ((uint)MMRUThread.StackLeft () < scriptWrapper.stackLimit) {
+				throw new Exception ("out of stack");
+			}
+
+			/*
+			 * Make sure script isn't hogging too much heap.
 			 */
 			int mu = scriptWrapper.memUsage;
 			int ml = scriptWrapper.memLimit;
