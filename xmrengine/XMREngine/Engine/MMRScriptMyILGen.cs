@@ -11,6 +11,7 @@ using LSL_Rotation = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Quaternion;
 using LSL_String = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
 using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
 
+using Mono.Tasklets;
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 using System;
 using System.Collections.Generic;
@@ -290,9 +291,26 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			Dictionary<int, string> localNames = new Dictionary<int, string> ();
 			StringBuilder dbg = new StringBuilder ();
 			object[] ilGenArg = new object[1];
+			int offset = 0;
 
 			while (true) {
+
+				/*
+				 * Clear debug line (.xmrasm file) output buffer.
+				 */
 				dbg.Remove (0, dbg.Length);
+
+				/*
+				 * Get IL instruction offset at beginning of instruction.
+				 */
+				offset = 0;
+				if (ilGen != null) {
+					offset = (int)monoGetCurrentOffset.Invoke (null, ilGenArg);
+				}
+
+				/*
+				 * Read and decode next internal format code from input file (.xmrobj file).
+				 */
 				ScriptMyILGenCode code = (ScriptMyILGenCode)objReader.ReadByte ();
 				switch (code) {
 
@@ -405,7 +423,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						int number = objReader.ReadInt32 ();
 
 						ilGen.MarkLabel (labels[number]);
-						LinePrefix (dbg, ilGenArg);
+						LinePrefix (offset, dbg, ilGenArg);
 
 						dbg.Append (labelNames[number]);
 						dbg.Append (":");
@@ -420,7 +438,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 						ilGen.Emit (opCode);
 
-						LinePrefix (dbg, ilGenArg, opCode);
+						LinePrefix (offset, dbg, ilGenArg, opCode);
 						break;
 					}
 
@@ -434,7 +452,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 						FieldInfo field    = reflectedType.GetField (fieldName);
 						ilGen.Emit (opCode, field);
-						LinePrefix (dbg, ilGenArg, opCode);
+						LinePrefix (offset, dbg, ilGenArg, opCode);
 
 						dbg.Append (reflectedType.Name);
 						dbg.Append (":");
@@ -454,7 +472,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 						ilGen.Emit (opCode, locals[number]);
 
-						LinePrefix (dbg, ilGenArg, opCode);
+						LinePrefix (offset, dbg, ilGenArg, opCode);
 						dbg.Append (localNames[number]);
 						dbg.Append ("   (local)");
 						break;
@@ -469,7 +487,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 						ilGen.Emit (opCode, type);
 
-						LinePrefix (dbg, ilGenArg, opCode);
+						LinePrefix (offset, dbg, ilGenArg, opCode);
 						dbg.Append (type.Name);
 						dbg.Append ("   (type)");
 						break;
@@ -484,7 +502,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 						ilGen.Emit (opCode, labels[number]);
 
-						LinePrefix (dbg, ilGenArg, opCode);
+						LinePrefix (offset, dbg, ilGenArg, opCode);
 						dbg.Append (labelNames[number]);
 						dbg.Append ("   (label)");
 						break;
@@ -514,7 +532,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						}
 						ilGen.Emit (opCode, methInfo);
 
-						LinePrefix (dbg, ilGenArg, opCode);
+						LinePrefix (offset, dbg, ilGenArg, opCode);
 						dbg.Append (methType.Name);
 						dbg.Append (":");
 						dbg.Append (methName);
@@ -541,7 +559,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 						ParameterInfo[] parms = methInfo.GetParameters ();
 						int nArgs = parms.Length;
-						LinePrefix (dbg, ilGenArg, opCode);
+						LinePrefix (offset, dbg, ilGenArg, opCode);
 						dbg.Append (methName);
 						dbg.Append ("(");
 						for (int i = 0; i < nArgs; i ++) {
@@ -568,7 +586,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						ConstructorInfo ctorInfo = ctorType.GetConstructor (argTypes);
 						ilGen.Emit (opCode, ctorInfo);
 
-						LinePrefix (dbg, ilGenArg, opCode);
+						LinePrefix (offset, dbg, ilGenArg, opCode);
 						dbg.Append (ctorType.Name);
 						dbg.Append ("(");
 						for (int i = 0; i < nArgs; i ++) {
@@ -588,7 +606,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 						ilGen.Emit (opCode, value);
 
-						LinePrefix (dbg, ilGenArg, opCode);
+						LinePrefix (offset, dbg, ilGenArg, opCode);
 						dbg.Append (value.ToString ());
 						dbg.Append ("   (double)");
 						break;
@@ -600,7 +618,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 						ilGen.Emit (opCode, value);
 
-						LinePrefix (dbg, ilGenArg, opCode);
+						LinePrefix (offset, dbg, ilGenArg, opCode);
 						dbg.Append (value.ToString ());
 						dbg.Append ("   (float)");
 						break;
@@ -612,7 +630,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 						ilGen.Emit (opCode, value);
 
-						LinePrefix (dbg, ilGenArg, opCode);
+						LinePrefix (offset, dbg, ilGenArg, opCode);
 						dbg.Append (value.ToString ());
 						dbg.Append ("   (int)");
 						break;
@@ -624,7 +642,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 						ilGen.Emit (opCode, value);
 
-						LinePrefix (dbg, ilGenArg, opCode);
+						LinePrefix (offset, dbg, ilGenArg, opCode);
 						dbg.Append ("\"");
 						dbg.Append (value);
 						dbg.Append ("\"   (string)");
@@ -637,21 +655,25 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					default: throw new Exception ("bad ScriptMyILGenCode " + ((byte)code).ToString ());
 				}
 
-				if (debWriter != null) debWriter.WriteLine (dbg.ToString ());
+				/*
+				 * Write line to .xmrasm file.
+				 */
+				if ((debWriter != null) && (dbg.Length > 0)) {
+					debWriter.WriteLine (dbg.ToString ());
+				}
 			}
 		}
 
-		private static void LinePrefix (StringBuilder dbg, object[] ilGenArg, OpCode opCode)
+		private static void LinePrefix (int offset, StringBuilder dbg, object[] ilGenArg, OpCode opCode)
 		{
-			LinePrefix (dbg, ilGenArg);
+			LinePrefix (offset, dbg, ilGenArg);
 			dbg.Append ("  ");
 			dbg.Append (opCode.ToString ().PadRight (OPCSTRWIDTH - 1));
 			dbg.Append (" ");
 		}
 
-		private static void LinePrefix (StringBuilder dbg, object[] ilGenArg)
+		private static void LinePrefix (int offset, StringBuilder dbg, object[] ilGenArg)
 		{
-			int offset = (int)monoGetCurrentOffset.Invoke (null, ilGenArg);
 			dbg.Append ("  ");
 			dbg.Append (offset.ToString ("X4"));
 			dbg.Append ("  ");
@@ -713,6 +735,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			s2t.Add ("lslvec",   typeof (LSL_Vector));
 			s2t.Add ("math",     typeof (Math));
 			s2t.Add ("midround", typeof (MidpointRounding));
+			s2t.Add ("mmruthr",  typeof (MMRUThread));
 			s2t.Add ("object",   typeof (object));
 			s2t.Add ("object[]", typeof (object[]));
 			s2t.Add ("scrbase",  typeof (ScriptBaseClass));
