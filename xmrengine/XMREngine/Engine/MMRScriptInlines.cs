@@ -31,6 +31,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	public class InlineFunction {
 
 		public string signature;      // name(arglsltypes,...)
+		public int numArgs;           // number of arguments from signature
 		public TokenType retType;     // return value type (TokenTypeVoid for void)
 		public TokenType[] argTypes;  // argument types (valid only for CodeGenBEApi);
 		public CodeGenCall codeGen;   // method that generates code
@@ -265,6 +266,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.retType   = TokenType.FromSysType (null, retType);
 			this.methInfo  = methInfo;
 			ifd.Add (signature, this);
+			this.numArgs   = 0;
+			if (!signature.EndsWith ("()")) {
+				this.numArgs ++;
+				for (int i = 0; i < signature.Length; i ++) {
+					if (signature[i] == ',') this.numArgs ++;
+				}
+			}
 		}
 
 		/**

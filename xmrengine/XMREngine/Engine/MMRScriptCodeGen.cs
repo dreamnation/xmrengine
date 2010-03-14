@@ -1616,7 +1616,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				string shortSig = name + "(";
 				InlineFunction foundInline = null;
 				foreach (KeyValuePair<string, InlineFunction> kvp in inlineFunctions) {
-					if (kvp.Key.StartsWith (shortSig)) {
+					if (kvp.Key.StartsWith (shortSig) && (kvp.Value.numArgs == nargs)) {
 						if (foundInline != null) goto nohope;
 						foundInline = kvp.Value;
 					}
