@@ -10,6 +10,8 @@ using LSL_List = OpenSim.Region.ScriptEngine.Shared.LSL_Types.list;
 using LSL_Rotation = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Quaternion;
 using LSL_String = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
 using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
+
+using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 using OpenSim.Region.ScriptEngine.XMREngine;
 using System;
 using System.Collections.Generic;
@@ -41,7 +43,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static MethodInfo floatToStringMethodInfo    = typeof (TypeCast).GetMethod ("FloatToString",    new Type[] { typeof (float) });
 		private static MethodInfo intToStringMethodInfo      = typeof (TypeCast).GetMethod ("IntegerToString",  new Type[] { typeof (int) });
 		private static MethodInfo listToStringMethodInfo     = typeof (TypeCast).GetMethod ("ListToString",     new Type[] { typeof (LSL_List) });
+		private static MethodInfo rotationToBoolMethodInfo   = typeof (TypeCast).GetMethod ("RotationToBool",   new Type[] { typeof (LSL_Rotation) });
 		private static MethodInfo rotationToStringMethodInfo = typeof (TypeCast).GetMethod ("RotationToString", new Type[] { typeof (LSL_Rotation) });
+		private static MethodInfo vectorToBoolMethodInfo     = typeof (TypeCast).GetMethod ("VectorToBool",     new Type[] { typeof (LSL_Vector) });
 		private static MethodInfo vectorToStringMethodInfo   = typeof (TypeCast).GetMethod ("VectorToString",   new Type[] { typeof (LSL_Vector) });
 		private static MethodInfo listOfOneObjMethodInfo     = typeof (TypeCast).GetMethod ("ListOfOneObj",     new Type[] { typeof (object) });
 
@@ -63,16 +67,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				Dictionary<string, CastDelegate> ltc = new Dictionary<string, CastDelegate> ();
 
 				// IMPLICIT type casts (a space is in middle of the key)
+				// EXPLICIT type casts (an * is in middle of the key)
 				ltc.Add ("array object",    TypeCastArray2Object);
 				ltc.Add ("bool float",      TypeCastBool2Float);
 				ltc.Add ("bool integer",    TypeCastBool2Integer);
+				ltc.Add ("bool string",     TypeCastBool2String);
 				ltc.Add ("float bool",      TypeCastFloat2Bool);
 				ltc.Add ("float integer",   TypeCastFloat2Integer);
+				ltc.Add ("float*list",      TypeCastFloat2List);
 				ltc.Add ("float object",    TypeCastFloat2Object);
+				ltc.Add ("float string",    TypeCastFloat2String);
 				ltc.Add ("integer bool",    TypeCastInteger2Bool);
 				ltc.Add ("integer float",   TypeCastInteger2Float);
+				ltc.Add ("integer*list",    TypeCastInteger2List);
 				ltc.Add ("integer object",  TypeCastInteger2Object);
+				ltc.Add ("integer string",  TypeCastInteger2String);
 				ltc.Add ("list object",     TypeCastList2Object);
+				ltc.Add ("list*string",     TypeCastList2String);
 				ltc.Add ("object array",    TypeCastObject2Array);
 				ltc.Add ("object float",    TypeCastObject2Float);
 				ltc.Add ("object integer",  TypeCastObject2Integer);
@@ -80,29 +91,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ltc.Add ("object rotation", TypeCastObject2Rotation);
 				ltc.Add ("object string",   TypeCastObject2String);
 				ltc.Add ("object vector",   TypeCastObject2Vector);
+				ltc.Add ("rotation bool",   TypeCastRotation2Bool);
+				ltc.Add ("rotation list",   TypeCastRotation2List);
 				ltc.Add ("rotation object", TypeCastRotation2Object);
-				ltc.Add ("string bool",     TypeCastString2Bool);
-				ltc.Add ("string object",   TypeCastString2Object);
-				ltc.Add ("string rotation", TypeCastString2Rotation);
-				ltc.Add ("string vector",   TypeCastString2Vector);
-				ltc.Add ("vector list",     TypeCastVector2List);
-				ltc.Add ("vector object",   TypeCastVector2Object);
-
-				ltc.Add ("bool string",     TypeCastBool2String);
-				ltc.Add ("float string",    TypeCastFloat2String);
-				ltc.Add ("integer string",  TypeCastInteger2String);
 				ltc.Add ("rotation string", TypeCastRotation2String);
+				ltc.Add ("string bool",     TypeCastString2Bool);
 				ltc.Add ("string float",    TypeCastString2Float);
 				ltc.Add ("string integer",  TypeCastString2Integer);
 				ltc.Add ("string list",     TypeCastString2List);
+				ltc.Add ("string object",   TypeCastString2Object);
+				ltc.Add ("string rotation", TypeCastString2Rotation);
+				ltc.Add ("string vector",   TypeCastString2Vector);
+				ltc.Add ("vector bool",     TypeCastVector2Bool);
+				ltc.Add ("vector list",     TypeCastVector2List);
+				ltc.Add ("vector object",   TypeCastVector2Object);
 				ltc.Add ("vector string",   TypeCastVector2String);
 
-				// EXPLICIT type casts (an * is in middle of the key)
-				ltc.Add ("float*list",      TypeCastFloat2List);
-				ltc.Add ("integer*list",    TypeCastInteger2List);
-				ltc.Add ("list*string",     TypeCastList2String);
-				ltc.Add ("rotation*list",   TypeCastRotation2List);
-				ltc.Add ("vector*list",     TypeCastVector2List);
 				//MB()
 				legalTypeCasts = ltc;
 			}
@@ -269,6 +273,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			ilGen.Emit (OpCodes.Castclass, typeof (LSL_Vector));
 		}
+		private static void TypeCastRotation2Bool (ScriptMyILGen ilGen)
+		{
+			ilGen.Emit (OpCodes.Call, rotationToBoolMethodInfo);
+		}
 		private static void TypeCastRotation2Object (ScriptMyILGen ilGen)
 		{
 		}
@@ -289,6 +297,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static void TypeCastString2Vector (ScriptMyILGen ilGen)
 		{
 			ilGen.Emit (OpCodes.Newobj, vectorConstrucorStringInfo);
+		}
+		private static void TypeCastVector2Bool (ScriptMyILGen ilGen)
+		{
+			ilGen.Emit (OpCodes.Call, vectorToBoolMethodInfo);
 		}
 		private static void TypeCastVector2List (ScriptMyILGen ilGen)
 		{
@@ -356,6 +368,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		/*
 		 * Because the calls are funky, let the compiler handle them.
 		 */
+		public static bool   RotationToBool   (LSL_Rotation x) { return !x.Equals (ScriptBaseClass.ZERO_ROTATION); }
+		public static bool   VectorToBool     (LSL_Vector x)   { return !x.Equals (ScriptBaseClass.ZERO_VECTOR); }
 		public static string FloatToString    (float x)        { return x.ToString (); }
 		public static string IntegerToString  (int x)          { return x.ToString (); }
 		public static string ListToString     (LSL_List x)     { return x.ToString (); }
