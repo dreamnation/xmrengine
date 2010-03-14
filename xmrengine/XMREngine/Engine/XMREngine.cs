@@ -754,8 +754,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     item.Name, item.AssetID, startParam.ToString());
 
             /*
-             * These errors really should be cleared by same thread that calls GetScriptErrors()
-             * BEFORE it could possibly create or trigger the thread that calls OnRezScript().
+             * These errors really should be cleared by same thread that calls 
+             * GetScriptErrors() BEFORE it could possibly create or trigger the 
+             * thread that calls OnRezScript().
              */
             lock (m_ScriptErrors) {
                 m_ScriptErrors.Remove(itemID);
@@ -797,7 +798,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             /*
-             * Tell GetScriptErrors() that we have finished compiling/loading.
+             * Tell GetScriptErrors() that we have finished compiling/loading
+             * successfully (by posting a 0 element array).
              */
             lock (m_ScriptErrors) {
                 m_ScriptErrors[itemID] = new ArrayList();

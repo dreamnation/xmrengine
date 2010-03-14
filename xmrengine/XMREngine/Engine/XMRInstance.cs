@@ -1114,11 +1114,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public DateTime RunOne()
         {
+            DateTime now = DateTime.UtcNow;
+
             /*
              * If script has called llSleep(), don't do any more until time is
              * up.
              */
-            if (m_SuspendUntil > DateTime.UtcNow)
+            if (m_SuspendUntil > now)
             {
                 return m_SuspendUntil;
             }
@@ -1165,7 +1167,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                     try
                     {
-                        m_LastRanAt = DateTime.UtcNow;
+                        m_LastRanAt = now;
                         m_Wrapper.StartEventHandler(evt.EventName, evt.Params);
                     }
                     catch (Exception e)
@@ -1180,8 +1182,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  */
                 try
                 {
-                    m_LastRanAt = DateTime.UtcNow;
+                    m_LastRanAt = now;
                     m_IsIdle = m_Wrapper.ResumeEventHandler();
+                }
+                catch (ScriptDeleteException sde)
+                {
+                    /*
+                     * Script did something like llRemoveInventory(llGetScriptName());
+                     * ... to delete itself from the object.
+                     */
+                    m_SuspendUntil = DateTime.MaxValue;
+                    m_log.DebugFormat("[XMREngine]: script self-delete {0}", m_ItemID);
+                    m_Part.Inventory.RemoveInventoryItem(m_ItemID);
+                    return DateTime.MaxValue;
                 }
                 catch (Exception e)
                 {
