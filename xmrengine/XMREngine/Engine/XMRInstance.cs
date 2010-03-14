@@ -51,12 +51,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private static Dictionary<UUID, ScriptObjCode> m_CompiledScriptObjCode = new Dictionary<UUID, ScriptObjCode>();
         private static Dictionary<UUID, int> m_CompiledScriptRefCount = new Dictionary<UUID, int>();
 
+        public  SceneObjectPart m_Part = null;
+        public  uint m_LocalID = 0;
+        public  TaskInventoryItem m_Item = null;
+        public  UUID m_ItemID;
+        public  UUID m_AssetID;
+
         private XMREngine m_Engine = null;
-        private SceneObjectPart m_Part = null;
-        private uint m_LocalID = 0;
-        private TaskInventoryItem m_Item = null;
-        private UUID m_ItemID;
-        private UUID m_AssetID;
         private string m_ScriptBasePath;
         private string m_StateFileName;
         private string m_SourceCode;
@@ -71,6 +72,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private UIntPtr m_StackSize;
         private ArrayList m_CompilerErrors;
         private ScriptWrapper m_Wrapper = null;
+        private DateTime m_LastRanAt = DateTime.MinValue;
 
         // If code needs to have both m_QueueLock and m_RunLock,
         // be sure to lock m_RunLock first then m_QueueLock, as
@@ -267,6 +269,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Console.WriteLine("    m_Die          = " + m_Die);
             string sc = m_Wrapper.GetStateName(m_Wrapper.stateCode);
             Console.WriteLine("    m_StateCode    = " + sc);
+            Console.WriteLine("    m_LastRanAt    = " + m_LastRanAt.ToString());
             Console.WriteLine("    heapLeft/Limit = " + m_Wrapper.heapLeft + "/" + m_Wrapper.heapLimit);
             lock (m_QueueLock)
             {
@@ -1160,6 +1163,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                     try
                     {
+                        m_LastRanAt = DateTime.UtcNow;
                         m_Wrapper.StartEventHandler(evt.EventName, evt.Params);
                     }
                     catch (Exception e)
@@ -1175,6 +1179,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  */
                 try
                 {
+                    m_LastRanAt = DateTime.UtcNow;
                     m_IsIdle = m_Wrapper.ResumeEventHandler();
                 }
                 catch (Exception e)

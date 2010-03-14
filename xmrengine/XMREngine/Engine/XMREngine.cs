@@ -73,6 +73,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private UIntPtr m_StackSize;
         private object m_SuspendScriptThreadLock = new object();
         private bool m_SuspendScriptThreadFlag = false;
+        private XMRInstance m_RunInstance = null;
+        private DateTime m_SleepUntil = DateTime.MinValue;
+        private DateTime m_LastRanAt = DateTime.MinValue;
 
         private int m_MaintenanceInterval = 10;
         
@@ -259,16 +262,41 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
                 break;
             case "ls":
+                int i;
                 int numScripts = 0;
                 lock (m_Instances)
                 {
                     foreach (XMRInstance ins in m_Instances.Values)
                     {
+                        if (args.Length > 3)
+                        {
+                            for (i = 3; i < args.Length; i ++)
+                            {
+                                if (ins.m_Part.Name.Contains(args[i])) break;
+                                if (ins.m_Item.Name.Contains(args[i])) break;
+                                if (ins.m_ItemID.ToString().Contains(args[i])) break;
+                                if (ins.m_AssetID.ToString().Contains(args[i])) break;
+                            }
+                            if (i >= args.Length) continue;
+                        }
                         ins.RunTestLs();
                         numScripts ++;
                     }
                 }
                 Console.WriteLine("total of {0} script(s)", numScripts);
+                XMRInstance rins = m_RunInstance;
+                if (rins != null) {
+                    Console.WriteLine("running {0} {1} {2}:{3}",
+                            rins.m_ItemID.ToString(),
+                            rins.m_AssetID.ToString(),
+                            rins.m_Part.Name,
+                            rins.m_Item.Name);
+                }
+                DateTime suntil = m_SleepUntil;
+                if (suntil > DateTime.MinValue) {
+                    Console.WriteLine("sleeping until {0}", suntil.ToString());
+                }
+                Console.WriteLine("last ran at {0}", m_LastRanAt.ToString());
                 break;
             case "resume":
                 m_log.Debug("[XMREngine]: resuming scripts");
@@ -953,7 +981,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             {
                 if (ins != null)
                 {
+                    m_RunInstance = ins;
                     DateTime suspendUntil = ins.RunOne();
+                    m_RunInstance = null;
                     if (earliest > suspendUntil)
                     {
                         earliest = suspendUntil;
@@ -962,6 +992,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             DateTime now = DateTime.UtcNow;
+            m_LastRanAt = now;
             if (earliest > now)
             {
                 lock (m_WakeUpLock)
@@ -974,7 +1005,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         {
                             deltaMS = (int)deltaTS.TotalMilliseconds;
                         }
+                        m_SleepUntil = earliest;
                         System.Threading.Monitor.Wait(m_WakeUpLock, deltaMS);
+                        m_SleepUntil = DateTime.MinValue;
                     }
                 }
             }
