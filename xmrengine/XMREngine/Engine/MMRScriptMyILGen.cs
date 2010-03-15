@@ -727,6 +727,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			s2t.Add ("float",    typeof (float));
 			s2t.Add ("inlfunc",  typeof (InlineFunction));
 			s2t.Add ("int",      typeof (int));
+			s2t.Add ("int*",     typeof (int).MakeByRefType ());
 			s2t.Add ("lslfloat", typeof (LSL_Float));
 			s2t.Add ("lslint",   typeof (LSL_Integer));
 			s2t.Add ("lsllist",  typeof (LSL_List));

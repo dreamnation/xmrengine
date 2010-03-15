@@ -41,7 +41,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public static readonly int CALL_FRAME_MEMUSE = 64;
 		public static readonly int STRING_LEN_TO_MEMUSE = 2;
 
-		public static Exception outOfHeapException = new OutOfHeapException ();
 		public static Exception outOfStackException = new OutOfStackException ();
 
 		/*
@@ -72,7 +71,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static FieldInfo ehArgsFieldInfo = typeof (ScriptWrapper).GetField ("ehArgs");
 		public  static FieldInfo heapLeftFieldInfo  = typeof (ScriptWrapper).GetField ("heapLeft");
 		private static FieldInfo heapLimitFieldInfo = typeof (ScriptWrapper).GetField ("heapLimit");
-		private static FieldInfo outOfHeapExceptionFieldInfo = typeof (ScriptCodeGen).GetField ("outOfHeapException");
 		private static FieldInfo rotationXFieldInfo = typeof (LSL_Rotation).GetField ("x");
 		private static FieldInfo rotationYFieldInfo = typeof (LSL_Rotation).GetField ("y");
 		private static FieldInfo rotationZFieldInfo = typeof (LSL_Rotation).GetField ("z");
@@ -89,9 +87,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		                                                                            new Type[] { typeof (int),
 		                                                                                         typeof (object).MakeByRefType (),
 		                                                                                         typeof (object).MakeByRefType () });
-		private static MethodInfo heapUsedByObjMethodInfo = GetStaticMethod (typeof (ScriptCodeGen), 
-		                                                                     "HeapUsedByObj", 
-		                                                                     new Type[] { typeof (object) });
+		private static MethodInfo updateHeapLeftMethodInfo = GetStaticMethod (typeof (ScriptCodeGen), 
+		                                                                      "UpdateHeapLeft", 
+		                                                                      new Type[] { typeof (int).MakeByRefType (),
+		                                                                                   typeof (object),
+		                                                                                   typeof (int) });
 		private static MethodInfo lslVectorNegateMethodInfo = GetStaticMethod (typeof (ScriptCodeGen), 
 		                                                                       "LSLVectorNegate", 
 		                                                                       new Type[] { typeof (LSL_Vector) });
@@ -138,7 +138,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		// These get cleared at beginning of every function definition
 		public  ScriptMyILGen ilGen    = null;  // the output instruction stream
 		private ScriptMyLabel retLabel = null;  // where to jump to exit function
-		private ScriptMyLabel oohLabel = null;  // where to jump if out of heap
 		private Dictionary<CompValu, CompValu> localHeapTrackers = null;
 		                                        // given a script-visible local variable (or argument variable),
 		                                        // ... return the corresponding heapTracker variable, if any.
@@ -473,9 +472,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ilGen.BegMethod ();
 
 			/*
-			 * Set up heap tracking.
+			 * Set up dictionary to convert a local variable to its corresponding heaptracker variable.
+			 * There are only entries for object-type local vars (strings, lists, etc).  Local value-type
+			 * vars (int, vector, etc) use stack space only and are kept track of by scriptWrapper.stackLimit.
+			 * The heaptracker variable is always an int giving how many bytes scriptWrapper.heapLeft
+			 * was debited by the local variable.
 			 */
-			oohLabel = ilGen.DefineLabel ("__ooh");
 			localHeapTrackers = new Dictionary<CompValu, CompValu> ();
 
 			/*
@@ -613,9 +615,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ilGen.BegMethod ();
 
 			/*
-			 * Set up heap tracking.
+			 * Set up dictionary to convert a local variable to its corresponding heaptracker variable.
+			 * There are only entries for object-type local vars (strings, lists, etc).  Local value-type
+			 * vars (int, vector, etc) use stack space only and are kept track of by scriptWrapper.stackLimit.
+			 * The heaptracker variable is always an int giving how many bytes scriptWrapper.heapLeft
+			 * was debited by the local variable.
 			 */
-			oohLabel = ilGen.DefineLabel ("__ooh");
 			localHeapTrackers = new Dictionary<CompValu, CompValu> ();
 
 			/*
@@ -669,14 +674,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Output the 'real' return opcode.
 			 */
 			ilGen.Emit (OpCodes.Ret);
-
-			/*
-			 * Output code to throw an 'OutOfHeapException'.
-			 */
-			ilGen.MarkLabel (oohLabel);
-			oohLabel = null;
-			ilGen.Emit (OpCodes.Ldsfld, outOfHeapExceptionFieldInfo);
-			ilGen.Emit (OpCodes.Throw);
 
 			/*
 			 * No more instructions for this method.
@@ -2098,69 +2095,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (globalHeapTrackers.TryGetValue (value, out heapTracker) ||
 			    localHeapTrackers.TryGetValue (value, out heapTracker)) {
 
-				/*
-				 * Get current heap limit (number of remaining bytes script is allowed to use) pushed on stack.
-				 */
-				ilGen.Emit (OpCodes.Ldarg_0);                    // scriptWrapper
-				ilGen.Emit (OpCodes.Ldflda, heapLeftFieldInfo);  // &scriptWrapper.heapLeft
-				ilGen.Emit (OpCodes.Dup);
-				ilGen.Emit (OpCodes.Ldobj, typeof (int));        // scriptWrapper.heapLeft
+				heapTracker.PopPre (this);
+				
+				ilGen.Emit (OpCodes.Ldarg_0);                         // &scriptWrapper.heapLeft
+				ilGen.Emit (OpCodes.Ldflda, heapLeftFieldInfo);
 
-				// stack[0] = &heapLeft
-				// stack[1] = original_heapLeft
+				value.PushVal (this);                                 // object we care about
 
-				/*
-				 * If heapTracker holds previously debited amount, add to that number of bytes on stack.
-				 */
 				if (stValid) {
-					heapTracker.PushVal (this);              // heapTracker = numberOfBytes previously debited
-					ilGen.Emit (OpCodes.Add);                // add to heapLeft on stack
+					heapTracker.PushVal (this);                   // previously debited amount or ...
+				} else {
+					PushConstantI4 (0);                           // 0 because nothing debited before
 				}
 
-				// stack[0] = &heapLeft
-				// stack[1] = original_heapLeft + original_heapTracker
+				ilGen.Emit (OpCodes.Call, updateHeapLeftMethodInfo);  // update scriptWrapper.heapLeft
+				                                                      // throws exception if not enuf left
 
-				/*
-				 * Set heapTracker = variable's new heap usage.
-				 */
-				heapTracker.PopPre (this);
-				value.PushVal (this);
-				ilGen.Emit (OpCodes.Call, heapUsedByObjMethodInfo);
-				heapTracker.PopPost (this);
-
-				// stack[0] = &heapLeft
-				// stack[1] = original_heapLeft + original_heapTracker
-
-				/*
-				 * Subtract heapTracker from heapLeft value on stack, to get what remains for script to use.
-				 * If it goes negative, go throw an exception saying script is out of heap.
-				 * Otherwise, store new heapLeft back in scriptWrapper.heapLeft.
-				 */
-				heapTracker.PushVal (this);                      // heapTracker = numberOfBytes
-
-				// stack[0] = &heapLeft
-				// stack[1] = original_heapLeft + original_heapTracker
-				// stack[2] = updated_heapTracker
-
-				ilGen.Emit (OpCodes.Sub);                        // scriptWrapper.heapLeft - heapTracker
-
-				// stack[0] = &heapLeft
-				// stack[1] = original_heapLeft + original_heapTracker - updated_heapTracker
-
-				ilGen.Emit (OpCodes.Dup);                        // if went neg, goto ooh;
-				PushConstantI4 (0);
-
-				// stack[0] = &heapLeft
-				// stack[1] = original_heapLeft + original_heapTracker - updated_heapTracker
-				// stack[2] = original_heapLeft + original_heapTracker - updated_heapTracker
-				// stack[3] = 0
-
-				ilGen.Emit (OpCodes.Blt, oohLabel);
-
-				// stack[0] = &heapLeft
-				// stack[1] = original_heapLeft + original_heapTracker - updated_heapTracker
-
-				ilGen.Emit (OpCodes.Stobj, typeof (int));        // ok, store back in scriptWrapper.heapLeft
+				heapTracker.PopPost (this);                           // new debited amount
 			}
 		}
 
@@ -2311,13 +2262,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		public static LSL_Vector LSLVectorNegate (LSL_Vector v) { return -v; }
 
-		public static int HeapUsedByObj (object o)
+		/**
+		 * @brief An heap referencing variable was just set to a new object so we need to
+		 *        update scriptWrapper.heapLeft to reflect the new amount of heap available
+		 *        to the script.
+		 * @param heapLeft = heap available to script prior to new value written
+		 * @param value = object pointer value that was just written
+		 * @param oldHeapUse = what was previously debited by the variable that was just written
+		 * @returns amount being debited by the new assignment
+		 *          heapLeft = adjusted to reflect new heap avaialbe to script
+		 * Throws exception if the new value exceeds available amount.
+		 */
+		public static int UpdateHeapLeft (ref int heapLeft, object value, int oldHeapUse)
 		{
-			///??? if (o is XMR_Array) return 0;  ///??? fix this!
-			if (o is LSL_List) return ((LSL_List)o).Size;
-			if (o is LSL_String) return ((LSL_String)o).Length * 2 + 24;
-			if (o is string) return ((string)o).Length * 2 + 24;
-			return 0;
+			int newHeapUse = 0;
+
+			///??? if (value is XMR_Array) newHeapUse = ((XMR_Array)value).Size;///??? fix this!
+			     if (value is LSL_List)   newHeapUse = ((LSL_List)value).Size;
+			else if (value is LSL_String) newHeapUse = ((LSL_String)value).Length * 2 + 24;
+			else if (value is string)     newHeapUse = ((string)value).Length * 2 + 24;
+
+			heapLeft += oldHeapUse - newHeapUse;
+			if (heapLeft < 0) throw new OutOfHeapException ();
+
+			return newHeapUse;
 		}
 
 		/**
