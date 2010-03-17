@@ -36,10 +36,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
 		public static readonly string OBJECT_CODE_MAGIC = "XMRObjectCode";
-		public static readonly int COMPILED_VERSION_VALUE = 4;  // incremented when compiler changes for compatibility testing
+		public static readonly int COMPILED_VERSION_VALUE = 5;  // incremented when compiler changes for compatibility testing
 
 		public static readonly int CALL_FRAME_MEMUSE = 64;
 		public static readonly int STRING_LEN_TO_MEMUSE = 2;
+
+		public static Exception outOfStackException = new OutOfStackException ();
 
 		/*
 		 * Static tables that there only needs to be one copy of for all.
@@ -67,10 +69,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static FieldInfo continuationFieldInfo = typeof (ScriptWrapper).GetField ("continuation");
 		private static FieldInfo doGblInitFieldInfo = typeof (ScriptWrapper).GetField ("doGblInit");
 		private static FieldInfo ehArgsFieldInfo = typeof (ScriptWrapper).GetField ("ehArgs");
+		public  static FieldInfo heapLeftFieldInfo  = typeof (ScriptWrapper).GetField ("heapLeft");
+		private static FieldInfo heapLimitFieldInfo = typeof (ScriptWrapper).GetField ("heapLimit");
 		private static FieldInfo rotationXFieldInfo = typeof (LSL_Rotation).GetField ("x");
 		private static FieldInfo rotationYFieldInfo = typeof (LSL_Rotation).GetField ("y");
 		private static FieldInfo rotationZFieldInfo = typeof (LSL_Rotation).GetField ("z");
 		private static FieldInfo rotationSFieldInfo = typeof (LSL_Rotation).GetField ("s");
+		public  static FieldInfo stackLimitFieldInfo = typeof (ScriptWrapper).GetField ("stackLimit");
 		private static FieldInfo stateChangedFieldInfo = typeof (ScriptWrapper).GetField ("stateChanged");
 		private static FieldInfo stateCodeFieldInfo    = typeof (ScriptWrapper).GetField ("stateCode");
 		private static FieldInfo vectorXFieldInfo = typeof (LSL_Vector).GetField ("x");
@@ -82,9 +87,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		                                                                            new Type[] { typeof (int),
 		                                                                                         typeof (object).MakeByRefType (),
 		                                                                                         typeof (object).MakeByRefType () });
+		private static MethodInfo updateHeapLeftMethodInfo = GetStaticMethod (typeof (ScriptCodeGen), 
+		                                                                      "UpdateHeapLeft", 
+		                                                                      new Type[] { typeof (int).MakeByRefType (),
+		                                                                                   typeof (object),
+		                                                                                   typeof (int) });
 		private static MethodInfo lslVectorNegateMethodInfo = GetStaticMethod (typeof (ScriptCodeGen), 
 		                                                                       "LSLVectorNegate", 
 		                                                                       new Type[] { typeof (LSL_Vector) });
+		public  static MethodInfo stackLeftMethodInfo = GetStaticMethod (typeof (MMRUThread), "StackLeft", new Type[0]);
 
 		public static bool CodeGen (TokenScript tokenScript, string descName, string objFileName)
 		{
@@ -117,12 +128,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private Dictionary<string, int> stateIndices = null;
 		private Stack<Dictionary<string, CompValu>> scriptVariablesStack = null;
 		private Dictionary<string, CompValu> scriptInstanceVariables = null;
+		private Dictionary<CompValu, CompValu> globalHeapTrackers = null;
+		                                        // given a script-visible global variable,
+		                                        // ... return the corresponding global heapTracker var, if any.
 
 		// code generation output
 		public ScriptObjCode scriptObjCode = null;
 
 		// These get cleared at beginning of every function definition
-		public  ScriptMyILGen ilGen = null;  // the output instruction stream
+		public  ScriptMyILGen ilGen    = null;  // the output instruction stream
+		private ScriptMyLabel retLabel = null;  // where to jump to exit function
+		private Dictionary<CompValu, CompValu> localHeapTrackers = null;
+		                                        // given a script-visible local variable (or argument variable),
+		                                        // ... return the corresponding heapTracker variable, if any.
 
 		private ScriptCodeGen (TokenScript tokenScript, string descName, string objFileName)
 		{
@@ -194,13 +212,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
-			 * Set up stack of dictionaries to translate variable names to their declaration.
-			 * Then push the first element on the stack that will get any global variables.
-			 */
-			scriptVariablesStack = new Stack<Dictionary<string, CompValu>> ();
-			scriptInstanceVariables = PushVarDefnBlock ();
-
-			/*
 			 * Put script defined functions in 'scriptFunctions' dictionary so any calls
 			 * made by functions or event handlers will be seen, in case of forward
 			 * references.
@@ -239,13 +250,44 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			} while (foundChangedState);
 
 			/*
+			 * Set up stack of dictionaries to translate variable names to their declaration.
+			 * Then push the first element on the stack that will get any global variables.
+			 */
+			scriptVariablesStack = new Stack<Dictionary<string, CompValu>> ();
+			scriptInstanceVariables = PushVarDefnBlock ();
+			globalHeapTrackers = new Dictionary<CompValu, CompValu> ();
+
+			/*
 			 * Assign all global variables a slot in its corresponding ScriptWrapper.gbl<Type>s[] array.
 			 * Global variables are simply elements of those arrays at runtime, thus we don't need to create
 			 * an unique class for each script, we can just use ScriptWrapper as is for all.
 			 */
 			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclVar> kvp in tokenScript.vars) {
+
+				/*
+				 * Create entry in the value array for the variable.
+				 */
 				TokenDeclVar declVar = kvp.Value;
-				AddVarDefinition (declVar.name, new CompValuGlobal (declVar, scriptObjCode));
+				CompValu globalVar = new CompValuGlobal (declVar, scriptObjCode);
+
+				/*
+				 * Add its name to top-level variable definition stack so code can see it.
+				 */
+				AddVarDefinition (declVar.name, globalVar);
+
+				/*
+				 * If it references heap, add it to list of global vars that reference heap.  We use this list 
+				 * to maintain scriptWrapper.heapLeft to keep track of how much heap script is allowed to use.
+				 */
+				if ((declVar.type is TokenTypeArray) ||
+				    (declVar.type is TokenTypeList) ||
+				    (declVar.type is TokenTypeStr)) {
+					TokenDeclVar stDeclVar = new TokenDeclVar (declVar);
+					stDeclVar.type = new TokenTypeInt (declVar);
+					stDeclVar.name = new TokenName (declVar, "__htg_" + declVar.name.val);
+					CompValu heapTracker = new CompValuGlobal (stDeclVar, scriptObjCode);
+					globalHeapTrackers.Add (globalVar, heapTracker);
+				}
 			}
 
 			/*
@@ -268,6 +310,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
+			 * For debugging, we also write out global variable assignments.
+			 */
+			foreach (KeyValuePair<string, CompValu> kvp in scriptInstanceVariables) {
+				CompValuGlobal gblVar = (CompValuGlobal)kvp.Value;
+				objFileWriter.Write (kvp.Key);            // string
+				objFileWriter.Write (gblVar.field.Name);  // string
+				objFileWriter.Write (gblVar.index);       // int
+				CompValu heapTracker;
+				if (globalHeapTrackers.TryGetValue (kvp.Value, out heapTracker)) {
+					gblVar = (CompValuGlobal)heapTracker;
+					objFileWriter.Write ("__htg_" + kvp.Key);
+					objFileWriter.Write (gblVar.field.Name);
+					objFileWriter.Write (gblVar.index);
+				}
+			}
+			objFileWriter.Write ("");
+
+			/*
 			 * Output each global function as a private method.
 			 *
 			 * Prefix the names with __fun_ to keep them separate from any ScriptWrapper functions.
@@ -288,8 +348,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Output default state event handler methods.
-			 * Each event handler is a private static method named __seh_default_<eventname>
+			 * Each event handler is a private static method named __seh_default_<eventname>.
+			 * Splice in a default state_entry() handler if none defined so we init global vars.
 			 */
+			TokenDeclFunc defaultStateEntry = null;
+			for (defaultStateEntry = tokenScript.defaultState.body.eventFuncs;
+			     defaultStateEntry != null;
+			     defaultStateEntry = (TokenDeclFunc)defaultStateEntry.nextToken) {
+				if (defaultStateEntry.funcName.val == "state_entry") break;
+			}
+			if (defaultStateEntry == null) {
+				defaultStateEntry = new TokenDeclFunc (tokenScript.defaultState.body);
+				defaultStateEntry.retType  = new TokenTypeVoid  (tokenScript.defaultState.body);
+				defaultStateEntry.funcName = new TokenName      (tokenScript.defaultState.body, "state_entry");
+				defaultStateEntry.argDecl  = new TokenArgDecl   (tokenScript.defaultState.body);
+				defaultStateEntry.argDecl.types = new TokenType[0];
+				defaultStateEntry.argDecl.names = new TokenName[0];
+				defaultStateEntry.body     = new TokenStmtBlock (tokenScript.defaultState.body);
+				defaultStateEntry.body.function = defaultStateEntry;
+
+				defaultStateEntry.nextToken = tokenScript.defaultState.body.eventFuncs;
+				tokenScript.defaultState.body.eventFuncs = defaultStateEntry;
+			}
 			GenerateStateEventHandlers ("default", tokenScript.defaultState.body);
 
 			/*
@@ -304,90 +384,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ScriptMyILGen.TheEnd (objFileWriter);
 
 			scriptObjCode = null;
-		}
-
-		/**
-		 * @brief Convert 'objFileReader' format to 'scriptObjCode' format.
-		 *   'objFileReader' is a serialized form of the CIL code we generated
-		 *   'asmFileWriter' is where we write the disassembly to (or null if not wanted)
-		 *   'scriptObjCode' is an in-memory object with methods filled in from the CIL code
-		 * Throws an exception if there is any error (theoretically).
-		 */
-		public static ScriptObjCode PerformGeneration (BinaryReader objFileReader, 
-		                                               StreamWriter asmFileWriter)
-		{
-			/*
-			 * Check version number to make sure we know how to process file contents.
-			 */
-			char[] ocm = objFileReader.ReadChars (OBJECT_CODE_MAGIC.Length);
-			if (new String (ocm) != OBJECT_CODE_MAGIC) {
-				throw new Exception ("not an XMR object file (bad magic)");
-			}
-			int cvv = objFileReader.ReadInt32 ();
-			if (cvv != COMPILED_VERSION_VALUE) {
-				throw new Exception ("object version is " + cvv.ToString () + 
-				                     " but accept only " + COMPILED_VERSION_VALUE.ToString ());
-			}
-
-			/*
-			 * Fill in simple parts of scriptObjCode object.
-			 */
-			ScriptObjCode scriptObjCode = new ScriptObjCode ();
-			scriptObjCode.numGblArrays    = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblFloats    = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblIntegers  = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblLists     = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblRotations = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblStrings   = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblVectors   = objFileReader.ReadInt32 ();
-
-			int nStates = objFileReader.ReadInt32 ();
-
-			scriptObjCode.stateNames = new string[nStates];
-			for (int i = 0; i < nStates; i ++) {
-				scriptObjCode.stateNames[i] = objFileReader.ReadString ();
-			}
-
-			/*
-			 * Now fill in the methods (the hard part).
-			 */
-			EndMethodWrapper endMethodWrapper = new EndMethodWrapper ();
-			endMethodWrapper.scriptObjCode = scriptObjCode;
-			scriptObjCode.scriptEventHandlerTable = new ScriptEventHandler[nStates,(int)ScriptEventCode.Size];
-			scriptObjCode.dynamicMethods = new Dictionary<string, DynamicMethod> ();
-			ScriptMyILGen.CreateObjCode (objFileReader, endMethodWrapper.EndMethod, asmFileWriter);
-
-			return scriptObjCode;
-		}
-
-		/**
-		 * @brief Called once for every method found in objFileReader file.
-		 *        It enters the method in the ScriptObjCode object so it can be called.
-		 */
-		private class EndMethodWrapper {
-			public ScriptObjCode scriptObjCode;
-			public void EndMethod (DynamicMethod method)
-			{
-				string methName = method.Name;
-
-				/*
-				 * We catalog all dynamic methods so MMRCont.Load() can find them.
-				 */
-				scriptObjCode.dynamicMethods.Add (methName, method);
-
-				/*
-				 * We enter all script event handler methods in the ScriptEventHandler table.
-				 * They are named:  __seh_<statenumber>_<eventnumber>_<bunchofstuffwedontcareabout>
-				 */
-				if (methName.Substring (0, 6) == "__seh_") {
-					int j = methName.IndexOf ('_', 6);      // terminates <statenumber>
-					int k = methName.IndexOf ('_', j + 1);  // terminates <eventnumber>
-					int stateCode = Int32.Parse (methName.Substring (6, j - 6));
-					int eventCode = Int32.Parse (methName.Substring (j + 1, k - j - 1));
-					scriptObjCode.scriptEventHandlerTable[stateCode,eventCode] = 
-							(ScriptEventHandler)method.CreateDelegate (typeof (ScriptEventHandler));
-				}
-			}
 		}
 
 		/**
@@ -476,15 +472,29 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ilGen.BegMethod ();
 
 			/*
+			 * Set up dictionary to convert a local variable to its corresponding heaptracker variable.
+			 * There are only entries for object-type local vars (strings, lists, etc).  Local value-type
+			 * vars (int, vector, etc) use stack space only and are kept track of by scriptWrapper.stackLimit.
+			 * The heaptracker variable is always an int giving how many bytes scriptWrapper.heapLeft
+			 * was debited by the local variable.
+			 */
+			localHeapTrackers = new Dictionary<CompValu, CompValu> ();
+
+			/*
 			 * If this is the default state_entry() handler, output code to set all global
 			 * variables to their initial values.  Note that every script must have a
-			 * default state_entry() handler.
+			 * default state_entry() handler, we provide one if the script doesn't explicitly
+			 * define one.
 			 */
 			if ((statename == "default") && (eventname == "state_entry")) {
 				ScriptMyLabel skipGblInitLabel = ilGen.DefineLabel ("__skipGblInit");
 				ilGen.Emit (OpCodes.Ldarg_0);                    // scriptWrapper
 				ilGen.Emit (OpCodes.Ldfld, doGblInitFieldInfo);  // scriptWrapper.doGblInit
 				ilGen.Emit (OpCodes.Brfalse, skipGblInitLabel);
+				ilGen.Emit (OpCodes.Ldarg_0);                    // scriptWrapper
+				ilGen.Emit (OpCodes.Dup);
+				ilGen.Emit (OpCodes.Ldfld, heapLimitFieldInfo);  // scriptWrapper.heapLimit
+				ilGen.Emit (OpCodes.Stfld, heapLeftFieldInfo);   // scriptWrapper.heapLeft
 				foreach (KeyValuePair<string, TokenDeclVar> kvp in tokenScript.vars) {
 					TokenDeclVar gblDeclVar = kvp.Value;
 
@@ -497,6 +507,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						PushDefaultValue (gblDeclVar.type);
 					}
 					var.PopPost (this);
+
+					DebitHeapLeft (var, false);
 				}
 				ilGen.Emit (OpCodes.Ldarg_0);                    // scriptWrapper
 				PushConstantI4 (0);
@@ -524,6 +536,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					PushConstantI4 (i);                            // array index = i
 					ilGen.Emit (OpCodes.Ldelem, typeof (object));  // it is an array of objects
 					local.PopPost (this, new TokenTypeObject (argDecl.names[i]));
+
+					/*
+					 * Account for any heap usage by this local variable from now on to end of function.
+					 */
+					NewLocalVariable (local, argDecl.names[i]);
 
 					/*
 					 * The argument is now defined as a local variable accessible to the function body.
@@ -592,18 +609,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			PushVarDefnBlock ();
 
 			/*
-			 * Define all arguments as named variables so script body can reference them.
-			 * The argument indices need to have +1 added to them because ScriptWrapper is spliced in at arg 0.
-			 */
-			for (int i = 0; i < argDecl.types.Length; i ++) {
-				AddVarDefinition (argDecl.names[i], new CompValuArg (argDecl.types[i], i + 1));
-			}
-
-			/*
 			 * Set up code generator for the function's contents.
 			 */
 			ilGen = declFunc.ilGen;
 			ilGen.BegMethod ();
+
+			/*
+			 * Set up dictionary to convert a local variable to its corresponding heaptracker variable.
+			 * There are only entries for object-type local vars (strings, lists, etc).  Local value-type
+			 * vars (int, vector, etc) use stack space only and are kept track of by scriptWrapper.stackLimit.
+			 * The heaptracker variable is always an int giving how many bytes scriptWrapper.heapLeft
+			 * was debited by the local variable.
+			 */
+			localHeapTrackers = new Dictionary<CompValu, CompValu> ();
+
+			/*
+			 * Define all arguments as named variables so script body can reference them.
+			 * The argument indices need to have +1 added to them because ScriptWrapper is spliced in at arg 0.
+			 * Account for their heap usage just like they were local variables.
+			 */
+			for (int i = 0; i < argDecl.types.Length; i ++) {
+				CompValu arg = new CompValuArg (argDecl.types[i], i + 1);
+				NewLocalVariable (arg, argDecl.names[i]);
+				AddVarDefinition (argDecl.names[i], arg);
+			}
 
 			/*
 			 * See if time to suspend in case they are doing a loop with recursion.
@@ -623,23 +652,37 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void GenerateFuncBody (TokenDeclFunc declFunc)
 		{
 			/*
+			 * Any return statements inside function body jump to this label
+			 * after pushing return value (if any).
+			 */
+			retLabel = ilGen.DefineLabel ("__ret");
+
+			/*
 			 * Output code body.
 			 */
 			GenerateStmtBlock (declFunc.body, true);
 
 			/*
-			 * Just in case it runs off end without a return statement.
+			 * Output epilog that subtracts heap usage by local vars.
 			 */
-			EmitDummyReturn ();
+			ilGen.MarkLabel (retLabel);
+			retLabel = null;
+			CreditAllLocalsHeapLeft ();
+			localHeapTrackers = null;
 
 			/*
-			 * Don't want to generate any more code for it by mistake.
+			 * Output the 'real' return opcode.
+			 */
+			ilGen.Emit (OpCodes.Ret);
+
+			/*
+			 * No more instructions for this method.
 			 */
 			ilGen.EndMethod ();
 			ilGen = null;
 
 			/*
-			 * All done, clean up.
+			 * Pop off the top-level local definition block.
 			 */
 			PopVarDefnBlock ();
 		}
@@ -915,7 +958,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				CompValu rVal = GenerateFromRVal (retStmt.rVal);
 				rVal.PushVal (this, curDeclFunc.retType);
 			}
-			ilGen.Emit (OpCodes.Ret);
+			ilGen.Emit (OpCodes.Br, retLabel);
 		}
 
 		/**
@@ -989,7 +1032,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		/**
-		 * @brief process a variable declaration statement, possibly with initialization expression.
+		 * @brief process a local variable declaration statement, possibly with initialization expression.
 		 */
 		private void GenerateDeclVar (TokenDeclVar declVar)
 		{
@@ -999,19 +1042,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Script gave us an initialization value, so just store init value in var like an assignment statement.
 			 * If no init given, set to default value so we always have vaid non-null pointers to strings and lists, etc.
 			 */
+			local.PopPre (this);
 			if (declVar.init != null) {
-				local.PopPre (this);
 				CompValu rVal = GenerateFromRVal (declVar.init);
 				rVal.PushVal (this, declVar.type);
-				local.PopPost (this);
 			} else {
-				local.PopPre (this);
 				PushDefaultValue (declVar.type);
-				local.PopPost (this);
 			}
+			local.PopPost (this);
 
 			/*
-			 * Now it's ok for subsequent expressions in the block to reference the variable.
+			 * Account for any heap usage by this local variable from now on to end of function.
+			 */
+			NewLocalVariable (local, declVar.name);
+
+			/*
+			 * Now it's ok for subsequent expressions in the block to reference the local variable.
 			 */
 			AddVarDefinition (declVar.name, local);
 		}
@@ -1263,6 +1309,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				 */
 				if ((binOpStr.outtype != typeof (bool)) && opcodeIndex.EndsWith ("=")) {
 					binOpStr.emitBO (this, left, right, left);
+					DebitHeapLeft (left, true);
 					return left;
 				}
 
@@ -1305,6 +1352,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 								ErrorMsg (token, "invalid L-value");
 							} else {
 								binOpStr.emitBO (this, leftLVal, right, leftLVal);
+								DebitHeapLeft (left, true);
 							}
 							return left;
 						}
@@ -1565,7 +1613,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				string shortSig = name + "(";
 				InlineFunction foundInline = null;
 				foreach (KeyValuePair<string, InlineFunction> kvp in inlineFunctions) {
-					if (kvp.Key.StartsWith (shortSig)) {
+					if (kvp.Key.StartsWith (shortSig) && (kvp.Value.numArgs == nargs)) {
 						if (foundInline != null) goto nohope;
 						foundInline = kvp.Value;
 					}
@@ -1881,7 +1929,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void EmitDummyReturn ()
 		{
 			PushDefaultValue (curDeclFunc.retType);
-			ilGen.Emit (OpCodes.Ret);
+			ilGen.Emit (OpCodes.Br, retLabel);
 		}
 
 		/**
@@ -2018,6 +2066,77 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		/**
+		 * @brief Maintain list of current function's local variables so we can keep track
+		 *        of heap usage.  We don't have to keep track of stack usage as that is done
+		 *        entirely within CheckRun().
+		 */
+		private void NewLocalVariable (CompValu local, TokenName name)
+		{
+			if ((local.type is TokenTypeArray) ||
+			    (local.type is TokenTypeList) ||
+			    (local.type is TokenTypeStr)) {
+				CompValu heapTracker = new CompValuTemp (new TokenTypeInt (name), "__htl_" + name.val, this);
+				localHeapTrackers.Add (local, heapTracker);
+				DebitHeapLeft (local, false);
+			}
+		}
+
+		/**
+		 * @brief A variable was just assigned a value.  If the variable references heap,
+		 *        debit the scriptWrapper.heapLeft to make sure the script doesn't hog memory.
+		 * @param value = local or global variable
+		 * @param stValid = false: heapTracker contains garbage, so don't bother adding it back first
+		 *                   true: heapTracker contains previous debit quantity, so add it back first
+		 */
+		private void DebitHeapLeft (CompValu value, bool stValid)
+		{
+			CompValu heapTracker;
+
+			if (globalHeapTrackers.TryGetValue (value, out heapTracker) ||
+			    localHeapTrackers.TryGetValue (value, out heapTracker)) {
+
+				heapTracker.PopPre (this);
+				
+				ilGen.Emit (OpCodes.Ldarg_0);                         // &scriptWrapper.heapLeft
+				ilGen.Emit (OpCodes.Ldflda, heapLeftFieldInfo);
+
+				value.PushVal (this);                                 // object we care about
+
+				if (stValid) {
+					heapTracker.PushVal (this);                   // previously debited amount or ...
+				} else {
+					PushConstantI4 (0);                           // 0 because nothing debited before
+				}
+
+				ilGen.Emit (OpCodes.Call, updateHeapLeftMethodInfo);  // update scriptWrapper.heapLeft
+				                                                      // throws exception if not enuf left
+
+				heapTracker.PopPost (this);                           // new debited amount
+			}
+		}
+
+		/**
+		 * @brief A function is about to return, so credit any debits on heapLeft by its local variables.
+		 */
+		private void CreditAllLocalsHeapLeft ()
+		{
+			if (localHeapTrackers.Count > 0) {
+				ilGen.Emit (OpCodes.Ldarg_0);                    // scriptWrapper
+				ilGen.Emit (OpCodes.Ldflda, heapLeftFieldInfo);  // &scriptWrapper.heapLeft
+				ilGen.Emit (OpCodes.Dup);
+				ilGen.Emit (OpCodes.Ldobj, typeof (int));        // scriptWrapper.heapLeft
+
+				foreach (KeyValuePair<CompValu, CompValu> kvp in localHeapTrackers) {
+					CompValu heapTracker = kvp.Value;
+					heapTracker.PushVal (this);              // numberOfBytes subtracted from heapLeft
+					ilGen.Emit (OpCodes.Add);                // add them back to heapLeft
+				}
+
+				ilGen.Emit (OpCodes.Stobj, typeof (int));
+			}
+		}
+
+		/**
 		 * @brief maintain variable definition stack.
 		 * It translates a variable name string to its declaration.
 		 */
@@ -2142,6 +2261,138 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		public static LSL_Vector LSLVectorNegate (LSL_Vector v) { return -v; }
+
+		/**
+		 * @brief An heap referencing variable was just set to a new object so we need to
+		 *        update scriptWrapper.heapLeft to reflect the new amount of heap available
+		 *        to the script.
+		 * @param heapLeft = heap available to script prior to new value written
+		 * @param value = object pointer value that was just written
+		 * @param oldHeapUse = what was previously debited by the variable that was just written
+		 * @returns amount being debited by the new assignment
+		 *          heapLeft = adjusted to reflect new heap avaialbe to script
+		 * Throws exception if the new value exceeds available amount.
+		 */
+		public static int UpdateHeapLeft (ref int heapLeft, object value, int oldHeapUse)
+		{
+			int newHeapUse = 0;
+
+			///??? if (value is XMR_Array) newHeapUse = ((XMR_Array)value).Size;///??? fix this!
+			     if (value is LSL_List)   newHeapUse = ((LSL_List)value).Size;
+			else if (value is LSL_String) newHeapUse = ((LSL_String)value).Length * 2 + 24;
+			else if (value is string)     newHeapUse = ((string)value).Length * 2 + 24;
+
+			heapLeft += oldHeapUse - newHeapUse;
+			if (heapLeft < 0) throw new OutOfHeapException ();
+
+			return newHeapUse;
+		}
+
+		/**
+		 * @brief Convert 'objFileReader' format to 'scriptObjCode' format.
+		 *   'objFileReader' is a serialized form of the CIL code we generated
+		 *   'asmFileWriter' is where we write the disassembly to (or null if not wanted)
+		 *   'scriptObjCode' is an in-memory object with methods filled in from the CIL code
+		 * Throws an exception if there is any error (theoretically).
+		 */
+		public static ScriptObjCode PerformGeneration (BinaryReader objFileReader, 
+		                                               StreamWriter asmFileWriter)
+		{
+			/*
+			 * Check version number to make sure we know how to process file contents.
+			 */
+			char[] ocm = objFileReader.ReadChars (OBJECT_CODE_MAGIC.Length);
+			if (new String (ocm) != OBJECT_CODE_MAGIC) {
+				throw new Exception ("not an XMR object file (bad magic)");
+			}
+			int cvv = objFileReader.ReadInt32 ();
+			if (cvv != COMPILED_VERSION_VALUE) {
+				throw new Exception ("object version is " + cvv.ToString () + 
+				                     " but accept only " + COMPILED_VERSION_VALUE.ToString ());
+			}
+
+			/*
+			 * Fill in simple parts of scriptObjCode object.
+			 */
+			ScriptObjCode scriptObjCode   = new ScriptObjCode ();
+			scriptObjCode.numGblArrays    = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblFloats    = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblIntegers  = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblLists     = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblRotations = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblStrings   = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblVectors   = objFileReader.ReadInt32 ();
+
+			int nStates = objFileReader.ReadInt32 ();
+
+			scriptObjCode.stateNames = new string[nStates];
+			for (int i = 0; i < nStates; i ++) {
+				scriptObjCode.stateNames[i] = objFileReader.ReadString ();
+				if (asmFileWriter != null) {
+					asmFileWriter.WriteLine ("  state[{0}] = {1}", i, scriptObjCode.stateNames[i]);
+				}
+			}
+
+			if (asmFileWriter != null) {
+				asmFileWriter.WriteLine ("  numGblArrays    {0}", scriptObjCode.numGblArrays);
+				asmFileWriter.WriteLine ("  numGblFloats    {0}", scriptObjCode.numGblFloats);
+				asmFileWriter.WriteLine ("  numGblIntegers  {0}", scriptObjCode.numGblIntegers);
+				asmFileWriter.WriteLine ("  numGblLists     {0}", scriptObjCode.numGblLists);
+				asmFileWriter.WriteLine ("  numGblRotations {0}", scriptObjCode.numGblRotations);
+				asmFileWriter.WriteLine ("  numGblStrings   {0}", scriptObjCode.numGblStrings);
+				asmFileWriter.WriteLine ("  numGblVectors   {0}", scriptObjCode.numGblVectors);
+			}
+
+			string gblName;
+			while ((gblName = objFileReader.ReadString ()) != "") {
+				string gblType = objFileReader.ReadString ();
+				int gblIndex = objFileReader.ReadInt32 ();
+				if (asmFileWriter != null) {
+					asmFileWriter.WriteLine ("  {0} = {1}[{2}]", gblName, gblType, gblIndex);
+				}
+			}
+
+			/*
+			 * Now fill in the methods (the hard part).
+			 */
+			EndMethodWrapper endMethodWrapper = new EndMethodWrapper ();
+			endMethodWrapper.scriptObjCode = scriptObjCode;
+			scriptObjCode.scriptEventHandlerTable = new ScriptEventHandler[nStates,(int)ScriptEventCode.Size];
+			scriptObjCode.dynamicMethods = new Dictionary<string, DynamicMethod> ();
+			ScriptMyILGen.CreateObjCode (objFileReader, endMethodWrapper.EndMethod, asmFileWriter);
+
+			return scriptObjCode;
+		}
+
+		/**
+		 * @brief Called once for every method found in objFileReader file.
+		 *        It enters the method in the ScriptObjCode object so it can be called.
+		 */
+		private class EndMethodWrapper {
+			public ScriptObjCode scriptObjCode;
+			public void EndMethod (DynamicMethod method)
+			{
+				string methName = method.Name;
+
+				/*
+				 * We catalog all dynamic methods so MMRCont.Load() can find them.
+				 */
+				scriptObjCode.dynamicMethods.Add (methName, method);
+
+				/*
+				 * We enter all script event handler methods in the ScriptEventHandler table.
+				 * They are named:  __seh_<statenumber>_<eventnumber>_<bunchofstuffwedontcareabout>
+				 */
+				if (methName.Substring (0, 6) == "__seh_") {
+					int j = methName.IndexOf ('_', 6);      // terminates <statenumber>
+					int k = methName.IndexOf ('_', j + 1);  // terminates <eventnumber>
+					int stateCode = Int32.Parse (methName.Substring (6, j - 6));
+					int eventCode = Int32.Parse (methName.Substring (j + 1, k - j - 1));
+					scriptObjCode.scriptEventHandlerTable[stateCode,eventCode] = 
+							(ScriptEventHandler)method.CreateDelegate (typeof (ScriptEventHandler));
+				}
+			}
+		}
 	}
 
 	/**
@@ -2155,4 +2406,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.stateName = stateName;
 		}
 	}
+
+	public class OutOfHeapException : Exception { }
+	public class OutOfStackException : Exception { }
 }

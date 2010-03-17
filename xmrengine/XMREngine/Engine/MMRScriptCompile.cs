@@ -52,7 +52,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  */
                 envar = Environment.GetEnvironmentVariable ("MMRScriptCompileSaveSource");
                 if ((envar != null) && ((envar[0] & 1) != 0)) {
-                    m_log.DebugFormat("[XMREngine]: MMRScriptCopmileSaveSource: saving to {0}.lsl", fname);
+                    m_log.DebugFormat("[XMREngine]: MMRScriptCompileSaveSource: saving to {0}.lsl", fname);
                     File.WriteAllText (fname + ".lsl", source);
                 }
 
@@ -93,7 +93,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 envar = Environment.GetEnvironmentVariable ("MMRScriptCompileSaveILGen");
                 if ((envar != null) && ((envar[0] & 1) != 0)) {
                     string asmFileName = fname + ".xmrasm";
-                    m_log.DebugFormat("[XMREngine]: MMRScriptCopmileSaveILGen: saving to {0}", asmFileName);
+                    m_log.DebugFormat("[XMREngine]: MMRScriptCompileSaveILGen: saving to {0}", asmFileName);
                     asmFileWriter = File.CreateText (asmFileName);
                 }
             }

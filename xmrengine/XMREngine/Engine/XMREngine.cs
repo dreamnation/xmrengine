@@ -13,6 +13,7 @@ using System.IO;
 using System.Runtime.Remoting;
 using System.Runtime.Remoting.Lifetime;
 using System.Reflection;
+using System.Threading;
 using System.Collections.Generic;
 using System.Collections;
 using System.Security.Policy;
@@ -70,10 +71,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private Dictionary<UUID, UUID> m_Partmap =
                 new Dictionary<UUID, UUID>();
         private UIntPtr m_StackSize;
+        private object m_SuspendScriptThreadLock = new object();
+        private bool m_SuspendScriptThreadFlag = false;
+        private XMRInstance m_RunInstance = null;
+        private DateTime m_SleepUntil = DateTime.MinValue;
+        private DateTime m_LastRanAt = DateTime.MinValue;
 
         private int m_MaintenanceInterval = 10;
         
-        private Timer m_MaintenanceTimer;
+        private System.Timers.Timer m_MaintenanceTimer;
 
         public XMREngine()
         {
@@ -118,14 +124,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             if (m_MaintenanceInterval > 0)
             {
-                m_MaintenanceTimer = new Timer(m_MaintenanceInterval * 60000);
+                m_MaintenanceTimer = new System.Timers.Timer(m_MaintenanceInterval * 60000);
                 m_MaintenanceTimer.Elapsed += DoMaintenance;
                 m_MaintenanceTimer.Start();
             }
 
             MainConsole.Instance.Commands.AddCommand("xmr", false,
                     "xmr test",
-                    "xmr test [backup|gc|ls]",
+                    "xmr test [backup|gc|ls|resume|suspend]",
                     "Run current xmr test",
                     RunTest);
         }
@@ -256,16 +262,55 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
                 break;
             case "ls":
+                int i;
                 int numScripts = 0;
                 lock (m_Instances)
                 {
                     foreach (XMRInstance ins in m_Instances.Values)
                     {
+                        if (args.Length > 3)
+                        {
+                            for (i = 3; i < args.Length; i ++)
+                            {
+                                if (ins.m_Part.Name.Contains(args[i])) break;
+                                if (ins.m_Item.Name.Contains(args[i])) break;
+                                if (ins.m_ItemID.ToString().Contains(args[i])) break;
+                                if (ins.m_AssetID.ToString().Contains(args[i])) break;
+                            }
+                            if (i >= args.Length) continue;
+                        }
                         ins.RunTestLs();
                         numScripts ++;
                     }
                 }
                 Console.WriteLine("total of {0} script(s)", numScripts);
+                XMRInstance rins = m_RunInstance;
+                if (rins != null) {
+                    Console.WriteLine("running {0} {1} {2}:{3}",
+                            rins.m_ItemID.ToString(),
+                            rins.m_AssetID.ToString(),
+                            rins.m_Part.Name,
+                            rins.m_Item.Name);
+                }
+                DateTime suntil = m_SleepUntil;
+                if (suntil > DateTime.MinValue) {
+                    Console.WriteLine("sleeping until {0}", suntil.ToString());
+                }
+                Console.WriteLine("last ran at {0}", m_LastRanAt.ToString());
+                break;
+            case "resume":
+                m_log.Debug("[XMREngine]: resuming scripts");
+                m_SuspendScriptThreadFlag = false;
+                Monitor.Enter (m_SuspendScriptThreadLock);
+                Monitor.PulseAll (m_SuspendScriptThreadLock);
+                Monitor.Exit (m_SuspendScriptThreadLock);
+                break;
+            case "suspend":
+                m_log.Debug("[XMREngine]: suspending scripts");
+                m_SuspendScriptThreadFlag = true;
+                Monitor.Enter (m_WakeUpLock);
+                Monitor.PulseAll (m_WakeUpLock);
+                Monitor.Exit (m_WakeUpLock);
                 break;
             default:
                 Console.WriteLine("xmr test: unknown command " + args[2]);
@@ -629,7 +674,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return PostObjectEvent(part.LocalId, new EventParams(name, lsl_p, new DetectParams[0]));
         }
 
-        // Get a script instance loaded
+        // Get a script instance loaded, compiling it if necessary
         //
         //  localID     = the object as a whole, may contain many scripts
         //  itemID      = this instance of the script in this object
@@ -708,9 +753,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_log.DebugFormat("[XMREngine]: Running script {0}, asset {1}, param {2}",
                     item.Name, item.AssetID, startParam.ToString());
 
+            /*
+             * These errors really should be cleared by same thread that calls 
+             * GetScriptErrors() BEFORE it could possibly create or trigger the 
+             * thread that calls OnRezScript().
+             */
             lock (m_ScriptErrors) {
                 m_ScriptErrors.Remove(itemID);
             }
+
+            /*
+             * Compile and load the script in memory.
+             */
             XMRInstance instance = new XMRInstance();
             try {
                 instance.Construct(localID, itemID, script, 
@@ -721,8 +775,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 m_log.DebugFormat("[XMREngine]: Error starting script {0}: {1}",
                                   itemID.ToString(), e.Message);
                 if (e.Message != "compilation errors") {
-                    m_log.DebugFormat("[XMREngine]*:  {0}", e.ToString());
+                    m_log.DebugFormat("[XMREngine]:   exception:\n{0}", e.ToString());
                 }
+
+                /*
+                 * Post errors to GetScriptErrors() and wake it.
+                 */
                 lock (m_ScriptErrors) {
                     ArrayList errors = instance.GetScriptErrors();
                     if (errors == null) {
@@ -734,10 +792,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         }
                     }
                     m_ScriptErrors[itemID] = errors;
+                    Monitor.PulseAll(m_ScriptErrors);
                 }
                 return;
             }
 
+            /*
+             * Tell GetScriptErrors() that we have finished compiling/loading
+             * successfully (by posting a 0 element array).
+             */
+            lock (m_ScriptErrors) {
+                m_ScriptErrors[itemID] = new ArrayList();
+                Monitor.PulseAll(m_ScriptErrors);
+            }
+
+            /*
+             * Queue it for running.
+             */
             lock (m_Instances)
             {
                 // queue it to runnable script instance list
@@ -912,7 +983,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             {
                 if (ins != null)
                 {
+                    m_RunInstance = ins;
                     DateTime suspendUntil = ins.RunOne();
+                    m_RunInstance = null;
                     if (earliest > suspendUntil)
                     {
                         earliest = suspendUntil;
@@ -921,6 +994,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             DateTime now = DateTime.UtcNow;
+            m_LastRanAt = now;
             if (earliest > now)
             {
                 lock (m_WakeUpLock)
@@ -933,9 +1007,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         {
                             deltaMS = (int)deltaTS.TotalMilliseconds;
                         }
+                        m_SleepUntil = earliest;
                         System.Threading.Monitor.Wait(m_WakeUpLock, deltaMS);
+                        m_SleepUntil = DateTime.MinValue;
                     }
                 }
+            }
+
+            /*
+             * Handle 'xmr test resume/suspend' commands.
+             */
+            if (m_SuspendScriptThreadFlag) {
+                m_log.Debug ("[XMREngine]: scripts suspended");
+                Monitor.Enter (m_SuspendScriptThreadLock);
+                while (m_SuspendScriptThreadFlag) {
+                    Monitor.Wait (m_SuspendScriptThreadLock);
+                }
+                Monitor.Exit (m_SuspendScriptThreadLock);
+                m_log.Debug ("[XMREngine]: scripts resumed");
             }
         }
 
@@ -989,23 +1078,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
         }
 
+        /**
+         * @brief Retrieve errors generated by a previous call to OnRezScript().
+         *        It's possible that OnRezScript() hasn't been called yet but
+         *        will be very soon in another thread.  In that case, we must
+         *        wait for that other thread then retrieve the errors.
+         */
         public ArrayList GetScriptErrors(UUID itemID)
         {
             ArrayList errors;
 
             lock (m_ScriptErrors)
             {
-                if (m_ScriptErrors.TryGetValue(itemID, out errors)) {
-                    m_ScriptErrors.Remove(itemID);
-                } else {
-                    errors = null;
+                if (!m_ScriptErrors.TryGetValue(itemID, out errors)) {
+                    m_log.DebugFormat("[XMREngine]: waiting for {0} errors", itemID.ToString());
+                    do Monitor.Wait(m_ScriptErrors);
+                    while (!m_ScriptErrors.TryGetValue(itemID, out errors));
+                    m_log.DebugFormat("[XMREngine]: retrieved {0} errors", itemID.ToString());
                 }
+                m_ScriptErrors.Remove(itemID);
             }
-            if (errors == null) {
-                m_log.DebugFormat("XMREngine:GetScriptErrors*: {0} successful", itemID.ToString());
-                errors = new ArrayList();
+            if (errors.Count == 0) {
+                m_log.DebugFormat("[XMREngine]: {0} successful", itemID.ToString());
             } else {
-                m_log.DebugFormat("XMREngine:GetScriptErrors*: {0} has {1} error(s)", itemID.ToString(), errors.Count.ToString());
+                m_log.DebugFormat("[XMREngine]: {0} has {1} error(s)", itemID.ToString(), errors.Count.ToString());
             }
             return errors;
         }

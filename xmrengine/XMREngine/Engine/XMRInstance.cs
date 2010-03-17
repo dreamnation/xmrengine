@@ -14,6 +14,7 @@ using System.Runtime.Remoting.Lifetime;
 using System.Security.Policy;
 using System.IO;
 using System.Xml;
+using System.Text;
 using Mono.Tasklets;
 using OpenMetaverse;
 using OpenSim.Framework;
@@ -51,12 +52,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private static Dictionary<UUID, ScriptObjCode> m_CompiledScriptObjCode = new Dictionary<UUID, ScriptObjCode>();
         private static Dictionary<UUID, int> m_CompiledScriptRefCount = new Dictionary<UUID, int>();
 
+        public  SceneObjectPart m_Part = null;
+        public  uint m_LocalID = 0;
+        public  TaskInventoryItem m_Item = null;
+        public  UUID m_ItemID;
+        public  UUID m_AssetID;
+
         private XMREngine m_Engine = null;
-        private SceneObjectPart m_Part = null;
-        private uint m_LocalID = 0;
-        private TaskInventoryItem m_Item = null;
-        private UUID m_ItemID;
-        private UUID m_AssetID;
         private string m_ScriptBasePath;
         private string m_StateFileName;
         private string m_SourceCode;
@@ -71,6 +73,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private UIntPtr m_StackSize;
         private ArrayList m_CompilerErrors;
         private ScriptWrapper m_Wrapper = null;
+        private DateTime m_LastRanAt = DateTime.MinValue;
 
         // If code needs to have both m_QueueLock and m_RunLock,
         // be sure to lock m_RunLock first then m_QueueLock, as
@@ -262,11 +265,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Console.WriteLine("    m_PostOnRez    = " + m_PostOnRez);
             Console.WriteLine("    m_StateSource  = " + m_StateSource);
             Console.WriteLine("    m_SuspendCount = " + m_SuspendCount);
+            Console.WriteLine("    m_SuspendUntil = " + m_SuspendUntil);
             Console.WriteLine("    m_IsIdle       = " + m_IsIdle);
             Console.WriteLine("    m_Reset        = " + m_Reset);
             Console.WriteLine("    m_Die          = " + m_Die);
             string sc = m_Wrapper.GetStateName(m_Wrapper.stateCode);
             Console.WriteLine("    m_StateCode    = " + sc);
+            Console.WriteLine("    m_LastRanAt    = " + m_LastRanAt.ToString());
+            Console.WriteLine("    heapLeft/Limit = " + m_Wrapper.heapLeft + "/" + m_Wrapper.heapLimit);
             lock (m_QueueLock)
             {
                 Console.WriteLine("    m_Running      = " + m_Running);
@@ -284,6 +290,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             lock (m_CompileLock)
             {
+                bool compileFailed = false;
                 bool compiledIt = false;
                 ScriptObjCode objCode;
 
@@ -294,8 +301,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if (!m_CompiledScriptObjCode.TryGetValue (m_AssetID, 
                                                           out objCode))
                 {
-                    objCode = TryToCompile(false);
-                    compiledIt = true;
+                    try {
+                        objCode = TryToCompile(false);
+                        compiledIt = true;
+                    } catch (Exception) {
+                        compileFailed = true;
+                    }
                 }
 
                 /*
@@ -303,7 +314,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * memory and try to fill in its initial state from the saved
                  * state file.
                  */
-                if (TryToLoad(objCode))
+                if (!compileFailed && TryToLoad(objCode))
                 {
                     m_log.DebugFormat("[XMREngine]: load successful {0}",
                             m_DescName);
@@ -1116,11 +1127,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public DateTime RunOne()
         {
+            DateTime now = DateTime.UtcNow;
+
             /*
              * If script has called llSleep(), don't do any more until time is
              * up.
              */
-            if (m_SuspendUntil > DateTime.UtcNow)
+            if (m_SuspendUntil > now)
             {
                 return m_SuspendUntil;
             }
@@ -1167,12 +1180,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                     try
                     {
+                        m_LastRanAt = now;
                         m_Wrapper.StartEventHandler(evt.EventName, evt.Params);
                     }
                     catch (Exception e)
                     {
-                        m_log.Error("[XMREngine]: Exception while starting script event. Disabling script.\n" + e.ToString());
-                        Interlocked.Increment(ref m_SuspendCount);
+                        SendErrorMessage("starting", e);
                         return DateTime.MaxValue;
                     }
                 }
@@ -1182,12 +1195,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  */
                 try
                 {
+                    m_LastRanAt = now;
                     m_IsIdle = m_Wrapper.ResumeEventHandler();
+                }
+                catch (ScriptDeleteException sde)
+                {
+                    /*
+                     * Script did something like llRemoveInventory(llGetScriptName());
+                     * ... to delete itself from the object.
+                     */
+                    m_SuspendUntil = DateTime.MaxValue;
+                    m_log.DebugFormat("[XMREngine]: script self-delete {0}", m_ItemID);
+                    m_Part.Inventory.RemoveInventoryItem(m_ItemID);
+                    return DateTime.MaxValue;
                 }
                 catch (Exception e)
                 {
-                    m_log.Error("[XMREngine]: Exception while running script event. Disabling script.\n" + e.ToString());
-                    Interlocked.Increment(ref m_SuspendCount);
+                    SendErrorMessage("running", e);
+                    return DateTime.MaxValue;
                 }
 
                 /*
@@ -1214,8 +1239,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  */
                 if (m_Die)
                 {
+                    m_SuspendUntil = DateTime.MaxValue;
                     m_Engine.World.DeleteSceneObject(m_Part.ParentGroup, false);
-                    return DateTime.MinValue;
+                    return DateTime.MaxValue;
                 }
             }
 
@@ -1240,6 +1266,60 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             m_SuspendUntil = DateTime.UtcNow + TimeSpan.FromMilliseconds(ms);
             ((XMREngine)m_Engine).WakeUp();
+        }
+
+        /**
+         * @brief There was an exception running script event handler.
+         *        Display error message and disable script (in a way
+         *        that the script can be reset to be restarted).
+         */
+        private void SendErrorMessage(string phase, Exception e)
+        {
+            StringBuilder msg = new StringBuilder();
+
+            msg.Append("[XMREngine]: Exception while ");
+            msg.Append(phase);
+            msg.Append(" script event handler.\n");
+
+            /*
+             * Display full exception message in log.
+             */
+            m_log.Debug(msg.ToString() + e.ToString());
+
+            /*
+             * Tell script owner what to do.
+             */
+            msg.Append("Part: <");
+            msg.Append(m_Part.Name);
+            msg.Append(">, Item: <");
+            msg.Append(m_Item.Name);
+            msg.Append(">\nYou must Reset script to re-enable.");
+
+            /*
+             * Remove extra garbage from error message that includes stack 
+             * dump.  Stop at RunCont() line because that is what calls the 
+             * event handler.
+             */
+            string[] lines = e.ToString().Split(new char[] { '\n' });
+            for (int i = 0; i < lines.Length; i ++)
+            {
+                string line = lines[i];
+                if (line == "") continue;
+                if (line.Contains("Continuation.RunCont")) break;
+                msg.Append('\n');
+                msg.Append(line.Replace("$MMRContableAttribute$", "$"));
+            }
+
+            /*
+             * Send sanitized error message to owner.
+             */
+            m_Wrapper.beAPI.llOwnerSay(msg.ToString());
+
+            /*
+             * Say script is sleeping for a very long time.
+             * Reset() is able to cancel this sleeping.
+             */
+            m_SuspendUntil = DateTime.MaxValue;
         }
 
         /**
@@ -1273,10 +1353,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             lock (m_QueueLock)
             {
-                m_EventQueue.Clear();
-                m_TimerQueued = false;
+                m_EventQueue.Clear();            // no events queued
+                m_TimerQueued = false;           // ... not even a timer event
             }
-            m_DetectParams = null;
+            m_IsIdle = true;                     // not processing an event
+            m_DetectParams = null;               // not processing an event
+            m_SuspendUntil = DateTime.MinValue;  // not doing llSleep()
 
             /*
              * Tell next call do 'default state_entry()' to reset all global

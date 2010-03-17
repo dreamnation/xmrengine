@@ -50,11 +50,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public StateChangeDelegate stateChange;   // called when script changes state
 		public ScriptBaseClass beAPI;             // passed as 'this' to methods such as llSay()
 		public object[] ehArgs;                   // event handler argument array
-		public int memUsage = 0;                  // script's current memory usage
-		public int memLimit = 100000;             // CheckRun() throws exception if memUsage > memLimit
 		public bool stateChanged = false;         // script sets this if/when it executes a 'state' statement
 		public bool doGblInit = true;             // default state_entry() needs to initialize global variables
 		public ScriptObjCode objCode;             // the script's object code pointer
+		public uint stackLimit;                   // CheckRun() must always see this much stack available
+		public int heapLimit;                     // let script use this many bytes of heap maximum
+		                                          // includes global vars, local vars, that reference heap
+		                                          // does not include value-type vars, that is part of stackLimit
+		public int heapLeft;                      // how much of heapLimit remains available
 
 		public bool debPrint = false;
 
@@ -153,7 +156,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		/*
 		 * Makes sure migration data version is same on both ends.
 		 */
-		public static readonly byte migrationVersion = 3;
+		public static readonly byte migrationVersion = 4;
 
 		/*
 		 * Whether or not we are using the microthread.
@@ -191,20 +194,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			this.gblStrings   = new string[objCode.numGblStrings];
 			this.gblVectors   = new LSL_Vector[objCode.numGblVectors];
 
-			for (int i = 0; i < objCode.numGblArrays; i ++) {
-				this.gblArrays[i]  = new XMR_Array ();
-			}
-			for (int i = 0; i < objCode.numGblLists; i ++) {
-				this.gblLists[i]   = new LSL_List (new object[0]);
-			}
-			for (int i = 0; i < objCode.numGblStrings; i ++) {
-				this.gblStrings[i] = String.Empty;
-			}
-
 			/*
 			 * Set up debug name string.
 			 */
 			this.instanceNo += "/" + descName;
+
+			/*
+			 * Script must leave this much stack remaining on calls to CheckRun().
+			 */
+			this.stackLimit = (uint)stackSize / 2;
+
+			/*
+			 * This is how many total heap bytes script is allowed to use.
+			 * Start with some fixed amount then subtract off static global sizes.
+			 */
+			this.heapLimit  = (int)(uint)stackSize / 2;
+			this.heapLimit -= 16 * objCode.numGblArrays;
+			this.heapLimit -=  4 * objCode.numGblFloats;
+			this.heapLimit -=  4 * objCode.numGblIntegers;
+			this.heapLimit -= 16 * objCode.numGblLists;
+			this.heapLimit -= 16 * objCode.numGblRotations;
+			this.heapLimit -= 16 * objCode.numGblStrings;
+			this.heapLimit -= 12 * objCode.numGblVectors;
 
 			/*
 			 * Set up sub-objects and cross-polinate so everything can access everything.
@@ -459,8 +470,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				}
 				this.stateCode = (int)this.continuation.recvObj (stream);
 				this.eventCode = (ScriptEventCode)this.continuation.recvObj (stream);
-				this.memUsage  = (int)this.continuation.recvObj (stream);
-				this.memLimit  = (int)this.continuation.recvObj (stream);
+				this.heapLeft  = this.heapLimit - (int)this.continuation.recvObj (stream);
 				this.ehArgs    = (object[])this.continuation.recvObj (stream);
 
 				/*
@@ -596,8 +606,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				stream.WriteByte (migrationVersion);
 				this.SendObjInterceptor (stream, this.stateCode);
 				this.SendObjInterceptor (stream, this.eventCode);
-				this.SendObjInterceptor (stream, this.memUsage);
-				this.SendObjInterceptor (stream, this.memLimit);
+				this.SendObjInterceptor (stream, this.heapLimit - this.heapLeft);
 				this.SendObjInterceptor (stream, this.ehArgs);
 				this.MigrateScriptOut (stream, this.SendObjInterceptor);
 
@@ -876,13 +885,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		public void MigrateScriptOut (System.IO.Stream stream, MMRContSendObj sendObj)
 		{
-			SendGblArray (stream, sendObj, gblArrays);
-			SendGblArray (stream, sendObj, gblFloats);
-			SendGblArray (stream, sendObj, gblIntegers);
-			SendGblArray (stream, sendObj, gblLists);
-			SendGblArray (stream, sendObj, gblRotations);
-			SendGblArray (stream, sendObj, gblStrings);
-			SendGblArray (stream, sendObj, gblVectors);
+			SendGblArray (stream, sendObj, this.gblArrays);
+			SendGblArray (stream, sendObj, this.gblFloats);
+			SendGblArray (stream, sendObj, this.gblIntegers);
+			SendGblArray (stream, sendObj, this.gblLists);
+			SendGblArray (stream, sendObj, this.gblRotations);
+			SendGblArray (stream, sendObj, this.gblStrings);
+			SendGblArray (stream, sendObj, this.gblVectors);
 		}
 
 		private void SendGblArray (System.IO.Stream stream, MMRContSendObj sendObj, Array array)
@@ -898,13 +907,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		public void MigrateScriptIn (System.IO.Stream stream, MMRContRecvObj recvObj)
 		{
-			gblArrays    = (XMR_Array[])   RecvGblArray (stream, recvObj, typeof (XMR_Array));
-			gblFloats    = (float[])       RecvGblArray (stream, recvObj, typeof (float));
-			gblIntegers  = (int[])         RecvGblArray (stream, recvObj, typeof (int));
-			gblLists     = (LSL_List[])    RecvGblArray (stream, recvObj, typeof (LSL_List));
-			gblRotations = (LSL_Rotation[])RecvGblArray (stream, recvObj, typeof (LSL_Rotation));
-			gblStrings   = (string[])      RecvGblArray (stream, recvObj, typeof (string));
-			gblVectors   = (LSL_Vector[])  RecvGblArray (stream, recvObj, typeof (LSL_Vector));
+			this.gblArrays    = (XMR_Array[])   RecvGblArray (stream, recvObj, typeof (XMR_Array));
+			this.gblFloats    = (float[])       RecvGblArray (stream, recvObj, typeof (float));
+			this.gblIntegers  = (int[])         RecvGblArray (stream, recvObj, typeof (int));
+			this.gblLists     = (LSL_List[])    RecvGblArray (stream, recvObj, typeof (LSL_List));
+			this.gblRotations = (LSL_Rotation[])RecvGblArray (stream, recvObj, typeof (LSL_Rotation));
+			this.gblStrings   = (string[])      RecvGblArray (stream, recvObj, typeof (string));
+			this.gblVectors   = (LSL_Vector[])  RecvGblArray (stream, recvObj, typeof (LSL_Vector));
 		}
 
 		private Array RecvGblArray (System.IO.Stream stream, MMRContRecvObj recvObj, Type eleType)
@@ -1068,15 +1077,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 *
 			 * Thus any checkpoint/restart save/resume code can assume stateChanged = false.
 			 */
-			if (scriptWrapper.stateChanged) throw new Exception ("CheckRun() called with stateChanged set");
+			if (scriptWrapper.stateChanged) {
+				throw new Exception ("CheckRun() called with stateChanged set");
+			}
 
 			/*
-			 * Make sure script isn't hogging too much memory.
+			 * Make sure script isn't about to run out of stack.
 			 */
-			int mu = scriptWrapper.memUsage;
-			int ml = scriptWrapper.memLimit;
-			if (mu > ml) {
-				throw new Exception ("memory usage " + mu + " exceeds limit " + ml);
+			if ((uint)MMRUThread.StackLeft () < scriptWrapper.stackLimit) {
+				throw ScriptCodeGen.outOfStackException;
 			}
 
 			while (scriptWrapper.suspendOnCheckRun || (scriptWrapper.migrateOutStream != null)) {

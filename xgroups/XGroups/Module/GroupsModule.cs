@@ -274,7 +274,7 @@ namespace Careminster.Modules.Groups
                 MySqlCommand cmd = c.CreateCommand();
 
                 cmd.CommandText = "select RoleTitle from roles where "+
-                        "GroupUD = ?GroupID and RoleID = ?RoleID";
+                        "GroupID = ?GroupID and RoleID = ?RoleID";
 
                 cmd.Parameters.AddWithValue("RoleID", RoleID.ToString());
                 cmd.Parameters.AddWithValue("GroupID", GroupID.ToString());
