@@ -790,9 +790,7 @@ namespace Careminster.Modules.Permissions
                 else
                     permission = CheckGroupPowers(owner, land.LandData.GroupID, (uint)GroupPowers.AllowRez);
 
-                ScenePresence presence=m_Scene.GetScenePresence(owner);
-
-                if (IsAdministrator(owner) && presence != null) // && presence.GodLevel >= 250f)
+                if (IsAdministrator(owner))
                 {
                     permission = true;
                 }
