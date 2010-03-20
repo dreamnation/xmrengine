@@ -26,7 +26,7 @@ using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
  */
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
-	public delegate void CodeGenCall (ScriptCodeGen scg, CompValu result, CompValu[] args);
+	public delegate void CodeGenCall (ScriptCodeGen scg, Token token, CompValu result, CompValu[] args);
 
 	public class InlineFunction {
 
@@ -42,6 +42,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static TokenTypeFloat tokenTypeFloat  = new TokenTypeFloat (null);
 		private static TokenTypeStr   tokenTypeString = new TokenTypeStr (null);
 
+		private static MethodInfo consoleWrite = ScriptCodeGen.GetStaticMethod (typeof (XMRInstance), "ConsoleWrite",
+				new Type[] { typeof (XMRInstance), typeof (string) });
 		private static MethodInfo roundMethInfo = ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Round", 
 				new Type[] { typeof (double), typeof (MidpointRounding) });
 		private static MethodInfo parseString2ListMethInfo = ScriptCodeGen.GetStaticMethod (typeof (XMRHelpers), 
@@ -99,11 +101,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * can be forced by incrementing ScriptCodeGen.COMPILED_VERSION_VALUE.
 		 *
 		 * In addition to the parameter values, the inline code (either form) has the
-		 * following variable avaialble:
-		 *    __sm = the current ScriptModule instance, which inherits from ScriptWrapper
-		 * Also, any substituted parameters or return value identifiers will always begin
-		 * with two underscores (__), so any local variables created for internal use by
-		 * the inline code must begin with something other than __.
+		 * XMRInstance avalable as argument 0 (OpCodes.Ldarg_0).
 		 */
 		public static Dictionary<string, InlineFunction> CreateDictionary ()
 		{
@@ -144,8 +142,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Our internally defined functions.
 			 */
-			inf = new InlineFunction (ifd, "xmrHeapLeft()",  typeof (int), null); inf.codeGen = inf.CodeGenXMRHeapLeft;
-			inf = new InlineFunction (ifd, "xmrStackLeft()", typeof (int), null); inf.codeGen = inf.CodeGenXMRStackLeft;
+			inf = new InlineFunction (ifd, "consoleWrite(string)", typeof (void), null); inf.codeGen = inf.CodeGenConsoleWrite;
+			inf = new InlineFunction (ifd, "xmrHeapLeft()",        typeof (int),  null); inf.codeGen = inf.CodeGenXMRHeapLeft;
+			inf = new InlineFunction (ifd, "xmrStackLeft()",       typeof (int),  null); inf.codeGen = inf.CodeGenXMRStackLeft;
 
 			/*
 			 * Finally for any API functions defined by ScriptBaseClass that are not overridden 
@@ -282,7 +281,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @param args = type/location of arguments (types match function definition)
 		 */
 
-		private void CodeGenLLAbs (ScriptCodeGen scg, CompValu result, CompValu[] args)
+		private void CodeGenLLAbs (ScriptCodeGen scg, Token token, CompValu result, CompValu[] args)
 		{
 			ScriptMyLabel itsPosLabel = scg.ilGen.DefineLabel ("llAbstemp");
 
@@ -296,7 +295,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			result.PopPost (scg, retType);
 		}
 
-		private void CodeGenStatic (ScriptCodeGen scg, CompValu result, CompValu[] args)
+		private void CodeGenStatic (ScriptCodeGen scg, Token token, CompValu result, CompValu[] args)
 		{
 			result.PopPre (scg);
 			for (int i = 0; i < args.Length; i ++) {
@@ -306,7 +305,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			result.PopPost (scg, retType);
 		}
 
-		private void CodeGenLLRound (ScriptCodeGen scg, CompValu result, CompValu[] args)
+		private void CodeGenLLRound (ScriptCodeGen scg, Token token, CompValu result, CompValu[] args)
 		{
 			result.PopPre (scg);
 			args[0].PushVal (scg, tokenTypeFloat);
@@ -315,7 +314,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			result.PopPost (scg, retType);
 		}
 
-		private void CodeGenLLParseString2List (ScriptCodeGen scg, CompValu result, CompValu[] args)
+		private void CodeGenLLParseString2List (ScriptCodeGen scg, Token token, CompValu result, CompValu[] args)
 		{
 			result.PopPre (scg);
 			args[0].PushVal (scg, tokenTypeString);  // converts from LSL_String -> string
@@ -327,10 +326,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		/**
+		 * @brief Generate code to print a debug string on stdout.
+		 *        Script-level prototype:  void consoleWrite(string)
+		 */
+		private void CodeGenConsoleWrite (ScriptCodeGen scg, Token token, CompValu result, CompValu[] args)
+		{
+			scg.ilGen.Emit (OpCodes.Ldarg_0);
+			args[0].PushVal (scg, tokenTypeString);
+			scg.ilGen.Emit (OpCodes.Call, consoleWrite);
+		}
+
+		/**
 		 * @brief Generate code to return number of bytes of heap they have left.
 		 *        Script-level prototype:  integer xmrHeapLeft()
 		 */
-		private void CodeGenXMRHeapLeft (ScriptCodeGen scg, CompValu result, CompValu[] args)
+		private void CodeGenXMRHeapLeft (ScriptCodeGen scg, Token token, CompValu result, CompValu[] args)
 		{
 			result.PopPre (scg);
 			scg.ilGen.Emit (OpCodes.Ldarg_0);
@@ -342,7 +352,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief Generate code to return number of bytes of stack they have left.
 		 *        Script-level prototype:  integer xmrStackLeft()
 		 */
-		private void CodeGenXMRStackLeft (ScriptCodeGen scg, CompValu result, CompValu[] args)
+		private void CodeGenXMRStackLeft (ScriptCodeGen scg, Token token, CompValu result, CompValu[] args)
 		{
 			result.PopPre (scg);
 			scg.ilGen.Emit (OpCodes.Call, ScriptCodeGen.stackLeftMethodInfo);
@@ -359,7 +369,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @param result = where to place result (might be void)
 		 * @param args = arguments to pass to API function
 		 */
-		private void CodeGenBEApi (ScriptCodeGen scg, CompValu result, CompValu[] args)
+		private void CodeGenBEApi (ScriptCodeGen scg, Token token, CompValu result, CompValu[] args)
 		{
 			result.PopPre (scg);
 			scg.ilGen.Emit (OpCodes.Ldarg_0);                              // scriptWrapper
@@ -370,7 +380,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			scg.ilGen.Emit (OpCodes.Call, methInfo);                       // call API function
 			result.PopPost (scg, retType);                                 // pop result, boxing/unboxing as needed
 			if (doCheckRun) {
-				scg.EmitCallCheckRun ();                               // maybe call CheckRun()
+				scg.EmitCallCheckRun (token.line);                     // maybe call CheckRun()
 			}
 		}
 	}
