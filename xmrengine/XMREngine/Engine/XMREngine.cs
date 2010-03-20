@@ -48,6 +48,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     public class XMREngine : INonSharedRegionModule, IScriptEngine,
             IScriptModule
     {
+        public static readonly DetectParams[] zeroDetectParams = new DetectParams[0];
         private static readonly ILog m_log =
             LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
@@ -57,11 +58,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private IConfig m_Config;
         private string m_ScriptBasePath;
         private bool m_Enabled = false;
-        private XMRSched m_Scheduler = null;
         private XMREvents m_Events = null;
         public  AssemblyResolver m_AssemblyResolver = null;
-        private Dictionary<UUID, XMRInstance> m_Instances =
+        private Dictionary<UUID, XMRInstance> m_InstancesDict =
                 new Dictionary<UUID, XMRInstance>();
+        private XMRInstance[] m_InstanceArray = new XMRInstance[0];
         private Dictionary<UUID, ArrayList> m_ScriptErrors =
                 new Dictionary<UUID, ArrayList>();
         private bool m_WakeUpFlag = false;
@@ -76,6 +77,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private XMRInstance m_RunInstance = null;
         private DateTime m_SleepUntil = DateTime.MinValue;
         private DateTime m_LastRanAt = DateTime.MinValue;
+        private Thread m_ScriptThread = null;
+        private Thread m_SliceThread = null;
+        private bool m_Exiting = false;
 
         private int m_MaintenanceInterval = 10;
         
@@ -180,22 +184,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             /*
-             * Stop executing script threads and wait for final
-             * one to finish (ie, script gets to CheckRun() call).
-             */
-            if (m_Scheduler != null)
-            {
-                m_Scheduler.Stop();
-                WakeUp();
-                m_Scheduler.Shutdown();
-            }
-            m_Scheduler = null;
-
-            /*
-             * Write their state out to .state files so it will be
+             * Write script states out to .state files so it will be
              * available when the region is restarted.
              */
             DoMaintenance(null, null);
+
+            /*
+             * Stop executing script threads and wait for final
+             * one to finish (ie, script gets to CheckRun() call).
+             */
+            m_Exiting = true;
+            if (m_ScriptThread != null)
+            {
+                WakeUp();
+                m_ScriptThread.Join();
+                m_ScriptThread = null;
+            }
+            if (m_SliceThread != null)
+            {
+                m_SliceThread.Join();
+                m_SliceThread = null;
+            }
 
             m_Events = null;
 
@@ -228,8 +237,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_Scene.EventManager.OnGetScriptRunning += OnGetScriptRunning;
             m_Scene.EventManager.OnShutdown += OnShutdown;
 
-            m_Scheduler = new XMRSched(this);
             m_Events = new XMREvents(this);
+
+            m_ScriptThread = new Thread(RunScriptThread);
+            m_SliceThread  = new Thread(RunSliceThread);
+            m_ScriptThread.Priority = ThreadPriority.BelowNormal;
+            m_ScriptThread.Start();
+            m_SliceThread.Start();
 
             /////////////// Test
         }
@@ -252,36 +266,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             case "gc":
                 GC.Collect();
                 break;
-            case "backup":
-                foreach (XMRInstance ins in m_Instances.Values)
-                {
-                    Byte[] data = ins.GetSnapshot();
-                    FileStream fs = File.Create("/tmp/test.dump");
-                    fs.Write(data, 0, data.Length);
-                    fs.Close();
-                }
-                break;
             case "ls":
                 int i;
                 int numScripts = 0;
-                lock (m_Instances)
+                foreach (XMRInstance ins in m_InstanceArray)
                 {
-                    foreach (XMRInstance ins in m_Instances.Values)
+                    if (args.Length > 3)
                     {
-                        if (args.Length > 3)
+                        for (i = 3; i < args.Length; i ++)
                         {
-                            for (i = 3; i < args.Length; i ++)
-                            {
-                                if (ins.m_Part.Name.Contains(args[i])) break;
-                                if (ins.m_Item.Name.Contains(args[i])) break;
-                                if (ins.m_ItemID.ToString().Contains(args[i])) break;
-                                if (ins.m_AssetID.ToString().Contains(args[i])) break;
-                            }
-                            if (i >= args.Length) continue;
+                            if (ins.m_Part.Name.Contains(args[i])) break;
+                            if (ins.m_Item.Name.Contains(args[i])) break;
+                            if (ins.m_ItemID.ToString().Contains(args[i])) break;
+                            if (ins.m_AssetID.ToString().Contains(args[i])) break;
                         }
-                        ins.RunTestLs();
-                        numScripts ++;
+                        if (i >= args.Length) continue;
                     }
+                    ins.RunTestLs();
+                    numScripts ++;
                 }
                 Console.WriteLine("total of {0} script(s)", numScripts);
                 XMRInstance rins = m_RunInstance;
@@ -345,9 +347,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             XMRInstance instance = null;
 
-            lock (m_Instances)
+            lock (m_InstancesDict)
             {
-                if (!m_Instances.TryGetValue(itemID, out instance))
+                if (!m_InstancesDict.TryGetValue(itemID, out instance))
                 {
                     return false;
                 }
@@ -398,10 +400,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             XMRInstance instance = null;
 
-            lock (m_Instances)
+            lock (m_InstancesDict)
             {
-                if (!m_Instances.TryGetValue(item, out instance))
+                if (!m_InstancesDict.TryGetValue(item, out instance))
+                {
                     return null;
+                }
             }
 
             return instance.GetDetectParams(number);
@@ -415,9 +419,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             XMRInstance instance = null;
 
-            lock (m_Instances)
+            lock (m_InstancesDict)
             {
-                if (!m_Instances.TryGetValue(itemID, out instance)) {
+                if (!m_InstancesDict.TryGetValue(itemID, out instance))
+                {
                     return 0;
                 }
             }
@@ -431,10 +436,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             XMRInstance instance = null;
 
-            lock (m_Instances)
+            lock (m_InstancesDict)
             {
-                if (!m_Instances.TryGetValue(itemID, out instance))
+                if (!m_InstancesDict.TryGetValue(itemID, out instance))
+                {
                     return;
+                }
             }
 
             if (m_TraceCalls)
@@ -451,10 +458,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             XMRInstance instance = null;
 
-            lock (m_Instances)
+            lock (m_InstancesDict)
             {
-                if (!m_Instances.TryGetValue(itemID, out instance))
+                if (!m_InstancesDict.TryGetValue(itemID, out instance))
+                {
                     return false;
+                }
             }
 
             return instance.Running;
@@ -468,10 +477,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             XMRInstance instance = null;
 
-            lock (m_Instances)
+            lock (m_InstancesDict)
             {
-                if (!m_Instances.TryGetValue(itemID, out instance))
+                if (!m_InstancesDict.TryGetValue(itemID, out instance))
+                {
                     return;
+                }
             }
 
             if (m_TraceCalls)
@@ -486,10 +497,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             XMRInstance instance = null;
 
-            lock (m_Instances)
+            lock (m_InstancesDict)
             {
-                if (!m_Instances.TryGetValue(itemID, out instance))
+                if (!m_InstancesDict.TryGetValue(itemID, out instance))
+                {
                     return;
+                }
             }
 
             if (m_TraceCalls)
@@ -497,9 +510,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 m_log.DebugFormat("[XMREngine]: XMREngine.ResetScript({0})", itemID.ToString());
             }
 
-            instance.Suspend();
             instance.Reset();
-            instance.Resume();
         }
 
         public IConfig Config
@@ -522,16 +533,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return null;
         }
 
-        // Get script's current state as an XML string
-        // - called by "Take", "Take Copy" and when object deleted (ie, moved to Trash)
-        // This includes both the .state file and the .DLL file contents
+        /**
+         * @brief Get script's current state as an XML string
+         *        - called by "Take", "Take Copy" and when object deleted (ie, moved to Trash)
+         *        This includes both the .state file and the .xmrobj file contents
+         */
         public string GetXMLState(UUID itemID)
         {
             XMRInstance instance;
 
-            lock (m_Instances)
+            lock (m_InstancesDict)
             {
-                if (!m_Instances.TryGetValue(itemID, out instance))
+                if (!m_InstancesDict.TryGetValue(itemID, out instance))
                 {
                     return String.Empty;
                 }
@@ -541,18 +554,69 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 m_log.DebugFormat("[XMREngine]: XMREngine.GetXMLState({0})", itemID.ToString());
             }
             XmlDocument doc = new XmlDocument();
-            if (instance.GetXMLState(doc) == null)
+
+            /*
+             * Set up <State Engine="XMREngine" UUID="itemID" Asset="assetID"> tag.
+             */
+            XmlElement stateN = doc.CreateElement("", "State", "");
+            doc.AppendChild(stateN);
+
+            XmlAttribute engineA = doc.CreateAttribute("", "Engine", "");
+            engineA.Value = ScriptEngineName;
+            stateN.Attributes.Append(engineA);
+
+            XmlAttribute uuidA = doc.CreateAttribute("", "UUID", "");
+            uuidA.Value = itemID.ToString();
+            stateN.Attributes.Append(uuidA);
+
+            XmlAttribute assetA = doc.CreateAttribute("", "Asset", "");
+            string assetID = instance.m_AssetID.ToString();
+            assetA.Value = assetID;
+            stateN.Attributes.Append(assetA);
+
+            /*
+             * Get <ScriptState>...</ScriptState> item that hold's script's state.
+             * This suspends the script if necessary then takes a snapshot.
+             */
+            XmlElement scriptStateN = instance.GetExecutionState(doc);
+            stateN.AppendChild(scriptStateN);
+
+            /*
+             * Set up <Assembly>...</Assembly> item that has script's object code.
+             */
+            string assemblyPath = ScriptCompile.GetObjFileName(assetID, m_ScriptBasePath);
+            if (File.Exists(assemblyPath))
             {
-                return String.Empty;
+                FileInfo fi = new FileInfo(assemblyPath);
+                if (fi != null)
+                {
+                    Byte[] assemblyData = new Byte[fi.Length];
+                    try
+                    {
+                        FileStream fs = File.Open(assemblyPath, FileMode.Open,
+                                                  FileAccess.Read);
+                        fs.Read(assemblyData, 0, assemblyData.Length);
+                        fs.Close();
+                        XmlElement assemN = doc.CreateElement("", "Assembly", "");
+                        assemN.AppendChild(doc.CreateTextNode(Convert.ToBase64String(assemblyData)));
+                        stateN.AppendChild(assemN);
+                    }
+                    catch (Exception e)
+                    {
+                        m_log.Debug("[XMREngine]: Unable to open script assembly: " + 
+                                e.ToString());
+                    }
+                }
             }
+
             return doc.OuterXml;
         }
 
         // Set script's current state from an XML string
         // - called just before a script is instantiated
         // So we write the .state file so the .state file  will be seen when 
-        // the script is instantiated.  We also write the .DLL file if it
-        // doesn't exist to save us from compiling it.  If the .DLL is an old
+        // the script is instantiated.  We also write the .xmrobj file if it
+        // doesn't exist to save us from compiling it.  If the .xmrobj is an old
         // version, the loader will discard it and recreate it.
         public bool SetXMLState(UUID itemID, string xml)
         {
@@ -580,6 +644,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (stateN.GetAttribute("Engine") != ScriptEngineName)
                 return false;
 
+            /*
+             * Lock to prevent XMRInstance from trying to compile the same script
+             * at the same time we are writing the .xmrobj file (in case there are
+             * more than one instance referencing the same script).
+             */
             lock (XMRInstance.m_CompileLock)
             {
                 // <ScriptState>...</ScriptState> contains contents of .state file.
@@ -591,20 +660,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 assetA.Value = stateN.GetAttribute("Asset");
                 scriptStateN.Attributes.Append(assetA);
 
-                string statePath = Path.Combine(m_ScriptBasePath,
-                        itemID.ToString() + ".state");
-
+                string statePath = XMRInstance.GetStateFileName(m_ScriptBasePath, itemID);
                 FileStream ss = File.Create(statePath);
                 StreamWriter sw = new StreamWriter(ss);
                 sw.Write(scriptStateN.OuterXml);
                 sw.Close();
                 ss.Close();
 
-                // <Assembly>...</Assembly> contains .DLL file contents
+                // <Assembly>...</Assembly> contains .xmrobj file contents
                 UUID assetID = new UUID(stateN.GetAttribute("Asset"));
 
-                string assemblyPath = Path.Combine(m_ScriptBasePath,
-                        assetID.ToString() + ".dll");
+                string assemblyPath = ScriptCompile.GetObjFileName(assetID.ToString(), m_ScriptBasePath);
 
                 if (!File.Exists(assemblyPath))
                 {
@@ -643,7 +709,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     lsl_p[i] = p[i];
             }
 
-            return PostScriptEvent(itemID, new EventParams(name, lsl_p, new DetectParams[0]));
+            return PostScriptEvent(itemID, new EventParams(name, lsl_p, zeroDetectParams));
         }
 
         public bool PostObjectEvent(UUID itemID, string name, Object[] p)
@@ -671,7 +737,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     lsl_p[i] = p[i];
             }
 
-            return PostObjectEvent(part.LocalId, new EventParams(name, lsl_p, new DetectParams[0]));
+            return PostObjectEvent(part.LocalId, new EventParams(name, lsl_p, zeroDetectParams));
         }
 
         // Get a script instance loaded, compiling it if necessary
@@ -765,12 +831,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Compile and load the script in memory.
              */
-            XMRInstance instance = new XMRInstance();
+            XMRInstance instance;
+            ArrayList errors = new ArrayList();
             try {
-                instance.Construct(localID, itemID, script, 
-                                   startParam, postOnRez, stateSource, 
-                                   this, part, item, m_ScriptBasePath,
-                                   m_StackSize);
+                instance = new XMRInstance(localID, itemID, script, 
+                                           startParam, postOnRez, stateSource, 
+                                           this, part, item, m_ScriptBasePath,
+                                           m_StackSize, errors);
             } catch (Exception e) {
                 m_log.DebugFormat("[XMREngine]: Error starting script {0}: {1}",
                                   itemID.ToString(), e.Message);
@@ -782,9 +849,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * Post errors to GetScriptErrors() and wake it.
                  */
                 lock (m_ScriptErrors) {
-                    ArrayList errors = instance.GetScriptErrors();
-                    if (errors == null) {
-                        errors = new ArrayList();
+                    if (errors.Count == 0) {
                         errors.Add(e.Message);
                     } else {
                         foreach (Object err in errors) {
@@ -802,17 +867,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * successfully (by posting a 0 element array).
              */
             lock (m_ScriptErrors) {
-                m_ScriptErrors[itemID] = new ArrayList();
+                errors.Clear();
+                m_ScriptErrors[itemID] = errors;
                 Monitor.PulseAll(m_ScriptErrors);
             }
 
             /*
              * Queue it for running.
              */
-            lock (m_Instances)
+            lock (m_InstancesDict)
             {
                 // queue it to runnable script instance list
-                m_Instances[itemID] = instance;
+                m_InstancesDict[itemID] = instance;
+                m_InstanceArray = System.Linq.Enumerable.ToArray(m_InstancesDict.Values);
                 WakeUp();
 
                 List<UUID> l;
@@ -838,22 +905,32 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             SceneObjectPart part =
                     m_Scene.GetSceneObjectPart(localID);
-            if (m_TraceCalls)
-            {
-                m_log.DebugFormat("[XMREngine]: XMREngine.OnRemoveScript({0},{1})", localID.ToString(), itemID.ToString());
-            }
 
-            lock (m_Instances)
+            lock (m_InstancesDict)
             {
                 XMRInstance instance;
 
-                if (!m_Instances.TryGetValue(itemID, out instance))
+                /*
+                 * Tell the instance to free off everything it can.
+                 */
+                if (!m_InstancesDict.TryGetValue(itemID, out instance))
                 {
                     return;
                 }
-                instance.Suspend();
                 instance.Dispose();
-                m_Instances.Remove(itemID);
+
+                /*
+                 * Remove it from our lists of known script instances.
+                 */
+                m_InstancesDict.Remove(itemID);
+                m_InstanceArray = System.Linq.Enumerable.ToArray(m_InstancesDict.Values);
+
+                /*
+                 * Delete the .state file as any needed contents were fetched with GetXMLState()
+                 * and stored on the database server.
+                 */
+                string stateFileName = XMRInstance.GetStateFileName(m_ScriptBasePath, itemID);
+                File.Delete(stateFileName);
 
                 if (m_Objects.ContainsKey(part.UUID))
                 {
@@ -866,10 +943,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
                 m_Partmap.Remove(itemID);
             }
-
-            string statePath = Path.Combine(m_ScriptBasePath,
-                    itemID + ".state");
-            File.Delete(statePath);
         }
 
         public void OnScriptReset(uint localID, UUID itemID)
@@ -885,10 +958,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             XMRInstance instance = null;
 
-            lock (m_Instances)
+            lock (m_InstancesDict)
             {
-                if (!m_Instances.TryGetValue(itemID, out instance))
+                if (!m_InstancesDict.TryGetValue(itemID, out instance))
+                {
                     return;
+                }
             }
             if (m_TraceCalls)
             {
@@ -902,10 +977,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             XMRInstance instance = null;
 
-            lock (m_Instances)
+            lock (m_InstancesDict)
             {
-                if (!m_Instances.TryGetValue(itemID, out instance))
+                if (!m_InstancesDict.TryGetValue(itemID, out instance))
+                {
                     return;
+                }
             }
             if (m_TraceCalls)
             {
@@ -920,10 +997,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             XMRInstance instance = null;
 
-            lock (m_Instances)
+            lock (m_InstancesDict)
             {
-                if (!m_Instances.TryGetValue(itemID, out instance))
+                if (!m_InstancesDict.TryGetValue(itemID, out instance))
+                {
                     return;
+                }
             }
             if (m_TraceCalls)
             {
@@ -965,66 +1044,86 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
         }
 
-        // Run all scripts through one cycle.
-        // Block until ready to do it all again.
-        //
-        public void RunOneCycle()
+        /**
+         * @brief Thread that runs the scripts.
+         */
+        private void RunScriptThread()
         {
-            List<XMRInstance> instances = null;
-
-            m_WakeUpFlag = false;
-            lock (m_Instances)
+            while (!m_Exiting)
             {
-                instances = new List<XMRInstance>(m_Instances.Values);
-            }
-
-            DateTime earliest = DateTime.MaxValue;
-            foreach (XMRInstance ins in instances)
-            {
-                if (ins != null)
+                m_WakeUpFlag = false;
+                DateTime earliest = DateTime.MaxValue;
+                foreach (XMRInstance ins in m_InstanceArray)
                 {
-                    m_RunInstance = ins;
-                    DateTime suspendUntil = ins.RunOne();
-                    m_RunInstance = null;
-                    if (earliest > suspendUntil)
+                    if (ins != null)
                     {
-                        earliest = suspendUntil;
-                    }
-                }
-            }
-
-            DateTime now = DateTime.UtcNow;
-            m_LastRanAt = now;
-            if (earliest > now)
-            {
-                lock (m_WakeUpLock)
-                {
-                    if (!m_WakeUpFlag)
-                    {
-                        TimeSpan deltaTS = earliest - now;
-                        int deltaMS = Int32.MaxValue;
-                        if (deltaTS.TotalMilliseconds < Int32.MaxValue)
+                        m_RunInstance = ins;
+                        DateTime suspendUntil = ins.RunOne();
+                        m_RunInstance = null;
+                        if (earliest > suspendUntil)
                         {
-                            deltaMS = (int)deltaTS.TotalMilliseconds;
+                            earliest = suspendUntil;
                         }
-                        m_SleepUntil = earliest;
-                        System.Threading.Monitor.Wait(m_WakeUpLock, deltaMS);
-                        m_SleepUntil = DateTime.MinValue;
                     }
                 }
-            }
 
-            /*
-             * Handle 'xmr test resume/suspend' commands.
-             */
-            if (m_SuspendScriptThreadFlag) {
-                m_log.Debug ("[XMREngine]: scripts suspended");
-                Monitor.Enter (m_SuspendScriptThreadLock);
-                while (m_SuspendScriptThreadFlag) {
-                    Monitor.Wait (m_SuspendScriptThreadLock);
+                DateTime now = DateTime.UtcNow;
+                m_LastRanAt = now;
+                if (earliest > now)
+                {
+                    lock (m_WakeUpLock)
+                    {
+                        if (!m_WakeUpFlag)
+                        {
+                            TimeSpan deltaTS = earliest - now;
+                            int deltaMS = Int32.MaxValue;
+                            if (deltaTS.TotalMilliseconds < Int32.MaxValue)
+                            {
+                                deltaMS = (int)deltaTS.TotalMilliseconds;
+                            }
+                            m_SleepUntil = earliest;
+                            System.Threading.Monitor.Wait(m_WakeUpLock, deltaMS);
+                            m_SleepUntil = DateTime.MinValue;
+                        }
+                    }
                 }
-                Monitor.Exit (m_SuspendScriptThreadLock);
-                m_log.Debug ("[XMREngine]: scripts resumed");
+
+                /*
+                 * Handle 'xmr test resume/suspend' commands.
+                 */
+                if (m_SuspendScriptThreadFlag) {
+                    m_log.Debug ("[XMREngine]: scripts suspended");
+                    Monitor.Enter (m_SuspendScriptThreadLock);
+                    while (m_SuspendScriptThreadFlag) {
+                        Monitor.Wait (m_SuspendScriptThreadLock);
+                    }
+                    Monitor.Exit (m_SuspendScriptThreadLock);
+                    m_log.Debug ("[XMREngine]: scripts resumed");
+                }
+            }
+        }
+
+        /**
+         * @brief Thread that runs a time slicer.
+         */
+        private void RunSliceThread()
+        {
+            while (!m_Exiting)
+            {
+                /*
+                 * Let script run for a little bit.
+                 */
+                System.Threading.Thread.Sleep(50);
+
+                /*
+                 * If some script is running, flag it to suspend
+                 * next time it calls CheckRun().
+                 */
+                XMRInstance instance = m_RunInstance;
+                if (instance != null)
+                {
+                    instance.suspendOnCheckRunTemp = true;
+                }
             }
         }
 
@@ -1032,25 +1131,25 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             XMRInstance instance = null;
 
-            lock (m_Instances)
+            lock (m_InstancesDict)
             {
-                if (!m_Instances.ContainsKey(itemID))
+                if (!m_InstancesDict.ContainsKey(itemID))
                     return;
 
-                instance = m_Instances[itemID];
+                instance = m_InstancesDict[itemID];
 
             }
 
-            instance.Suspend(ms);
+            instance.Sleep(ms);
         }
 
         public void Die(UUID itemID)
         {
             XMRInstance instance = null;
 
-            lock (m_Instances)
+            lock (m_InstancesDict)
             {
-                if (!m_Instances.TryGetValue(itemID, out instance))
+                if (!m_InstancesDict.TryGetValue(itemID, out instance))
                     return;
             }
             if (m_TraceCalls)
@@ -1060,20 +1159,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             instance.Die();
         }
 
+        public XMRInstance GetInstance(UUID itemID)
+        {
+            lock (m_InstancesDict)
+            {
+                return m_InstancesDict[itemID];
+            }
+        }
+
         // Called occasionally to write script state to .state file so the
         // script will restart from its last known state if the region crashes
         // and gets restarted.
         private void DoMaintenance(object source, ElapsedEventArgs e)
         {
-            Dictionary<UUID, XMRInstance> instances;
-            lock (m_Instances)
+            foreach (XMRInstance ins in m_InstanceArray)
             {
-                instances = new Dictionary<UUID, XMRInstance>(m_Instances);
-            }
-
-            foreach (KeyValuePair<UUID, XMRInstance> kvp in instances)
-            {
-                XMRInstance ins = kvp.Value;
                 ins.GetExecutionState(new XmlDocument());
             }
         }
@@ -1113,7 +1213,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 //                return;
 //
 //            string filename = elems[elems.Length - 1];
-//            if (!filename.EndsWith(".dll"))
+//            if (!filename.EndsWith(".xmrobj"))
 //                return;
 //
 //            Byte[] newDir = Util.UTF8.GetBytes(elems[elems.Length - 2]);

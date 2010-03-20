@@ -17,7 +17,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	 * instances of the script.
 	 *
 	 * It gets created by ScriptCodeGen.
-	 * It gets used by ScriptWrapper to create script instances.
+	 * It gets used by XMRInstance to create script instances.
 	 */
 	public class ScriptObjCode
 	{

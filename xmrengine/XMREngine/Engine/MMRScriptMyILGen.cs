@@ -742,12 +742,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			s2t.Add ("scrbase",  typeof (ScriptBaseClass));
 			s2t.Add ("scrcode",  typeof (ScriptCodeGen));
 			s2t.Add ("scrcont",  typeof (ScriptContinuation));
-			s2t.Add ("scrwrap",  typeof (ScriptWrapper));
 			s2t.Add ("string",   typeof (string));
 			s2t.Add ("typecast", typeof (TypeCast));
 			s2t.Add ("void",     typeof (void));
 			s2t.Add ("xmrarray", typeof (XMR_Array));
 			s2t.Add ("xmrhelps", typeof (XMRHelpers));
+			s2t.Add ("xmrinst",  typeof (XMRInstance));
 
 			return s2t;
 		}

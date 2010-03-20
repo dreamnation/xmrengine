@@ -325,7 +325,8 @@ namespace Careminster.Modules.Permissions
                 return flags;
             }
 
-            objflags |= (uint)PrimFlags.ObjectAnyOwner;
+            if (task.OwnerID == task.GroupID)
+                objflags |= (uint)PrimFlags.ObjectGroupOwned;
 
             return ApplyObjectModifyMasks(task.EveryoneMask, objflags);
         }
@@ -808,9 +809,9 @@ namespace Careminster.Modules.Permissions
 
                     // Group voodoo
                     //
-                    if (land.LandData.IsGroupOwned)
+                    if (l.LandData.IsGroupOwned)
                     {
-                        powers = (GroupPowers)client.GetGroupPowers(land.LandData.GroupID);
+                        powers = (GroupPowers)client.GetGroupPowers(l.LandData.GroupID);
                         // Not a group member, or no rights at all
                         //
                         if (powers == (GroupPowers)0)
