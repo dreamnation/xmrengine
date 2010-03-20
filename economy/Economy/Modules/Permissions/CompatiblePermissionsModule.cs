@@ -783,9 +783,9 @@ namespace Careminster.Modules.Permissions
 
                     // Group voodoo
                     //
-                    if (land.LandData.IsGroupOwned)
+                    if (l.LandData.IsGroupOwned)
                     {
-                        powers = (GroupPowers)client.GetGroupPowers(land.LandData.GroupID);
+                        powers = (GroupPowers)client.GetGroupPowers(l.LandData.GroupID);
                         // Not a group member, or no rights at all
                         //
                         if (powers == (GroupPowers)0)
