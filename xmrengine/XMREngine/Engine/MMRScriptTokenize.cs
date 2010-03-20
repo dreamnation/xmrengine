@@ -221,7 +221,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					backslash = false;
 					for (j = i; ++ j < source.Length;) {
 						c = source[j];
-						if (c == '\\') {
+						if (c == '\\' && !backslash) {
 							backslash = true;
 							continue;
 						}
