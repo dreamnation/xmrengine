@@ -87,7 +87,7 @@ namespace Careminster.Modules.Permissions
             m_Scene.Permissions.OnGenerateClientFlags += GenerateClientFlags;
             m_Scene.Permissions.OnMoveObject += CanMoveObject;
             m_Scene.Permissions.OnObjectEntry += CanObjectEntry;
-            m_Scene.Permissions.OnReturnObject += CanReturnObject;
+            m_Scene.Permissions.OnReturnObjects += CanReturnObjects;
             m_Scene.Permissions.OnRezObject += CanRezObject;
             m_Scene.Permissions.OnRunConsoleCommand += CanRunConsoleCommand;
             m_Scene.Permissions.OnRunScript += CanRunScript;
@@ -109,7 +109,6 @@ namespace Careminster.Modules.Permissions
             m_Scene.Permissions.OnDeleteUserInventory += CanDeleteUserInventory;
             m_Scene.Permissions.OnTeleport += CanTeleport;
             m_Scene.Permissions.OnResetScript += CanResetScript;
-            m_Scene.Permissions.OnUseObjectReturn += CanUseObjectReturn;
         }
 
         public void RegionLoaded(Scene scene)
@@ -732,24 +731,108 @@ namespace Careminster.Modules.Permissions
                 return false;
             }
 
-            private bool CanReturnObject(UUID objectID, UUID returnerID, Scene scene)
+            private bool CanReturnObjects(ILandObject land, UUID user, List<SceneObjectGroup> objects, Scene scene)
             {
-                SceneObjectPart obj = m_Scene.GetSceneObjectPart(objectID);
-                if (obj == null)
-                    return false;
-                SceneObjectGroup group = obj.ParentGroup;
-                if (group == null)
-                    return false;
-
-                ILandObject parcel = m_Scene.LandChannel.GetLandObject(group.AbsolutePosition.X, group.AbsolutePosition.Y);
-
-                if ((parcel != null) && (parcel.LandData.OwnerID == returnerID))
+                // Gods, estate owner and estate managers have blanket perms
+                //
+                if (IsEstateManager(user))
                     return true;
 
-                if (IsEstateManager(returnerID))
-                    return true;
+                GroupPowers powers;
+                ILandObject l;
 
-                return GenericObjectPermission(returnerID, objectID, false);
+                ScenePresence sp = scene.GetScenePresence(user);
+                if (sp == null) 
+                    return false;
+
+                IClientAPI client = sp.ControllingClient;
+
+                foreach (SceneObjectGroup g in new List<SceneObjectGroup>(objects))
+                {
+                    // Any user can return their own objects at any time
+                    //
+                    if (g.OwnerID == user)
+                        continue;
+
+                    // This is a short cut for efficiency. If land is non-null,
+                    // then all objects are on that parcel and we can save
+                    // ourselves the checking for each prim. Much faster.
+                    //
+                    if (land != null)
+                    {
+                        l = land;
+                    }
+                    else
+                    {
+                        Vector3 pos = g.AbsolutePosition;
+
+                        l = scene.LandChannel.GetLandObject(pos.X, pos.Y);
+                    }
+
+                    // If it's not over any land, then we can't do a thing
+                    if (l == null)
+                    {
+                        objects.Remove(g);
+                        continue;
+                    }
+                        
+                    // If we own the land outright, then allow
+                    //
+                    if (l.LandData.OwnerID == user)
+                        continue;
+
+                    // Group voodoo
+                    //
+                    if (land.LandData.IsGroupOwned)
+                    {
+                        powers = (GroupPowers)client.GetGroupPowers(land.LandData.GroupID);
+                        // Not a group member, or no rights at all
+                        //
+                        if (powers == (GroupPowers)0)
+                        {
+                            objects.Remove(g);
+                            continue;
+                        }
+
+                        // Group deeded object?
+                        //
+                        if (g.OwnerID == l.LandData.GroupID &&
+                            (powers & GroupPowers.ReturnGroupOwned) == (GroupPowers)0)
+                        {
+                            objects.Remove(g);
+                            continue;
+                        }
+
+                        // Group set object?
+                        //
+                        if (g.GroupID == l.LandData.GroupID &&
+                            (powers & GroupPowers.ReturnGroupSet) == (GroupPowers)0)
+                        {
+                            objects.Remove(g);
+                            continue;
+                        }
+
+                        if ((powers & GroupPowers.ReturnNonGroup) == (GroupPowers)0)
+                        {
+                            objects.Remove(g);
+                            continue;
+                        }
+
+                        // So we can remove all objects from this group land.
+                        // Fine.
+                        //
+                        continue;
+                    }
+
+                    // By default, we can't remove
+                    //
+                    objects.Remove(g);
+                }
+
+                if (objects.Count == 0)
+                    return false;
+
+                return true;
             }
 
             private bool CanRezObject(int objectCount, UUID owner, Vector3 objectPosition, Scene scene)
@@ -765,9 +848,7 @@ namespace Careminster.Modules.Permissions
                 else
                     permission = CheckGroupPowers(owner, land.LandData.GroupID, (uint)GroupPowers.AllowRez);
 
-                ScenePresence presence=m_Scene.GetScenePresence(owner);
-
-                if (IsAdministrator(owner) && presence != null) // && presence.GodLevel >= 250f)
+                if (IsAdministrator(owner))
                 {
                     permission = true;
                 }
@@ -1086,66 +1167,6 @@ namespace Careminster.Modules.Permissions
         public bool CanResetScript(UUID objectID, UUID itemID, UUID agentID, Scene scene)
         {
             return GenericObjectPermission(agentID, objectID, false);
-        }
-
-        private bool CanUseObjectReturn(ILandObject parcel, uint type, IClientAPI client, List<SceneObjectGroup> retlist, Scene scene)
-        {
-            if (IsEstateManager(client.AgentId))
-                return true;
-
-            ulong powers = 0;
-            if (parcel.LandData.GroupID != UUID.Zero)
-                powers = client.GetGroupPowers(parcel.LandData.GroupID);
-
-            switch (type)
-            {
-            case (uint)ObjectReturnType.Owner:
-                // Don't let group members return owner's objects, ever
-                //
-                if (parcel.LandData.IsGroupOwned)
-                {
-                    if ((powers & (long)GroupPowers.ReturnGroupOwned) != 0)
-                        return true;
-                }
-                else
-                {
-                    if (parcel.LandData.OwnerID != client.AgentId)
-                        return false;
-                }
-                break;
-            case (uint)ObjectReturnType.Group:
-                if (parcel.LandData.OwnerID != client.AgentId)
-                {
-                    // If permissionis granted through a group...
-                    //
-                    if ((powers & (long)GroupPowers.ReturnGroupSet) != 0)
-                    {
-                        foreach (SceneObjectGroup g in new List<SceneObjectGroup>(retlist))
-                        {
-                            // check for and remove group owned objects unless
-                            // the user also has permissions to return those
-                            //
-                            if (g.OwnerID == g.GroupID &&
-                                    ((powers & (long)GroupPowers.ReturnGroupOwned) == 0))
-                            {
-                                retlist.Remove(g);
-                            }
-                        }
-                        // And allow the operation
-                        //
-                        return true;
-                    }
-                }
-                break;
-            case (uint)ObjectReturnType.Other:
-                if ((powers & (long)GroupPowers.ReturnNonGroup) != 0)
-                    return true;
-                break;
-            case (uint)ObjectReturnType.List:
-                break;
-            }
-            
-            return GenericParcelPermission(client.AgentId, parcel, 0);
         }
     }
 }
