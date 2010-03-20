@@ -297,9 +297,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		private void CodeGenStatic (ScriptCodeGen scg, Token token, CompValu result, CompValu[] args)
 		{
+			ParameterInfo[] paramsInfo = methInfo.GetParameters ();
+
 			result.PopPre (scg);
 			for (int i = 0; i < args.Length; i ++) {
-				args[i].PushVal (scg);
+				args[i].PushVal (scg, TokenType.FromSysType (token, paramsInfo[i].ParameterType));
 			}
 			scg.ilGen.Emit (OpCodes.Call, methInfo);
 			result.PopPost (scg, retType);
