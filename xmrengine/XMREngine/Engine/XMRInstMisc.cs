@@ -103,7 +103,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Console.WriteLine("    m_PostOnRez    = " + m_PostOnRez);
             Console.WriteLine("    m_StateSource  = " + m_StateSource);
             Console.WriteLine("    m_SuspendCount = " + m_SuspendCount);
-            Console.WriteLine("    m_SuspendUntil = " + m_SuspendUntil);
+            Console.WriteLine("    m_SleepUntil   = " + m_SleepUntil);
+            Console.WriteLine("    m_IState       = " + m_IState.ToString());
             Console.WriteLine("    m_Reset        = " + m_Reset);
             Console.WriteLine("    m_Die          = " + m_Die);
             Console.WriteLine("    m_StateCode    = " + GetStateName(stateCode));
