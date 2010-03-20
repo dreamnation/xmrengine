@@ -24,6 +24,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     /// </summary>
     public class XMREvents
     {
+        public static readonly DetectParams[] zeroDetectParams = new DetectParams[0];
+        public static readonly object[] zeroObjectArray = new object[0];
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
         private XMREngine myScriptEngine;
@@ -192,7 +194,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             // Add to queue for all scripts in localID, Object pass change.
             myScriptEngine.PostObjectEvent(localID, new EventParams(
                     "changed",new object[] { ch },
-                    new DetectParams[0]));
+                    zeroDetectParams));
         }
 
         // state_entry: not processed here
@@ -204,7 +206,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     "money", new object[] {
                     agentID.ToString(),
                     amount },
-                    new DetectParams[0]));
+                    zeroDetectParams));
         }
 
         public void collision_start(uint localID, ColliderArgs col)
@@ -270,24 +272,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             myScriptEngine.PostObjectEvent(localID, new EventParams(
                     "land_collision_start",
-                    new object[0],
-                    new DetectParams[0]));
+                    zeroObjectArray,
+                    zeroDetectParams));
         }
 
         public void land_collision(uint localID, UUID itemID)
         {
             myScriptEngine.PostObjectEvent(localID, new EventParams(
                     "land_collision",
-                    new object[0],
-                    new DetectParams[0]));
+                    zeroObjectArray,
+                    zeroDetectParams));
         }
 
         public void land_collision_end(uint localID, UUID itemID)
         {
             myScriptEngine.PostObjectEvent(localID, new EventParams(
                     "land_collision_end",
-                    new object[0],
-                    new DetectParams[0]));
+                    zeroObjectArray,
+                    zeroDetectParams));
         }
 
         // timer: not handled here
@@ -300,7 +302,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     agentID.ToString(),
                     (int)held,
                     (int)change},
-                    new DetectParams[0]));
+                    zeroDetectParams));
         }
 
         public void email(uint localID, UUID itemID, string timeSent,
@@ -313,7 +315,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     subject,
                     message,
                     numLeft},
-                    new DetectParams[0]));
+                    zeroDetectParams));
         }
 
         public void at_target(uint localID, uint handle, Vector3 targetpos,
@@ -324,28 +326,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     handle,
                     new LSL_Types.Vector3(targetpos.X,targetpos.Y,targetpos.Z),
                     new LSL_Types.Vector3(atpos.X,atpos.Y,atpos.Z) },
-                    new DetectParams[0]));
+                    zeroDetectParams));
         }
 
         public void not_at_target(uint localID)
         {
             myScriptEngine.PostObjectEvent(localID, new EventParams(
-                    "not_at_target",new object[0],
-                    new DetectParams[0]));
+                    "not_at_target",zeroObjectArray,
+                    zeroDetectParams));
         }
 
         public void at_rot_target(uint localID, UUID itemID)
         {
             myScriptEngine.PostObjectEvent(localID, new EventParams(
-                    "at_rot_target",new object[0],
-                    new DetectParams[0]));
+                    "at_rot_target",zeroObjectArray,
+                    zeroDetectParams));
         }
 
         public void not_at_rot_target(uint localID, UUID itemID)
         {
             myScriptEngine.PostObjectEvent(localID, new EventParams(
-                    "not_at_rot_target",new object[0],
-                    new DetectParams[0]));
+                    "not_at_rot_target",zeroObjectArray,
+                    zeroDetectParams));
         }
 
         // run_time_permissions: not handled here
@@ -355,7 +357,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             myScriptEngine.PostObjectEvent(localID, new EventParams(
                     "attach",new object[] {
                     avatar.ToString() },
-                    new DetectParams[0]));
+                    zeroDetectParams));
         }
 
         // dataserver: not handled here
@@ -364,15 +366,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public void moving_start(uint localID, UUID itemID)
         {
             myScriptEngine.PostObjectEvent(localID, new EventParams(
-                    "moving_start",new object[0],
-                    new DetectParams[0]));
+                    "moving_start",zeroObjectArray,
+                    zeroDetectParams));
         }
 
         public void moving_end(uint localID, UUID itemID)
         {
             myScriptEngine.PostObjectEvent(localID, new EventParams(
-                    "moving_end",new object[0],
-                    new DetectParams[0]));
+                    "moving_end",zeroObjectArray,
+                    zeroDetectParams));
         }
 
         // object_rez: not handled here

@@ -52,7 +52,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static TokenTypeBool  tokenTypeBool  = new TokenTypeBool  (null);
 		private static TokenTypeFloat tokenTypeFloat = new TokenTypeFloat (null);
 		private static TokenTypeInt   tokenTypeInt   = new TokenTypeInt   (null);
-		private static Type[] scriptWrapperTypeArg = new Type[] { typeof (ScriptWrapper) };
+		private static Type[] instanceTypeArg = new Type[] { typeof (XMRInstance) };
 
 		private static ConstructorInfo lslFloatConstructorInfo = typeof (LSL_Float).GetConstructor (new Type[] { typeof (float) });
 		private static ConstructorInfo lslIntegerConstructorInfo = typeof (LSL_Integer).GetConstructor (new Type[] { typeof (int) });
@@ -65,24 +65,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static FieldInfo arrayCountFieldInfo = typeof (XMR_Array).GetField ("__pub_count");
 		private static FieldInfo arrayIndexFieldInfo = typeof (XMR_Array).GetField ("__pub_index");
 		private static FieldInfo arrayValueFieldInfo = typeof (XMR_Array).GetField ("__pub_value");
-		public  static FieldInfo beAPIFieldInfo = typeof (ScriptWrapper).GetField ("beAPI");
-		private static FieldInfo continuationFieldInfo = typeof (ScriptWrapper).GetField ("continuation");
-		private static FieldInfo doGblInitFieldInfo = typeof (ScriptWrapper).GetField ("doGblInit");
-		private static FieldInfo ehArgsFieldInfo = typeof (ScriptWrapper).GetField ("ehArgs");
-		public  static FieldInfo heapLeftFieldInfo  = typeof (ScriptWrapper).GetField ("heapLeft");
-		private static FieldInfo heapLimitFieldInfo = typeof (ScriptWrapper).GetField ("heapLimit");
+		public  static FieldInfo beAPIFieldInfo = typeof (XMRInstance).GetField ("beAPI");
+		private static FieldInfo continuationFieldInfo = typeof (XMRInstance).GetField ("continuation");
+		private static FieldInfo doGblInitFieldInfo = typeof (XMRInstance).GetField ("doGblInit");
+		private static FieldInfo ehArgsFieldInfo = typeof (XMRInstance).GetField ("ehArgs");
+		public  static FieldInfo heapLeftFieldInfo  = typeof (XMRInstance).GetField ("heapLeft");
+		private static FieldInfo heapLimitFieldInfo = typeof (XMRInstance).GetField ("heapLimit");
 		private static FieldInfo rotationXFieldInfo = typeof (LSL_Rotation).GetField ("x");
 		private static FieldInfo rotationYFieldInfo = typeof (LSL_Rotation).GetField ("y");
 		private static FieldInfo rotationZFieldInfo = typeof (LSL_Rotation).GetField ("z");
 		private static FieldInfo rotationSFieldInfo = typeof (LSL_Rotation).GetField ("s");
-		public  static FieldInfo stackLimitFieldInfo = typeof (ScriptWrapper).GetField ("stackLimit");
-		private static FieldInfo stateChangedFieldInfo = typeof (ScriptWrapper).GetField ("stateChanged");
-		private static FieldInfo stateCodeFieldInfo    = typeof (ScriptWrapper).GetField ("stateCode");
+		public  static FieldInfo stackLimitFieldInfo = typeof (XMRInstance).GetField ("stackLimit");
+		private static FieldInfo stateChangedFieldInfo = typeof (XMRInstance).GetField ("stateChanged");
+		private static FieldInfo stateCodeFieldInfo    = typeof (XMRInstance).GetField ("stateCode");
 		private static FieldInfo vectorXFieldInfo = typeof (LSL_Vector).GetField ("x");
 		private static FieldInfo vectorYFieldInfo = typeof (LSL_Vector).GetField ("y");
 		private static FieldInfo vectorZFieldInfo = typeof (LSL_Vector).GetField ("z");
 
-		private static MethodInfo checkRunMethodInfo = typeof (ScriptContinuation).GetMethod ("CheckRun", new Type[0]);
+		private static MethodInfo checkRunMethodInfo = typeof (XMRInstance).GetMethod ("CheckRun", new Type[] { typeof (int) });
 		private static MethodInfo forEachMethodInfo = typeof (XMR_Array).GetMethod ("ForEach", 
 		                                                                            new Type[] { typeof (int),
 		                                                                                         typeof (object).MakeByRefType (),
@@ -216,7 +216,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * made by functions or event handlers will be seen, in case of forward
 			 * references.
 			 *
-			 * Prefix the names with __fun_ to keep them separate from any ScriptWrapper functions.
+			 * Prefix the names with __fun_ to keep them separate from any XMRInstance functions.
 			 */
 			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclFunc> kvp in tokenScript.funcs) {
 				TokenDeclFunc declFunc = kvp.Value;
@@ -258,9 +258,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			globalHeapTrackers = new Dictionary<CompValu, CompValu> ();
 
 			/*
-			 * Assign all global variables a slot in its corresponding ScriptWrapper.gbl<Type>s[] array.
+			 * Assign all global variables a slot in its corresponding XMRInstance.gbl<Type>s[] array.
 			 * Global variables are simply elements of those arrays at runtime, thus we don't need to create
-			 * an unique class for each script, we can just use ScriptWrapper as is for all.
+			 * an unique class for each script, we can just use XMRInstance as is for all.
 			 */
 			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclVar> kvp in tokenScript.vars) {
 
@@ -277,7 +277,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 				/*
 				 * If it references heap, add it to list of global vars that reference heap.  We use this list 
-				 * to maintain scriptWrapper.heapLeft to keep track of how much heap script is allowed to use.
+				 * to maintain instance.heapLeft to keep track of how much heap script is allowed to use.
 				 */
 				if ((declVar.type is TokenTypeArray) ||
 				    (declVar.type is TokenTypeList) ||
@@ -330,7 +330,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Output each global function as a private method.
 			 *
-			 * Prefix the names with __fun_ to keep them separate from any ScriptWrapper functions.
+			 * Prefix the names with __fun_ to keep them separate from any XMRInstance functions.
 			 */
 
 			/*
@@ -391,12 +391,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * Writes out a function definition for each state handler
 		 * named __seh_<statename>_<eventname>
 		 *
-		 * However, each has just 'ScriptWrapper __sw' as its single argument
+		 * However, each has just 'XMRInstance __sw' as its single argument
 		 * and each of its user-visible argments is extracted from __sw.ehArgs[].
 		 *
 		 * So we end up generating something like this:
 		 *
-		 *   private static void __seh_<statename_<eventname>$MMRContableAttribute$(ScriptWrapper __sw)
+		 *   private static void __seh_<statename_<eventname>$MMRContableAttribute$(XMRInstance __sw)
 		 *   {
 		 *      ScriptBaseClass __be  = __sw.beAPI;
 		 *      <typeArg0> <namearg0> = (<typeArg0>)__sw.ehArgs[0];
@@ -459,7 +459,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Output function header.
-			 * They just have the ScriptWrapper pointer as the one argument.
+			 * They just have the XMRInstance pointer as the one argument.
 			 */
 			int statecode = stateIndices[statename];
 			int eventcode = (int)Enum.Parse (typeof (ScriptEventCode), eventname);
@@ -467,15 +467,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			                                 statename + "_" + eventname + "$MMRContableAttribute$" + descName;
 			ilGen = new ScriptMyILGen (functionName,
 			                           typeof (void),
-			                           scriptWrapperTypeArg,
+			                           instanceTypeArg,
 			                           objFileWriter);
 			ilGen.BegMethod ();
 
 			/*
 			 * Set up dictionary to convert a local variable to its corresponding heaptracker variable.
 			 * There are only entries for object-type local vars (strings, lists, etc).  Local value-type
-			 * vars (int, vector, etc) use stack space only and are kept track of by scriptWrapper.stackLimit.
-			 * The heaptracker variable is always an int giving how many bytes scriptWrapper.heapLeft
+			 * vars (int, vector, etc) use stack space only and are kept track of by instance.stackLimit.
+			 * The heaptracker variable is always an int giving how many bytes instance.heapLeft
 			 * was debited by the local variable.
 			 */
 			localHeapTrackers = new Dictionary<CompValu, CompValu> ();
@@ -488,13 +488,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			if ((statename == "default") && (eventname == "state_entry")) {
 				ScriptMyLabel skipGblInitLabel = ilGen.DefineLabel ("__skipGblInit");
-				ilGen.Emit (OpCodes.Ldarg_0);                    // scriptWrapper
-				ilGen.Emit (OpCodes.Ldfld, doGblInitFieldInfo);  // scriptWrapper.doGblInit
+				ilGen.Emit (OpCodes.Ldarg_0);                    // instance
+				ilGen.Emit (OpCodes.Ldfld, doGblInitFieldInfo);  // instance.doGblInit
 				ilGen.Emit (OpCodes.Brfalse, skipGblInitLabel);
-				ilGen.Emit (OpCodes.Ldarg_0);                    // scriptWrapper
+				ilGen.Emit (OpCodes.Ldarg_0);                    // instance
 				ilGen.Emit (OpCodes.Dup);
-				ilGen.Emit (OpCodes.Ldfld, heapLimitFieldInfo);  // scriptWrapper.heapLimit
-				ilGen.Emit (OpCodes.Stfld, heapLeftFieldInfo);   // scriptWrapper.heapLeft
+				ilGen.Emit (OpCodes.Ldfld, heapLimitFieldInfo);  // instance.heapLimit
+				ilGen.Emit (OpCodes.Stfld, heapLeftFieldInfo);   // instance.heapLeft
 				foreach (KeyValuePair<string, TokenDeclVar> kvp in tokenScript.vars) {
 					TokenDeclVar gblDeclVar = kvp.Value;
 
@@ -510,9 +510,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 					DebitHeapLeft (var, false);
 				}
-				ilGen.Emit (OpCodes.Ldarg_0);                    // scriptWrapper
+				ilGen.Emit (OpCodes.Ldarg_0);                    // instance
 				PushConstantI4 (0);
-				ilGen.Emit (OpCodes.Stfld, doGblInitFieldInfo);  // scriptWrapper.doGblInit
+				ilGen.Emit (OpCodes.Stfld, doGblInitFieldInfo);  // instance.doGblInit
 				ilGen.MarkLabel (skipGblInitLabel);
 			}
 
@@ -523,8 +523,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (argDecl.types.Length > 0) {
 				ScriptMyLocal swehArgs = ilGen.DeclareLocal (typeof (object[]), "ehArgs");
 
-				ilGen.Emit (OpCodes.Ldarg_0);                 // scriptWrapper
-				ilGen.Emit (OpCodes.Ldfld, ehArgsFieldInfo);  // scriptWrapper.ehArgs
+				ilGen.Emit (OpCodes.Ldarg_0);                 // instance
+				ilGen.Emit (OpCodes.Ldfld, ehArgsFieldInfo);  // instance.ehArgs
 				ilGen.Emit (OpCodes.Stloc, swehArgs);
 
 				for (int i = 0; i < nargs; i ++) {
@@ -569,10 +569,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Make up array of all argument types.
-			 * We splice in ScriptWrapper for the first arg as the function is static.
+			 * We splice in XMRInstance for the first arg as the function is static.
 			 */
 			Type[] argTypes = new Type[argDecl.types.Length+1];
-			argTypes[0] = typeof (ScriptWrapper);
+			argTypes[0] = typeof (XMRInstance);
 			for (int i = 0; i < argDecl.types.Length; i ++) {
 				argTypes[i+1] = argDecl.types[i].typ;
 			}
@@ -617,15 +617,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Set up dictionary to convert a local variable to its corresponding heaptracker variable.
 			 * There are only entries for object-type local vars (strings, lists, etc).  Local value-type
-			 * vars (int, vector, etc) use stack space only and are kept track of by scriptWrapper.stackLimit.
-			 * The heaptracker variable is always an int giving how many bytes scriptWrapper.heapLeft
+			 * vars (int, vector, etc) use stack space only and are kept track of by instance.stackLimit.
+			 * The heaptracker variable is always an int giving how many bytes instance.heapLeft
 			 * was debited by the local variable.
 			 */
 			localHeapTrackers = new Dictionary<CompValu, CompValu> ();
 
 			/*
 			 * Define all arguments as named variables so script body can reference them.
-			 * The argument indices need to have +1 added to them because ScriptWrapper is spliced in at arg 0.
+			 * The argument indices need to have +1 added to them because XMRInstance is spliced in at arg 0.
 			 * Account for their heap usage just like they were local variables.
 			 */
 			for (int i = 0; i < argDecl.types.Length; i ++) {
@@ -637,7 +637,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * See if time to suspend in case they are doing a loop with recursion.
 			 */
-			EmitCallCheckRun ();
+			EmitCallCheckRun (declFunc.line);
 
 			/*
 			 * Output code for the statements and clean up.
@@ -763,7 +763,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			ilGen.MarkLabel (loopLabel);
 			GenerateStmt (doStmt.bodyStmt);
-			EmitCallCheckRun ();
+			EmitCallCheckRun (doStmt.line);
 			CompValu testRVal = GenerateFromRVal (doStmt.testRVal);
 			testRVal.PushVal (this, tokenTypeBool);
 			ilGen.Emit (OpCodes.Brtrue, loopLabel);
@@ -784,7 +784,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				GenerateStmt (forStmt.initStmt);
 			}
 			ilGen.MarkLabel (loopLabel);
-			EmitCallCheckRun ();
+			EmitCallCheckRun (forStmt.line);
 			if (forStmt.testRVal != null) {
 				CompValu testRVal = GenerateFromRVal (forStmt.testRVal);
 				testRVal.PushVal (this, tokenTypeBool);
@@ -857,7 +857,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Make sure we aren't hogging the CPU then generate the body and loop back.
 			 */
-			EmitCallCheckRun ();
+			EmitCallCheckRun (forEachStmt.line);
 			GenerateStmt (forEachStmt.bodyStmt);
 			ilGen.Emit (OpCodes.Br, loopLabel);
 			ilGen.MarkLabel (doneLabel);
@@ -935,7 +935,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 			ilGen.MarkLabel (labelStmt.labelStruct);
 			if (labelStmt.hasBkwdRefs) {
-				EmitCallCheckRun ();
+				EmitCallCheckRun (labelStmt.line);
 			}
 		}
 
@@ -996,10 +996,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * __sm.stateCode = index
 			 */
-			ilGen.Emit (OpCodes.Ldarg_0);                    // scriptWrapper
-			ilGen.Emit (OpCodes.Dup);                        // scriptWrapper
+			ilGen.Emit (OpCodes.Ldarg_0);                    // instance
+			ilGen.Emit (OpCodes.Dup);                        // instance
 			PushConstantI4 (index);                          // new state's index
-			ilGen.Emit (OpCodes.Stfld, stateCodeFieldInfo);  // scriptWrapper.stateCode
+			ilGen.Emit (OpCodes.Stfld, stateCodeFieldInfo);  // instance.stateCode
 
 			/*
 			 * __sm.stateChanged = true
@@ -1026,7 +1026,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			testRVal.PushVal (this, tokenTypeBool);                     //   if (!testRVal)
 			ilGen.Emit (OpCodes.Brfalse, doneLabel);                    //      goto done
 			GenerateStmt (whileStmt.bodyStmt);                          //   while body statement
-			EmitCallCheckRun ();                                        //   __sw.CheckRun()
+			EmitCallCheckRun (whileStmt.line);                          //   __sw.CheckRun()
 			ilGen.Emit (OpCodes.Br, contLabel);                         //   goto cont
 			ilGen.MarkLabel (doneLabel);                                // done:
 		}
@@ -1650,10 +1650,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			CompValu result = SetupReturnLocation (declFunc.retType);
 
 			/*
-			 * First arg is scriptWrapper to pass context along as the function is static.
+			 * First arg is instance to pass context along as the function is static.
 			 * Then push the remainder of the args, left-to-right.
 			 */
-			ilGen.Emit (OpCodes.Ldarg_0);                  // this function's scriptWrapper gets passed as arg[0]
+			ilGen.Emit (OpCodes.Ldarg_0);                  // this function's instance gets passed as arg[0]
 			for (i = 0; i < nargs; i ++) {
 				if (declFunc.argDecl.types == null) {
 					argRVals[i].PushVal (this);
@@ -1677,8 +1677,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 				// if (__sw.StateChanged) return;
 				ScriptMyLabel noStateChangeLabel = ilGen.DefineLabel ("nostatechg_" + call.line + "_" + call.posn);
-				ilGen.Emit (OpCodes.Ldarg_0);                       // scriptWrapper
-				ilGen.Emit (OpCodes.Ldfld, stateChangedFieldInfo);  // scriptWrapper.stateChanged
+				ilGen.Emit (OpCodes.Ldarg_0);                       // instance
+				ilGen.Emit (OpCodes.Ldfld, stateChangedFieldInfo);  // instance.stateChanged
 				ilGen.Emit (OpCodes.Brfalse, noStateChangeLabel);
 				EmitDummyReturn ();
 				ilGen.MarkLabel (noStateChangeLabel);
@@ -1696,7 +1696,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private CompValu GenerateFromRValCallInline (TokenRValCall call, InlineFunction inlineFunc, CompValu[] argRVals)
 		{
 			CompValu result = SetupReturnLocation (inlineFunc.retType);
-			inlineFunc.codeGen (this, result, argRVals);
+			inlineFunc.codeGen (this, call, result, argRVals);
 			return result;
 		}
 
@@ -2058,11 +2058,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		/**
 		 * @brief Emit a call to CheckRun(), (voluntary multitasking switch)
 		 */
-		public void EmitCallCheckRun ()
+		public void EmitCallCheckRun (int line)
 		{
-			ilGen.Emit (OpCodes.Ldarg_0);                       // scriptWrapper
-			ilGen.Emit (OpCodes.Ldfld, continuationFieldInfo);  // scriptWrapper.continuation
-			ilGen.Emit (OpCodes.Call, checkRunMethodInfo);      // scriptWrapper.continuation.CheckRun()
+			ilGen.Emit (OpCodes.Ldarg_0);                   // instance
+			PushConstantI4 (line);                          // source line number
+			ilGen.Emit (OpCodes.Call, checkRunMethodInfo);  // instance.CheckRun()
 		}
 
 		/**
@@ -2083,7 +2083,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		/**
 		 * @brief A variable was just assigned a value.  If the variable references heap,
-		 *        debit the scriptWrapper.heapLeft to make sure the script doesn't hog memory.
+		 *        debit the instance.heapLeft to make sure the script doesn't hog memory.
 		 * @param value = local or global variable
 		 * @param stValid = false: heapTracker contains garbage, so don't bother adding it back first
 		 *                   true: heapTracker contains previous debit quantity, so add it back first
@@ -2097,7 +2097,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 				heapTracker.PopPre (this);
 				
-				ilGen.Emit (OpCodes.Ldarg_0);                         // &scriptWrapper.heapLeft
+				ilGen.Emit (OpCodes.Ldarg_0);                         // &instance.heapLeft
 				ilGen.Emit (OpCodes.Ldflda, heapLeftFieldInfo);
 
 				value.PushVal (this);                                 // object we care about
@@ -2108,7 +2108,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					PushConstantI4 (0);                           // 0 because nothing debited before
 				}
 
-				ilGen.Emit (OpCodes.Call, updateHeapLeftMethodInfo);  // update scriptWrapper.heapLeft
+				ilGen.Emit (OpCodes.Call, updateHeapLeftMethodInfo);  // update instance.heapLeft
 				                                                      // throws exception if not enuf left
 
 				heapTracker.PopPost (this);                           // new debited amount
@@ -2121,10 +2121,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void CreditAllLocalsHeapLeft ()
 		{
 			if (localHeapTrackers.Count > 0) {
-				ilGen.Emit (OpCodes.Ldarg_0);                    // scriptWrapper
-				ilGen.Emit (OpCodes.Ldflda, heapLeftFieldInfo);  // &scriptWrapper.heapLeft
+				ilGen.Emit (OpCodes.Ldarg_0);                    // instance
+				ilGen.Emit (OpCodes.Ldflda, heapLeftFieldInfo);  // &instance.heapLeft
 				ilGen.Emit (OpCodes.Dup);
-				ilGen.Emit (OpCodes.Ldobj, typeof (int));        // scriptWrapper.heapLeft
+				ilGen.Emit (OpCodes.Ldobj, typeof (int));        // instance.heapLeft
 
 				foreach (KeyValuePair<CompValu, CompValu> kvp in localHeapTrackers) {
 					CompValu heapTracker = kvp.Value;
@@ -2264,7 +2264,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		/**
 		 * @brief An heap referencing variable was just set to a new object so we need to
-		 *        update scriptWrapper.heapLeft to reflect the new amount of heap available
+		 *        update instance.heapLeft to reflect the new amount of heap available
 		 *        to the script.
 		 * @param heapLeft = heap available to script prior to new value written
 		 * @param value = object pointer value that was just written

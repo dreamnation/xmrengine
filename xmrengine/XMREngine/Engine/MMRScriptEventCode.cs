@@ -13,7 +13,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	 */
 	public enum ScriptEventCode : int {
 
-		// used by ScriptWrapper to indicate no event being processed
+		// used by XMRInstance to indicate no event being processed
 		None                 = -1,
 
 		// must be bit numbers of equivalent values in ...

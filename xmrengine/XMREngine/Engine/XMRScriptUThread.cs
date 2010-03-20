@@ -1,0 +1,204 @@
+/***************************************************\
+ *  COPYRIGHT 2009, Mike Rieker, Beverly, MA, USA  *
+ *  All rights reserved.                           *
+\***************************************************/
+
+using Mono.Tasklets;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
+using System.Reflection.Emit;
+using System.Runtime.Remoting;
+using System.Text;
+using System.Threading;
+using LSL_Float = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLFloat;
+using LSL_Integer = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLInteger;
+using LSL_Key = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
+using LSL_List = OpenSim.Region.ScriptEngine.Shared.LSL_Types.list;
+using LSL_Rotation = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Quaternion;
+using LSL_String = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
+using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
+using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
+
+
+/*
+ *  XMRInstance.StartEventHandler()
+ *    MMRUThread.StartEx()
+ *      ScriptUThread.MainEx()
+ *        MMRCont.RunItEx()
+ *          ScriptCont.RunCont()
+ *            scriptHandlerEventTable[state,event]()
+ *               XMRInstance.CheckRun()
+ *                  MMRCont.Save()
+ *                  MMRUThread.Suspend()
+ */
+
+namespace OpenSim.Region.ScriptEngine.XMREngine {
+
+    /*****************************************************************\
+     *  Wrapper around continuation to enclose it in a microthread.  *
+    \*****************************************************************/
+
+    public class ScriptUThread : MMRUThread {
+
+        public XMRInstance instance;
+
+        public ScriptUThread (UIntPtr stackSize, string descName) : base (stackSize, descName)
+        { }
+
+        /*
+         * Called on the microthread stack as part of Start().
+         * Start() returns when this method calls Suspend() or
+         * when this method returns (whichever happens first).
+         */
+        public override Exception MainEx ()
+        {
+            Exception except;
+
+            /*
+             * The normal case is this script event handler is just being
+             * called directly at its entrypoint.  The RunItEx() method
+             * calls RunCont() below.  Any exceptions thrown by RunCont()
+             * are returned by RunItEx().
+             */
+            if (instance.migrateInStream == null) {
+                except = instance.continuation.RunItEx ();
+            }
+
+            /*
+             * The other case is that we want to resume execution of
+             * a script from its migration data.  So this reads the
+             * data from the stream to recreate wherever RunCont()
+             * called Save() from, then it jumps to that point.
+             *
+             * In our case, that point is always within our CheckRun()
+             * method, which immediately suspends when the restore is
+             * complete, which causes LoadEx() to return at that time.
+             */
+            else {
+                instance.subsArray[(int)SubsArray.BEAPI] = instance.beAPI;
+                except = instance.continuation.LoadEx (instance.migrateInStream, 
+                                                       instance.subsArray,
+                                                       instance.dllsArray);
+            }
+
+            /*
+             * Event no longer being processed, ie, the microthread is exiting.
+             */
+            instance.eventCode = ScriptEventCode.None;
+            return except;
+        }
+    }
+
+    /****************************************************************\
+     *  Wrapper around script event handler so it can be migrated.  *
+    \****************************************************************/
+
+    public class ScriptContinuation : MMRCont {
+
+        public XMRInstance instance;
+
+        /*
+         * Called by RunItEx() to start the event handler at its entrypoint.
+         * Any exception thrown by RunCont() is returned by RunItEx().
+         */
+        [MMRContableAttribute ()]
+        public override void RunCont ()
+        {
+            int newStateCode, oldStateCode;
+            ScriptEventHandler seh;
+            XMRInstance sw = instance;
+
+            /*
+             * Process event given by 'stateCode' and 'eventCode'.
+             * The event handler should call CheckRun() as often as convenient.
+             *
+             * We do not have to check for null 'seh' here because
+             * StartEventHandler() already checked the table entry.
+             */
+            sw.stateChanged = false;
+            oldStateCode = sw.stateCode;
+            seh = sw.objCode.scriptEventHandlerTable[oldStateCode,(int)sw.eventCode];
+            seh (sw);
+
+            sw.ehArgs = null;  // we are done with them and no args for
+                               // exit_state()/enter_state() anyway
+
+            /*
+             * Note that 'seh' is now invalid, as the continuation restore cannot restore it.
+             * But mono should see that 'seh' is no longer needed and so Save() shouldn't try
+             * to save it, theoretically.  Likewise for the other uses of 'seh' below.
+             */
+
+            /*
+             * If event handler changed state, call exit_state() on the old state,
+             * change the state, then call enter_state() on the new state.
+             */
+            while (sw.stateChanged) {
+
+                /*
+                 * Get what state they transitioned to.
+                 */
+                newStateCode = sw.stateCode;
+
+                /*
+                 * Restore to old state and call its state_exit() handler.
+                 */
+                sw.stateChanged = false;
+                sw.eventCode = ScriptEventCode.state_exit;
+                sw.stateCode = oldStateCode;
+                seh = sw.objCode.scriptEventHandlerTable[oldStateCode,(int)ScriptEventCode.state_exit];
+                if (seh != null) seh (sw);
+
+                /*
+                 * Now that the old state can't possibly start any more activity,
+                 * cancel any listening handlers, etc, of the old state.
+                 */
+                sw.stateCode = newStateCode;
+                sw.StateChange ();
+
+                /*
+                 * Now the new state becomes the old state in case the new state_entry() 
+                 * changes state again.
+                 */
+                oldStateCode = newStateCode;
+
+                /*
+                 * Call the new state's state_entry() handler.
+                 * I've seen scripts that change state in the state_entry() handler, 
+                 * so allow for that by looping back to check sw.stateChanged again.
+                 */
+                sw.stateChanged = false;
+                sw.eventCode = ScriptEventCode.state_entry;
+                seh = sw.objCode.scriptEventHandlerTable[newStateCode,(int)ScriptEventCode.state_entry];
+                if (seh != null) seh (sw);
+            }
+        }
+
+        /**
+         * @brief Called by internals of Load() to see if we know where the new method is
+         *        for a given old method.
+         * @param methName = method name, eg, "Save"
+         * @param sigDesc = signature, eg, "object,System.IO.BinaryWriter"
+         * @param className = class, eg, "Continuation"
+         * @param classNameSpace = name space, eg, "Mono.Tasklets"
+         * @param imageName = image name, eg, ".../gac/Mono.Tasklets/2.0.0.0__0738eb9f132ed756/Mono.Tasklets.dll"
+         * @returns 0: not known, go find it in DLL somewhere
+         *       else: methodInfo.MethodHandle.Value of corresponding method = MonoMethod struct pointer
+         */
+        public IntPtr LoadFindMethod (string methName, string sigDesc, string className, string classNameSpace, string imageName)
+        {
+            DynamicMethod methodInfo;
+
+            /*
+             * All our names are superfunky with $MMRContableAttribute$ and the asset ID, so
+             * all we do is catalog them by function name which is always going to be unique.
+             */
+            if (instance.objCode.dynamicMethods.TryGetValue (methName, out methodInfo)) {
+                return methodInfo.MethodHandle.Value;
+            }
+            return (IntPtr)0;
+        }
+    }
+}

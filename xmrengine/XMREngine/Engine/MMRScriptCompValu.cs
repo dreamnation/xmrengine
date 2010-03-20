@@ -215,13 +215,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public FieldInfo field;
 		public int index;
 
-		private static FieldInfo gblArraysFieldInfo    = typeof (ScriptWrapper).GetField ("gblArrays");
-		private static FieldInfo gblFloatsFieldInfo    = typeof (ScriptWrapper).GetField ("gblFloats");
-		private static FieldInfo gblIntegersFieldInfo  = typeof (ScriptWrapper).GetField ("gblIntegers");
-		private static FieldInfo gblListsFieldInfo     = typeof (ScriptWrapper).GetField ("gblLists");
-		private static FieldInfo gblRotationsFieldInfo = typeof (ScriptWrapper).GetField ("gblRotations");
-		private static FieldInfo gblStringsFieldInfo   = typeof (ScriptWrapper).GetField ("gblStrings");
-		private static FieldInfo gblVectorsFieldInfo   = typeof (ScriptWrapper).GetField ("gblVectors");
+		private static FieldInfo gblArraysFieldInfo    = typeof (XMRInstance).GetField ("gblArrays");
+		private static FieldInfo gblFloatsFieldInfo    = typeof (XMRInstance).GetField ("gblFloats");
+		private static FieldInfo gblIntegersFieldInfo  = typeof (XMRInstance).GetField ("gblIntegers");
+		private static FieldInfo gblListsFieldInfo     = typeof (XMRInstance).GetField ("gblLists");
+		private static FieldInfo gblRotationsFieldInfo = typeof (XMRInstance).GetField ("gblRotations");
+		private static FieldInfo gblStringsFieldInfo   = typeof (XMRInstance).GetField ("gblStrings");
+		private static FieldInfo gblVectorsFieldInfo   = typeof (XMRInstance).GetField ("gblVectors");
 
 		public CompValuGlobal (TokenDeclVar declVar, ScriptObjCode scriptObjCode) : base (declVar.type)
 		{
