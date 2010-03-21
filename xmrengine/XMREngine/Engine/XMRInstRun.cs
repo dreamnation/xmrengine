@@ -166,7 +166,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  */
                 if (microthread == null)
                 {
-                    return XMRInstState.FINISHED;
+                    return XMRInstState.DISPOSED;
                 }
 
                 /*
@@ -175,6 +175,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if (this.eventCode != ScriptEventCode.None)
                 {
                     m_LastRanAt = now;
+                    m_InstEHSlice ++;
                     e = microthread.ResumeEx (null);
                 }
 
@@ -212,6 +213,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      */
                     m_DetectParams = evt.DetectParams;
                     m_LastRanAt = now;
+                    m_InstEHEvent ++;
                     e = StartEventHandler ((ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), 
                                                                         evt.EventName), 
                                            evt.Params);

@@ -56,9 +56,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
      *   ONSTARTQ->RUNNING      : only by thread that removed it from m_StartQueue
      *   ONYIELDQ->RUNNING      : only by thread that removed it from m_YieldQueue
      *   ONSLEEPQ->ONYIELDQ     : only by thread that removed it from m_SleepQueue
-     *   RUNNING->whatever      : only by thread that transitioned it to RUNNING
-     *                            whatever = IDLE,ONSLEEPQ,ONYIELDQ,ONSTARTQ,SUSPENDED,FINISHED
-     *   FINSHED->IDLE,ONSTARTQ : only by thread that transitioned it to FINISHED
+     *   RUNNING->whatever1     : only by thread that transitioned it to RUNNING
+     *                            whatever1 = IDLE,ONSLEEPQ,ONYIELDQ,ONSTARTQ,SUSPENDED,FINISHED
+     *   FINSHED->whatever2     : only by thread that transitioned it to FINISHED
+     *                            whatever2 = IDLE,ONSTARTQ,DISPOSED
      *   SUSPENDED->ONSTARTQ    : by any thread (NOT YET IMPLEMENTED, should be under some kind of lock?)
      */
     public enum XMRInstState {
@@ -69,7 +70,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         ONSLEEPQ,   // inserted on m_Engine.m_SleepQueue
         ONYIELDQ,   // inserted on m_Engine.m_YieldQueue
         FINISHED,   // just finished handling an event
-        SUSPENDED   // m_SuspendCount > 0
+        SUSPENDED,  // m_SuspendCount > 0
+        DISPOSED    // has been disposed
     }
 
     public partial class XMRInstance : IDisposable
@@ -119,6 +121,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private UIntPtr m_StackSize;
         private ArrayList m_CompilerErrors;
         private DateTime m_LastRanAt = DateTime.MinValue;
+        public  int m_InstEHEvent = 0;  // number of events dequeued (StartEventHandler called)
+        public  int m_InstEHSlice = 0;  // number of times handler timesliced (ResumeEx called)
 
         // If code needs to have both m_QueueLock and m_RunLock,
         // be sure to lock m_RunLock first then m_QueueLock, as

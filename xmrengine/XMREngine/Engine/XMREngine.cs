@@ -280,41 +280,32 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 GC.Collect();
                 break;
             case "ls":
-                int i;
                 int numScripts = 0;
                 lock (m_InstancesDict)
                 {
                     foreach (XMRInstance ins in m_InstancesDict.Values)
                     {
-                        if (args.Length > 3)
-                        {
-                            for (i = 3; i < args.Length; i ++)
-                            {
-                                if (ins.m_Part.Name.Contains(args[i])) break;
-                                if (ins.m_Item.Name.Contains(args[i])) break;
-                                if (ins.m_ItemID.ToString().Contains(args[i])) break;
-                                if (ins.m_AssetID.ToString().Contains(args[i])) break;
-                            }
-                            if (i >= args.Length) continue;
+                        if (InstanceMatchesArgs(ins, args)) {
+                            ins.RunTestLs();
+                            numScripts ++;
                         }
-                        ins.RunTestLs();
-                        numScripts ++;
                     }
                 }
                 Console.WriteLine("total of {0} script(s)", numScripts);
                 XMRInstance rins = m_RunInstance;
                 if (rins != null) {
-                    Console.WriteLine("running {0} {1} {2}:{3}",
+                    Console.WriteLine("running {0} {1}",
                             rins.m_ItemID.ToString(),
-                            rins.m_AssetID.ToString(),
-                            rins.m_Part.Name,
-                            rins.m_Item.Name);
+                            rins.m_DescName);
                 }
                 DateTime suntil = m_SleepUntil;
                 if (suntil > DateTime.MinValue) {
                     Console.WriteLine("sleeping until {0}", suntil.ToString());
                 }
                 Console.WriteLine("last ran at {0}", m_LastRanAt.ToString());
+                LsQueue("start", m_StartQueue, args);
+                LsQueue("sleep", m_SleepQueue, args);
+                LsQueue("yield", m_YieldQueue, args);
                 break;
             case "resume":
                 m_log.Debug("[XMREngine]: resuming scripts");
@@ -334,6 +325,43 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 Console.WriteLine("xmr test: unknown command " + args[2]);
                 break;
             }
+        }
+
+        private void LsQueue(string name, XMRInstQueue queue, string[] args)
+        {
+            Console.WriteLine("Queue " + name + ":");
+            lock (queue) {
+                for (XMRInstance inst = queue.PeekHead(); inst != null; inst = inst.m_NextInst) {
+                    try {
+
+                        /*
+                         * Try to print instance name.
+                         */
+                        if (InstanceMatchesArgs(inst, args)) {
+                            Console.WriteLine("   " + inst.m_ItemID.ToString() + " " + inst.m_DescName);
+                        }
+                    } catch (Exception e) {
+
+                        /*
+                         * Sometimes there are instances in the queue that are disposed.
+                         */
+                        Console.WriteLine("   " + inst.m_ItemID.ToString() + " " + inst.m_DescName + ": " + e.Message);
+                    }
+                }
+            }
+        }
+
+        private bool InstanceMatchesArgs(XMRInstance ins, string[] args)
+        {
+            if (args.Length < 4) return true;
+            for (int i = 3; i < args.Length; i ++)
+            {
+                if (ins.m_Part.Name.Contains(args[i])) return true;
+                if (ins.m_Item.Name.Contains(args[i])) return true;
+                if (ins.m_ItemID.ToString().Contains(args[i])) return true;
+                if (ins.m_AssetID.ToString().Contains(args[i])) return true;
+            }
+            return false;
         }
 
         // Not required when not using IScriptInstance
@@ -1085,6 +1113,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             while (!m_Exiting)
             {
                 /*
+                 * Handle 'xmr test resume/suspend' commands.
+                 */
+                if (m_SuspendScriptThreadFlag) {
+                    m_log.Debug ("[XMREngine]: scripts suspended");
+                    Monitor.Enter (m_SuspendScriptThreadLock);
+                    while (m_SuspendScriptThreadFlag) {
+                        Monitor.Wait (m_SuspendScriptThreadLock);
+                    }
+                    Monitor.Exit (m_SuspendScriptThreadLock);
+                    m_log.Debug ("[XMREngine]: scripts resumed");
+                }
+
+                /*
                  * Anything that changes any of the conditions
                  * below should set m_WakeUpFlag and pulse anything
                  * sleeping on m_WakeUpLock().
@@ -1093,16 +1134,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                 /*
                  * If event just queued to any idle scripts
-                 * start them right away.
+                 * start them right away.  But only start so
+                 * many so we can make some progress on sleep
+                 * and yield queues.
                  */
-                while (true) {
+                int numStarts;
+                for (numStarts = 5; -- numStarts >= 0;) {
                     lock (m_StartQueue) {
                         inst = m_StartQueue.RemoveHead();
                     }
                     if (inst == null) break;
                     if (inst.m_IState != XMRInstState.ONSTARTQ) throw new Exception("bad state");
                     inst.m_IState = XMRInstState.RUNNING;
+                    m_RunInstance = inst;
                     newIState = inst.RunOne();
+                    m_RunInstance = null;
                     HandleNewIState(inst, newIState);
                 }
 
@@ -1143,10 +1189,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if (inst != null) {
                     if (inst.m_IState != XMRInstState.ONYIELDQ) throw new Exception("bad state");
                     inst.m_IState = XMRInstState.RUNNING;
+                    m_RunInstance = inst;
                     newIState = inst.RunOne();
+                    m_RunInstance = null;
                     HandleNewIState(inst, newIState);
                     continue;
                 }
+
+                /*
+                 * If we left something dangling in the m_StartQueue, go back to check it.
+                 */
+                if (numStarts < 0) continue;
 
                 /*
                  * Nothing to do, sleep.
@@ -1162,19 +1215,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         }
                         System.Threading.Monitor.Wait(m_WakeUpLock, deltaMS);
                     }
-                }
-
-                /*
-                 * Handle 'xmr test resume/suspend' commands.
-                 */
-                if (m_SuspendScriptThreadFlag) {
-                    m_log.Debug ("[XMREngine]: scripts suspended");
-                    Monitor.Enter (m_SuspendScriptThreadLock);
-                    while (m_SuspendScriptThreadFlag) {
-                        Monitor.Wait (m_SuspendScriptThreadLock);
-                    }
-                    Monitor.Exit (m_SuspendScriptThreadLock);
-                    m_log.Debug ("[XMREngine]: scripts resumed");
                 }
             }
         }
@@ -1256,6 +1296,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  */
                 case XMRInstState.SUSPENDED: {
                     inst.m_IState = XMRInstState.SUSPENDED;
+                    break;
+                }
+
+                /*
+                 * It has been disposed of.
+                 * Just set the new state and all refs should theoretically drop off
+                 * as the instance is no longer in any list.
+                 */
+                case XMRInstState.DISPOSED: {
+                    inst.m_IState = XMRInstState.DISPOSED;
                     break;
                 }
 

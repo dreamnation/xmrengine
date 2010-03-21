@@ -159,7 +159,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 /*
                  * Let script run again.
                  */
-                suspendOnCheckRunHold = true;
+                suspendOnCheckRunHold = false;
             }
 
             /*

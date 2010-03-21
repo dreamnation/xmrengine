@@ -48,7 +48,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Dispose();
         }
 
-        // Clean up stuff
+        /**
+         * @brief Clean up stuff.
+         *        We specifically leave m_DescName intact for 'xmr test ls' command.
+         */
         public void Dispose()
         {
             lock (m_RunLock)
@@ -111,6 +114,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Console.WriteLine("    eventCode      = " + eventCode.ToString());
             Console.WriteLine("    m_LastRanAt    = " + m_LastRanAt.ToString());
             Console.WriteLine("    heapLeft/Limit = " + heapLeft + "/" + heapLimit);
+            Console.WriteLine("    m_InstEHEvent  = " + m_InstEHEvent.ToString());
+            Console.WriteLine("    m_InstEHSlice  = " + m_InstEHSlice.ToString());
             lock (m_QueueLock)
             {
                 Console.WriteLine("    m_Running      = " + m_Running);
