@@ -68,11 +68,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Put event on end of event queue.
              */
+            bool startIt = false;
             lock (m_QueueLock)
             {
+                /*
+                 * Not running means we ignore any incoming events.
+                 */
                 if (!m_Running)
                     return;
 
+                /*
+                 * Make sure queue isn't going to overflow.
+                 */
                 if (m_EventQueue.Count >= MAXEVENTQUEUE)
                 {
                     m_log.DebugFormat("[XMREngine]: event queue overflow, {0} -> {1}\n", 
@@ -80,6 +87,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     return;
                 }
 
+                /*
+                 * We only need one timer in the whole queue at a time.
+                 */
                 if (evt.EventName == "timer")
                 {
                     if (m_TimerQueued)
@@ -87,20 +97,38 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_TimerQueued = true;
                 }
 
+                /*
+                 * Put event on end of instance's event queue.
+                 */
                 m_EventQueue.Enqueue(evt);
+
+                /*
+                 * If instance is idle (ie, not running or waiting to run),
+                 * flag it to be on m_StartQueue as we are about to do so.
+                 * Flag it now before unlocking so another thread won't try
+                 * to do the same thing right now.
+                 */
+                if (m_IState == XMRInstState.IDLE) {
+                    m_IState = XMRInstState.ONSTARTQ;
+                    startIt = true;
+                }
             }
 
             /*
-             * Wake scheduler so it will call RunOne().
+             * If transitioned from IDLE->ONSTARTQ, actually go insert it
+             * on m_StartQueue and give the RunScriptThread() a wake-up.
              */
-            m_Engine.WakeUp();
+            if (startIt) {
+                m_Engine.QueueToStart(this);
+            }
         }
 
         /*
          * This is called in the script thread to step script until it calls
-         * CheckRun().  It returns the DateTime that it should be called next.
+         * CheckRun().  It returns what the instance's next state should be,
+         * ONSLEEPQ, ONYIELDQ, SUSPENDED or FINISHED.
          */
-        public DateTime RunOne()
+        public XMRInstState RunOne()
         {
             DateTime now = DateTime.UtcNow;
 
@@ -108,16 +136,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * If script has called llSleep(), don't do any more until time is
              * up.
              */
-            if (m_SuspendUntil > now)
+            if (m_SleepUntil > now)
             {
-                return m_SuspendUntil;
+                return XMRInstState.ONSLEEPQ;
             }
 
             /*
              * Also, someone may have called Suspend().
              */
             if (m_SuspendCount > 0) {
-                return DateTime.MaxValue;
+                return XMRInstState.SUSPENDED;
             }
 
             /*
@@ -126,7 +154,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * back right away, delay a bit so we don't get in infinite loop.
              */
             if (!Monitor.TryEnter (m_RunLock)) {
-                return now.AddMilliseconds(3);
+                m_SleepUntil = now.AddMilliseconds(3);
+                return XMRInstState.ONSLEEPQ;
             }
             try
             {
@@ -137,7 +166,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  */
                 if (microthread == null)
                 {
-                    return DateTime.MaxValue;
+                    return XMRInstState.DISPOSED;
                 }
 
                 /*
@@ -146,6 +175,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if (this.eventCode != ScriptEventCode.None)
                 {
                     m_LastRanAt = now;
+                    m_InstEHSlice ++;
                     e = microthread.ResumeEx (null);
                 }
 
@@ -170,12 +200,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                     /*
                      * If there is no event to dequeue, don't run this script
-                     * again for a very long time (unless someone queues another
-                     * event before then).
+                     * until another event gets queued.
                      */
                     if (evt == null)
                     {
-                        return DateTime.MaxValue;
+                        return XMRInstState.FINISHED;
                     }
 
                     /*
@@ -184,6 +213,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      */
                     m_DetectParams = evt.DetectParams;
                     m_LastRanAt = now;
+                    m_InstEHEvent ++;
                     e = StartEventHandler ((ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), 
                                                                         evt.EventName), 
                                            evt.Params);
@@ -194,7 +224,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  */
                 if (e != null)
                 {
-                    return HandleScriptException(e);
+                    HandleScriptException(e);
+                    return XMRInstState.FINISHED;
                 }
 
                 /*
@@ -221,9 +252,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  */
                 if (m_Die)
                 {
-                    m_SuspendUntil = DateTime.MaxValue;
+                    m_SleepUntil = DateTime.MaxValue;
                     m_Engine.World.DeleteSceneObject(m_Part.ParentGroup, false);
-                    return DateTime.MaxValue;
+                    return XMRInstState.FINISHED;
                 }
             }
             finally
@@ -234,14 +265,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Call this one again asap.
              */
-            return DateTime.MinValue;
+            return XMRInstState.ONYIELDQ;
         }
 
         /*
          * Start event handler.
-         * Event handler is put in suspended state at its entrypoint.
-         * This method runs in minimal time.
-         * Call ResumeEventHandler() to keep it running.
          *
          * Input:
          *  eventCode  = code of event to be processed
@@ -306,7 +334,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * Script did something like llRemoveInventory(llGetScriptName());
                  * ... to delete itself from the object.
                  */
-                m_SuspendUntil = DateTime.MaxValue;
+                m_SleepUntil = DateTime.MaxValue;
                 m_log.DebugFormat("[XMREngine]: script self-delete {0}", m_ItemID);
                 m_Part.Inventory.RemoveInventoryItem(m_ItemID);
                 return DateTime.MaxValue;
@@ -367,7 +395,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * Say script is sleeping for a very long time.
              * Reset() is able to cancel this sleeping.
              */
-            m_SuspendUntil = DateTime.MaxValue;
+            m_SleepUntil = DateTime.MaxValue;
         }
 
         /**
@@ -400,7 +428,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
             this.eventCode = ScriptEventCode.None;  // not processing an event
             m_DetectParams = null;                  // not processing an event
-            m_SuspendUntil = DateTime.MinValue;     // not doing llSleep()
+            m_SleepUntil   = DateTime.MinValue;     // not doing llSleep()
 
             /*
              * Tell next call do 'default state_entry()' to reset all global

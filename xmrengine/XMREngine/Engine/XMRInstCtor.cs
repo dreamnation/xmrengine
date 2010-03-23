@@ -34,8 +34,6 @@ using LSL_String = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
 using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
 using log4net;
 
-// This class exists in the main app domain
-//
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
     public partial class XMRInstance
@@ -96,6 +94,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_DebugFlag = part.Name.StartsWith("Time Since Startup");
 
             /*
+             * Not in any XMRInstQueue, and it is being constructed so don't
+	     * try to run it yet.
+             */
+            m_NextInst = this;
+            m_PrevInst = this;
+            m_IState   = XMRInstState.CONSTRUCT;
+
+            /*
              * Get object loaded, compiling script and reading .state file as
              * necessary.
              */
@@ -128,9 +134,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             /*
-             * Declare which events the script can handle.
+             * Declare which events the script's current state can handle.
              */
-            m_Part.SetScriptEvents(m_ItemID, GetStateEventFlags(0));
+            m_Part.SetScriptEvents(m_ItemID, GetStateEventFlags(stateCode));
         }
 
         // Get script DLL loaded in memory and all ready to run,

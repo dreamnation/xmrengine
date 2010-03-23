@@ -46,6 +46,34 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         SIZE
     };
 
+    /**
+     * @brief Which queue it is in as far as running is concerned,
+     *        ie, m_StartQueue, m_YieldQueue, m_SleepQueue, etc.
+     * Allowed transitions:
+     *   Starts in CONSTRUCT when constructed
+     *   CONSTRUCT->ONSTARTQ    : only by thread that constructed it
+     *   IDLE->ONSTARTQ         : by any thread but must have m_QueueLock when transitioning
+     *   ONSTARTQ->RUNNING      : only by thread that removed it from m_StartQueue
+     *   ONYIELDQ->RUNNING      : only by thread that removed it from m_YieldQueue
+     *   ONSLEEPQ->ONYIELDQ     : only by thread that removed it from m_SleepQueue
+     *   RUNNING->whatever1     : only by thread that transitioned it to RUNNING
+     *                            whatever1 = IDLE,ONSLEEPQ,ONYIELDQ,ONSTARTQ,SUSPENDED,FINISHED
+     *   FINSHED->whatever2     : only by thread that transitioned it to FINISHED
+     *                            whatever2 = IDLE,ONSTARTQ,DISPOSED
+     *   SUSPENDED->ONSTARTQ    : by any thread (NOT YET IMPLEMENTED, should be under some kind of lock?)
+     */
+    public enum XMRInstState {
+        CONSTRUCT,  // it is being constructed
+        IDLE,       // nothing happening (finished last event and m_EventQueue is empty)
+        ONSTARTQ,   // inserted on m_Engine.m_StartQueue
+        RUNNING,    // currently being executed by RunOne()
+        ONSLEEPQ,   // inserted on m_Engine.m_SleepQueue
+        ONYIELDQ,   // inserted on m_Engine.m_YieldQueue
+        FINISHED,   // just finished handling an event
+        SUSPENDED,  // m_SuspendCount > 0
+        DISPOSED    // has been disposed
+    }
+
     public partial class XMRInstance : IDisposable
     {
         /******************************************************************\
@@ -67,6 +95,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private static Dictionary<UUID, ScriptObjCode> m_CompiledScriptObjCode = new Dictionary<UUID, ScriptObjCode>();
         private static Dictionary<UUID, int> m_CompiledScriptRefCount = new Dictionary<UUID, int>();
 
+        public  XMRInstance  m_NextInst;  // used by XMRInstQueue
+        public  XMRInstance  m_PrevInst;
+        public  XMRInstState m_IState;
+
         public  SceneObjectPart m_Part = null;
         public  uint m_LocalID = 0;
         public  TaskInventoryItem m_Item = null;
@@ -84,11 +116,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private bool m_Die = false;
         private int m_StartParam = 0;
         private StateSource m_StateSource;
-        private string m_DescName;
+        public  string m_DescName;
         private bool m_DebugFlag = false;
         private UIntPtr m_StackSize;
         private ArrayList m_CompilerErrors;
         private DateTime m_LastRanAt = DateTime.MinValue;
+        public  int m_InstEHEvent = 0;  // number of events dequeued (StartEventHandler called)
+        public  int m_InstEHSlice = 0;  // number of times handler timesliced (ResumeEx called)
 
         // If code needs to have both m_QueueLock and m_RunLock,
         // be sure to lock m_RunLock first then m_QueueLock, as
@@ -98,13 +132,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         // If we just had one lock, then the queuing would deadlock.
 
         // guards m_EventQueue, m_TimerQueued, m_Running
-        private Object m_QueueLock = new Object();
+        public Object m_QueueLock = new Object();
 
         // true iff allowed to accept new events
         private bool m_Running = true;
 
         // queue of events that haven't been acted upon yet
-        private Queue<EventParams> m_EventQueue = new Queue<EventParams>();
+        public Queue<EventParams> m_EventQueue = new Queue<EventParams>();
 
         // true iff m_EventQueue contains a timer() event
         private bool m_TimerQueued = false;
@@ -117,7 +151,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private int m_SuspendCount = 0;
 
         // don't run any of script until this time
-        private DateTime m_SuspendUntil = DateTime.MinValue;
+        public DateTime m_SleepUntil = DateTime.MinValue;
 
         private Dictionary<string,IScriptApi> m_Apis =
                 new Dictionary<string,IScriptApi>();

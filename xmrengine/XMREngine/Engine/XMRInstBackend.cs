@@ -144,7 +144,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Say how long to sleep.
              */
-            m_SuspendUntil = DateTime.UtcNow + TimeSpan.FromMilliseconds(ms);
+            m_SleepUntil = DateTime.UtcNow + TimeSpan.FromMilliseconds(ms);
             suspendOnCheckRunTemp = true;
 
             /*

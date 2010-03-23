@@ -1,6 +1,7 @@
 /////////////////////////////////////////////////////////////
 //
 // Copyright (c)2009 Careminster Limited and Melanie Thielker
+// Copyright (c) 2010 Mike Rieker, Beverly, MA, USA
 //
 // All rights reserved
 //
@@ -60,9 +61,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private bool m_Enabled = false;
         private XMREvents m_Events = null;
         public  AssemblyResolver m_AssemblyResolver = null;
-        private Dictionary<UUID, XMRInstance> m_InstancesDict =
-                new Dictionary<UUID, XMRInstance>();
-        private XMRInstance[] m_InstanceArray = new XMRInstance[0];
         private Dictionary<UUID, ArrayList> m_ScriptErrors =
                 new Dictionary<UUID, ArrayList>();
         private bool m_WakeUpFlag = false;
@@ -84,6 +82,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private int m_MaintenanceInterval = 10;
         
         private System.Timers.Timer m_MaintenanceTimer;
+
+        /*
+         * Various instance lists:
+         *   m_InstancesDict = all known instances
+         *                     find an instance given its itemID
+         *   m_StartQueue = instances that have just had event queued to them
+         *   m_YieldQueue = instances that are ready to run right now
+         *   m_SleepQueue = instances that have m_SleepUntil valid
+         *                  sorted by ascending m_SleepUntil
+         */
+        private Dictionary<UUID, XMRInstance> m_InstancesDict =
+                new Dictionary<UUID, XMRInstance>();
+        private XMRInstQueue m_StartQueue = new XMRInstQueue();
+        private XMRInstQueue m_YieldQueue = new XMRInstQueue();
+        private XMRInstQueue m_SleepQueue = new XMRInstQueue();
 
         public XMREngine()
         {
@@ -267,38 +280,32 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 GC.Collect();
                 break;
             case "ls":
-                int i;
                 int numScripts = 0;
-                foreach (XMRInstance ins in m_InstanceArray)
+                lock (m_InstancesDict)
                 {
-                    if (args.Length > 3)
+                    foreach (XMRInstance ins in m_InstancesDict.Values)
                     {
-                        for (i = 3; i < args.Length; i ++)
-                        {
-                            if (ins.m_Part.Name.Contains(args[i])) break;
-                            if (ins.m_Item.Name.Contains(args[i])) break;
-                            if (ins.m_ItemID.ToString().Contains(args[i])) break;
-                            if (ins.m_AssetID.ToString().Contains(args[i])) break;
+                        if (InstanceMatchesArgs(ins, args)) {
+                            ins.RunTestLs();
+                            numScripts ++;
                         }
-                        if (i >= args.Length) continue;
                     }
-                    ins.RunTestLs();
-                    numScripts ++;
                 }
                 Console.WriteLine("total of {0} script(s)", numScripts);
                 XMRInstance rins = m_RunInstance;
                 if (rins != null) {
-                    Console.WriteLine("running {0} {1} {2}:{3}",
+                    Console.WriteLine("running {0} {1}",
                             rins.m_ItemID.ToString(),
-                            rins.m_AssetID.ToString(),
-                            rins.m_Part.Name,
-                            rins.m_Item.Name);
+                            rins.m_DescName);
                 }
                 DateTime suntil = m_SleepUntil;
                 if (suntil > DateTime.MinValue) {
                     Console.WriteLine("sleeping until {0}", suntil.ToString());
                 }
                 Console.WriteLine("last ran at {0}", m_LastRanAt.ToString());
+                LsQueue("start", m_StartQueue, args);
+                LsQueue("sleep", m_SleepQueue, args);
+                LsQueue("yield", m_YieldQueue, args);
                 break;
             case "resume":
                 m_log.Debug("[XMREngine]: resuming scripts");
@@ -318,6 +325,43 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 Console.WriteLine("xmr test: unknown command " + args[2]);
                 break;
             }
+        }
+
+        private void LsQueue(string name, XMRInstQueue queue, string[] args)
+        {
+            Console.WriteLine("Queue " + name + ":");
+            lock (queue) {
+                for (XMRInstance inst = queue.PeekHead(); inst != null; inst = inst.m_NextInst) {
+                    try {
+
+                        /*
+                         * Try to print instance name.
+                         */
+                        if (InstanceMatchesArgs(inst, args)) {
+                            Console.WriteLine("   " + inst.m_ItemID.ToString() + " " + inst.m_DescName);
+                        }
+                    } catch (Exception e) {
+
+                        /*
+                         * Sometimes there are instances in the queue that are disposed.
+                         */
+                        Console.WriteLine("   " + inst.m_ItemID.ToString() + " " + inst.m_DescName + ": " + e.Message);
+                    }
+                }
+            }
+        }
+
+        private bool InstanceMatchesArgs(XMRInstance ins, string[] args)
+        {
+            if (args.Length < 4) return true;
+            for (int i = 3; i < args.Length; i ++)
+            {
+                if (ins.m_Part.Name.Contains(args[i])) return true;
+                if (ins.m_Item.Name.Contains(args[i])) return true;
+                if (ins.m_ItemID.ToString().Contains(args[i])) return true;
+                if (ins.m_AssetID.ToString().Contains(args[i])) return true;
+            }
+            return false;
         }
 
         // Not required when not using IScriptInstance
@@ -873,14 +917,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             /*
-             * Queue it for running.
+             * Let other parts of OpenSim see the instance.
              */
             lock (m_InstancesDict)
             {
-                // queue it to runnable script instance list
+                // Insert on known scripts list
                 m_InstancesDict[itemID] = instance;
-                m_InstanceArray = System.Linq.Enumerable.ToArray(m_InstancesDict.Values);
-                WakeUp();
 
                 List<UUID> l;
 
@@ -899,6 +941,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                 m_Partmap[itemID] = part.UUID;
             }
+
+            /*
+             * Transition from CONSTRUCT->ONSTARTQ and give to RunScriptThread().
+             */
+            if (instance.m_IState != XMRInstState.CONSTRUCT) throw new Exception("bad state");
+            instance.m_IState = XMRInstState.ONSTARTQ;
+            QueueToStart(instance);
         }
 
         public void OnRemoveScript(uint localID, UUID itemID)
@@ -920,10 +969,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 instance.Dispose();
 
                 /*
-                 * Remove it from our lists of known script instances.
+                 * Remove it from our list of known script instances.
                  */
                 m_InstancesDict.Remove(itemID);
-                m_InstanceArray = System.Linq.Enumerable.ToArray(m_InstancesDict.Values);
 
                 /*
                  * Delete the .state file as any needed contents were fetched with GetXMLState()
@@ -1035,6 +1083,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
         }
 
+        public void QueueToStart(XMRInstance inst)
+        {
+            lock (m_StartQueue) {
+                if (inst.m_IState != XMRInstState.ONSTARTQ) throw new Exception("bad state");
+                m_StartQueue.InsertTail(inst);
+            }
+            WakeUp();
+        }
+
         public void WakeUp()
         {
             lock (m_WakeUpLock)
@@ -1049,45 +1106,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         private void RunScriptThread()
         {
+            DateTime now, sleepUntil;
+            XMRInstance inst;
+            XMRInstState newIState;
+
             while (!m_Exiting)
             {
-                m_WakeUpFlag = false;
-                DateTime earliest = DateTime.MaxValue;
-                foreach (XMRInstance ins in m_InstanceArray)
-                {
-                    if (ins != null)
-                    {
-                        m_RunInstance = ins;
-                        DateTime suspendUntil = ins.RunOne();
-                        m_RunInstance = null;
-                        if (earliest > suspendUntil)
-                        {
-                            earliest = suspendUntil;
-                        }
-                    }
-                }
-
-                DateTime now = DateTime.UtcNow;
-                m_LastRanAt = now;
-                if (earliest > now)
-                {
-                    lock (m_WakeUpLock)
-                    {
-                        if (!m_WakeUpFlag)
-                        {
-                            TimeSpan deltaTS = earliest - now;
-                            int deltaMS = Int32.MaxValue;
-                            if (deltaTS.TotalMilliseconds < Int32.MaxValue)
-                            {
-                                deltaMS = (int)deltaTS.TotalMilliseconds;
-                            }
-                            m_SleepUntil = earliest;
-                            System.Threading.Monitor.Wait(m_WakeUpLock, deltaMS);
-                            m_SleepUntil = DateTime.MinValue;
-                        }
-                    }
-                }
-
                 /*
                  * Handle 'xmr test resume/suspend' commands.
                  */
@@ -1100,6 +1124,195 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     Monitor.Exit (m_SuspendScriptThreadLock);
                     m_log.Debug ("[XMREngine]: scripts resumed");
                 }
+
+                /*
+                 * Anything that changes any of the conditions
+                 * below should set m_WakeUpFlag and pulse anything
+                 * sleeping on m_WakeUpLock().
+                 */
+                m_WakeUpFlag = false;
+
+                /*
+                 * If event just queued to any idle scripts
+                 * start them right away.  But only start so
+                 * many so we can make some progress on sleep
+                 * and yield queues.
+                 */
+                int numStarts;
+                for (numStarts = 5; -- numStarts >= 0;) {
+                    lock (m_StartQueue) {
+                        inst = m_StartQueue.RemoveHead();
+                    }
+                    if (inst == null) break;
+                    if (inst.m_IState != XMRInstState.ONSTARTQ) throw new Exception("bad state");
+                    inst.m_IState = XMRInstState.RUNNING;
+                    m_RunInstance = inst;
+                    newIState = inst.RunOne();
+                    m_RunInstance = null;
+                    HandleNewIState(inst, newIState);
+                }
+
+                /*
+                 * Move any expired timers to the end of the
+                 * yield queue so they will run.
+                 */
+                m_LastRanAt = now = DateTime.UtcNow;
+                while (true) {
+                    sleepUntil = DateTime.MaxValue;
+                    lock (m_SleepQueue) {
+                        inst = m_SleepQueue.PeekHead();
+                        if (inst == null) break;
+                        if (inst.m_IState != XMRInstState.ONSLEEPQ) throw new Exception("bad state");
+                        sleepUntil = inst.m_SleepUntil;
+                        if (sleepUntil > now) break;
+                        m_SleepQueue.RemoveHead();
+                    }
+                    lock (m_YieldQueue) {
+                        inst.m_IState = XMRInstState.ONYIELDQ;
+                        m_YieldQueue.InsertTail(inst);
+                    }
+                }
+
+                /*
+                 * If there is something to run, run it
+                 * then rescan from the beginning in case
+                 * a lot of things have changed meanwhile.
+                 *
+                 * These are considered lower priority than
+                 * m_StartQueue as they have been taking at
+                 * least one quantum of CPU time and event
+                 * handlers are supposed to be quick.
+                 */
+                lock (m_YieldQueue) {
+                    inst = m_YieldQueue.RemoveHead();
+                }
+                if (inst != null) {
+                    if (inst.m_IState != XMRInstState.ONYIELDQ) throw new Exception("bad state");
+                    inst.m_IState = XMRInstState.RUNNING;
+                    m_RunInstance = inst;
+                    newIState = inst.RunOne();
+                    m_RunInstance = null;
+                    HandleNewIState(inst, newIState);
+                    continue;
+                }
+
+                /*
+                 * If we left something dangling in the m_StartQueue, go back to check it.
+                 */
+                if (numStarts < 0) continue;
+
+                /*
+                 * Nothing to do, sleep.
+                 * Note that at this point, we know sleepUntil > now.
+                 */
+                lock (m_WakeUpLock) {
+                    if (!m_WakeUpFlag) {
+                        TimeSpan deltaTS = sleepUntil - now;
+                        int deltaMS = Int32.MaxValue;
+                        if (deltaTS.TotalMilliseconds < Int32.MaxValue)
+                        {
+                            deltaMS = (int)deltaTS.TotalMilliseconds;
+                        }
+                        System.Threading.Monitor.Wait(m_WakeUpLock, deltaMS);
+                    }
+                }
+            }
+        }
+
+        /**
+         * @brief An instance has just finished running for now,
+         *        figure out what to do with it next.
+         * @param inst = instance in question, not on any queue at the moment
+         * @param newIState = its new state
+         * @returns with instance inserted onto proper queue (if any)
+         */
+        private void HandleNewIState(XMRInstance inst, XMRInstState newIState)
+        {
+            /*
+             * RunOne() should have left the instance in RUNNING state.
+             */
+            if (inst.m_IState != XMRInstState.RUNNING) throw new Exception("bad state");
+
+            /*
+             * Now see what RunOne() wants us to do with the instance next.
+             */
+            switch (newIState) {
+
+                /*
+                 * Instance has set m_SleepUntil to when it wants to sleep until.
+                 * So insert instance in sleep queue by ascending wake time.
+                 */
+                case XMRInstState.ONSLEEPQ: {
+                    lock (m_SleepQueue) {
+                        XMRInstance after;
+
+                        inst.m_IState = XMRInstState.ONSLEEPQ;
+                        for (after = m_SleepQueue.PeekHead(); after != null; after = after.m_NextInst) {
+                            if (after.m_SleepUntil > inst.m_SleepUntil) break;
+                        }
+                        m_SleepQueue.InsertBefore(inst, after);
+                    }
+                    break;
+                }
+
+                /*
+                 * Instance just took a long time to run and got wacked by the
+                 * slicer.  So put on end of yield queue to let someone else
+                 * run.  If there is no one else, it will run again right away.
+                 */
+                case XMRInstState.ONYIELDQ: {
+                    lock (m_YieldQueue) {
+                        inst.m_IState = XMRInstState.ONYIELDQ;
+                        m_YieldQueue.InsertTail(inst);
+                    }
+                    break;
+                }
+
+                /*
+                 * Instance finished executing an event handler.  So if there is
+                 * another event queued for it, put it on the start queue so it
+                 * will process the new event.  Otherwise, mark it idle and the
+                 * next event to queue to it will start it up.
+                 */
+                case XMRInstState.FINISHED: {
+                    Monitor.Enter(inst.m_QueueLock);
+                    if (inst.m_EventQueue.Count > 0) {
+                        Monitor.Exit(inst.m_QueueLock);
+                        lock (m_StartQueue) {
+                            inst.m_IState = XMRInstState.ONSTARTQ;
+                            m_StartQueue.InsertTail (inst);
+                        }
+                    } else {
+                        inst.m_IState = XMRInstState.IDLE;
+                        Monitor.Exit(inst.m_QueueLock);
+                    }
+                    break;
+                }
+
+                /*
+                 * Its m_SuspendCount > 0.
+                 * Don't put it on any queue and it won't run.
+                 * Since it's not IDLE, even queuing an event won't start it.
+                 */
+                case XMRInstState.SUSPENDED: {
+                    inst.m_IState = XMRInstState.SUSPENDED;
+                    break;
+                }
+
+                /*
+                 * It has been disposed of.
+                 * Just set the new state and all refs should theoretically drop off
+                 * as the instance is no longer in any list.
+                 */
+                case XMRInstState.DISPOSED: {
+                    inst.m_IState = XMRInstState.DISPOSED;
+                    break;
+                }
+
+                /*
+                 * RunOne returned something bad.
+                 */
+                default: throw new Exception("bad new state");
             }
         }
 
@@ -1172,7 +1385,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         // and gets restarted.
         private void DoMaintenance(object source, ElapsedEventArgs e)
         {
-            foreach (XMRInstance ins in m_InstanceArray)
+            XMRInstance[] instanceArray;
+
+            lock (m_InstancesDict) {
+                instanceArray = System.Linq.Enumerable.ToArray(m_InstancesDict.Values);
+            }
+            foreach (XMRInstance ins in instanceArray)
             {
                 ins.GetExecutionState(new XmlDocument());
             }
