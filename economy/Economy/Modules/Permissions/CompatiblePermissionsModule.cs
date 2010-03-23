@@ -300,7 +300,7 @@ namespace Careminster.Modules.Permissions
                 return flags;
             }
 
-            if (task.OwnerID == task.GroupID)
+            if ((task.OwnerID == task.GroupID) && presence.ControllingClient.IsGroupMember(task.GroupID))
                 objflags |= (uint)PrimFlags.ObjectGroupOwned;
 
             return ApplyObjectModifyMasks(task.EveryoneMask, objflags);
