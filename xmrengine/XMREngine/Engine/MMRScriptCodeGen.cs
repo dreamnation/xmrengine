@@ -834,6 +834,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ilGen.Emit (OpCodes.Ldloc, indexVar);
 			ilGen.Emit (OpCodes.Dup);
 			PushConstantI4 (1);
+			ilGen.Emit (OpCodes.Add);
 			ilGen.Emit (OpCodes.Stloc, indexVar);
 
 			// ForEach arg 2: ref keyLVal
@@ -1976,6 +1977,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 			if (type is TokenTypeFloat) {
 				ilGen.Emit (OpCodes.Ldc_R4, 0.0f);
+				return;
+			}
+
+			/*
+			 * Default for 'object' type is 'undef'.
+			 */
+			if (type is TokenTypeObject) {
+				ilGen.Emit (OpCodes.Ldnull);
 				return;
 			}
 

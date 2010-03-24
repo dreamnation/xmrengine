@@ -738,6 +738,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			s2t.Add ("midround", typeof (MidpointRounding));
 			s2t.Add ("mmruthr",  typeof (MMRUThread));
 			s2t.Add ("object",   typeof (object));
+			s2t.Add ("object*",  typeof (object).MakeByRefType ());
 			s2t.Add ("object[]", typeof (object[]));
 			s2t.Add ("scrbase",  typeof (ScriptBaseClass));
 			s2t.Add ("scrcode",  typeof (ScriptCodeGen));

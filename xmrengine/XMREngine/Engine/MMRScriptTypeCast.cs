@@ -43,6 +43,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static MethodInfo floatToStringMethodInfo    = typeof (TypeCast).GetMethod ("FloatToString",    new Type[] { typeof (float) });
 		private static MethodInfo intToStringMethodInfo      = typeof (TypeCast).GetMethod ("IntegerToString",  new Type[] { typeof (int) });
 		private static MethodInfo listToStringMethodInfo     = typeof (TypeCast).GetMethod ("ListToString",     new Type[] { typeof (LSL_List) });
+		private static MethodInfo objectToStringMethodInfo   = typeof (TypeCast).GetMethod ("ObjectToString",   new Type[] { typeof (object) });
 		private static MethodInfo rotationToBoolMethodInfo   = typeof (TypeCast).GetMethod ("RotationToBool",   new Type[] { typeof (LSL_Rotation) });
 		private static MethodInfo rotationToStringMethodInfo = typeof (TypeCast).GetMethod ("RotationToString", new Type[] { typeof (LSL_Rotation) });
 		private static MethodInfo vectorToBoolMethodInfo     = typeof (TypeCast).GetMethod ("VectorToBool",     new Type[] { typeof (LSL_Vector) });
@@ -265,10 +266,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			ilGen.Emit (OpCodes.Castclass, typeof (LSL_Rotation));
 		}
-		private static void TypeCastObject2String (ScriptMyILGen ilGen)
-		{
-			ilGen.Emit (OpCodes.Castclass, typeof (string));
-		}
 		private static void TypeCastObject2Vector (ScriptMyILGen ilGen)
 		{
 			ilGen.Emit (OpCodes.Castclass, typeof (LSL_Vector));
@@ -337,6 +334,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			ilGen.Emit (OpCodes.Call, listToStringMethodInfo);
 		}
+		private static void TypeCastObject2String (ScriptMyILGen ilGen)
+		{
+			ilGen.Emit (OpCodes.Call, objectToStringMethodInfo);
+		}
 		private static void TypeCastRotation2List (ScriptMyILGen ilGen)
 		{
 			ilGen.Emit (OpCodes.Box, typeof (LSL_Rotation));
@@ -368,13 +369,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		/*
 		 * Because the calls are funky, let the compiler handle them.
 		 */
-		public static bool   RotationToBool   (LSL_Rotation x) { return !x.Equals (ScriptBaseClass.ZERO_ROTATION); }
-		public static bool   VectorToBool     (LSL_Vector x)   { return !x.Equals (ScriptBaseClass.ZERO_VECTOR); }
-		public static string FloatToString    (float x)        { return x.ToString (); }
-		public static string IntegerToString  (int x)          { return x.ToString (); }
-		public static string ListToString     (LSL_List x)     { return x.ToString (); }
-		public static string RotationToString (LSL_Rotation x) { return x.ToString (); }
-		public static string VectorToString   (LSL_Vector x)   { return x.ToString (); }
-		public static LSL_List ListOfOneObj   (object x)       { return new LSL_List (new object[1] { x }); }
+		public static bool     RotationToBool   (LSL_Rotation x) { return !x.Equals (ScriptBaseClass.ZERO_ROTATION); }
+		public static bool     VectorToBool     (LSL_Vector x)   { return !x.Equals (ScriptBaseClass.ZERO_VECTOR); }
+		public static string   FloatToString    (float x)        { return x.ToString (); }
+		public static string   IntegerToString  (int x)          { return x.ToString (); }
+		public static string   ListToString     (LSL_List x)     { return x.ToString (); }
+		public static string   ObjectToString   (object x)       { return x.ToString (); }
+		public static string   RotationToString (LSL_Rotation x) { return x.ToString (); }
+		public static string   VectorToString   (LSL_Vector x)   { return x.ToString (); }
+		public static LSL_List ListOfOneObj     (object x)       { return new LSL_List (new object[1] { x }); }
 	}
 }
