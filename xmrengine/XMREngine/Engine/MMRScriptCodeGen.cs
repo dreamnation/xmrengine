@@ -36,7 +36,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
 		public static readonly string OBJECT_CODE_MAGIC = "XMRObjectCode";
-		public static readonly int COMPILED_VERSION_VALUE = 5;  // incremented when compiler changes for compatibility testing
+		public static readonly int COMPILED_VERSION_VALUE = 6;  // incremented when compiler changes for compatibility testing
 
 		public static readonly int CALL_FRAME_MEMUSE = 64;
 		public static readonly int STRING_LEN_TO_MEMUSE = 2;
