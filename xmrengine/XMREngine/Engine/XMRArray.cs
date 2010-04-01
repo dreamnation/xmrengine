@@ -52,37 +52,37 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * Get returns null if element not defined, script sees type 'undef'.
 		 * Setting an element to null removes it.
 		 */
-		public object this[object key]
+		public object GetByKey(object key)
 		{
-			get {
-				object val;
-				if (!dnary.TryGetValue (key, out val)) val = null;
-				return val;
-			}
-			set {
-				/*
-				 * Save new value in array, replacing one of same key if there.
-				 * null means remove the value, ie, script did array[key] = undef.
-				 */
-				if (value != null) {
-					dnary[key] = value;
-				} else {
-					dnary.Remove (key);
+			object val;
+			if (!dnary.TryGetValue (key, out val)) val = null;
+			return val;
+		}
 
-					/*
-					 * Shrink the enumeration array, but always leave at least one element.
-					 */
-					if ((array != null) && (dnary.Count < array.Length / 2)) {
-						Array.Resize<KeyValuePair<object, object>> (ref array, array.Length / 2);
-					}
+		public void SetByKey(object key, object value)
+		{
+			/*
+			 * Save new value in array, replacing one of same key if there.
+			 * null means remove the value, ie, script did array[key] = undef.
+			 */
+			if (value != null) {
+				dnary[key] = value;
+			} else {
+				dnary.Remove (key);
+
+				/*
+				 * Shrink the enumeration array, but always leave at least one element.
+				 */
+				if ((array != null) && (dnary.Count < array.Length / 2)) {
+					Array.Resize<KeyValuePair<object, object>> (ref array, array.Length / 2);
 				}
-
-				/*
-				 * The enumeration array is invalid because the dictionary has been modified.
-				 * Next time a ForEach() call happens, it will repopulate 'array' as elements are retrieved.
-				 */
-				arrayValid = 0;
 			}
+
+			/*
+			 * The enumeration array is invalid because the dictionary has been modified.
+			 * Next time a ForEach() call happens, it will repopulate 'array' as elements are retrieved.
+			 */
+			arrayValid = 0;
 		}
 
 		/**

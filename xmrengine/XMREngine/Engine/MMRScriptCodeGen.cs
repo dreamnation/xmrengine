@@ -36,7 +36,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
 		public static readonly string OBJECT_CODE_MAGIC = "XMRObjectCode";
-		public static readonly int COMPILED_VERSION_VALUE = 5;  // incremented when compiler changes for compatibility testing
+		public static readonly int COMPILED_VERSION_VALUE = 6;  // incremented when compiler changes for compatibility testing
 
 		public static readonly int CALL_FRAME_MEMUSE = 64;
 		public static readonly int STRING_LEN_TO_MEMUSE = 2;
@@ -834,6 +834,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ilGen.Emit (OpCodes.Ldloc, indexVar);
 			ilGen.Emit (OpCodes.Dup);
 			PushConstantI4 (1);
+			ilGen.Emit (OpCodes.Add);
 			ilGen.Emit (OpCodes.Stloc, indexVar);
 
 			// ForEach arg 2: ref keyLVal
@@ -1976,6 +1977,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 			if (type is TokenTypeFloat) {
 				ilGen.Emit (OpCodes.Ldc_R4, 0.0f);
+				return;
+			}
+
+			/*
+			 * Default for 'object' type is 'undef'.
+			 */
+			if (type is TokenTypeObject) {
+				ilGen.Emit (OpCodes.Ldnull);
 				return;
 			}
 

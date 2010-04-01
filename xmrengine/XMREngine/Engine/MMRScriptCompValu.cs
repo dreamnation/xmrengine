@@ -76,48 +76,43 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public abstract void PopPost (ScriptCodeGen scg);   // call this after pushing value to be popped
 	}
 
-	// The value is kept in an array element
+	// The value is kept in an (XMR_Array) array element
 	public class CompValuArEle : CompValu {
 		CompValu arr;
 		CompValu idx;
+		TokenTypeObject tto;
+
+		static MethodInfo getByKeyMethodInfo = typeof (XMR_Array).GetMethod ("GetByKey", 
+		                                                                     new Type[] { typeof (object) });
+		static MethodInfo setByKeyMethodInfo = typeof (XMR_Array).GetMethod ("SetByKey", 
+		                                                                     new Type[] { typeof (object),
+		                                                                                  typeof (object) });
 
 		public CompValuArEle (TokenType type, CompValu arr, CompValu idx) : base (type)
 		{
 			this.arr = arr;
 			this.idx = idx;
+			this.tto = new TokenTypeObject (this.type);
 		}
 		public override void PushVal (ScriptCodeGen scg)
 		{
-			arr.PushVal (scg);
-			idx.PushVal (scg);
-			if (type is TokenTypeFloat) {
-				scg.ilGen.Emit (OpCodes.Ldelem_R4);
-			} else if (type is TokenTypeInt) {
-				scg.ilGen.Emit (OpCodes.Ldelem_I4);
-			} else {
-				scg.ilGen.Emit (OpCodes.Ldelem, SysType());
-			}
+			arr.PushVal (scg);            // array
+			idx.PushVal (scg, this.tto);  // key
+			scg.ilGen.Emit (OpCodes.Call, getByKeyMethodInfo);
 		}
 		public override void PushByRef (ScriptCodeGen scg)
 		{
-			arr.PushVal (scg);
-			idx.PushVal (scg);
-			scg.ilGen.Emit (OpCodes.Ldelema, SysType());
+			scg.ErrorMsg (this.type, "array element not allowed here");
+			scg.ilGen.Emit (OpCodes.Ldnull);
 		}
 		public override void PopPre (ScriptCodeGen scg)
 		{
-			arr.PushVal (scg);
-			idx.PushVal (scg);
+			arr.PushVal (scg);            // array
+			idx.PushVal (scg, this.tto);  // key
 		}
 		public override void PopPost (ScriptCodeGen scg)
 		{
-			if (type is TokenTypeFloat) {
-				scg.ilGen.Emit (OpCodes.Stelem_R4);
-			} else if (type is TokenTypeInt) {
-				scg.ilGen.Emit (OpCodes.Stelem_I4);
-			} else {
-				scg.ilGen.Emit (OpCodes.Stelem, SysType());
-			}
+			scg.ilGen.Emit (OpCodes.Call, setByKeyMethodInfo);
 		}
 	}
 
