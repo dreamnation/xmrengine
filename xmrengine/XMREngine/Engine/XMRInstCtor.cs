@@ -89,13 +89,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Set up a descriptive name string for debug messages.
              */
-            ////m_DescName  = MMRCont.HexString(MMRCont.ObjAddr(this)).PadLeft(8, '0');
-            m_DescName = part.Name + ":" + item.Name;
-            m_DebugFlag = part.Name.StartsWith("Time Since Startup");
+            m_DescName  = MMRCont.HexString(MMRCont.ObjAddr(this)).PadLeft(8, '0') + " ";
+            m_DescName += part.Name + ":" + item.Name;
+            m_DebugFlag = false;
 
             /*
              * Not in any XMRInstQueue, and it is being constructed so don't
-	     * try to run it yet.
+             * try to run it yet.
              */
             m_NextInst = this;
             m_PrevInst = this;
@@ -345,6 +345,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                 // Failed to load state, delete bad .state file and reload
                 // instance so we get a script at default state.
+                m_log.Info("[XMREngine]: attempting reset " + m_DescName);
                 File.Delete(m_StateFileName);
                 return TryToLoad(objCode);
             }

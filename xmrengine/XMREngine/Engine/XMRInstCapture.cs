@@ -70,6 +70,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             suspendOnCheckRunHold = true;
             lock (m_RunLock)
             {
+                CheckRunLockInvariants(true);
+
                 /*
                  * Get copy of script stack in relocateable form.
                  */
@@ -160,6 +162,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * Let script run again.
                  */
                 suspendOnCheckRunHold = false;
+
+                CheckRunLockInvariants(true);
             }
 
             /*

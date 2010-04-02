@@ -29,6 +29,7 @@ using OpenMetaverse.StructuredData;
 using OpenSim.Region.CoreModules.Framework.EventQueue;
 using Nini.Config;
 using Mono.Addins;
+using Mono.Tasklets;
 using OpenMetaverse;
 using log4net;
 using OpenSim.Region.ScriptEngine.XMREngine;
@@ -72,10 +73,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private UIntPtr m_StackSize;
         private object m_SuspendScriptThreadLock = new object();
         private bool m_SuspendScriptThreadFlag = false;
-        private XMRInstance m_RunInstance = null;
+        public  XMRInstance m_RunInstance = null;
         private DateTime m_SleepUntil = DateTime.MinValue;
-        private DateTime m_LastRanAt = DateTime.MinValue;
+        public  DateTime m_LastRanAt = DateTime.MinValue;
         private Thread m_ScriptThread = null;
+        public  int m_ScriptThreadTID = 0;
         private Thread m_SliceThread = null;
         private bool m_Exiting = false;
 
@@ -94,9 +96,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         private Dictionary<UUID, XMRInstance> m_InstancesDict =
                 new Dictionary<UUID, XMRInstance>();
-        private XMRInstQueue m_StartQueue = new XMRInstQueue();
-        private XMRInstQueue m_YieldQueue = new XMRInstQueue();
-        private XMRInstQueue m_SleepQueue = new XMRInstQueue();
+        public  XMRInstQueue m_StartQueue = new XMRInstQueue();
+        public  XMRInstQueue m_YieldQueue = new XMRInstQueue();
+        public  XMRInstQueue m_SleepQueue = new XMRInstQueue();
 
         public XMREngine()
         {
@@ -1109,6 +1111,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             DateTime now, sleepUntil;
             XMRInstance inst;
             XMRInstState newIState;
+
+            m_ScriptThreadTID = MMRUThread.gettid ();
+            m_log.DebugFormat("[XMREngine]: RunScriptThread TID {0}", m_ScriptThreadTID);
 
             while (!m_Exiting)
             {

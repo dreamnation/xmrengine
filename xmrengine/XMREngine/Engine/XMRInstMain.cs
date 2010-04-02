@@ -51,16 +51,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
      *        ie, m_StartQueue, m_YieldQueue, m_SleepQueue, etc.
      * Allowed transitions:
      *   Starts in CONSTRUCT when constructed
-     *   CONSTRUCT->ONSTARTQ    : only by thread that constructed it
-     *   IDLE->ONSTARTQ         : by any thread but must have m_QueueLock when transitioning
-     *   ONSTARTQ->RUNNING      : only by thread that removed it from m_StartQueue
-     *   ONYIELDQ->RUNNING      : only by thread that removed it from m_YieldQueue
-     *   ONSLEEPQ->ONYIELDQ     : only by thread that removed it from m_SleepQueue
-     *   RUNNING->whatever1     : only by thread that transitioned it to RUNNING
-     *                            whatever1 = IDLE,ONSLEEPQ,ONYIELDQ,ONSTARTQ,SUSPENDED,FINISHED
-     *   FINSHED->whatever2     : only by thread that transitioned it to FINISHED
-     *                            whatever2 = IDLE,ONSTARTQ,DISPOSED
-     *   SUSPENDED->ONSTARTQ    : by any thread (NOT YET IMPLEMENTED, should be under some kind of lock?)
+     *   CONSTRUCT->ONSTARTQ          : only by thread that constructed it
+     *   IDLE->ONSTARTQ,RESETTING     : by any thread but must have m_QueueLock when transitioning
+     *   ONSTARTQ->RUNNING,RESETTING  : only by thread that removed it from m_StartQueue
+     *   ONYIELDQ->RUNNING,RESETTING  : only by thread that removed it from m_YieldQueue
+     *   ONSLEEPQ->ONYIELDQ,RESETTING : only by thread that removed it from m_SleepQueue
+     *   RUNNING->whatever1           : only by thread that transitioned it to RUNNING
+     *                                  whatever1 = IDLE,ONSLEEPQ,ONYIELDQ,ONSTARTQ,SUSPENDED,FINISHED
+     *   FINSHED->whatever2           : only by thread that transitioned it to FINISHED
+     *                                  whatever2 = IDLE,ONSTARTQ,DISPOSED
+     *   SUSPENDED->ONSTARTQ          : by any thread (NOT YET IMPLEMENTED, should be under some kind of lock?)
+     *   RESETTING->ONSTARTQ          : only by the thread that transitioned it to RESETTING
      */
     public enum XMRInstState {
         CONSTRUCT,  // it is being constructed
@@ -71,6 +72,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         ONYIELDQ,   // inserted on m_Engine.m_YieldQueue
         FINISHED,   // just finished handling an event
         SUSPENDED,  // m_SuspendCount > 0
+        RESETTING,  // being reset via external call
         DISPOSED    // has been disposed
     }
 
@@ -112,7 +114,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private ScriptObjCode m_ObjCode;
         private bool m_PostOnRez;
         private DetectParams[] m_DetectParams = null;
-        private bool m_Reset = false;
         private bool m_Die = false;
         private int m_StartParam = 0;
         private StateSource m_StateSource;
@@ -121,8 +122,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private UIntPtr m_StackSize;
         private ArrayList m_CompilerErrors;
         private DateTime m_LastRanAt = DateTime.MinValue;
-        public  int m_InstEHEvent = 0;  // number of events dequeued (StartEventHandler called)
-        public  int m_InstEHSlice = 0;  // number of times handler timesliced (ResumeEx called)
+        private string m_RunOnePhase = "hasn't run";
+        private string m_CheckRunPhase = "hasn't checked";
+        private int m_CheckRunLine = 0;
+        public  int m_InstEHEvent  = 0;  // number of events dequeued (StartEventHandler called)
+        public  int m_InstEHSlice  = 0;  // number of times handler timesliced (ResumeEx called)
 
         // If code needs to have both m_QueueLock and m_RunLock,
         // be sure to lock m_RunLock first then m_QueueLock, as
@@ -131,7 +135,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         // to call API routines that queue events back to the script.
         // If we just had one lock, then the queuing would deadlock.
 
-        // guards m_EventQueue, m_TimerQueued, m_Running
+        // guards m_EventQueue, m_TimerQueued, m_Running, m_LostEvents
         public Object m_QueueLock = new Object();
 
         // true iff allowed to accept new events
@@ -139,6 +143,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         // queue of events that haven't been acted upon yet
         public Queue<EventParams> m_EventQueue = new Queue<EventParams>();
+        public int m_LostEvents;
 
         // true iff m_EventQueue contains a timer() event
         private bool m_TimerQueued = false;
