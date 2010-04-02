@@ -150,7 +150,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             MainConsole.Instance.Commands.AddCommand("xmr", false,
                     "xmr test",
-                    "xmr test [backup|gc|ls|resume|suspend]",
+                    "xmr test [backup|gc|ls|resume|suspend|top]",
                     "Run current xmr test",
                     RunTest);
         }
@@ -323,6 +323,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 Monitor.PulseAll (m_WakeUpLock);
                 Monitor.Exit (m_WakeUpLock);
                 break;
+            case "top":
+                lock (m_InstancesDict)
+                {
+                    foreach (XMRInstance ins2 in m_InstancesDict.Values)
+                    {
+                        if (InstanceMatchesArgs(ins2, args)) {
+                            ins.RunTestTop();
+                        }
+                    }
+                }
+		break;
             default:
                 Console.WriteLine("xmr test: unknown command " + args[2]);
                 break;
