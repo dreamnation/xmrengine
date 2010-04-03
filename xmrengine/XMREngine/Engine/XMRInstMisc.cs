@@ -95,7 +95,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
         }
 
-	// Called by 'xmr test top' console command
+    // Called by 'xmr test top' console command
         // to dump this script's state to console
         //  Sacha 
         public void RunTestTop()

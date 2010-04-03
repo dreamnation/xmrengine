@@ -505,21 +505,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             XmlElement pluginN = (XmlElement)scriptStateN.SelectSingleNode("Plugins");
             Object[] pluginData = ExtractXMLObjectArray(pluginN, "plugin");
 
-            // See if we are supposed to send an 'on_rez' event
-            if (m_PostOnRez)
-            {
-                PostEvent(new EventParams("on_rez",
-                        new Object[] { m_StartParam }, zeroDetectParams));
-            }
-
-            // Maybe an 'attach' event too
-            if (m_StateSource == StateSource.AttachedRez)
-            {
-                PostEvent(new EventParams("attach",
-                        new object[] { m_Part.AttachedAvatar.ToString() }, 
-                        zeroDetectParams));
-            }
-
             // Script's global variables and stack contents
             XmlElement snapshotN = 
                     (XmlElement)scriptStateN.SelectSingleNode("Snapshot");
@@ -545,6 +530,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_TimerQueued = true;
                     break;
                 }
+            }
+
+            // See if we are supposed to send an 'on_rez' event
+            if (m_PostOnRez)
+            {
+                PostEvent(new EventParams("on_rez",
+                        new Object[] { m_StartParam }, zeroDetectParams));
+            }
+
+            // Maybe an 'attach' event too
+            if (m_StateSource == StateSource.AttachedRez)
+            {
+                PostEvent(new EventParams("attach",
+                        new object[] { m_Part.AttachedAvatar.ToString() }, 
+                        zeroDetectParams));
             }
         }
 
