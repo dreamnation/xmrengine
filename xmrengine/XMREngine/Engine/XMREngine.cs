@@ -1115,7 +1115,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if (inst.m_IState != XMRInstState.ONSTARTQ) throw new Exception("bad state");
                 m_StartQueue.InsertTail(inst);
             }
-            WakeUpScruptThread();
+            WakeUpScriptThread();
         }
 
         /**
