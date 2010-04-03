@@ -118,7 +118,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private int m_StartParam = 0;
         private StateSource m_StateSource;
         public  string m_DescName;
-        private bool m_DebugFlag = false;
+        private bool[] m_HaveEventHandlers;
         private UIntPtr m_StackSize;
         private ArrayList m_CompilerErrors;
         private DateTime m_LastRanAt = DateTime.MinValue;

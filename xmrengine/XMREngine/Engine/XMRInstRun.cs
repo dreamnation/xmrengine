@@ -51,6 +51,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public void PostEvent(EventParams evt)
         {
             /*
+             * Ignore event if we don't even have such an handler.
+             */
+            ScriptEventCode eventCode = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), 
+                                                                     evt.EventName);
+            if (!m_HaveEventHandlers[(int)eventCode]) {
+                return;
+            }
+
+            /*
              * Strip off any LSL type wrappers.
              */
             for (int i = 0 ; i < evt.Params.Length ; i++)
@@ -78,9 +87,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 {
                     return;
                 }
-
-                ScriptEventCode eventCode = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), 
-                                                                         evt.EventName);
 
                 /*
                  * Only so many of each event type allowed to queue.
