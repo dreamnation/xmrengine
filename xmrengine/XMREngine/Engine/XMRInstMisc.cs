@@ -111,7 +111,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Console.WriteLine("    m_SuspendCount = " + m_SuspendCount);
             Console.WriteLine("    m_SleepUntil   = " + m_SleepUntil);
             Console.WriteLine("    m_IState       = " + m_IState.ToString());
-            Console.WriteLine("    m_Reset        = " + m_Reset);
             Console.WriteLine("    m_Die          = " + m_Die);
             Console.WriteLine("    m_StateCode    = " + GetStateName(stateCode));
             Console.WriteLine("    eventCode      = " + eventCode.ToString());

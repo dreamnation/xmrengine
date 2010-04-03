@@ -329,7 +329,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     foreach (XMRInstance ins2 in m_InstancesDict.Values)
                     {
                         if (InstanceMatchesArgs(ins2, args)) {
-                            ins.RunTestTop();
+                            ins2.RunTestTop();
                         }
                     }
                 }
