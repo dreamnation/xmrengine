@@ -211,7 +211,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_Exiting = true;
             if (m_ScriptThread != null)
             {
-                WakeUp();
+                WakeUpScriptThread();
                 m_ScriptThread.Join();
                 m_ScriptThread = null;
             }
@@ -329,11 +329,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     foreach (XMRInstance ins2 in m_InstancesDict.Values)
                     {
                         if (InstanceMatchesArgs(ins2, args)) {
-                            ins.RunTestTop();
+                            ins2.RunTestTop();
                         }
                     }
                 }
-		break;
+                break;
             default:
                 Console.WriteLine("xmr test: unknown command " + args[2]);
                 break;
@@ -957,6 +957,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             /*
              * Transition from CONSTRUCT->ONSTARTQ and give to RunScriptThread().
+             * Put it on the start queue so it will run any queued event handlers,
+             * such as state_entry() or on_rez().  If there aren't any queued, it
+             * will just go back to idle state when RunOne() tries to dequeue an
+             * event.
              */
             if (instance.m_IState != XMRInstState.CONSTRUCT) throw new Exception("bad state");
             instance.m_IState = XMRInstState.ONSTARTQ;
@@ -1096,16 +1100,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
         }
 
+        /**
+         * @brief Queue an instance to the StartQueue so it will run.
+         *        This queue is used for instances that have just had
+         *        an event queued to them when they were previously
+         *        idle.  It must only be called by the thread that
+         *        transitioned the thread to XMRInstState.ONSTARTQ so
+         *        we don't get two threads trying to queue the same
+         *        instance to the m_StartQueue at the same time.
+         */
         public void QueueToStart(XMRInstance inst)
         {
             lock (m_StartQueue) {
                 if (inst.m_IState != XMRInstState.ONSTARTQ) throw new Exception("bad state");
                 m_StartQueue.InsertTail(inst);
             }
-            WakeUp();
+            WakeUpScruptThread();
         }
 
-        public void WakeUp()
+        /**
+         * @brief Wake up RunScriptThread() as there is more work for it to do now.
+         */
+        private void WakeUpScriptThread()
         {
             lock (m_WakeUpLock)
             {
