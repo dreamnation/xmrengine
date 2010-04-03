@@ -522,14 +522,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     pluginData);
             m_DetectParams = detParams;
             m_EventQueue   = eventQueue;
-            m_TimerQueued  = false;
+            for (int i = m_EventCounts.Length; -- i >= 0;) m_EventCounts[i] = 0;
             foreach (EventParams evt in m_EventQueue)
             {
-                if (evt.EventName == "timer")
-                {
-                    m_TimerQueued = true;
-                    break;
-                }
+                ScriptEventCode eventCode = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode),
+                                                                         evt.EventName);
+                m_EventCounts[(int)eventCode] ++;
             }
 
             // See if we are supposed to send an 'on_rez' event

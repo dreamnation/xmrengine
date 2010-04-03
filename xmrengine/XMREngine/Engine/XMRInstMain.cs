@@ -135,7 +135,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         // to call API routines that queue events back to the script.
         // If we just had one lock, then the queuing would deadlock.
 
-        // guards m_EventQueue, m_TimerQueued, m_Running, m_LostEvents
+        // guards m_EventQueue, m_EventCounts, m_Running
         public Object m_QueueLock = new Object();
 
         // true iff allowed to accept new events
@@ -143,10 +143,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         // queue of events that haven't been acted upon yet
         public Queue<EventParams> m_EventQueue = new Queue<EventParams>();
-        public int m_LostEvents;
 
-        // true iff m_EventQueue contains a timer() event
-        private bool m_TimerQueued = false;
+        // number of events of each code currently in m_EventQueue.
+        private int[] m_EventCounts = new int[(int)ScriptEventCode.Size];
 
 
         // locked whilst running on the microthread stack (or about to run on it or just ran on it)
