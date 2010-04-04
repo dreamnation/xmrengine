@@ -127,6 +127,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private int m_CheckRunLine = 0;
         public  int m_InstEHEvent  = 0;  // number of events dequeued (StartEventHandler called)
         public  int m_InstEHSlice  = 0;  // number of times handler timesliced (ResumeEx called)
+        public  int m_CPUTime      = 0;  // accumulated CPU time (milliseconds)
 
         // If code needs to have both m_QueueLock and m_RunLock,
         // be sure to lock m_RunLock first then m_QueueLock, as

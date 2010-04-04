@@ -235,14 +235,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     e = StartEventHandler (eventCode, evt.Params);
                 }
                 m_RunOnePhase = "done running";
+                m_CPUTime    += (int)DateTime.UtcNow.Subtract(now).TotalMilliseconds;
 
                 /*
                  * Maybe it puqued.
                  */
                 if (e != null)
                 {
+                    m_RunOnePhase = "handling exception " + e.Message;
                     HandleScriptException(e);
-                    m_RunOnePhase = "return had exception";
+                    m_RunOnePhase = "return had exception " + e.Message;
                     return XMRInstState.FINISHED;
                 }
 
@@ -382,9 +384,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * Script did an llDie() or llResetScript().
                  */
                 if (m_Die) {
+                    m_RunOnePhase = "dying...";
                     m_SleepUntil = DateTime.MaxValue;
                     m_Engine.World.DeleteSceneObject(m_Part.ParentGroup, false);
                 } else {
+                    m_RunOnePhase = "resetting...";
                     ResetLocked("HandleScriptException");
                 }
             }
@@ -457,7 +461,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
         checkstate:
             XMRInstState iState = m_IState;
-            Console.WriteLine("XMRInstance.Reset*: {0} : {1}", m_DescName, iState);
             switch (iState) {
 
                 /*
@@ -569,7 +572,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * This thread transitioned the instance to RESETTING so reset it.
              */
-            Console.WriteLine("XMRInstance.Reset*: {0} : performing reset");
             lock (m_RunLock) {
                 CheckRunLockInvariants(true);
                 ResetLocked("Reset");
@@ -601,12 +603,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         private void ResetLocked(string from)
         {
+            m_RunOnePhase = "ResetLocked: releasing controls";
             ReleaseControls();
 
+            m_RunOnePhase = "ResetLocked: removing script";
             m_Part.Inventory.GetInventoryItem(m_ItemID).PermsMask = 0;
             m_Part.Inventory.GetInventoryItem(m_ItemID).PermsGranter = UUID.Zero;
             AsyncCommandManager.RemoveScript(m_Engine, m_LocalID, m_ItemID);
 
+            m_RunOnePhase = "ResetLocked: clearing event queue";
             lock (m_QueueLock)
             {
                 m_EventQueue.Clear();               // no events queued
@@ -617,7 +622,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_SleepUntil   = DateTime.MinValue;     // not doing llSleep()
 
             /*
-             * Tell next call do 'default state_entry()' to reset all global
+             * Tell next call to 'default state_entry()' to reset all global
              * vars to their initial values.
              */
             doGblInit = true;
@@ -626,6 +631,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * Set script to 'default' state and queue call to its 
              * 'state_entry()' event handler.
              */
+            m_RunOnePhase = "ResetLocked: posting default:state_entry() event";
             stateCode = 0;
             m_Part.SetScriptEvents(m_ItemID, GetStateEventFlags(0));
             PostEvent(new EventParams("state_entry", 
@@ -637,6 +643,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
             suspendOnCheckRunHold = false;
             suspendOnCheckRunTemp = false;
+            m_RunOnePhase = "ResetLocked: reset complete";
         }
 
         private void ReleaseControls()
