@@ -136,37 +136,47 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         // Called by 'xmr test ls' console command
         // to dump this script's state to console
-        public void RunTestLs()
+        public void RunTestLs(bool flagFull)
         {
-            Console.WriteLine(m_DescName);
-            Console.WriteLine("    m_LocalID       = " + m_LocalID);
-            Console.WriteLine("    m_ItemID        = " + m_ItemID);
-            Console.WriteLine("    m_AssetID       = " + m_AssetID);
-            Console.WriteLine("    m_StartParam    = " + m_StartParam);
-            Console.WriteLine("    m_PostOnRez     = " + m_PostOnRez);
-            Console.WriteLine("    m_StateSource   = " + m_StateSource);
-            Console.WriteLine("    m_SuspendCount  = " + m_SuspendCount);
-            Console.WriteLine("    m_SleepUntil    = " + m_SleepUntil);
-            Console.WriteLine("    m_IState        = " + m_IState.ToString());
-            Console.WriteLine("    m_Die           = " + m_Die);
-            Console.WriteLine("    m_StateCode     = " + GetStateName(stateCode));
-            Console.WriteLine("    eventCode       = " + eventCode.ToString());
-            Console.WriteLine("    m_LastRanAt     = " + m_LastRanAt.ToString());
-            Console.WriteLine("    m_RunOnePhase   = " + m_RunOnePhase);
-            Console.WriteLine("    m_CheckRunLine  = " + m_CheckRunLine.ToString());
-            Console.WriteLine("    suspOnCkRunHold = " + suspendOnCheckRunHold);
-            Console.WriteLine("    suspOnCkRunTemp = " + suspendOnCheckRunTemp);
-            Console.WriteLine("    m_CheckRunPhase = " + m_CheckRunPhase);
-            Console.WriteLine("    heapLeft/Limit  = " + heapLeft + "/" + heapLimit);
-            Console.WriteLine("    m_InstEHEvent   = " + m_InstEHEvent.ToString());
-            Console.WriteLine("    m_InstEHSlice   = " + m_InstEHSlice.ToString());
-            lock (m_QueueLock)
-            {
-                Console.WriteLine("    m_Running       = " + m_Running);
-                foreach (EventParams evt in m_EventQueue)
+            if (flagFull) {
+                Console.WriteLine(m_DescName);
+                Console.WriteLine("    m_LocalID       = " + m_LocalID);
+                Console.WriteLine("    m_ItemID        = " + m_ItemID);
+                Console.WriteLine("    m_AssetID       = " + m_AssetID);
+                Console.WriteLine("    m_StartParam    = " + m_StartParam);
+                Console.WriteLine("    m_PostOnRez     = " + m_PostOnRez);
+                Console.WriteLine("    m_StateSource   = " + m_StateSource);
+                Console.WriteLine("    m_SuspendCount  = " + m_SuspendCount);
+                Console.WriteLine("    m_SleepUntil    = " + m_SleepUntil);
+                Console.WriteLine("    m_IState        = " + m_IState.ToString());
+                Console.WriteLine("    m_Die           = " + m_Die);
+                Console.WriteLine("    m_StateCode     = " + GetStateName(stateCode));
+                Console.WriteLine("    eventCode       = " + eventCode.ToString());
+                Console.WriteLine("    m_LastRanAt     = " + m_LastRanAt.ToString());
+                Console.WriteLine("    m_RunOnePhase   = " + m_RunOnePhase);
+                Console.WriteLine("    m_CheckRunLine  = " + m_CheckRunLine.ToString());
+                Console.WriteLine("    suspOnCkRunHold = " + suspendOnCheckRunHold);
+                Console.WriteLine("    suspOnCkRunTemp = " + suspendOnCheckRunTemp);
+                Console.WriteLine("    m_CheckRunPhase = " + m_CheckRunPhase);
+                Console.WriteLine("    heapLeft/Limit  = " + heapLeft + "/" + heapLimit);
+                Console.WriteLine("    m_InstEHEvent   = " + m_InstEHEvent.ToString());
+                Console.WriteLine("    m_InstEHSlice   = " + m_InstEHSlice.ToString());
+                Console.WriteLine("    m_CPUTime       = " + m_CPUTime);
+                lock (m_QueueLock)
                 {
-                    Console.WriteLine("        evt.EventName   = " + evt.EventName);
+                    Console.WriteLine("    m_Running       = " + m_Running);
+                    foreach (EventParams evt in m_EventQueue)
+                    {
+                        Console.WriteLine("        evt.EventName   = " + evt.EventName);
+                    }
                 }
+            } else {
+                Console.WriteLine("{0} {1} {2} {3} {4}", 
+                        m_ItemID, 
+                        m_CPUTime.ToString().PadLeft(9), 
+                        m_InstEHEvent.ToString().PadLeft(9), 
+                        m_IState.ToString().PadRight(10), 
+                        m_DescName);
             }
         }
 
