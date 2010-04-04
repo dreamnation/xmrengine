@@ -99,6 +99,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public  XMRInstQueue m_StartQueue = new XMRInstQueue();
         public  XMRInstQueue m_YieldQueue = new XMRInstQueue();
         public  XMRInstQueue m_SleepQueue = new XMRInstQueue();
+        private string m_LockedDict = "nobody";
 
         public XMREngine()
         {
@@ -283,7 +284,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 break;
             case "ls":
                 int numScripts = 0;
-                lock (m_InstancesDict)
+                if (!Monitor.TryEnter(m_InstancesDict, 100)) {
+                    Console.WriteLine("RunTest: m_LockedDict={0}", m_LockedDict);
+                    break;
+                }
+                try
                 {
                     foreach (XMRInstance ins in m_InstancesDict.Values)
                     {
@@ -292,6 +297,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                             numScripts ++;
                         }
                     }
+                } finally {
+                    Monitor.Exit(m_InstancesDict);
                 }
                 Console.WriteLine("total of {0} script(s)", numScripts);
                 XMRInstance rins = m_RunInstance;
@@ -934,6 +941,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
             lock (m_InstancesDict)
             {
+                m_LockedDict = "OnRezScript";
                 // Insert on known scripts list
                 m_InstancesDict[itemID] = instance;
 
@@ -953,6 +961,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     l.Add(itemID);
 
                 m_Partmap[itemID] = part.UUID;
+                m_LockedDict = "~OnRezScript";
             }
 
             /*
@@ -974,6 +983,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             lock (m_InstancesDict)
             {
+                m_LockedDict = "OnRemoveScript";
                 XMRInstance instance;
 
                 /*
@@ -981,6 +991,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  */
                 if (!m_InstancesDict.TryGetValue(itemID, out instance))
                 {
+                    m_LockedDict = "~OnRemoveScript";
                     return;
                 }
                 instance.Dispose();
@@ -1007,6 +1018,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     }
                 }
                 m_Partmap.Remove(itemID);
+                m_LockedDict = "~~OnRemoveScript";
             }
         }
 
@@ -1378,11 +1390,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             lock (m_InstancesDict)
             {
-                if (!m_InstancesDict.ContainsKey(itemID))
+                if (!m_InstancesDict.TryGetValue(itemID, out instance))
                     return;
-
-                instance = m_InstancesDict[itemID];
-
             }
 
             instance.Sleep(ms);

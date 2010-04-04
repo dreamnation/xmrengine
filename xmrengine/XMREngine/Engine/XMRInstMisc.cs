@@ -54,48 +54,61 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public void Dispose()
         {
+            /*
+             * Tell script stop executing next time it calls CheckRun().
+             */
+            suspendOnCheckRunHold = true;
+
+            /*
+             * Wait for it to stop executing and prevent it from starting again
+             * as it can't run without a microthread.  Take its continuation
+             * away from it too while we're at it.
+             */
             lock (m_RunLock)
             {
-                // Don't send us any more events
-                if (m_Part != null)
-                {
-                    m_Part.RemoveScriptEvents(m_ItemID);
-                    AsyncCommandManager.RemoveScript(m_Engine, m_LocalID, m_ItemID);
-                    m_Part = null;
-                }
-
-                // Let script methods get garbage collected if no one else is using
-                // them.
-                if (m_ObjCode != null)
-                {
-                    lock (m_CompileLock)
-                    {
-                        ScriptObjCode objCode;
-
-                        if (m_CompiledScriptObjCode.TryGetValue(m_AssetID, 
-                                                                out objCode) &&
-                            (objCode == m_ObjCode) && 
-                            (-- m_CompiledScriptRefCount[m_AssetID] == 0))
-                        {
-                            m_CompiledScriptObjCode.Remove(m_AssetID);
-                            m_CompiledScriptRefCount.Remove(m_AssetID);
-                        }
-                    }
-                    m_ObjCode = null;
-                }
-
                 if (microthread != null)
                 {
                     CheckRunLockInvariants(true);
                     microthread.Dispose ();
                     microthread = null;
                 }
-
                 continuation = null;
+            }
+
+            /*
+             * Don't send us any more events.
+             */
+            if (m_Part != null)
+            {
+                m_Part.RemoveScriptEvents(m_ItemID);
+                AsyncCommandManager.RemoveScript(m_Engine, m_LocalID, m_ItemID);
+                m_Part = null;
+            }
+
+            /*
+             * Let script methods get garbage collected if no one else is using
+             * them.
+             */
+            if (m_ObjCode != null)
+            {
+                lock (m_CompileLock)
+                {
+                    ScriptObjCode objCode;
+
+                    if (m_CompiledScriptObjCode.TryGetValue(m_AssetID, 
+                                                            out objCode) &&
+                        (objCode == m_ObjCode) && 
+                        (-- m_CompiledScriptRefCount[m_AssetID] == 0))
+                    {
+                        m_CompiledScriptObjCode.Remove(m_AssetID);
+                        m_CompiledScriptRefCount.Remove(m_AssetID);
+                    }
+                }
+                m_ObjCode = null;
             }
         }
 
-    // Called by 'xmr test top' console command
+        // Called by 'xmr test top' console command
         // to dump this script's state to console
         //  Sacha 
         public void RunTestTop()
