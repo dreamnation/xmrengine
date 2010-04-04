@@ -91,7 +91,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
             m_DescName  = MMRCont.HexString(MMRCont.ObjAddr(this)).PadLeft(8, '0') + " ";
             m_DescName += part.Name + ":" + item.Name;
-            m_DebugFlag = false;
 
             /*
              * Not in any XMRInstQueue, and it is being constructed so don't
@@ -373,6 +372,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             this.gblVectors   = new LSL_Vector[objCode.numGblVectors];
 
             /*
+             * Script can handle these event codes.
+             */
+            m_HaveEventHandlers = new bool[objCode.scriptEventHandlerTable.GetLength(1)];
+            for (int i = objCode.scriptEventHandlerTable.GetLength(0); -- i >= 0;) {
+                for (int j = objCode.scriptEventHandlerTable.GetLength(1); -- j >= 0;) {
+                    if (objCode.scriptEventHandlerTable[i,j] != null) {
+                        m_HaveEventHandlers[j] = true;
+                    }
+                }
+            }
+
+            /*
              * Script must leave this much stack remaining on calls to CheckRun().
              */
             this.stackLimit = (uint)m_StackSize / 2;
@@ -522,14 +533,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     pluginData);
             m_DetectParams = detParams;
             m_EventQueue   = eventQueue;
-            m_TimerQueued  = false;
+            for (int i = m_EventCounts.Length; -- i >= 0;) m_EventCounts[i] = 0;
             foreach (EventParams evt in m_EventQueue)
             {
-                if (evt.EventName == "timer")
-                {
-                    m_TimerQueued = true;
-                    break;
-                }
+                ScriptEventCode eventCode = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode),
+                                                                         evt.EventName);
+                m_EventCounts[(int)eventCode] ++;
             }
 
             // See if we are supposed to send an 'on_rez' event

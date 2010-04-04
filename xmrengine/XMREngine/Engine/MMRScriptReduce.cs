@@ -150,7 +150,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						 * <type> <name> ;
 						 * global variable definition, default initialization
 						 */
-						TokenDeclVar tokenDeclVar = new TokenDeclVar (tokenType);
+						TokenDeclVar tokenDeclVar = new TokenDeclVar (tokenType, null);
 						tokenDeclVar.type = tokenType;
 						tokenDeclVar.name = tokenName;
 						token = token.nextToken;
@@ -167,7 +167,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						 * <type> <name> =
 						 * global variable definition, default initialization
 						 */
-						TokenDeclVar tokenDeclVar = new TokenDeclVar (tokenName);
+						TokenDeclVar tokenDeclVar = new TokenDeclVar (tokenName, null);
 						tokenDeclVar.type = tokenType;
 						tokenDeclVar.name = tokenName;
 						token = token.nextToken;
@@ -740,7 +740,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			/*
 			 * Build basic encapsulating token with type and name.
 			 */
-			TokenDeclVar tokenDeclVar = new TokenDeclVar (token);
+			TokenDeclVar tokenDeclVar = new TokenDeclVar (token, currentDeclFunc);
 			tokenDeclVar.type = (TokenType)token;
 			token = token.nextToken;
 			if (!(token is TokenName)) {
@@ -1447,6 +1447,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public bool changesState;            // contains a 'state' statement somewhere
 		public Dictionary<string, TokenName> calledFuncs = new Dictionary<string, TokenName> ();
 		                                     // all functions called by this function
+		public LinkedList<TokenDeclVar> localVars = new LinkedList<TokenDeclVar> ();
+		                                     // all local variables declared by this function
+		                                     // - doesn't include argument variables
 
 		public ScriptMyILGen ilGen;          // codegen stores emitted code here
 
@@ -1487,7 +1490,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		                        //  true: var was defined at top of block
 		                        //        just set initialization value
 
-		public TokenDeclVar (Token original) : base (original) { }
+		public CompValu location;  // used by codegen to keep track of location
+
+		/**
+		 * @brief Set up a variable declaration statement token.
+		 * @param original = original source token that triggered definition
+		 *                   (for error messages)
+		 * @param func = null: global variable
+		 *               else: local to the given function
+		 */
+		public TokenDeclVar (Token original, TokenDeclFunc func) : base (original)
+		{
+			if (func != null) {
+				func.localVars.AddLast (this);
+			}
+		}
 
 		public override string ToString ()
 		{

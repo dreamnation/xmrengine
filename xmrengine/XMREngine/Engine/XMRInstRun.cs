@@ -51,6 +51,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public void PostEvent(EventParams evt)
         {
             /*
+             * Ignore event if we don't even have such an handler.
+             */
+            ScriptEventCode eventCode = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), 
+                                                                     evt.EventName);
+            if (!m_HaveEventHandlers[(int)eventCode]) {
+                return;
+            }
+
+            /*
              * Strip off any LSL type wrappers.
              */
             for (int i = 0 ; i < evt.Params.Length ; i++)
@@ -75,29 +84,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * Not running means we ignore any incoming events.
                  */
                 if (!m_Running)
-                    return;
-
-                /*
-                 * Make sure queue isn't going to overflow.
-                 */
-                if (m_EventQueue.Count >= MAXEVENTQUEUE)
                 {
-                    if (m_LostEvents ++ == 0) {
-                        m_log.DebugFormat("[XMREngine]: {0} event queue overflow", 
-                                m_DescName);
-                    }
                     return;
                 }
 
                 /*
-                 * We only need one timer in the whole queue at a time.
+                 * Only so many of each event type allowed to queue.
                  */
-                if (evt.EventName == "timer")
+                int maxAllowed = MAXEVENTQUEUE;
+                if (eventCode == ScriptEventCode.timer) maxAllowed = 1;
+                if (m_EventCounts[(int)eventCode] >= maxAllowed)
                 {
-                    if (m_TimerQueued)
-                        return;
-                    m_TimerQueued = true;
+                    return;
                 }
+                m_EventCounts[(int)eventCode] ++;
 
                 /*
                  * Put event on end of instance's event queue.
@@ -200,16 +200,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 {
                     m_RunOnePhase = "lock event queue";
                     EventParams evt = null;
+                    ScriptEventCode eventCode = ScriptEventCode.None;
+
                     lock (m_QueueLock)
                     {
                         m_RunOnePhase = "dequeue event";
                         if (m_EventQueue.Count > 0)
                         {
                             evt = m_EventQueue.Dequeue();
-                            if (evt.EventName == "timer")
-                            {
-                                m_TimerQueued = false;
-                            }
+                            eventCode = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), 
+                                                                     evt.EventName);
+                            m_EventCounts[(int)eventCode] --;
                         }
                     }
 
@@ -231,9 +232,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_DetectParams = evt.DetectParams;
                     m_LastRanAt    = now;
                     m_InstEHEvent ++;
-                    e = StartEventHandler ((ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), 
-                                                                        evt.EventName), 
-                                           evt.Params);
+                    e = StartEventHandler (eventCode, evt.Params);
                 }
                 m_RunOnePhase = "done running";
 
@@ -611,7 +610,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             lock (m_QueueLock)
             {
                 m_EventQueue.Clear();               // no events queued
-                m_TimerQueued = false;              // ... not even a timer event
+                for (int i = m_EventCounts.Length; -- i >= 0;) m_EventCounts[i] = 0;
             }
             this.eventCode = ScriptEventCode.None;  // not processing an event
             m_DetectParams = null;                  // not processing an event

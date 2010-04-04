@@ -149,13 +149,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Console.WriteLine("    m_InstEHSlice   = " + m_InstEHSlice.ToString());
             lock (m_QueueLock)
             {
-                Console.WriteLine("    m_LostEvents   = " + m_LostEvents);
-                Console.WriteLine("    m_Running      = " + m_Running);
+                Console.WriteLine("    m_Running       = " + m_Running);
                 foreach (EventParams evt in m_EventQueue)
                 {
-                    Console.WriteLine("        evt.EventName  = " + evt.EventName);
+                    Console.WriteLine("        evt.EventName   = " + evt.EventName);
                 }
-                Console.WriteLine("    m_TimerQueued  = " + m_TimerQueued);
             }
         }
 
@@ -244,7 +242,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     if (!value)
                     {
                         m_EventQueue.Clear();
-                        m_TimerQueued = false;
+                        for (int i = m_EventCounts.Length; -- i >= 0;) m_EventCounts[i] = 0;
                     }
                 }
             }
