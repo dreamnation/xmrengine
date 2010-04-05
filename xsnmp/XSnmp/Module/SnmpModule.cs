@@ -22,7 +22,7 @@ using Lextm.SharpSnmpLib.Messaging;
 
 namespace Careminster.Modules.Snmp
 {
-    public class SnmpAgent : ISharedRegionModule, ISnmpAgent
+    public class SnmpAgent : ISharedRegionModule, ISnmpModule
     {
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
@@ -42,8 +42,6 @@ namespace Careminster.Modules.Snmp
                 m_Enabled = groupsConfig.GetBoolean("Enabled", false);
                 if (!m_Enabled)
                     return;
-
-                
             }
 
             m_Enabled = true;
@@ -70,11 +68,7 @@ namespace Careminster.Modules.Snmp
 
             m_log.Info("[SNMP] Activated SNMP module");
 
-            scene.RegisterModuleInterface<ISnmpAgent>(this);
-          //  scene.EventManager.OnNewClient += OnNewClient;
-          //  scene.EventManager.OnClientClosed += OnClientClosed;
-          //  scene.EventManager.OnIncomingInstantMessage +=
-          //          OnIncomingInstantMessage;
+            scene.RegisterModuleInterface<ISnmpModule>(this);
         }
 
         public void RegionLoaded(Scene scene)
@@ -118,27 +112,8 @@ namespace Careminster.Modules.Snmp
 
         private void FirstTimeInit()
         {
-            IConfig groupsConfig = m_Config.Configs["Snmp"];
-
-           // m_ConnectionString = groupsConfig.GetString("ConnectionString", "");
-           // if (m_ConnectionString == "")
-           // {
-             //   return;
-           // }
-
-           
+            IConfig snmpConfig = m_Config.Configs["Snmp"];
         }
-		
-		public SnmpAgent(string toto){
-		  	
-		}
-		
-		public snmpPoop(string poo)
-		{
-			
-		}
-
-     
     }
 }
 
