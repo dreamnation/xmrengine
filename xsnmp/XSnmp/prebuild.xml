@@ -1,4 +1,4 @@
-   <Project name="XSnmps.Module" path="addon-modules/XSnmp/Module" type="Library">
+   <Project name="XSnmp.Module" path="addon-modules/XSnmp/Module" type="Library">
      <Configuration name="Debug">
        <Options>
          <OutputPath>../../../bin/</OutputPath>
