@@ -27,10 +27,6 @@
      <Reference name="OpenSim.Region.Environment" />
      <Reference name="OpenSim.Framework.Console"/>
      <Reference name="OpenSim.Framework.Servers"/>
-     <Reference name="OpenSim.Framework.Statistics"/>
-     <Reference name="OpenSim.Framework.Communications"/>
-     <Reference name="OpenSim.Region.Physics.Manager"/>
-     <Reference name="XSnmpchat.Module"/>
      <Reference name="System.Data" />
      <Reference name="MySql.Data.dll" />
      <Reference name="Nini.dll" />
