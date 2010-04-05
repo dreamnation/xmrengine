@@ -28,7 +28,6 @@ namespace Careminster.Modules.Snmp
 
         private List<Scene> m_Scenes = new List<Scene>();
         private bool m_Enabled = false;
-        private readonly Listener _listener = new Listener();
         
         public void Initialise(IConfigSource config)
         {
