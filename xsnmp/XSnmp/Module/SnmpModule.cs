@@ -1,5 +1,6 @@
 // ******************************************************************
-// Copyright (c) 2008, 2009 Melanie Thielker
+// Copyright (c) 2010 Careminster Limited, Melanie Thielker and
+// the Meta7 Team
 //
 // All rights reserved
 //
@@ -28,6 +29,7 @@ namespace Careminster.Modules.Snmp
 
         private List<Scene> m_Scenes = new List<Scene>();
         private bool m_Enabled = false;
+        private IConfigSource m_Config;
         
         public void Initialise(IConfigSource config)
         {
@@ -39,7 +41,7 @@ namespace Careminster.Modules.Snmp
             }
             else
             {
-                m_Enabled = groupsConfig.GetBoolean("Enabled", false);
+                m_Enabled = snmpConfig.GetBoolean("Enabled", false);
                 if (!m_Enabled)
                     return;
             }
@@ -113,6 +115,14 @@ namespace Careminster.Modules.Snmp
         private void FirstTimeInit()
         {
             IConfig snmpConfig = m_Config.Configs["Snmp"];
+        }
+
+        public void Alert(string message)
+        {
+        }
+
+        public void Trap(string message)
+        {
         }
     }
 }
