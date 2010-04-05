@@ -750,6 +750,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public void OnRezScript(uint localID, UUID itemID, string script,
                 int startParam, bool postOnRez, string engine, int stateSource)
         {
+            XMRInstance instance;
+            SceneObjectPart part = null;
+            TaskInventoryItem item = null;
+            ArrayList errors = new ArrayList();
+
             lock (m_ScriptErrors)
             {
                 if (script.StartsWith("//MRM:"))
@@ -769,11 +774,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 foreach (IScriptModule m in engines)
                     names.Add(m.ScriptEngineName);
 
-                SceneObjectPart part =
-                        m_Scene.GetSceneObjectPart(localID);
+                part = m_Scene.GetSceneObjectPart(localID);
 
-                TaskInventoryItem item =
-                        part.Inventory.GetInventoryItem(itemID);
+                item = part.Inventory.GetInventoryItem(itemID);
 
                 int lineEnd = script.IndexOf('\n');
 
@@ -829,8 +832,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 /*
                  * Compile and load the script in memory.
                  */
-                XMRInstance instance;
-                ArrayList errors = new ArrayList();
                 try
                 {
                     instance = new XMRInstance(localID, itemID, script,
