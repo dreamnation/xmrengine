@@ -767,7 +767,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			string s;
 			if (!type2String.TryGetValue (t, out s)) {
-				throw new Exception ("unknown type " + t.Name);
+				s = t.AssemblyQualifiedName;
 			}
 			return s;
 		}
@@ -776,7 +776,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			Type t;
 			if (!string2Type.TryGetValue (s, out t)) {
-				throw new Exception ("unknown type " + s);
+				t = Type.GetType(s, true);
 			}
 			return t;
 		}

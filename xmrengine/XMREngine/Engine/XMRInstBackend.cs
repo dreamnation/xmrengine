@@ -89,18 +89,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     {
         /**
          * @brief The script is calling llReset().
-         *        We want to set a flag and exit out of the script immediately.
-         *        The script will exit immediately as we compile in a call to
-         *        CheckRun() immediately following the llResetScript() api call.
+         *        We throw an exception to unwind the script out to its main
+         *        causing all the finally's to execute and it will also set
+         *        eventCode = None to indicate event handler has completed.
          */
         public void ApiReset()
         {
-            // tell RunOne() that script called llResetScript()
-            m_Reset = true;
-
-            // tell CheckRun() to suspend microthread so RunOne() will check
-            // m_Reset
-            suspendOnCheckRunHold = true;
+            m_Die = false;
+            throw new XMRScriptResetException();
         }
 
         /**
@@ -128,12 +124,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         /**
          * @brief Script is calling llDie, so flag the run loop to delete script
-         *        once we are off the microthread stack.
+         *        once we are off the microthread stack, and throw an exception
+         *        to unwind the stack asap.
          */
         public void Die()
         {
             m_Die = true;
-            suspendOnCheckRunHold = true;
+            throw new XMRScriptResetException();
         }
 
         /**
@@ -145,12 +142,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * Say how long to sleep.
              */
             m_SleepUntil = DateTime.UtcNow + TimeSpan.FromMilliseconds(ms);
-            suspendOnCheckRunTemp = true;
 
             /*
-             * Wake in case it is shorter than before.
+             * The compiler follows all calls to llSleep() with a call to CheckRun().
+             * So tell CheckRun() to suspend the microthread.
              */
-            m_Engine.WakeUp();
+            suspendOnCheckRunTemp = true;
         }
 
         /**
@@ -165,4 +162,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                                    GetStateEventFlags(stateCode));
         }
     }
+
+    public class XMRScriptResetException : Exception { }
 }

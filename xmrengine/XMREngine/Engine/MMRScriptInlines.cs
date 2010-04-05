@@ -125,7 +125,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			inf = new InlineFunction (ifd, "llLog(float)",         typeof (float), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Log",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
 			inf = new InlineFunction (ifd, "llLog10(float)",       typeof (float), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Log10",   oneDoub));  inf.codeGen = inf.CodeGenStatic;
 			inf = new InlineFunction (ifd, "llPow(float,float)",   typeof (float), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Pow",     twoDoubs)); inf.codeGen = inf.CodeGenStatic;
-			inf = new InlineFunction (ifd, "llRound(float)",       typeof (float), null);                                                                      inf.codeGen = inf.CodeGenLLRound;
+			inf = new InlineFunction (ifd, "llRound(float)",       typeof (int),   null);                                                                      inf.codeGen = inf.CodeGenLLRound;
 			inf = new InlineFunction (ifd, "llSin(float)",         typeof (float), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Sin",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
 			inf = new InlineFunction (ifd, "llSqrt(float)",        typeof (float), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Sqrt",    oneDoub));  inf.codeGen = inf.CodeGenStatic;
 			inf = new InlineFunction (ifd, "llTan(float)",         typeof (float), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Tan",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
@@ -313,7 +313,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			args[0].PushVal (scg, tokenTypeFloat);
 			scg.ilGen.Emit (OpCodes.Ldc_I4, (int)System.MidpointRounding.AwayFromZero);
 			scg.ilGen.Emit (OpCodes.Call, roundMethInfo);
-			result.PopPost (scg, retType);
+			result.PopPost (scg, tokenTypeFloat);
 		}
 
 		private void CodeGenLLParseString2List (ScriptCodeGen scg, Token token, CompValu result, CompValu[] args)

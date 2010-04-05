@@ -89,13 +89,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Set up a descriptive name string for debug messages.
              */
-            ////m_DescName  = MMRCont.HexString(MMRCont.ObjAddr(this)).PadLeft(8, '0');
-            m_DescName = part.Name + ":" + item.Name;
-            m_DebugFlag = part.Name.StartsWith("Time Since Startup");
+            m_DescName  = MMRCont.HexString(MMRCont.ObjAddr(this)).PadLeft(8, '0') + " ";
+            m_DescName += part.Name + ":" + item.Name;
 
             /*
              * Not in any XMRInstQueue, and it is being constructed so don't
-	     * try to run it yet.
+             * try to run it yet.
              */
             m_NextInst = this;
             m_PrevInst = this;
@@ -345,6 +344,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                 // Failed to load state, delete bad .state file and reload
                 // instance so we get a script at default state.
+                m_log.Info("[XMREngine]: attempting reset " + m_DescName);
                 File.Delete(m_StateFileName);
                 return TryToLoad(objCode);
             }
@@ -370,6 +370,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             this.gblRotations = new LSL_Rotation[objCode.numGblRotations];
             this.gblStrings   = new string[objCode.numGblStrings];
             this.gblVectors   = new LSL_Vector[objCode.numGblVectors];
+
+            /*
+             * Script can handle these event codes.
+             */
+            m_HaveEventHandlers = new bool[objCode.scriptEventHandlerTable.GetLength(1)];
+            for (int i = objCode.scriptEventHandlerTable.GetLength(0); -- i >= 0;) {
+                for (int j = objCode.scriptEventHandlerTable.GetLength(1); -- j >= 0;) {
+                    if (objCode.scriptEventHandlerTable[i,j] != null) {
+                        m_HaveEventHandlers[j] = true;
+                    }
+                }
+            }
 
             /*
              * Script must leave this much stack remaining on calls to CheckRun().
@@ -504,21 +516,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             XmlElement pluginN = (XmlElement)scriptStateN.SelectSingleNode("Plugins");
             Object[] pluginData = ExtractXMLObjectArray(pluginN, "plugin");
 
-            // See if we are supposed to send an 'on_rez' event
-            if (m_PostOnRez)
-            {
-                PostEvent(new EventParams("on_rez",
-                        new Object[] { m_StartParam }, zeroDetectParams));
-            }
-
-            // Maybe an 'attach' event too
-            if (m_StateSource == StateSource.AttachedRez)
-            {
-                PostEvent(new EventParams("attach",
-                        new object[] { m_Part.AttachedAvatar.ToString() }, 
-                        zeroDetectParams));
-            }
-
             // Script's global variables and stack contents
             XmlElement snapshotN = 
                     (XmlElement)scriptStateN.SelectSingleNode("Snapshot");
@@ -536,14 +533,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     pluginData);
             m_DetectParams = detParams;
             m_EventQueue   = eventQueue;
-            m_TimerQueued  = false;
+            for (int i = m_EventCounts.Length; -- i >= 0;) m_EventCounts[i] = 0;
             foreach (EventParams evt in m_EventQueue)
             {
-                if (evt.EventName == "timer")
-                {
-                    m_TimerQueued = true;
-                    break;
-                }
+                ScriptEventCode eventCode = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode),
+                                                                         evt.EventName);
+                m_EventCounts[(int)eventCode] ++;
+            }
+
+            // See if we are supposed to send an 'on_rez' event
+            if (m_PostOnRez)
+            {
+                PostEvent(new EventParams("on_rez",
+                        new Object[] { m_StartParam }, zeroDetectParams));
+            }
+
+            // Maybe an 'attach' event too
+            if (m_StateSource == StateSource.AttachedRez)
+            {
+                PostEvent(new EventParams("attach",
+                        new object[] { m_Part.AttachedAvatar.ToString() }, 
+                        zeroDetectParams));
             }
         }
 

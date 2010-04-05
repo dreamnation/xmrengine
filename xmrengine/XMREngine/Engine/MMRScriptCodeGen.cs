@@ -1,7 +1,7 @@
-/***************************************************\
- *  COPYRIGHT 2009, Mike Rieker, Beverly, MA, USA  *
- *  All rights reserved.                           *
-\***************************************************/
+/********************************************************\
+ *  COPYRIGHT 2009,2010, Mike Rieker, Beverly, MA, USA  *
+ *  All rights reserved.                                *
+\********************************************************/
 
 using log4net;
 using LSL_Float = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLFloat;
@@ -36,7 +36,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
 		public static readonly string OBJECT_CODE_MAGIC = "XMRObjectCode";
-		public static readonly int COMPILED_VERSION_VALUE = 6;  // incremented when compiler changes for compatibility testing
+		public static readonly int COMPILED_VERSION_VALUE = 7;  // incremented when compiler changes for compatibility testing
 
 		public static readonly int CALL_FRAME_MEMUSE = 64;
 		public static readonly int STRING_LEN_TO_MEMUSE = 2;
@@ -60,7 +60,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public  static ConstructorInfo lslRotationConstructorInfo = typeof (LSL_Rotation).GetConstructor (new Type[] { typeof (double), typeof (double), typeof (double), typeof (double) });
 		private static ConstructorInfo lslStringConstructorInfo = typeof (LSL_String).GetConstructor (new Type[] { typeof (string) });
 		public  static ConstructorInfo lslVectorConstructorInfo = typeof (LSL_Vector).GetConstructor (new Type[] { typeof (double), typeof (double), typeof (double) });
-		private static ConstructorInfo scriptUndefinedStateExceptionConstructorInfo = typeof (ScriptUndefinedStateException).GetConstructor (new Type[0]);
+		private static ConstructorInfo scriptUndefinedStateExceptionConstructorInfo = typeof (ScriptUndefinedStateException).GetConstructor (new Type[] { typeof (string) });
 		private static ConstructorInfo xmrArrayConstructorInfo = typeof (XMR_Array).GetConstructor (new Type[0]);
 		private static FieldInfo arrayCountFieldInfo = typeof (XMR_Array).GetField ("__pub_count");
 		private static FieldInfo arrayIndexFieldInfo = typeof (XMR_Array).GetField ("__pub_index");
@@ -282,7 +282,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				if ((declVar.type is TokenTypeArray) ||
 				    (declVar.type is TokenTypeList) ||
 				    (declVar.type is TokenTypeStr)) {
-					TokenDeclVar stDeclVar = new TokenDeclVar (declVar);
+					TokenDeclVar stDeclVar = new TokenDeclVar (declVar, null);
 					stDeclVar.type = new TokenTypeInt (declVar);
 					stDeclVar.name = new TokenName (declVar, "__htg_" + declVar.name.val);
 					CompValu heapTracker = new CompValuGlobal (stDeclVar, scriptObjCode);
@@ -550,6 +550,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
+			 * Alloc stack space for local vars.
+			 */
+			AllocLocalVarStackSpace (declFunc);
+
+			/*
 			 * Output code for the statements and clean up.
 			 */
 			GenerateFuncBody (declFunc);
@@ -635,6 +640,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
+			 * Alloc stack space for local vars.
+			 */
+			AllocLocalVarStackSpace (declFunc);
+
+			/*
 			 * See if time to suspend in case they are doing a loop with recursion.
 			 */
 			EmitCallCheckRun (declFunc.line);
@@ -647,7 +657,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		/**
-		 * @brief Output function body.
+		 * @brief Output function body (either event handler, or script-defined method).
 		 */
 		private void GenerateFuncBody (TokenDeclFunc declFunc)
 		{
@@ -685,6 +695,36 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Pop off the top-level local definition block.
 			 */
 			PopVarDefnBlock ();
+		}
+
+
+		/**
+		 * @brief Allocate stack space and heap tracker for all local variables, regardless of
+		 *        which { } statement block they are actually defined in.  This will allow the
+		 *        heap trackers to keep track of any heap use within deeply nested blocks.
+		 *
+		 * We don't add it to the var definition stack as we don't want it to be visible
+		 * until the script says the variable is declared.
+		 */
+		private void AllocLocalVarStackSpace (TokenDeclFunc declFunc)
+		{
+			foreach (TokenDeclVar localVar in declFunc.localVars) {
+
+				/*
+				 * Get a stack location for it and fill in with default value.
+				 */
+				CompValu localLoc = new CompValuTemp (localVar.type, localVar.name.val, this);
+				localVar.location = localLoc;
+				localLoc.PopPre (this);
+				PushDefaultValue (localVar.type);
+				localLoc.PopPost (this);
+
+				/*
+				 * Set up heap-tracker variable and fill in with corresponding value for 
+				 * the variable's default value.
+				 */
+				NewLocalVariable (localLoc, localVar.name);
+			}
 		}
 
 		/**
@@ -1034,28 +1074,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		/**
 		 * @brief process a local variable declaration statement, possibly with initialization expression.
+		 *        Note that the function header processing allocated stack space (CompValuTemp) for the
+		 *        variable and now all we do is make it visible to the script at this point and compute
+		 *        its initialization value.
 		 */
 		private void GenerateDeclVar (TokenDeclVar declVar)
 		{
-			CompValu local = new CompValuTemp (declVar.type, declVar.name.val, this);
+			CompValu local = declVar.location;
 
 			/*
 			 * Script gave us an initialization value, so just store init value in var like an assignment statement.
-			 * If no init given, set to default value so we always have vaid non-null pointers to strings and lists, etc.
+			 * Also debit any heap used by the initialization value, just like an assignment statement.
+			 * If no init given, the var was set to its default value when stack space was allocated at the beginning
+			 * of the function.
 			 */
-			local.PopPre (this);
 			if (declVar.init != null) {
+				local.PopPre (this);
 				CompValu rVal = GenerateFromRVal (declVar.init);
 				rVal.PushVal (this, declVar.type);
-			} else {
-				PushDefaultValue (declVar.type);
+				local.PopPost (this);
+				DebitHeapLeft (local, true);
 			}
-			local.PopPost (this);
-
-			/*
-			 * Account for any heap usage by this local variable from now on to end of function.
-			 */
-			NewLocalVariable (local, declVar.name);
 
 			/*
 			 * Now it's ok for subsequent expressions in the block to reference the local variable.
