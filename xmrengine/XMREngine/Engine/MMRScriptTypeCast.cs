@@ -359,6 +359,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		private static void TypeCastString2List (ScriptMyILGen ilGen)
 		{
+			ilGen.Emit (OpCodes.Newobj, lslStringConstructorInfo);
+			ilGen.Emit (OpCodes.Box, typeof (LSL_String));
 			ilGen.Emit (OpCodes.Call, listOfOneObjMethodInfo);
 		}
 		private static void TypeCastVector2String (ScriptMyILGen ilGen)
