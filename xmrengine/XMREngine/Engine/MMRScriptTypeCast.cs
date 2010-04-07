@@ -373,7 +373,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		public static bool     RotationToBool   (LSL_Rotation x) { return !x.Equals (ScriptBaseClass.ZERO_ROTATION); }
 		public static bool     VectorToBool     (LSL_Vector x)   { return !x.Equals (ScriptBaseClass.ZERO_VECTOR); }
-		public static string   FloatToString    (float x)        { return x.ToString (); }
+		public static string   FloatToString    (float x)        { return String.Format(OpenSim.Framework.Culture.FormatProvider, "{0:0.000000}", x); }
 		public static string   IntegerToString  (int x)          { return x.ToString (); }
 		public static string   ListToString     (LSL_List x)     { return x.ToString (); }
 		public static string   ObjectToString   (object x)       { return x.ToString (); }
