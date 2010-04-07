@@ -187,6 +187,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public float[]        gblFloats;
         public int[]          gblIntegers;
         public LSL_List[]     gblLists;
+        public object[]       gblObjects;
         public LSL_Rotation[] gblRotations;
         public string[]       gblStrings;
         public LSL_Vector[]   gblVectors;
@@ -256,7 +257,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /*
          * Makes sure migration data version is same on both ends.
          */
-        public static readonly byte migrationVersion = 4;
+        public static readonly byte migrationVersion = 5;
 
         /**
          * @brief types of data we serialize

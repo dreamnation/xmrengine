@@ -240,6 +240,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             SendObjArray (stream, sendObj, this.gblFloats);
             SendObjArray (stream, sendObj, this.gblIntegers);
             SendObjArray (stream, sendObj, this.gblLists);
+            SendObjArray (stream, sendObj, this.gblObjects);
             SendObjArray (stream, sendObj, this.gblRotations);
             SendObjArray (stream, sendObj, this.gblStrings);
             SendObjArray (stream, sendObj, this.gblVectors);

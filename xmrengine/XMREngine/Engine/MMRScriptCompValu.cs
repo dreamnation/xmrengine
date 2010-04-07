@@ -214,6 +214,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static FieldInfo gblFloatsFieldInfo    = typeof (XMRInstance).GetField ("gblFloats");
 		private static FieldInfo gblIntegersFieldInfo  = typeof (XMRInstance).GetField ("gblIntegers");
 		private static FieldInfo gblListsFieldInfo     = typeof (XMRInstance).GetField ("gblLists");
+		private static FieldInfo gblObjectsFieldInfo   = typeof (XMRInstance).GetField ("gblObjects");
 		private static FieldInfo gblRotationsFieldInfo = typeof (XMRInstance).GetField ("gblRotations");
 		private static FieldInfo gblStringsFieldInfo   = typeof (XMRInstance).GetField ("gblStrings");
 		private static FieldInfo gblVectorsFieldInfo   = typeof (XMRInstance).GetField ("gblVectors");
@@ -235,6 +236,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (type is TokenTypeList) {
 				this.field = gblListsFieldInfo;
 				this.index = scriptObjCode.numGblLists ++;
+			}
+			if (type is TokenTypeObject) {
+				this.field = gblObjectsFieldInfo;
+				this.index = scriptObjCode.numGblObjects ++;
 			}
 			if (type is TokenTypeRot) {
 				this.field = gblRotationsFieldInfo;

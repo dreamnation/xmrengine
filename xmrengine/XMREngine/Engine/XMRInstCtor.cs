@@ -367,6 +367,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             this.gblFloats    = new float[objCode.numGblFloats];
             this.gblIntegers  = new int[objCode.numGblIntegers];
             this.gblLists     = new LSL_List[objCode.numGblLists];
+            this.gblObjects   = new object[objCode.numGblObjects];
             this.gblRotations = new LSL_Rotation[objCode.numGblRotations];
             this.gblStrings   = new string[objCode.numGblStrings];
             this.gblVectors   = new LSL_Vector[objCode.numGblVectors];
@@ -397,6 +398,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             this.heapLimit -=  4 * objCode.numGblFloats;
             this.heapLimit -=  4 * objCode.numGblIntegers;
             this.heapLimit -= 16 * objCode.numGblLists;
+            this.heapLimit -= 16 * objCode.numGblObjects;
             this.heapLimit -= 16 * objCode.numGblRotations;
             this.heapLimit -= 16 * objCode.numGblStrings;
             this.heapLimit -= 12 * objCode.numGblVectors;
@@ -791,6 +793,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             this.gblFloats    = (float[])       RecvObjArray (stream, typeof (float));
             this.gblIntegers  = (int[])         RecvObjArray (stream, typeof (int));
             this.gblLists     = (LSL_List[])    RecvObjArray (stream, typeof (LSL_List));
+            this.gblObjects   = (object[])      RecvObjArray (stream, typeof (object));
             this.gblRotations = (LSL_Rotation[])RecvObjArray (stream, typeof (LSL_Rotation));
             this.gblStrings   = (string[])      RecvObjArray (stream, typeof (string));
             this.gblVectors   = (LSL_Vector[])  RecvObjArray (stream, typeof (LSL_Vector));

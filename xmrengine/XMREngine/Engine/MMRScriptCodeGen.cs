@@ -300,6 +300,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			objFileWriter.Write (scriptObjCode.numGblFloats);
 			objFileWriter.Write (scriptObjCode.numGblIntegers);
 			objFileWriter.Write (scriptObjCode.numGblLists);
+			objFileWriter.Write (scriptObjCode.numGblObjects);
 			objFileWriter.Write (scriptObjCode.numGblRotations);
 			objFileWriter.Write (scriptObjCode.numGblStrings);
 			objFileWriter.Write (scriptObjCode.numGblVectors);
@@ -2367,6 +2368,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			scriptObjCode.numGblFloats    = objFileReader.ReadInt32 ();
 			scriptObjCode.numGblIntegers  = objFileReader.ReadInt32 ();
 			scriptObjCode.numGblLists     = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblObjects   = objFileReader.ReadInt32 ();
 			scriptObjCode.numGblRotations = objFileReader.ReadInt32 ();
 			scriptObjCode.numGblStrings   = objFileReader.ReadInt32 ();
 			scriptObjCode.numGblVectors   = objFileReader.ReadInt32 ();
@@ -2386,6 +2388,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				asmFileWriter.WriteLine ("  numGblFloats    {0}", scriptObjCode.numGblFloats);
 				asmFileWriter.WriteLine ("  numGblIntegers  {0}", scriptObjCode.numGblIntegers);
 				asmFileWriter.WriteLine ("  numGblLists     {0}", scriptObjCode.numGblLists);
+				asmFileWriter.WriteLine ("  numGblObjects   {0}", scriptObjCode.numGblObjects);
 				asmFileWriter.WriteLine ("  numGblRotations {0}", scriptObjCode.numGblRotations);
 				asmFileWriter.WriteLine ("  numGblStrings   {0}", scriptObjCode.numGblStrings);
 				asmFileWriter.WriteLine ("  numGblVectors   {0}", scriptObjCode.numGblVectors);
