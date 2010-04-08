@@ -883,8 +883,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public override string ToString () { return "bool"; }
 	}
 	public class TokenTypeFloat : TokenType {
-		public TokenTypeFloat (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn, typeof (float)) { }
-		public TokenTypeFloat (Token original) : base (original, typeof (float)) { }
+		public TokenTypeFloat (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn, typeof (SCRIPTFLOAT)) { }
+		public TokenTypeFloat (Token original) : base (original, typeof (SCRIPTFLOAT)) { }
 		public override string ToString () { return "float"; }
 	}
 	public class TokenTypeInt : TokenType {

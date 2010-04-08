@@ -62,7 +62,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if (evt.Params[i] is LSL_Integer)
                     evt.Params[i] = (int)((LSL_Integer)evt.Params[i]);
                 else if (evt.Params[i] is LSL_Float)
-                    evt.Params[i] = (float)((LSL_Float)evt.Params[i]);
+                    evt.Params[i] = (SCRIPTFLOAT)((LSL_Float)evt.Params[i]);
                 else if (evt.Params[i] is LSL_String)
                     evt.Params[i] = (string)((LSL_String)evt.Params[i]);
                 else if (evt.Params[i] is LSL_Key)

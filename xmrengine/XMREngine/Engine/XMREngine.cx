@@ -55,7 +55,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private IConfig m_Config;
         private string m_ScriptBasePath;
         private bool m_Enabled = false;
-        private XMREvents m_Events = null;
         public  AssemblyResolver m_AssemblyResolver = null;
         private Dictionary<UUID, ArrayList> m_ScriptErrors =
                 new Dictionary<UUID, ArrayList>();
@@ -218,8 +217,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 m_SliceThread = null;
             }
 
-            m_Events = null;
-
             m_Scene.EventManager.OnRezScript -= OnRezScript;
             m_Scene.EventManager.OnRemoveScript -= OnRemoveScript;
             m_Scene.EventManager.OnScriptReset -= OnScriptReset;
@@ -249,7 +246,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_Scene.EventManager.OnGetScriptRunning += OnGetScriptRunning;
             m_Scene.EventManager.OnShutdown += OnShutdown;
 
-            m_Events = new XMREvents(this);
+            new XMREvents(this);
 
             m_ScriptThread = new Thread(RunScriptThread);
             m_SliceThread  = new Thread(RunSliceThread);

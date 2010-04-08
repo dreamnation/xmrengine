@@ -359,7 +359,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             this.objCode      = objCode;
 
             this.gblArrays    = new XMR_Array[objCode.numGblArrays];
-            this.gblFloats    = new float[objCode.numGblFloats];
+            this.gblFloats    = new SCRIPTFLOAT[objCode.numGblFloats];
             this.gblIntegers  = new int[objCode.numGblIntegers];
             this.gblLists     = new LSL_List[objCode.numGblLists];
             this.gblObjects   = new object[objCode.numGblObjects];
@@ -785,7 +785,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private void MigrateGlobalsIn (System.IO.Stream stream)
         {
             this.gblArrays    = (XMR_Array[])   RecvObjArray (stream, typeof (XMR_Array));
-            this.gblFloats    = (float[])       RecvObjArray (stream, typeof (float));
+            this.gblFloats    = (SCRIPTFLOAT[]) RecvObjArray (stream, typeof (SCRIPTFLOAT));
             this.gblIntegers  = (int[])         RecvObjArray (stream, typeof (int));
             this.gblLists     = (LSL_List[])    RecvObjArray (stream, typeof (LSL_List));
             this.gblObjects   = (object[])      RecvObjArray (stream, typeof (object));

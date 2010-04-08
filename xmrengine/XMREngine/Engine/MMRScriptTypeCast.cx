@@ -25,16 +25,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		private static ConstructorInfo floatConstructorStringInfo   = typeof (LSL_Float).GetConstructor (new Type[] { typeof (string) });
 		private static ConstructorInfo integerConstructorStringInfo = typeof (LSL_Integer).GetConstructor (new Type[] { typeof (string) });
-		private static ConstructorInfo lslFloatConstructorInfo      = typeof (LSL_Float).GetConstructor (new Type[] { typeof (float) });
+		private static ConstructorInfo lslFloatConstructorInfo      = typeof (LSL_Float).GetConstructor (new Type[] { typeof (SCRIPTFLOAT) });
 		private static ConstructorInfo lslIntegerConstructorInfo    = typeof (LSL_Integer).GetConstructor (new Type[] { typeof (int) });
-		private static ConstructorInfo lslListConstructorInfo       = typeof (LSL_List).GetConstructor (new Type[] { typeof (object[]) });
 		private static ConstructorInfo lslStringConstructorInfo     = typeof (LSL_String).GetConstructor (new Type[] { typeof (string) });
 		private static ConstructorInfo rotationConstrucorStringInfo = typeof (LSL_Rotation).GetConstructor (new Type[] { typeof (string) });
 		private static ConstructorInfo vectorConstrucorStringInfo   = typeof (LSL_Vector).GetConstructor (new Type[] { typeof (string) });
 		private static FieldInfo  lslFloatValueFieldInfo     = typeof (LSL_Float).GetField ("value");
 		private static FieldInfo  lslIntegerValueFieldInfo   = typeof (LSL_Integer).GetField ("value");
 		private static FieldInfo  lslStringValueFieldInfo    = typeof (LSL_String).GetField ("m_string");
-		private static MethodInfo floatToStringMethodInfo    = typeof (TypeCast).GetMethod ("FloatToString",    new Type[] { typeof (float) });
+		private static MethodInfo floatToStringMethodInfo    = typeof (TypeCast).GetMethod ("FloatToString",    new Type[] { typeof (SCRIPTFLOAT) });
 		private static MethodInfo intToStringMethodInfo      = typeof (TypeCast).GetMethod ("IntegerToString",  new Type[] { typeof (int) });
 		private static MethodInfo listToStringMethodInfo     = typeof (TypeCast).GetMethod ("ListToString",     new Type[] { typeof (LSL_List) });
 		private static MethodInfo objectToStringMethodInfo   = typeof (TypeCast).GetMethod ("ObjectToString",   new Type[] { typeof (object) });
@@ -202,7 +201,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		private static void TypeCastBool2Float (ScriptMyILGen ilGen)
 		{
-			ilGen.Emit (OpCodes.Conv_R4);
+			if (typeof (SCRIPTFLOAT) == typeof (float)) {
+				ilGen.Emit (OpCodes.Conv_R4);
+			} else if (typeof (SCRIPTFLOAT) == typeof (double)) {
+				ilGen.Emit (OpCodes.Conv_R8);
+			} else {
+				throw new Exception ("unknown type");
+			}
 		}
 		private static void TypeCastBool2Integer (ScriptMyILGen ilGen)
 		{
@@ -220,7 +225,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		private static void TypeCastFloat2Object (ScriptMyILGen ilGen)
 		{
-			ilGen.Emit (OpCodes.Box, typeof (float));
+			ilGen.Emit (OpCodes.Box, typeof (SCRIPTFLOAT));
 		}
 		private static void TypeCastInteger2Bool (ScriptMyILGen ilGen)
 		{
@@ -231,7 +236,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		private static void TypeCastInteger2Float (ScriptMyILGen ilGen)
 		{
-			ilGen.Emit (OpCodes.Conv_R4);
+			if (typeof (SCRIPTFLOAT) == typeof (float)) {
+				ilGen.Emit (OpCodes.Conv_R4);
+			} else if (typeof (SCRIPTFLOAT) == typeof (double)) {
+				ilGen.Emit (OpCodes.Conv_R8);
+			} else {
+				throw new Exception ("unknown type");
+			}
 		}
 		private static void TypeCastInteger2Object (ScriptMyILGen ilGen)
 		{
@@ -246,7 +257,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		private static void TypeCastObject2Float (ScriptMyILGen ilGen)
 		{
-			ilGen.Emit (OpCodes.Unbox_Any, typeof (float));
+			ilGen.Emit (OpCodes.Unbox_Any, typeof (SCRIPTFLOAT));
 		}
 		private static void TypeCastObject2Integer (ScriptMyILGen ilGen)
 		{
@@ -308,7 +319,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		private static void TypeCastFloat2List (ScriptMyILGen ilGen)
 		{
-			ilGen.Emit (OpCodes.Box, typeof (float));
+			ilGen.Emit (OpCodes.Box, typeof (SCRIPTFLOAT));
 			ilGen.Emit (OpCodes.Call, listOfOneObjMethodInfo);
 		}
 		private static void TypeCastFloat2String (ScriptMyILGen ilGen)
@@ -367,7 +378,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		public static bool     RotationToBool   (LSL_Rotation x) { return !x.Equals (ScriptBaseClass.ZERO_ROTATION); }
 		public static bool     VectorToBool     (LSL_Vector x)   { return !x.Equals (ScriptBaseClass.ZERO_VECTOR); }
-		public static string   FloatToString    (float x)        { return String.Format(OpenSim.Framework.Culture.FormatProvider, "{0:0.000000}", x); }
+		public static string   FloatToString    (SCRIPTFLOAT x)  { return String.Format(OpenSim.Framework.Culture.FormatProvider, "{0:0.000000}", x); }
 		public static string   IntegerToString  (int x)          { return x.ToString (); }
 		public static string   ListToString     (LSL_List x)     { return x.ToString (); }
 		public static string   ObjectToString   (object x)       { return x.ToString (); }

@@ -177,9 +177,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 	// The value is a float constant
 	public class CompValuFloat : CompValu {
-		public float x;
+		public SCRIPTFLOAT x;
 
-		public CompValuFloat (TokenType type, float x) : base (type)
+		public CompValuFloat (TokenType type, SCRIPTFLOAT x) : base (type)
 		{
 			if (!(this.type is TokenTypeFloat)) {
 				this.type = new TokenTypeFloat (this.type);
@@ -188,7 +188,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		public override void PushVal (ScriptCodeGen scg)
 		{
-			scg.ilGen.Emit (OpCodes.Ldc_R4, x);
+			if (x is float) {
+				scg.ilGen.Emit (OpCodes.Ldc_R4, x);
+			} else if (x is double) {
+				scg.ilGen.Emit (OpCodes.Ldc_R8, x);
+			} else {
+				throw new Exception ("unknown type");
+			}
 		}
 		public override void PushByRef (ScriptCodeGen scg)
 		{
@@ -258,7 +264,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			scg.ilGen.Emit (OpCodes.Ldfld, field);       // scriptWrapper.gbl<Type>s
 			scg.PushConstantI4 (index);
 			if (type is TokenTypeFloat) {
-				scg.ilGen.Emit (OpCodes.Ldelem_R4);
+				if (typeof (SCRIPTFLOAT) == typeof (float)) {
+					scg.ilGen.Emit (OpCodes.Ldelem_R4);
+				} else if (typeof (SCRIPTFLOAT) == typeof (double)) {
+					scg.ilGen.Emit (OpCodes.Ldelem_R8);
+				} else {
+					throw new Exception ("unknown type");
+				}
 			} else if (type is TokenTypeInt) {
 				scg.ilGen.Emit (OpCodes.Ldelem_I4);
 			} else {
@@ -281,7 +293,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public override void PopPost (ScriptCodeGen scg)
 		{
 			if (type is TokenTypeFloat) {
-				scg.ilGen.Emit (OpCodes.Stelem_R4);
+				if (typeof (SCRIPTFLOAT) == typeof (float)) {
+					scg.ilGen.Emit (OpCodes.Stelem_R4);
+				} else if (typeof (SCRIPTFLOAT) == typeof (double)) {
+					scg.ilGen.Emit (OpCodes.Stelem_R8);
+				} else {
+					throw new Exception ("unknown type");
+				}
 			} else if (type is TokenTypeInt) {
 				scg.ilGen.Emit (OpCodes.Stelem_I4);
 			} else {
@@ -339,7 +357,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public CompValu z;
 		public CompValu w;
 
-		private static ConstructorInfo lslRotConstructorInfo = typeof (LSL_Rotation).GetConstructor (new Type[] { typeof (float), typeof (float), typeof (float), typeof (float) });
+		private static ConstructorInfo lslRotConstructorInfo = 
+				typeof (LSL_Rotation).GetConstructor (new Type[] { typeof (SCRIPTFLOAT), 
+				                                                   typeof (SCRIPTFLOAT), 
+				                                                   typeof (SCRIPTFLOAT), 
+				                                                   typeof (SCRIPTFLOAT) });
 
 		public CompValuRot (TokenType type, CompValu x, CompValu y, CompValu z, CompValu w) :
 				base (type)
@@ -485,7 +507,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public CompValu y;
 		public CompValu z;
 
-		private static ConstructorInfo lslVecConstructorInfo = typeof (LSL_Vector).GetConstructor (new Type[] { typeof (float), typeof (float), typeof (float) });
+		private static ConstructorInfo lslVecConstructorInfo = 
+				typeof (LSL_Vector).GetConstructor (new Type[] { typeof (SCRIPTFLOAT), 
+				                                                 typeof (SCRIPTFLOAT), 
+				                                                 typeof (SCRIPTFLOAT) });
 
 		public CompValuVec (TokenType type, CompValu x, CompValu y, CompValu z) : base (type)
 		{
