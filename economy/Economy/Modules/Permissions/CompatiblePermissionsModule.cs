@@ -553,7 +553,7 @@ namespace Careminster.Modules.Permissions
 
             private bool CanDeleteObject(UUID objectID, UUID deleter, Scene scene)
             {
-                return GenericObjectPermission(deleter, objectID, true);
+                return GenericObjectPermission(deleter, objectID, false);
             }
 
             private bool CanEditObject(UUID objectID, UUID editorID, Scene scene)
