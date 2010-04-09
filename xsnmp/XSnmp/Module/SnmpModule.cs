@@ -1,12 +1,13 @@
 // ******************************************************************
 // Copyright (c) 2010 Careminster Limited, Melanie Thielker and
-// the Meta7 Team
+// the Meta7 Team ( MagneMetaverse Research Inc )
 //
 // All rights reserved
 //
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Net;
 using log4net;
 using Nini.Config;
 using OpenSim.Framework;
@@ -19,6 +20,29 @@ using OpenSim.Framework.Communications.Cache;
 using System.Data;
 using OpenSim.Services.Interfaces;
 using Lextm.SharpSnmpLib.Messaging;
+using Lextm.SharpSnmpLib;
+
+
+// 
+// Note to self :
+// ISnmpModule snmp = Scene.RequestModuleInterface<ISnmpModule>();
+//[06:55] Melanie_t: if (snmp != null)
+//[06:55] Melanie_t: {0
+//[06:55] Melanie_t: snmp->Trap("Help!");
+//[06:55] Melanie_t: }
+
+//
+// Mib Description (prototype)
+// Sacha 040810 Creation
+// root : 1.3.6.1.3   (experimental branch)
+//  root.gridid (1 meta7, 2 xxxx, 3 yyyyy)
+//  root.gridid.1 ActualBootStatus 
+//  root.gridid.1000 Trap data
+//  root.gridid.1000.1 SimName
+//  root.gridid.1000.2 Text 
+//  
+//  The AlertCode is part of the TrapHeader event
+//
 
 
 namespace Careminster.Modules.Snmp
@@ -31,17 +55,32 @@ namespace Careminster.Modules.Snmp
         private bool m_Enabled = false;
         private IConfigSource m_Config;
         
+        // 
+        // Snmp related stuf
+        //
+        //private TrapV1Message m_trap = new TrapV1Message(VersionCode.V1);
+        private IPEndPoint m_nms;
+        private IPAddress m_ipLocal;
+        private IPAddress m_ipNms;
+        
+        private int m_port;
+
+        public enum gravity { ok, warning, minor, major, crital };
+		
+        
         public void Initialise(IConfigSource config)
         {
             IConfig snmpConfig = config.Configs["Snmp"];
 
             if (snmpConfig == null)
             {
+                m_log.Info("[XSnmp] module not found");
                 return;
             }
             else
             {
                 m_Enabled = snmpConfig.GetBoolean("Enabled", false);
+               
                 if (!m_Enabled)
                     return;
             }
@@ -49,6 +88,15 @@ namespace Careminster.Modules.Snmp
             m_Enabled = true;
 
             m_Config = config;
+            //
+            // Settings our stuff
+            //
+            
+            int m_tempPort = snmpConfig.GetInt("Port", 162);
+            string m_tempIp = snmpConfig.GetString("IP", "127.0.0.1");
+            m_nms = new IPEndPoint(IPAddress.Parse(m_tempIp), m_tempPort);
+            m_ipNms = IPAddress.Parse(m_tempIp);
+            m_log.InfoFormat("[XSnmp] NMS set to {0}:{1} ", m_tempIp, m_tempPort);
         }
 
         public void AddRegion(Scene scene)
@@ -121,8 +169,110 @@ namespace Careminster.Modules.Snmp
         {
         }
 
-        public void Trap(string message)
+        public void Critical (string simname, string message)
         {
+            Trap((int)gravity.crital, simname, message);
+        }
+        public void Warning(string simname, string message)
+        {
+            Trap((int)gravity.warning, simname, message);
+        }
+        public void Major(string simname, string message)
+        {
+            Trap((int)gravity.major, simname, message);
+        }
+
+        /**
+                 * @brief Send a trap event to a supevisor.
+                 * @param code = Code gravity 
+                 * @param simname = Region Name
+                 * @param Message = Message sent in the event
+                 * @return : void 
+                 */
+        public void Trap(int code,string simname,string Message)
+        {
+            
+            Variable vmes = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 3, 1, 1000,2 }),
+                                      new OctetString(Message));
+            Variable vsim = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 3, 1, 1000, 1 }),
+                          new OctetString(simname));
+
+            List<Variable> vList = new List<Variable>();
+            vList.Add(vmes);
+            vList.Add(vsim);
+            TrapV1Message m_trap = new TrapV1Message(VersionCode.V1, IPAddress.Loopback,
+                                            new OctetString("public"),
+                                            new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 3 }),
+                                            GenericCode.EnterpriseSpecific,
+                                            code,
+                                            0,
+                                            vList);
+            //
+            m_trap.Send(m_nms);
+
+            // m_log.DebugFormat("[XSnmp] Trap sent to {0}:{1} ", m_tempIp, m_tempPort);            
+        }
+
+        /**
+         * @brief Send a Coldstart trap event to a supevisor.
+         * @param step  = Describe wich step in the boot process we are.
+         *              0 : Boot done
+         *              1 : Step xxxxx
+         *              2 : Step yyyyy
+         * @param simname = Region Name
+         * @return : void 
+         */
+
+        public void ColdStart(int step , string simname)
+        {
+
+            Variable vsim = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 3, 1, 1000, 1 }),
+                                          new OctetString(simname));
+            Variable vdata = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 3, 1, 1000, 1 }),
+                                          new OctetString("Boot step "+step));
+
+            List<Variable> vList = new List<Variable>();
+            vList.Add(vsim);
+            vList.Add(vdata);
+            TrapV1Message m_trap = new TrapV1Message(VersionCode.V1, IPAddress.Loopback,
+                                            new OctetString("public"),
+                                            new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 3,1 }),
+                                            GenericCode.ColdStart,
+                                            step,
+                                            0,
+                                            vList);
+            //
+            m_trap.Send(m_nms);
+          
+            
+
+            //m_log.DebugFormat("[XSnmp] Trap sent to {0}:{1} ", m_tempIp, m_tempPort);            
+        }
+
+        public void Shutdown(int step, string simname)
+        {
+
+            Variable vsim = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 3, 1, 1000, 1 }),
+                                          new OctetString(simname));
+            Variable vdata = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 3, 1, 1000, 1 }),
+                                          new OctetString("Shutdown step " + step));
+
+            List<Variable> vList = new List<Variable>();
+            vList.Add(vsim);
+            vList.Add(vdata);
+            TrapV1Message m_trap = new TrapV1Message(VersionCode.V1, IPAddress.Loopback,
+                                            new OctetString("public"),
+                                            new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 3, 1 }),
+                                            GenericCode.LinkDown,
+                                            step,
+                                            0,
+                                            vList);
+            //
+            m_trap.Send(m_nms);
+
+
+
+            //m_log.DebugFormat("[XSnmp] Trap sent to {0}:{1} ", m_tempIp, m_tempPort);            
         }
     }
 }
