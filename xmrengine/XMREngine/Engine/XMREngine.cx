@@ -9,6 +9,7 @@
 
 using System;
 using System.Xml;
+using System.Text;
 using System.Timers;
 using System.IO;
 using System.Runtime.Remoting;
@@ -46,6 +47,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             IScriptModule
     {
         public static readonly DetectParams[] zeroDetectParams = new DetectParams[0];
+        private static ArrayList noScriptErrors = new ArrayList();
         private static readonly ILog m_log =
             LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
@@ -743,131 +745,141 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 int startParam, bool postOnRez, string engine, int stateSource)
         {
             XMRInstance instance;
-            SceneObjectPart part = null;
-            TaskInventoryItem item = null;
-            ArrayList errors = new ArrayList();
+            SceneObjectPart part = m_Scene.GetSceneObjectPart(localID);
+            TaskInventoryItem item = part.Inventory.GetInventoryItem(itemID);
 
-            lock (m_ScriptErrors)
+            if (m_TraceCalls)
             {
-                if (script.StartsWith("//MRM:"))
-                    return;
+                m_log.DebugFormat("[XMREngine]: OnRezScript({0}...)", itemID.ToString());
+            }
 
-                if (m_TraceCalls)
+            if (script.StartsWith("//MRM:"))
+            {
+                return;
+            }
+
+            /*
+             * Get list of available script engines.
+             * (Yes, each and every time we get a new script...).
+             */
+            List<IScriptModule> engines =
+                    new List<IScriptModule>(
+                    m_Scene.RequestModuleInterfaces<IScriptModule>());
+
+            List<string> names = new List<string>();
+            foreach (IScriptModule m in engines)
+                names.Add(m.ScriptEngineName);
+
+            /*
+             * Very first line might contain "//" scriptengine ":"
+             */
+            int lineEnd = script.IndexOf('\n');
+            if (lineEnd > 1)
+            {
+                string firstline = script.Substring(0, lineEnd).Trim();
+
+                int colon = firstline.IndexOf(':');
+                if ((colon > 2) && 
+                    (firstline.Substring(0, 2) == "//"))
                 {
-                    m_log.DebugFormat("[XMREngine]: XMREngine.OnRezScript({0},{1},{2},{3})",
-                            localID.ToString(), itemID.ToString(), startParam.ToString(), postOnRez.ToString());
-                }
+                    string engineName = firstline.Substring(2, colon - 2).Trim();
 
-                List<IScriptModule> engines =
-                        new List<IScriptModule>(
-                        m_Scene.RequestModuleInterfaces<IScriptModule>());
-
-                List<string> names = new List<string>();
-                foreach (IScriptModule m in engines)
-                    names.Add(m.ScriptEngineName);
-
-                part = m_Scene.GetSceneObjectPart(localID);
-
-                item = part.Inventory.GetInventoryItem(itemID);
-
-                int lineEnd = script.IndexOf('\n');
-
-                if (lineEnd > 1)
-                {
-                    string firstline = script.Substring(0, lineEnd).Trim();
-
-                    int colon = firstline.IndexOf(':');
-                    if (firstline.Length > 2 && firstline.Substring(0, 2) == "//" &&
-                            colon != -1)
+                    if (names.Contains(engineName))
                     {
-                        string engineName = firstline.Substring(2, colon - 2);
+                        /*
+                         * It's a known engine, get the given name and strip the
+                         * name from the script text.
+                         */
+                        engine = engineName;
+                        script = "//" + script.Substring(script.IndexOf(':') + 1);
+                    }
+                    else
+                    {
+                        /*
+                         * Engine unknown.  If we are the default script engine,
+                         * output an alert message then try to handle the script.
+                         */
+                        if (engine == ScriptEngineName)
+                        {
+                            ScenePresence presence =
+                                    m_Scene.GetScenePresence(item.OwnerID);
 
-                        if (names.Contains(engineName))
-                        {
-                            engine = engineName;
-                            script = "//" + script.Substring(script.IndexOf(':') + 1);
-                        }
-                        else
-                        {
-                            if (engine == ScriptEngineName)
+                            if (presence != null)
                             {
-                                ScenePresence presence =
-                                        m_Scene.GetScenePresence(item.OwnerID);
-
-                                if (presence != null)
+                                StringBuilder sb = new StringBuilder();
+                                sb.Append("Selected engine (");
+                                sb.Append(engineName);
+                                sb.Append(") unavailable.  Have");
+                                foreach (string n in names)
                                 {
-                                    presence.ControllingClient.SendAgentAlertMessage(
-                                            "Selected engine unavailable. " +
-                                            "Running script on " +
-                                            ScriptEngineName,
-                                            false);
+                                    sb.Append(" ");
+                                    sb.Append(n);
                                 }
+                                sb.Append(".  Running script on ");
+                                sb.Append(ScriptEngineName);
+                                sb.Append(".");
+                                presence.ControllingClient.SendAgentAlertMessage(sb.ToString(), false);
                             }
                         }
                     }
                 }
+            }
 
-                if (engine != ScriptEngineName)
-                    return;
+            if (engine != ScriptEngineName)
+                return;
 
-                m_log.DebugFormat("[XMREngine]: Running script {0}, asset {1}, param {2}",
-                        item.Name, item.AssetID, startParam.ToString());
+            m_log.DebugFormat("[XMREngine]: loading script {0}, asset {1}, param {2}",
+                    item.Name, item.AssetID, startParam.ToString());
 
-                /*
-                 * These errors really should be cleared by same thread that calls 
-                 * GetScriptErrors() BEFORE it could possibly create or trigger the 
-                 * thread that calls OnRezScript().
-                 */
-
-                m_ScriptErrors.Remove(itemID);
-
-                /*
-                 * Compile and load the script in memory.
-                 */
-                try
+            /*
+             * Compile and load the script in memory.
+             */
+            ArrayList errors = new ArrayList();
+            try
+            {
+                instance = new XMRInstance(localID, itemID, script,
+                                           startParam, postOnRez, stateSource,
+                                           this, part, item, m_ScriptBasePath,
+                                           m_StackSize, errors);
+            }
+            catch (Exception e)
+            {
+                m_log.DebugFormat("[XMREngine]: Error starting script {0}: {1}",
+                                  itemID.ToString(), e.Message);
+                if (e.Message != "compilation errors")
                 {
-                    instance = new XMRInstance(localID, itemID, script,
-                                               startParam, postOnRez, stateSource,
-                                               this, part, item, m_ScriptBasePath,
-                                               m_StackSize, errors);
+                    m_log.DebugFormat("[XMREngine]:   exception:\n{0}", e.ToString());
                 }
-                catch (Exception e)
-                {
-                    m_log.DebugFormat("[XMREngine]: Error starting script {0}: {1}",
-                                      itemID.ToString(), e.Message);
-                    if (e.Message != "compilation errors")
-                    {
-                        m_log.DebugFormat("[XMREngine]:   exception:\n{0}", e.ToString());
-                    }
 
-                    /*
-                     * Post errors to GetScriptErrors() and wake it.
-                     */
-                    
-                    if (errors.Count == 0)
+                /*
+                 * Post errors where GetScriptErrors() can see them.
+                 */
+                if (errors.Count == 0)
+                {
+                    errors.Add(e.Message);
+                }
+                else
+                {
+                    foreach (Object err in errors)
                     {
-                        errors.Add(e.Message);
+                        m_log.DebugFormat("[XMREngine]:   {0}", err.ToString());
                     }
-                    else
-                    {
-                        foreach (Object err in errors)
-                        {
-                            m_log.DebugFormat("[XMREngine]:   {0}", err.ToString());
-                        }
-                    }
+                }
+                lock (m_ScriptErrors)
+                {
                     m_ScriptErrors[itemID] = errors;
-                    Monitor.PulseAll(m_ScriptErrors);
-                    
-                    return;
                 }
+                
+                return;
+            }
 
-                /*
-                 * Tell GetScriptErrors() that we have finished compiling/loading
-                 * successfully (by posting a 0 element array).
-                 */
-                errors.Clear();
-                m_ScriptErrors[itemID] = errors;
-                Monitor.PulseAll(m_ScriptErrors);
+            /*
+             * Tell GetScriptErrors() that we have finished compiling/loading
+             * successfully (by posting a 0 element array).
+             */
+            lock (m_ScriptErrors)
+            {
+                m_ScriptErrors[itemID] = noScriptErrors;
             }
 
             /*
@@ -1392,9 +1404,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         /**
          * @brief Retrieve errors generated by a previous call to OnRezScript().
-         *        It's possible that OnRezScript() hasn't been called yet but
-         *        will be very soon in another thread.  In that case, we must
-         *        wait for that other thread then retrieve the errors.
+         *        We are guaranteed this routine will not be called before the
+         *        corresponding OnRezScript() has returned.
          */
         public ArrayList GetScriptErrors(UUID itemID)
         {
@@ -1402,60 +1413,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             lock (m_ScriptErrors)
             {
-                while (!m_ScriptErrors.TryGetValue(itemID, out errors)) {
-                    Monitor.Wait(m_ScriptErrors);
+                if (m_ScriptErrors.TryGetValue(itemID, out errors))
+                {
+                    m_ScriptErrors.Remove(itemID);
                 }
-                m_ScriptErrors.Remove(itemID);
-            }
-            if (errors.Count == 0) {
-                m_log.DebugFormat("[XMREngine]: {0} successful", itemID.ToString());
-            } else {
-                m_log.DebugFormat("[XMREngine]: {0} has {1} error(s)", itemID.ToString(), errors.Count.ToString());
+                else
+                {
+                    errors = noScriptErrors;
+                }
             }
             return errors;
         }
-
-//        private void ReplaceAssemblyPath(Byte[] data, string path)
-//        {
-//            string[] elems = path.Split(new char[] {Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar}, StringSplitOptions.RemoveEmptyEntries);
-//            if (elems.Length < 2)
-//                return;
-//
-//            string filename = elems[elems.Length - 1];
-//            if (!filename.EndsWith(".xmrobj"))
-//                return;
-//
-//            Byte[] newDir = Util.UTF8.GetBytes(elems[elems.Length - 2]);
-//
-//            int index = FindInArray(data, Util.UTF8.GetBytes(filename));
-//            if (index == -1)
-//                return;
-//
-//            index -= 37;
-//
-//            if (index < 0)
-//                return;
-//
-//            Array.Copy(newDir, 0, data, index, newDir.Length);
-//        }
-//
-//        private int FindInArray(Byte[] data, Byte[] search)
-//        {
-//            for (int i = 0 ; i < data.Length - search.Length ; i++)
-//                if (ArrayCompare(data, i, search, 0, search.Length))
-//                    return i;
-//
-//            return -1;
-//        }
-//
-//        private bool ArrayCompare(Byte[] data, int s_off, Byte[] search, int off, int len)
-//        {
-//            for (int i = 0 ; i < len ; i++)
-//                if (data[s_off + i] != search[off + i])
-//                    return false;
-//
-//            return true;
-//        }
     }
 
     [Serializable]
