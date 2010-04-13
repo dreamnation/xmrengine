@@ -69,6 +69,8 @@ namespace Careminster.Modules.Snmp
         
         public void Initialise(IConfigSource config)
         {
+            Watchdog.OnWatchdogTimeout += WatchdogTimeout;
+
             IConfig snmpConfig = config.Configs["Snmp"];
 
             if (snmpConfig == null)
@@ -274,6 +276,10 @@ namespace Careminster.Modules.Snmp
 
 
             //m_log.DebugFormat("[XSnmp] Trap sent to {0}:{1} ", m_tempIp, m_tempPort);            
+        }
+
+        private void WatchdogTimeout(Thread thread, int lastTick)
+        {
         }
     }
 }
