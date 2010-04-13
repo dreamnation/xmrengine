@@ -553,5 +553,10 @@ namespace Careminster
                 m_DataConnector.Import(conn, table, start, count, force, new StoreDelegate(Store));
             }
         }
+
+        public AssetBase GetCached(string id)
+        {
+            return Get(id);
+        }
     }
 }
