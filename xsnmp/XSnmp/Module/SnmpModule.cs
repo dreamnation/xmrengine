@@ -167,10 +167,6 @@ namespace Careminster.Modules.Snmp
             IConfig snmpConfig = m_Config.Configs["Snmp"];
         }
 
-        public void Alert(string message)
-        {
-        }
-
         public void Critical (string simname, string message)
         {
             Trap((int)gravity.crital, simname, message);
