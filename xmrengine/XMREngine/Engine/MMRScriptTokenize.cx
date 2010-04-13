@@ -3,13 +3,7 @@
  *  All rights reserved.                           *
 \***************************************************/
 
-using LSL_Float = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLFloat;
-using LSL_Integer = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLInteger;
-using LSL_Key = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
-using LSL_List = OpenSim.Region.ScriptEngine.Shared.LSL_Types.list;
-using LSL_Rotation = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Quaternion;
-using LSL_String = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
-using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
+#include "lsltypes.h"
 
 using System.Text;
 
@@ -889,8 +883,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public override string ToString () { return "bool"; }
 	}
 	public class TokenTypeFloat : TokenType {
-		public TokenTypeFloat (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn, typeof (float)) { }
-		public TokenTypeFloat (Token original) : base (original, typeof (float)) { }
+		public TokenTypeFloat (TokenErrorMessage emsg, int line, int posn) : base (emsg, line, posn, typeof (SCRIPTFLOAT)) { }
+		public TokenTypeFloat (Token original) : base (original, typeof (SCRIPTFLOAT)) { }
 		public override string ToString () { return "float"; }
 	}
 	public class TokenTypeInt : TokenType {

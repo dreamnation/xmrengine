@@ -20,8 +20,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private static readonly ILog m_log =
             LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
-        private static uint fileno = 0;
-
         /**
          * @brief Compile a script to produce a ScriptObjCode object
          * @param source = 'source' contains the whole script source

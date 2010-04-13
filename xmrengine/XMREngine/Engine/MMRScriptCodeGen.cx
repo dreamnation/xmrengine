@@ -4,13 +4,6 @@
 \********************************************************/
 
 using log4net;
-using LSL_Float = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLFloat;
-using LSL_Integer = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLInteger;
-using LSL_Key = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
-using LSL_List = OpenSim.Region.ScriptEngine.Shared.LSL_Types.list;
-using LSL_Rotation = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Quaternion;
-using LSL_String = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
-using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
 using Mono.Tasklets;
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 using OpenSim.Region.ScriptEngine.XMREngine;
@@ -21,6 +14,7 @@ using System.Reflection;
 using System.Reflection.Emit;
 using System.Text;
 
+#include "lsltypes.h"
 
 /**
  * @brief translate a reduced script token into corresponding CIL code.
@@ -36,7 +30,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
 		public static readonly string OBJECT_CODE_MAGIC = "XMRObjectCode";
-		public static readonly int COMPILED_VERSION_VALUE = 7;  // incremented when compiler changes for compatibility testing
+		public static readonly int COMPILED_VERSION_VALUE = 8;  // incremented when compiler changes for compatibility testing
 
 		public static readonly int CALL_FRAME_MEMUSE = 64;
 		public static readonly int STRING_LEN_TO_MEMUSE = 2;
@@ -50,11 +44,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static Dictionary<string, InlineFunction> inlineFunctions = InlineFunction.CreateDictionary ();
 		private static Dictionary<string, TokenDeclFunc> legalEventHandlers = CreateLegalEventHandlers ();
 		private static TokenTypeBool  tokenTypeBool  = new TokenTypeBool  (null);
-		private static TokenTypeFloat tokenTypeFloat = new TokenTypeFloat (null);
-		private static TokenTypeInt   tokenTypeInt   = new TokenTypeInt   (null);
 		private static Type[] instanceTypeArg = new Type[] { typeof (XMRInstance) };
 
-		private static ConstructorInfo lslFloatConstructorInfo = typeof (LSL_Float).GetConstructor (new Type[] { typeof (float) });
+		private static ConstructorInfo lslFloatConstructorInfo = typeof (LSL_Float).GetConstructor (new Type[] { typeof (SCRIPTFLOAT) });
 		private static ConstructorInfo lslIntegerConstructorInfo = typeof (LSL_Integer).GetConstructor (new Type[] { typeof (int) });
 		private static ConstructorInfo lslListConstructorInfo = typeof (LSL_List).GetConstructor (new Type[] { typeof (object[]) });
 		public  static ConstructorInfo lslRotationConstructorInfo = typeof (LSL_Rotation).GetConstructor (new Type[] { typeof (double), typeof (double), typeof (double), typeof (double) });
@@ -62,25 +54,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public  static ConstructorInfo lslVectorConstructorInfo = typeof (LSL_Vector).GetConstructor (new Type[] { typeof (double), typeof (double), typeof (double) });
 		private static ConstructorInfo scriptUndefinedStateExceptionConstructorInfo = typeof (ScriptUndefinedStateException).GetConstructor (new Type[] { typeof (string) });
 		private static ConstructorInfo xmrArrayConstructorInfo = typeof (XMR_Array).GetConstructor (new Type[0]);
-		private static FieldInfo arrayCountFieldInfo = typeof (XMR_Array).GetField ("__pub_count");
-		private static FieldInfo arrayIndexFieldInfo = typeof (XMR_Array).GetField ("__pub_index");
-		private static FieldInfo arrayValueFieldInfo = typeof (XMR_Array).GetField ("__pub_value");
-		public  static FieldInfo beAPIFieldInfo = typeof (XMRInstance).GetField ("beAPI");
-		private static FieldInfo continuationFieldInfo = typeof (XMRInstance).GetField ("continuation");
-		private static FieldInfo doGblInitFieldInfo = typeof (XMRInstance).GetField ("doGblInit");
-		private static FieldInfo ehArgsFieldInfo = typeof (XMRInstance).GetField ("ehArgs");
-		public  static FieldInfo heapLeftFieldInfo  = typeof (XMRInstance).GetField ("heapLeft");
-		private static FieldInfo heapLimitFieldInfo = typeof (XMRInstance).GetField ("heapLimit");
-		private static FieldInfo rotationXFieldInfo = typeof (LSL_Rotation).GetField ("x");
-		private static FieldInfo rotationYFieldInfo = typeof (LSL_Rotation).GetField ("y");
-		private static FieldInfo rotationZFieldInfo = typeof (LSL_Rotation).GetField ("z");
-		private static FieldInfo rotationSFieldInfo = typeof (LSL_Rotation).GetField ("s");
-		public  static FieldInfo stackLimitFieldInfo = typeof (XMRInstance).GetField ("stackLimit");
+		private static FieldInfo arrayCountFieldInfo   = typeof (XMR_Array).GetField ("__pub_count");
+		private static FieldInfo arrayIndexFieldInfo   = typeof (XMR_Array).GetField ("__pub_index");
+		private static FieldInfo arrayValueFieldInfo   = typeof (XMR_Array).GetField ("__pub_value");
+		public  static FieldInfo beAPIFieldInfo        = typeof (XMRInstance).GetField ("beAPI");
+		private static FieldInfo doGblInitFieldInfo    = typeof (XMRInstance).GetField ("doGblInit");
+		private static FieldInfo ehArgsFieldInfo       = typeof (XMRInstance).GetField ("ehArgs");
+		public  static FieldInfo heapLeftFieldInfo     = typeof (XMRInstance).GetField ("heapLeft");
+		private static FieldInfo heapLimitFieldInfo    = typeof (XMRInstance).GetField ("heapLimit");
+		private static FieldInfo rotationXFieldInfo    = typeof (LSL_Rotation).GetField ("x");
+		private static FieldInfo rotationYFieldInfo    = typeof (LSL_Rotation).GetField ("y");
+		private static FieldInfo rotationZFieldInfo    = typeof (LSL_Rotation).GetField ("z");
+		private static FieldInfo rotationSFieldInfo    = typeof (LSL_Rotation).GetField ("s");
+		public  static FieldInfo stackLimitFieldInfo   = typeof (XMRInstance).GetField ("stackLimit");
 		private static FieldInfo stateChangedFieldInfo = typeof (XMRInstance).GetField ("stateChanged");
 		private static FieldInfo stateCodeFieldInfo    = typeof (XMRInstance).GetField ("stateCode");
-		private static FieldInfo vectorXFieldInfo = typeof (LSL_Vector).GetField ("x");
-		private static FieldInfo vectorYFieldInfo = typeof (LSL_Vector).GetField ("y");
-		private static FieldInfo vectorZFieldInfo = typeof (LSL_Vector).GetField ("z");
+		private static FieldInfo vectorXFieldInfo      = typeof (LSL_Vector).GetField ("x");
+		private static FieldInfo vectorYFieldInfo      = typeof (LSL_Vector).GetField ("y");
+		private static FieldInfo vectorZFieldInfo      = typeof (LSL_Vector).GetField ("z");
 
 		private static MethodInfo checkRunMethodInfo = typeof (XMRInstance).GetMethod ("CheckRun", new Type[] { typeof (int) });
 		private static MethodInfo forEachMethodInfo = typeof (XMR_Array).GetMethod ("ForEach", 
@@ -300,6 +291,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			objFileWriter.Write (scriptObjCode.numGblFloats);
 			objFileWriter.Write (scriptObjCode.numGblIntegers);
 			objFileWriter.Write (scriptObjCode.numGblLists);
+			objFileWriter.Write (scriptObjCode.numGblObjects);
 			objFileWriter.Write (scriptObjCode.numGblRotations);
 			objFileWriter.Write (scriptObjCode.numGblStrings);
 			objFileWriter.Write (scriptObjCode.numGblVectors);
@@ -1787,7 +1779,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private CompValu GenerateFromRValFloat (TokenRValFloat rValFloat)
 		{
-			return new CompValuFloat (new TokenTypeFloat (rValFloat), (float)rValFloat.flToken.val);
+			return new CompValuFloat (new TokenTypeFloat (rValFloat), (SCRIPTFLOAT)rValFloat.flToken.val);
 		}
 
 		/**
@@ -2367,6 +2359,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			scriptObjCode.numGblFloats    = objFileReader.ReadInt32 ();
 			scriptObjCode.numGblIntegers  = objFileReader.ReadInt32 ();
 			scriptObjCode.numGblLists     = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblObjects   = objFileReader.ReadInt32 ();
 			scriptObjCode.numGblRotations = objFileReader.ReadInt32 ();
 			scriptObjCode.numGblStrings   = objFileReader.ReadInt32 ();
 			scriptObjCode.numGblVectors   = objFileReader.ReadInt32 ();
@@ -2386,6 +2379,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				asmFileWriter.WriteLine ("  numGblFloats    {0}", scriptObjCode.numGblFloats);
 				asmFileWriter.WriteLine ("  numGblIntegers  {0}", scriptObjCode.numGblIntegers);
 				asmFileWriter.WriteLine ("  numGblLists     {0}", scriptObjCode.numGblLists);
+				asmFileWriter.WriteLine ("  numGblObjects   {0}", scriptObjCode.numGblObjects);
 				asmFileWriter.WriteLine ("  numGblRotations {0}", scriptObjCode.numGblRotations);
 				asmFileWriter.WriteLine ("  numGblStrings   {0}", scriptObjCode.numGblStrings);
 				asmFileWriter.WriteLine ("  numGblVectors   {0}", scriptObjCode.numGblVectors);

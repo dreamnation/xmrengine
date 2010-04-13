@@ -25,14 +25,9 @@ using OpenSim.Region.ScriptEngine.Shared.Api;
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 using OpenSim.Region.ScriptEngine.XMREngine;
 using OpenSim.Region.Framework.Scenes;
-using LSL_Float = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLFloat;
-using LSL_Integer = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLInteger;
-using LSL_Key = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
-using LSL_List = OpenSim.Region.ScriptEngine.Shared.LSL_Types.list;
-using LSL_Rotation = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Quaternion;
-using LSL_String = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
-using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
 using log4net;
+
+#include "lsltypes.h"
 
 // This class exists in the main app domain
 //
@@ -184,9 +179,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * and are found in ScriptObjCode.numGblArrays, .numGblFloats, etc.
          */
         public XMR_Array[]    gblArrays;
-        public float[]        gblFloats;
+        public SCRIPTFLOAT[]  gblFloats;
         public int[]          gblIntegers;
         public LSL_List[]     gblLists;
+        public object[]       gblObjects;
         public LSL_Rotation[] gblRotations;
         public string[]       gblStrings;
         public LSL_Vector[]   gblVectors;
@@ -256,7 +252,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /*
          * Makes sure migration data version is same on both ends.
          */
-        public static readonly byte migrationVersion = 4;
+        public static readonly byte migrationVersion = 6;
 
         /**
          * @brief types of data we serialize

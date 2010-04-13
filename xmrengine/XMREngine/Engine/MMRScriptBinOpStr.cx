@@ -3,13 +3,6 @@
  *  All rights reserved.                           *
 \***************************************************/
 
-using LSL_Float = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLFloat;
-using LSL_Integer = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLInteger;
-using LSL_Key = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
-using LSL_List = OpenSim.Region.ScriptEngine.Shared.LSL_Types.list;
-using LSL_Rotation = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Quaternion;
-using LSL_String = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
-using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
 using Mono.Tasklets;
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 using OpenSim.Region.ScriptEngine.XMREngine;
@@ -19,6 +12,7 @@ using System.IO;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Text;
+#include "lsltypes.h"
 
 namespace OpenSim.Region.ScriptEngine.XMREngine {
 
@@ -57,14 +51,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		private static MethodInfo stringAddStringMethInfo = ScriptCodeGen.GetStaticMethod (typeof (string), "Concat",  new Type[] { typeof (string), typeof (string) });
 		private static MethodInfo stringCmpStringMethInfo = ScriptCodeGen.GetStaticMethod (typeof (string), "Compare", new Type[] { typeof (string), typeof (string) });
 
-		private static MethodInfo infoMethListAddFloat = GetBinOpsMethod ("MethListAddFloat", new Type[] { typeof (LSL_List),     typeof (float)        });
+		private static MethodInfo infoMethListAddFloat = GetBinOpsMethod ("MethListAddFloat", new Type[] { typeof (LSL_List),     typeof (SCRIPTFLOAT)  });
 		private static MethodInfo infoMethListAddInt   = GetBinOpsMethod ("MethListAddInt",   new Type[] { typeof (LSL_List),     typeof (int)          });
 		private static MethodInfo infoMethListAddKey   = GetBinOpsMethod ("MethListAddKey",   new Type[] { typeof (LSL_List),     typeof (LSL_Key)      });
 		private static MethodInfo infoMethListAddList  = GetBinOpsMethod ("MethListAddList",  new Type[] { typeof (LSL_List),     typeof (LSL_List)     });
 		private static MethodInfo infoMethListAddRot   = GetBinOpsMethod ("MethListAddRot",   new Type[] { typeof (LSL_List),     typeof (LSL_Rotation) });
 		private static MethodInfo infoMethListAddStr   = GetBinOpsMethod ("MethListAddStr",   new Type[] { typeof (LSL_List),     typeof (string)       });
 		private static MethodInfo infoMethListAddVec   = GetBinOpsMethod ("MethListAddVec",   new Type[] { typeof (LSL_List),     typeof (LSL_Vector)   });
-		private static MethodInfo infoMethFloatAddList = GetBinOpsMethod ("MethFloatAddList", new Type[] { typeof (float),        typeof (LSL_List)     });
+		private static MethodInfo infoMethFloatAddList = GetBinOpsMethod ("MethFloatAddList", new Type[] { typeof (SCRIPTFLOAT),  typeof (LSL_List)     });
 		private static MethodInfo infoMethIntAddList   = GetBinOpsMethod ("MethIntAddList",   new Type[] { typeof (int),          typeof (LSL_List)     });
 		private static MethodInfo infoMethKeyAddList   = GetBinOpsMethod ("MethKeyAddList",   new Type[] { typeof (LSL_Key),      typeof (LSL_List)     });
 		private static MethodInfo infoMethRotAddList   = GetBinOpsMethod ("MethRotAddList",   new Type[] { typeof (LSL_Rotation), typeof (LSL_List)     });
@@ -84,9 +78,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		private static MethodInfo infoMethVecSubVec    = GetBinOpsMethod ("MethVecSubVec",    new Type[] { typeof (LSL_Vector),   typeof (LSL_Vector)   });
 		private static MethodInfo infoMethVecMulVec    = GetBinOpsMethod ("MethVecMulVec",    new Type[] { typeof (LSL_Vector),   typeof (LSL_Vector)   });
 		private static MethodInfo infoMethVecModVec    = GetBinOpsMethod ("MethVecModVec",    new Type[] { typeof (LSL_Vector),   typeof (LSL_Vector)   });
-		private static MethodInfo infoMethVecMulFloat  = GetBinOpsMethod ("MethVecMulFloat",  new Type[] { typeof (LSL_Vector),   typeof (float)        });
-		private static MethodInfo infoMethFloatMulVec  = GetBinOpsMethod ("MethFloatMulVec",  new Type[] { typeof (float),        typeof (LSL_Vector)   });
-		private static MethodInfo infoMethVecDivFloat  = GetBinOpsMethod ("MethVecDivFloat",  new Type[] { typeof (LSL_Vector),   typeof (float)        });
+		private static MethodInfo infoMethVecMulFloat  = GetBinOpsMethod ("MethVecMulFloat",  new Type[] { typeof (LSL_Vector),   typeof (SCRIPTFLOAT)  });
+		private static MethodInfo infoMethFloatMulVec  = GetBinOpsMethod ("MethFloatMulVec",  new Type[] { typeof (SCRIPTFLOAT),  typeof (LSL_Vector)   });
+		private static MethodInfo infoMethVecDivFloat  = GetBinOpsMethod ("MethVecDivFloat",  new Type[] { typeof (LSL_Vector),   typeof (SCRIPTFLOAT)  });
 		private static MethodInfo infoMethVecMulInt    = GetBinOpsMethod ("MethVecMulInt",    new Type[] { typeof (LSL_Vector),   typeof (int)          });
 		private static MethodInfo infoMethIntMulVec    = GetBinOpsMethod ("MethIntMulVec",    new Type[] { typeof (int),          typeof (LSL_Vector)   });
 		private static MethodInfo infoMethVecDivInt    = GetBinOpsMethod ("MethVecDivInt",    new Type[] { typeof (LSL_Vector),   typeof (int)          });
@@ -205,32 +199,32 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		private static void DefineBinOpsFloatX (Dictionary<string, BinOpStr> bos, string x)
 		{
-			bos.Add ("float==" + x, new BinOpStr (typeof (bool),  BinOpStrFloatEqX));
-			bos.Add ("float!=" + x, new BinOpStr (typeof (bool),  BinOpStrFloatNeX));
-			bos.Add ("float<"  + x, new BinOpStr (typeof (bool),  BinOpStrFloatLtX));
-			bos.Add ("float<=" + x, new BinOpStr (typeof (bool),  BinOpStrFloatLeX));
-			bos.Add ("float>"  + x, new BinOpStr (typeof (bool),  BinOpStrFloatGtX));
-			bos.Add ("float>=" + x, new BinOpStr (typeof (bool),  BinOpStrFloatGeX));
-			bos.Add ("float+"  + x, new BinOpStr (typeof (float), BinOpStrFloatAddX, true));
-			bos.Add ("float-"  + x, new BinOpStr (typeof (float), BinOpStrFloatSubX, true));
-			bos.Add ("float*"  + x, new BinOpStr (typeof (float), BinOpStrFloatMulX, true));
-			bos.Add ("float/"  + x, new BinOpStr (typeof (float), BinOpStrFloatDivX, true));
-			bos.Add ("float%"  + x, new BinOpStr (typeof (float), BinOpStrFloatModX, true));
+			bos.Add ("float==" + x, new BinOpStr (typeof (bool),        BinOpStrFloatEqX));
+			bos.Add ("float!=" + x, new BinOpStr (typeof (bool),        BinOpStrFloatNeX));
+			bos.Add ("float<"  + x, new BinOpStr (typeof (bool),        BinOpStrFloatLtX));
+			bos.Add ("float<=" + x, new BinOpStr (typeof (bool),        BinOpStrFloatLeX));
+			bos.Add ("float>"  + x, new BinOpStr (typeof (bool),        BinOpStrFloatGtX));
+			bos.Add ("float>=" + x, new BinOpStr (typeof (bool),        BinOpStrFloatGeX));
+			bos.Add ("float+"  + x, new BinOpStr (typeof (SCRIPTFLOAT), BinOpStrFloatAddX, true));
+			bos.Add ("float-"  + x, new BinOpStr (typeof (SCRIPTFLOAT), BinOpStrFloatSubX, true));
+			bos.Add ("float*"  + x, new BinOpStr (typeof (SCRIPTFLOAT), BinOpStrFloatMulX, true));
+			bos.Add ("float/"  + x, new BinOpStr (typeof (SCRIPTFLOAT), BinOpStrFloatDivX, true));
+			bos.Add ("float%"  + x, new BinOpStr (typeof (SCRIPTFLOAT), BinOpStrFloatModX, true));
 		}
 
 		private static void DefineBinOpsXFloat (Dictionary<string, BinOpStr> bos, string x)
 		{
-			bos.Add (x + "==float", new BinOpStr (typeof (bool),  BinOpStrXEqFloat));
-			bos.Add (x + "!=float", new BinOpStr (typeof (bool),  BinOpStrXNeFloat));
-			bos.Add (x + "<float",  new BinOpStr (typeof (bool),  BinOpStrXLtFloat));
-			bos.Add (x + "<=float", new BinOpStr (typeof (bool),  BinOpStrXLeFloat));
-			bos.Add (x + ">float",  new BinOpStr (typeof (bool),  BinOpStrXGtFloat));
-			bos.Add (x + ">=float", new BinOpStr (typeof (bool),  BinOpStrXGeFloat));
-			bos.Add (x + "+float",  new BinOpStr (typeof (float), BinOpStrXAddFloat, true));
-			bos.Add (x + "-float",  new BinOpStr (typeof (float), BinOpStrXSubFloat, true));
-			bos.Add (x + "*float",  new BinOpStr (typeof (float), BinOpStrXMulFloat, true));
-			bos.Add (x + "/float",  new BinOpStr (typeof (float), BinOpStrXDivFloat, true));
-			bos.Add (x + "%float",  new BinOpStr (typeof (float), BinOpStrXModFloat, true));
+			bos.Add (x + "==float", new BinOpStr (typeof (bool),        BinOpStrXEqFloat));
+			bos.Add (x + "!=float", new BinOpStr (typeof (bool),        BinOpStrXNeFloat));
+			bos.Add (x + "<float",  new BinOpStr (typeof (bool),        BinOpStrXLtFloat));
+			bos.Add (x + "<=float", new BinOpStr (typeof (bool),        BinOpStrXLeFloat));
+			bos.Add (x + ">float",  new BinOpStr (typeof (bool),        BinOpStrXGtFloat));
+			bos.Add (x + ">=float", new BinOpStr (typeof (bool),        BinOpStrXGeFloat));
+			bos.Add (x + "+float",  new BinOpStr (typeof (SCRIPTFLOAT), BinOpStrXAddFloat, true));
+			bos.Add (x + "-float",  new BinOpStr (typeof (SCRIPTFLOAT), BinOpStrXSubFloat, true));
+			bos.Add (x + "*float",  new BinOpStr (typeof (SCRIPTFLOAT), BinOpStrXMulFloat, true));
+			bos.Add (x + "/float",  new BinOpStr (typeof (SCRIPTFLOAT), BinOpStrXDivFloat, true));
+			bos.Add (x + "%float",  new BinOpStr (typeof (SCRIPTFLOAT), BinOpStrXModFloat, true));
 		}
 
 		private static void DefineBinOpsInteger (Dictionary<string, BinOpStr> bos)
@@ -311,23 +305,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		// all operations allowed by LSL_Vector definition
 		private static void DefineBinOpsVector (Dictionary<string, BinOpStr> bos)
 		{
-			bos.Add ("vector==vector",  new BinOpStr (typeof (bool),       BinOpStrVecEqVec));
-			bos.Add ("vector!=vector",  new BinOpStr (typeof (bool),       BinOpStrVecNeVec));
-			bos.Add ("vector+vector",   new BinOpStr (typeof (LSL_Vector), BinOpStrVecAddVec, true));
-			bos.Add ("vector-vector",   new BinOpStr (typeof (LSL_Vector), BinOpStrVecSubVec, true));
-			bos.Add ("vector*vector",   new BinOpStr (typeof (float),      BinOpStrVecMulVec));
-			bos.Add ("vector%vector",   new BinOpStr (typeof (LSL_Vector), BinOpStrVecModVec, true));
+			bos.Add ("vector==vector",  new BinOpStr (typeof (bool),        BinOpStrVecEqVec));
+			bos.Add ("vector!=vector",  new BinOpStr (typeof (bool),        BinOpStrVecNeVec));
+			bos.Add ("vector+vector",   new BinOpStr (typeof (LSL_Vector),  BinOpStrVecAddVec, true));
+			bos.Add ("vector-vector",   new BinOpStr (typeof (LSL_Vector),  BinOpStrVecSubVec, true));
+			bos.Add ("vector*vector",   new BinOpStr (typeof (SCRIPTFLOAT), BinOpStrVecMulVec));
+			bos.Add ("vector%vector",   new BinOpStr (typeof (LSL_Vector),  BinOpStrVecModVec, true));
 
-			bos.Add ("vector*float",    new BinOpStr (typeof (LSL_Vector), BinOpStrVecMulFloat, true));
-			bos.Add ("float*vector",    new BinOpStr (typeof (LSL_Vector), BinOpStrFloatMulVec));
-			bos.Add ("vector/float",    new BinOpStr (typeof (LSL_Vector), BinOpStrVecDivFloat, true));
+			bos.Add ("vector*float",    new BinOpStr (typeof (LSL_Vector),  BinOpStrVecMulFloat, true));
+			bos.Add ("float*vector",    new BinOpStr (typeof (LSL_Vector),  BinOpStrFloatMulVec));
+			bos.Add ("vector/float",    new BinOpStr (typeof (LSL_Vector),  BinOpStrVecDivFloat, true));
 
-			bos.Add ("vector*integer",  new BinOpStr (typeof (LSL_Vector), BinOpStrVecMulInt, true));
-			bos.Add ("integer*vector",  new BinOpStr (typeof (LSL_Vector), BinOpStrIntMulVec));
-			bos.Add ("vector/integer",  new BinOpStr (typeof (LSL_Vector), BinOpStrVecDivInt, true));
+			bos.Add ("vector*integer",  new BinOpStr (typeof (LSL_Vector),  BinOpStrVecMulInt, true));
+			bos.Add ("integer*vector",  new BinOpStr (typeof (LSL_Vector),  BinOpStrIntMulVec));
+			bos.Add ("vector/integer",  new BinOpStr (typeof (LSL_Vector),  BinOpStrVecDivInt, true));
 
-			bos.Add ("vector*rotation", new BinOpStr (typeof (LSL_Vector), BinOpStrVecMulRot, true));
-			bos.Add ("vector/rotation", new BinOpStr (typeof (LSL_Vector), BinOpStrVecDivRot, true));
+			bos.Add ("vector*rotation", new BinOpStr (typeof (LSL_Vector),  BinOpStrVecMulRot, true));
+			bos.Add ("vector/rotation", new BinOpStr (typeof (LSL_Vector),  BinOpStrVecDivRot, true));
 		}
 
 		/**
@@ -1180,7 +1174,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 *        Needed to pick up functionality defined by overloaded operators of LSL_ types.
 		 *        They need to be marked public or runtime says they are inaccessible.
 		 */
-		public static LSL_List MethListAddFloat (LSL_List left, float right)
+		public static LSL_List MethListAddFloat (LSL_List left, SCRIPTFLOAT right)
 		{
 			return left + right;
 		}
@@ -1215,7 +1209,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			return left + right;
 		}
 
-		public static LSL_List MethFloatAddList (float left, LSL_List right)
+		public static LSL_List MethFloatAddList (SCRIPTFLOAT left, LSL_List right)
 		{
 			return (LSL_Float)left + right;
 		}
@@ -1305,9 +1299,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			return left - right;
 		}
 
-		public static float MethVecMulVec (LSL_Vector left, LSL_Vector right)
+		public static SCRIPTFLOAT MethVecMulVec (LSL_Vector left, LSL_Vector right)
 		{
-			return (float)(left * right).value;
+			return (SCRIPTFLOAT)(left * right).value;
 		}
 
 		public static LSL_Vector MethVecModVec (LSL_Vector left, LSL_Vector right)
@@ -1315,17 +1309,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			return left % right;
 		}
 
-		public static LSL_Vector MethVecMulFloat (LSL_Vector left, float right)
+		public static LSL_Vector MethVecMulFloat (LSL_Vector left, SCRIPTFLOAT right)
 		{
 			return left * right;
 		}
 
-		public static LSL_Vector MethFloatMulVec (float left, LSL_Vector right)
+		public static LSL_Vector MethFloatMulVec (SCRIPTFLOAT left, LSL_Vector right)
 		{
 			return left * right;
 		}
 
-		public static LSL_Vector MethVecDivFloat (LSL_Vector left, float right)
+		public static LSL_Vector MethVecDivFloat (LSL_Vector left, SCRIPTFLOAT right)
 		{
 			return left / right;
 		}

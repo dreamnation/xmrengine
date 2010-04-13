@@ -3,13 +3,7 @@
  *  All rights reserved.                           *
 \***************************************************/
 
-using LSL_Float = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLFloat;
-using LSL_Integer = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLInteger;
-using LSL_Key = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
-using LSL_List = OpenSim.Region.ScriptEngine.Shared.LSL_Types.list;
-using LSL_Rotation = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Quaternion;
-using LSL_String = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
-using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
+#include "lsltypes.h"
 
 using Mono.Tasklets;
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
@@ -231,6 +225,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		public void Emit (OpCode opcode, double value)
 		{
+			if (opcode != OpCodes.Ldc_R8) {
+				throw new Exception ("bad opcode " + opcode.ToString ());
+			}
 			objWriter.Write ((byte)ScriptMyILGenCode.EmitDouble);
 			WriteOpCode (opcode);
 			objWriter.Write (value);
@@ -238,6 +235,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		public void Emit (OpCode opcode, float value)
 		{
+			if (opcode != OpCodes.Ldc_R4) {
+				throw new Exception ("bad opcode " + opcode.ToString ());
+			}
 			objWriter.Write ((byte)ScriptMyILGenCode.EmitFloat);
 			WriteOpCode (opcode);
 			objWriter.Write (value);
@@ -604,6 +604,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						OpCode opCode = ReadOpCode (objReader);
 						double value  = objReader.ReadDouble ();
 
+						if (opCode != OpCodes.Ldc_R8) {
+							throw new Exception ("bad opcode " + opCode.ToString ());
+						}
 						ilGen.Emit (opCode, value);
 
 						LinePrefix (offset, dbg, ilGenArg, opCode);
@@ -616,6 +619,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						OpCode opCode = ReadOpCode (objReader);
 						float value   = objReader.ReadSingle ();
 
+						if (opCode != OpCodes.Ldc_R4) {
+							throw new Exception ("bad opcode " + opCode.ToString ());
+						}
 						ilGen.Emit (opCode, value);
 
 						LinePrefix (offset, dbg, ilGenArg, opCode);

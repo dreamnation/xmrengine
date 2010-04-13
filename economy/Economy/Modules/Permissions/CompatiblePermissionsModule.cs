@@ -327,6 +327,8 @@ namespace Careminster.Modules.Permissions
 
             if ((task.OwnerID == task.GroupID) && presence.ControllingClient.IsGroupMember(task.GroupID))
                 objflags |= (uint)PrimFlags.ObjectGroupOwned;
+            else if (task.OwnerID != UUID.Zero)
+                objflags |= (uint)PrimFlags.ObjectAnyOwner;
 
             return ApplyObjectModifyMasks(task.EveryoneMask, objflags);
         }
@@ -578,7 +580,7 @@ namespace Careminster.Modules.Permissions
 
             private bool CanDeleteObject(UUID objectID, UUID deleter, Scene scene)
             {
-                return GenericObjectPermission(deleter, objectID, true);
+                return GenericObjectPermission(deleter, objectID, false);
             }
 
             private bool CanEditObject(UUID objectID, UUID editorID, Scene scene)
