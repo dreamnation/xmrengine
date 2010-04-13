@@ -25,14 +25,9 @@ using OpenSim.Region.ScriptEngine.Shared.Api;
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 using OpenSim.Region.ScriptEngine.XMREngine;
 using OpenSim.Region.Framework.Scenes;
-using LSL_Float = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLFloat;
-using LSL_Integer = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLInteger;
-using LSL_Key = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
-using LSL_List = OpenSim.Region.ScriptEngine.Shared.LSL_Types.list;
-using LSL_Rotation = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Quaternion;
-using LSL_String = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
-using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
 using log4net;
+
+#include "lsltypes.h"
 
 // This class exists in the main app domain
 //
@@ -45,6 +40,36 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         BEAPI,
         SIZE
     };
+
+    /**
+     * @brief Which queue it is in as far as running is concerned,
+     *        ie, m_StartQueue, m_YieldQueue, m_SleepQueue, etc.
+     * Allowed transitions:
+     *   Starts in CONSTRUCT when constructed
+     *   CONSTRUCT->ONSTARTQ          : only by thread that constructed it
+     *   IDLE->ONSTARTQ,RESETTING     : by any thread but must have m_QueueLock when transitioning
+     *   ONSTARTQ->RUNNING,RESETTING  : only by thread that removed it from m_StartQueue
+     *   ONYIELDQ->RUNNING,RESETTING  : only by thread that removed it from m_YieldQueue
+     *   ONSLEEPQ->ONYIELDQ,RESETTING : only by thread that removed it from m_SleepQueue
+     *   RUNNING->whatever1           : only by thread that transitioned it to RUNNING
+     *                                  whatever1 = IDLE,ONSLEEPQ,ONYIELDQ,ONSTARTQ,SUSPENDED,FINISHED
+     *   FINSHED->whatever2           : only by thread that transitioned it to FINISHED
+     *                                  whatever2 = IDLE,ONSTARTQ,DISPOSED
+     *   SUSPENDED->ONSTARTQ          : by any thread (NOT YET IMPLEMENTED, should be under some kind of lock?)
+     *   RESETTING->ONSTARTQ          : only by the thread that transitioned it to RESETTING
+     */
+    public enum XMRInstState {
+        CONSTRUCT,  // it is being constructed
+        IDLE,       // nothing happening (finished last event and m_EventQueue is empty)
+        ONSTARTQ,   // inserted on m_Engine.m_StartQueue
+        RUNNING,    // currently being executed by RunOne()
+        ONSLEEPQ,   // inserted on m_Engine.m_SleepQueue
+        ONYIELDQ,   // inserted on m_Engine.m_YieldQueue
+        FINISHED,   // just finished handling an event
+        SUSPENDED,  // m_SuspendCount > 0
+        RESETTING,  // being reset via external call
+        DISPOSED    // has been disposed
+    }
 
     public partial class XMRInstance : IDisposable
     {
@@ -67,6 +92,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private static Dictionary<UUID, ScriptObjCode> m_CompiledScriptObjCode = new Dictionary<UUID, ScriptObjCode>();
         private static Dictionary<UUID, int> m_CompiledScriptRefCount = new Dictionary<UUID, int>();
 
+        public  XMRInstance  m_NextInst;  // used by XMRInstQueue
+        public  XMRInstance  m_PrevInst;
+        public  XMRInstState m_IState;
+
         public  SceneObjectPart m_Part = null;
         public  uint m_LocalID = 0;
         public  TaskInventoryItem m_Item = null;
@@ -80,15 +109,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private ScriptObjCode m_ObjCode;
         private bool m_PostOnRez;
         private DetectParams[] m_DetectParams = null;
-        private bool m_Reset = false;
         private bool m_Die = false;
         private int m_StartParam = 0;
         private StateSource m_StateSource;
-        private string m_DescName;
-        private bool m_DebugFlag = false;
+        public  string m_DescName;
+        private bool[] m_HaveEventHandlers;
         private UIntPtr m_StackSize;
         private ArrayList m_CompilerErrors;
         private DateTime m_LastRanAt = DateTime.MinValue;
+        private string m_RunOnePhase = "hasn't run";
+        private string m_CheckRunPhase = "hasn't checked";
+        private int m_CheckRunLine = 0;
+        public  int m_InstEHEvent  = 0;  // number of events dequeued (StartEventHandler called)
+        public  int m_InstEHSlice  = 0;  // number of times handler timesliced (ResumeEx called)
+        public  int m_CPUTime      = 0;  // accumulated CPU time (milliseconds)
 
         // If code needs to have both m_QueueLock and m_RunLock,
         // be sure to lock m_RunLock first then m_QueueLock, as
@@ -97,17 +131,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         // to call API routines that queue events back to the script.
         // If we just had one lock, then the queuing would deadlock.
 
-        // guards m_EventQueue, m_TimerQueued, m_Running
-        private Object m_QueueLock = new Object();
+        // guards m_EventQueue, m_EventCounts, m_Running
+        public Object m_QueueLock = new Object();
 
         // true iff allowed to accept new events
         private bool m_Running = true;
 
         // queue of events that haven't been acted upon yet
-        private Queue<EventParams> m_EventQueue = new Queue<EventParams>();
+        public Queue<EventParams> m_EventQueue = new Queue<EventParams>();
 
-        // true iff m_EventQueue contains a timer() event
-        private bool m_TimerQueued = false;
+        // number of events of each code currently in m_EventQueue.
+        private int[] m_EventCounts = new int[(int)ScriptEventCode.Size];
 
 
         // locked whilst running on the microthread stack (or about to run on it or just ran on it)
@@ -117,7 +151,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private int m_SuspendCount = 0;
 
         // don't run any of script until this time
-        private DateTime m_SuspendUntil = DateTime.MinValue;
+        public DateTime m_SleepUntil = DateTime.MinValue;
 
         private Dictionary<string,IScriptApi> m_Apis =
                 new Dictionary<string,IScriptApi>();
@@ -145,9 +179,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * and are found in ScriptObjCode.numGblArrays, .numGblFloats, etc.
          */
         public XMR_Array[]    gblArrays;
-        public float[]        gblFloats;
+        public SCRIPTFLOAT[]  gblFloats;
         public int[]          gblIntegers;
         public LSL_List[]     gblLists;
+        public object[]       gblObjects;
         public LSL_Rotation[] gblRotations;
         public string[]       gblStrings;
         public LSL_Vector[]   gblVectors;
@@ -217,7 +252,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /*
          * Makes sure migration data version is same on both ends.
          */
-        public static readonly byte migrationVersion = 4;
+        public static readonly byte migrationVersion = 6;
 
         /**
          * @brief types of data we serialize

@@ -31,70 +31,66 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 	public class ScriptReduce {
 
-		private static Dictionary<Type, int> precedence = null;
+		private static Dictionary<Type, int> precedence = PrecedenceInit ();
 
 		/**
-		 * @brief initialize operator precedence table
-		 * @returns with 'precedence' initialized
+		 * @brief Initialize operator precedence table
+		 * @returns with precedence table pointer
 		 */
-		private static void PrecedenceInit ()
+		private static Dictionary<Type, int> PrecedenceInit ()
 		{
-			if (precedence == null) {
-				Dictionary<Type, int> p = new Dictionary<Type, int> ();
+			Dictionary<Type, int> p = new Dictionary<Type, int> ();
 
-				// http://www.lslwiki.net/lslwiki/wakka.php?wakka=operators
+			// http://www.lslwiki.net/lslwiki/wakka.php?wakka=operators
 
-				p.Add (typeof (TokenKwComma),   30);
+			p.Add (typeof (TokenKwComma),   30);
 
-				p.Add (typeof (TokenKwAsnLSh),  50);
-				p.Add (typeof (TokenKwAsnRSh),  50);
-				p.Add (typeof (TokenKwAsnAdd),  50);
-				p.Add (typeof (TokenKwAsnAnd),  50);
-				p.Add (typeof (TokenKwAsnSub),  50);
-				p.Add (typeof (TokenKwAsnMul),  50);
-				p.Add (typeof (TokenKwAsnDiv),  50);
-				p.Add (typeof (TokenKwAsnMod),  50);
-				p.Add (typeof (TokenKwAsnOr),   50);
-				p.Add (typeof (TokenKwAsnXor),  50);
-				p.Add (typeof (TokenKwAssign),  50);
+			p.Add (typeof (TokenKwAsnLSh),  50);
+			p.Add (typeof (TokenKwAsnRSh),  50);
+			p.Add (typeof (TokenKwAsnAdd),  50);
+			p.Add (typeof (TokenKwAsnAnd),  50);
+			p.Add (typeof (TokenKwAsnSub),  50);
+			p.Add (typeof (TokenKwAsnMul),  50);
+			p.Add (typeof (TokenKwAsnDiv),  50);
+			p.Add (typeof (TokenKwAsnMod),  50);
+			p.Add (typeof (TokenKwAsnOr),   50);
+			p.Add (typeof (TokenKwAsnXor),  50);
+			p.Add (typeof (TokenKwAssign),  50);
 
-				p.Add (typeof (TokenKwOrOr),   100);
+			p.Add (typeof (TokenKwOrOr),   100);
 
-				p.Add (typeof (TokenKwAndAnd), 120);
+			p.Add (typeof (TokenKwAndAnd), 120);
 
-				p.Add (typeof (TokenKwOr),     140);
+			p.Add (typeof (TokenKwOr),     140);
 
-				p.Add (typeof (TokenKwXor),    160);
+			p.Add (typeof (TokenKwXor),    160);
 
-				p.Add (typeof (TokenKwAnd),    180);
+			p.Add (typeof (TokenKwAnd),    180);
 
-				p.Add (typeof (TokenKwCmpEQ),  200);
-				p.Add (typeof (TokenKwCmpNE),  200);
+			p.Add (typeof (TokenKwCmpEQ),  200);
+			p.Add (typeof (TokenKwCmpNE),  200);
 
-				p.Add (typeof (TokenKwCmpLT),  240);
-				p.Add (typeof (TokenKwCmpLE),  240);
-				p.Add (typeof (TokenKwCmpGT),  240);
-				p.Add (typeof (TokenKwCmpGE),  240);
+			p.Add (typeof (TokenKwCmpLT),  240);
+			p.Add (typeof (TokenKwCmpLE),  240);
+			p.Add (typeof (TokenKwCmpGT),  240);
+			p.Add (typeof (TokenKwCmpGE),  240);
 
-				p.Add (typeof (TokenKwRSh),    260);
-				p.Add (typeof (TokenKwLSh),    260);
+			p.Add (typeof (TokenKwRSh),    260);
+			p.Add (typeof (TokenKwLSh),    260);
 
-				p.Add (typeof (TokenKwAdd),    280);
-				p.Add (typeof (TokenKwSub),    280);
+			p.Add (typeof (TokenKwAdd),    280);
+			p.Add (typeof (TokenKwSub),    280);
 
-				p.Add (typeof (TokenKwMul),    320);
-				p.Add (typeof (TokenKwDiv),    320);
-				p.Add (typeof (TokenKwMod),    320);
+			p.Add (typeof (TokenKwMul),    320);
+			p.Add (typeof (TokenKwDiv),    320);
+			p.Add (typeof (TokenKwMod),    320);
 
-				//MB();
-				precedence = p;
-			}
-			//MB();
+			return p;
 		}
 
 		/**
 		 * @brief Reduce raw token stream to a single script token.
-		 *        Performs little semantic testing, ie, undefined variables, etc.
+		 *        Performs a little semantic testing, ie, undefined variables, etc.
 		 * @param tokenBegin = points to a TokenBegin
 		 *                     followed by raw tokens
 		 *                     and last token is a TokenEnd
@@ -103,7 +99,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		public static TokenScript Reduce (TokenBegin tokenBegin)
 		{
-			PrecedenceInit ();
 			return new ScriptReduce (tokenBegin.nextToken).tokenScript;
 		}
 
@@ -155,7 +150,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						 * <type> <name> ;
 						 * global variable definition, default initialization
 						 */
-						TokenDeclVar tokenDeclVar = new TokenDeclVar (tokenType);
+						TokenDeclVar tokenDeclVar = new TokenDeclVar (tokenType, null);
 						tokenDeclVar.type = tokenType;
 						tokenDeclVar.name = tokenName;
 						token = token.nextToken;
@@ -172,7 +167,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						 * <type> <name> =
 						 * global variable definition, default initialization
 						 */
-						TokenDeclVar tokenDeclVar = new TokenDeclVar (tokenName);
+						TokenDeclVar tokenDeclVar = new TokenDeclVar (tokenName, null);
 						tokenDeclVar.type = tokenType;
 						tokenDeclVar.name = tokenName;
 						token = token.nextToken;
@@ -745,7 +740,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			/*
 			 * Build basic encapsulating token with type and name.
 			 */
-			TokenDeclVar tokenDeclVar = new TokenDeclVar (token);
+			TokenDeclVar tokenDeclVar = new TokenDeclVar (token, currentDeclFunc);
 			tokenDeclVar.type = (TokenType)token;
 			token = token.nextToken;
 			if (!(token is TokenName)) {
@@ -903,10 +898,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				if (binOp == null) return null;
 
 				/*
-				 * If there are stacked operators of higher precedence than new one,
+				 * If there are stacked operators of higher or same precedence than new one,
 				 * perform their computation then push result back on operand stack.
+				 *
+				 *  higher or same = left-to-right application of operators
+				 *                   eg, a - b - c becomes (a - b) - c
+				 *
+				 *  higher precedence = right-to-left application of operators
+				 *                      eg, a - b - c becomes a - (b - c)
 				 */
-				while ((binOps != null) && (binOps.preced > binOp.preced)) {
+				while ((binOps != null) && (binOps.preced >= binOp.preced)) {
 					TokenRValOpBin tokenRValOpBin = new TokenRValOpBin ((TokenRVal)operands.prevToken, binOps.token, operands);
 					tokenRValOpBin.prevToken = operands.prevToken.prevToken;
 					operands = tokenRValOpBin;
@@ -1237,10 +1238,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		private BinOp GetOperator (ref Token token)
 		{
-			if (precedence.ContainsKey (token.GetType ())) {
-				BinOp binOp  = new BinOp ();
-				binOp.token  = token;
-				binOp.preced = precedence[token.GetType()];
+			BinOp binOp = new BinOp ();
+			if (precedence.TryGetValue (token.GetType (), out binOp.preced)) {
+				binOp.token = token;
 				token = token.nextToken;
 				return binOp;
 			}
@@ -1447,6 +1447,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public bool changesState;            // contains a 'state' statement somewhere
 		public Dictionary<string, TokenName> calledFuncs = new Dictionary<string, TokenName> ();
 		                                     // all functions called by this function
+		public LinkedList<TokenDeclVar> localVars = new LinkedList<TokenDeclVar> ();
+		                                     // all local variables declared by this function
+		                                     // - doesn't include argument variables
 
 		public ScriptMyILGen ilGen;          // codegen stores emitted code here
 
@@ -1487,7 +1490,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		                        //  true: var was defined at top of block
 		                        //        just set initialization value
 
-		public TokenDeclVar (Token original) : base (original) { }
+		public CompValu location;  // used by codegen to keep track of location
+
+		/**
+		 * @brief Set up a variable declaration statement token.
+		 * @param original = original source token that triggered definition
+		 *                   (for error messages)
+		 * @param func = null: global variable
+		 *               else: local to the given function
+		 */
+		public TokenDeclVar (Token original, TokenDeclFunc func) : base (original)
+		{
+			if (func != null) {
+				func.localVars.AddLast (this);
+			}
+		}
 
 		public override string ToString ()
 		{

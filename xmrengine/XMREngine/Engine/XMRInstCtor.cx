@@ -25,17 +25,10 @@ using OpenSim.Region.ScriptEngine.Shared.Api;
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 using OpenSim.Region.ScriptEngine.XMREngine;
 using OpenSim.Region.Framework.Scenes;
-using LSL_Float = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLFloat;
-using LSL_Integer = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLInteger;
-using LSL_Key = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
-using LSL_List = OpenSim.Region.ScriptEngine.Shared.LSL_Types.list;
-using LSL_Rotation = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Quaternion;
-using LSL_String = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
-using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
 using log4net;
 
-// This class exists in the main app domain
-//
+#include "lsltypes.h"
+
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
     public partial class XMRInstance
@@ -91,9 +84,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Set up a descriptive name string for debug messages.
              */
-            ////m_DescName  = MMRCont.HexString(MMRCont.ObjAddr(this)).PadLeft(8, '0');
-            m_DescName = part.Name + ":" + item.Name;
-            m_DebugFlag = part.Name.StartsWith("Time Since Startup");
+            m_DescName  = MMRCont.HexString(MMRCont.ObjAddr(this)).PadLeft(8, '0') + " ";
+            m_DescName += part.Name + ":" + item.Name;
+
+            /*
+             * Not in any XMRInstQueue, and it is being constructed so don't
+             * try to run it yet.
+             */
+            m_NextInst = this;
+            m_PrevInst = this;
+            m_IState   = XMRInstState.CONSTRUCT;
 
             /*
              * Get object loaded, compiling script and reading .state file as
@@ -128,9 +128,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             /*
-             * Declare which events the script can handle.
+             * Declare which events the script's current state can handle.
              */
-            m_Part.SetScriptEvents(m_ItemID, GetStateEventFlags(0));
+            m_Part.SetScriptEvents(m_ItemID, GetStateEventFlags(stateCode));
         }
 
         // Get script DLL loaded in memory and all ready to run,
@@ -339,6 +339,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                 // Failed to load state, delete bad .state file and reload
                 // instance so we get a script at default state.
+                m_log.Info("[XMREngine]: attempting reset " + m_DescName);
                 File.Delete(m_StateFileName);
                 return TryToLoad(objCode);
             }
@@ -358,12 +359,25 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             this.objCode      = objCode;
 
             this.gblArrays    = new XMR_Array[objCode.numGblArrays];
-            this.gblFloats    = new float[objCode.numGblFloats];
+            this.gblFloats    = new SCRIPTFLOAT[objCode.numGblFloats];
             this.gblIntegers  = new int[objCode.numGblIntegers];
             this.gblLists     = new LSL_List[objCode.numGblLists];
+            this.gblObjects   = new object[objCode.numGblObjects];
             this.gblRotations = new LSL_Rotation[objCode.numGblRotations];
             this.gblStrings   = new string[objCode.numGblStrings];
             this.gblVectors   = new LSL_Vector[objCode.numGblVectors];
+
+            /*
+             * Script can handle these event codes.
+             */
+            m_HaveEventHandlers = new bool[objCode.scriptEventHandlerTable.GetLength(1)];
+            for (int i = objCode.scriptEventHandlerTable.GetLength(0); -- i >= 0;) {
+                for (int j = objCode.scriptEventHandlerTable.GetLength(1); -- j >= 0;) {
+                    if (objCode.scriptEventHandlerTable[i,j] != null) {
+                        m_HaveEventHandlers[j] = true;
+                    }
+                }
+            }
 
             /*
              * Script must leave this much stack remaining on calls to CheckRun().
@@ -379,6 +393,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             this.heapLimit -=  4 * objCode.numGblFloats;
             this.heapLimit -=  4 * objCode.numGblIntegers;
             this.heapLimit -= 16 * objCode.numGblLists;
+            this.heapLimit -= 16 * objCode.numGblObjects;
             this.heapLimit -= 16 * objCode.numGblRotations;
             this.heapLimit -= 16 * objCode.numGblStrings;
             this.heapLimit -= 12 * objCode.numGblVectors;
@@ -498,21 +513,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             XmlElement pluginN = (XmlElement)scriptStateN.SelectSingleNode("Plugins");
             Object[] pluginData = ExtractXMLObjectArray(pluginN, "plugin");
 
-            // See if we are supposed to send an 'on_rez' event
-            if (m_PostOnRez)
-            {
-                PostEvent(new EventParams("on_rez",
-                        new Object[] { m_StartParam }, zeroDetectParams));
-            }
-
-            // Maybe an 'attach' event too
-            if (m_StateSource == StateSource.AttachedRez)
-            {
-                PostEvent(new EventParams("attach",
-                        new object[] { m_Part.AttachedAvatar.ToString() }, 
-                        zeroDetectParams));
-            }
-
             // Script's global variables and stack contents
             XmlElement snapshotN = 
                     (XmlElement)scriptStateN.SelectSingleNode("Snapshot");
@@ -530,14 +530,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     pluginData);
             m_DetectParams = detParams;
             m_EventQueue   = eventQueue;
-            m_TimerQueued  = false;
+            for (int i = m_EventCounts.Length; -- i >= 0;) m_EventCounts[i] = 0;
             foreach (EventParams evt in m_EventQueue)
             {
-                if (evt.EventName == "timer")
-                {
-                    m_TimerQueued = true;
-                    break;
-                }
+                ScriptEventCode eventCode = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode),
+                                                                         evt.EventName);
+                m_EventCounts[(int)eventCode] ++;
+            }
+
+            // See if we are supposed to send an 'on_rez' event
+            if (m_PostOnRez)
+            {
+                PostEvent(new EventParams("on_rez",
+                        new Object[] { m_StartParam }, zeroDetectParams));
+            }
+
+            // Maybe an 'attach' event too
+            if (m_StateSource == StateSource.AttachedRez)
+            {
+                PostEvent(new EventParams("attach",
+                        new object[] { m_Part.AttachedAvatar.ToString() }, 
+                        zeroDetectParams));
             }
         }
 
@@ -772,9 +785,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private void MigrateGlobalsIn (System.IO.Stream stream)
         {
             this.gblArrays    = (XMR_Array[])   RecvObjArray (stream, typeof (XMR_Array));
-            this.gblFloats    = (float[])       RecvObjArray (stream, typeof (float));
+            this.gblFloats    = (SCRIPTFLOAT[]) RecvObjArray (stream, typeof (SCRIPTFLOAT));
             this.gblIntegers  = (int[])         RecvObjArray (stream, typeof (int));
             this.gblLists     = (LSL_List[])    RecvObjArray (stream, typeof (LSL_List));
+            this.gblObjects   = (object[])      RecvObjArray (stream, typeof (object));
             this.gblRotations = (LSL_Rotation[])RecvObjArray (stream, typeof (LSL_Rotation));
             this.gblStrings   = (string[])      RecvObjArray (stream, typeof (string));
             this.gblVectors   = (LSL_Vector[])  RecvObjArray (stream, typeof (LSL_Vector));

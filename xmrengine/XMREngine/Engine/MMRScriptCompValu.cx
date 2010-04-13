@@ -3,13 +3,6 @@
  *  All rights reserved.                           *
 \***************************************************/
 
-using LSL_Float = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLFloat;
-using LSL_Integer = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLInteger;
-using LSL_Key = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
-using LSL_List = OpenSim.Region.ScriptEngine.Shared.LSL_Types.list;
-using LSL_Rotation = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Quaternion;
-using LSL_String = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
-using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 using OpenSim.Region.ScriptEngine.XMREngine;
 using System;
@@ -17,6 +10,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Reflection.Emit;
+
+#include "lsltypes.h"
 
 /**
  * @brief Compute values used during code generation to keep track of where computed values are stored.
@@ -76,48 +71,43 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public abstract void PopPost (ScriptCodeGen scg);   // call this after pushing value to be popped
 	}
 
-	// The value is kept in an array element
+	// The value is kept in an (XMR_Array) array element
 	public class CompValuArEle : CompValu {
 		CompValu arr;
 		CompValu idx;
+		TokenTypeObject tto;
+
+		static MethodInfo getByKeyMethodInfo = typeof (XMR_Array).GetMethod ("GetByKey", 
+		                                                                     new Type[] { typeof (object) });
+		static MethodInfo setByKeyMethodInfo = typeof (XMR_Array).GetMethod ("SetByKey", 
+		                                                                     new Type[] { typeof (object),
+		                                                                                  typeof (object) });
 
 		public CompValuArEle (TokenType type, CompValu arr, CompValu idx) : base (type)
 		{
 			this.arr = arr;
 			this.idx = idx;
+			this.tto = new TokenTypeObject (this.type);
 		}
 		public override void PushVal (ScriptCodeGen scg)
 		{
-			arr.PushVal (scg);
-			idx.PushVal (scg);
-			if (type is TokenTypeFloat) {
-				scg.ilGen.Emit (OpCodes.Ldelem_R4);
-			} else if (type is TokenTypeInt) {
-				scg.ilGen.Emit (OpCodes.Ldelem_I4);
-			} else {
-				scg.ilGen.Emit (OpCodes.Ldelem, SysType());
-			}
+			arr.PushVal (scg);            // array
+			idx.PushVal (scg, this.tto);  // key
+			scg.ilGen.Emit (OpCodes.Call, getByKeyMethodInfo);
 		}
 		public override void PushByRef (ScriptCodeGen scg)
 		{
-			arr.PushVal (scg);
-			idx.PushVal (scg);
-			scg.ilGen.Emit (OpCodes.Ldelema, SysType());
+			scg.ErrorMsg (this.type, "array element not allowed here");
+			scg.ilGen.Emit (OpCodes.Ldnull);
 		}
 		public override void PopPre (ScriptCodeGen scg)
 		{
-			arr.PushVal (scg);
-			idx.PushVal (scg);
+			arr.PushVal (scg);            // array
+			idx.PushVal (scg, this.tto);  // key
 		}
 		public override void PopPost (ScriptCodeGen scg)
 		{
-			if (type is TokenTypeFloat) {
-				scg.ilGen.Emit (OpCodes.Stelem_R4);
-			} else if (type is TokenTypeInt) {
-				scg.ilGen.Emit (OpCodes.Stelem_I4);
-			} else {
-				scg.ilGen.Emit (OpCodes.Stelem, SysType());
-			}
+			scg.ilGen.Emit (OpCodes.Call, setByKeyMethodInfo);
 		}
 	}
 
@@ -187,9 +177,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 	// The value is a float constant
 	public class CompValuFloat : CompValu {
-		public float x;
+		public SCRIPTFLOAT x;
 
-		public CompValuFloat (TokenType type, float x) : base (type)
+		public CompValuFloat (TokenType type, SCRIPTFLOAT x) : base (type)
 		{
 			if (!(this.type is TokenTypeFloat)) {
 				this.type = new TokenTypeFloat (this.type);
@@ -198,7 +188,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		public override void PushVal (ScriptCodeGen scg)
 		{
-			scg.ilGen.Emit (OpCodes.Ldc_R4, x);
+			if (x is float) {
+				scg.ilGen.Emit (OpCodes.Ldc_R4, x);
+			} else if (x is double) {
+				scg.ilGen.Emit (OpCodes.Ldc_R8, x);
+			} else {
+				throw new Exception ("unknown type");
+			}
 		}
 		public override void PushByRef (ScriptCodeGen scg)
 		{
@@ -219,6 +215,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static FieldInfo gblFloatsFieldInfo    = typeof (XMRInstance).GetField ("gblFloats");
 		private static FieldInfo gblIntegersFieldInfo  = typeof (XMRInstance).GetField ("gblIntegers");
 		private static FieldInfo gblListsFieldInfo     = typeof (XMRInstance).GetField ("gblLists");
+		private static FieldInfo gblObjectsFieldInfo   = typeof (XMRInstance).GetField ("gblObjects");
 		private static FieldInfo gblRotationsFieldInfo = typeof (XMRInstance).GetField ("gblRotations");
 		private static FieldInfo gblStringsFieldInfo   = typeof (XMRInstance).GetField ("gblStrings");
 		private static FieldInfo gblVectorsFieldInfo   = typeof (XMRInstance).GetField ("gblVectors");
@@ -240,6 +237,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (type is TokenTypeList) {
 				this.field = gblListsFieldInfo;
 				this.index = scriptObjCode.numGblLists ++;
+			}
+			if (type is TokenTypeObject) {
+				this.field = gblObjectsFieldInfo;
+				this.index = scriptObjCode.numGblObjects ++;
 			}
 			if (type is TokenTypeRot) {
 				this.field = gblRotationsFieldInfo;
@@ -263,7 +264,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			scg.ilGen.Emit (OpCodes.Ldfld, field);       // scriptWrapper.gbl<Type>s
 			scg.PushConstantI4 (index);
 			if (type is TokenTypeFloat) {
-				scg.ilGen.Emit (OpCodes.Ldelem_R4);
+				if (typeof (SCRIPTFLOAT) == typeof (float)) {
+					scg.ilGen.Emit (OpCodes.Ldelem_R4);
+				} else if (typeof (SCRIPTFLOAT) == typeof (double)) {
+					scg.ilGen.Emit (OpCodes.Ldelem_R8);
+				} else {
+					throw new Exception ("unknown type");
+				}
 			} else if (type is TokenTypeInt) {
 				scg.ilGen.Emit (OpCodes.Ldelem_I4);
 			} else {
@@ -286,7 +293,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public override void PopPost (ScriptCodeGen scg)
 		{
 			if (type is TokenTypeFloat) {
-				scg.ilGen.Emit (OpCodes.Stelem_R4);
+				if (typeof (SCRIPTFLOAT) == typeof (float)) {
+					scg.ilGen.Emit (OpCodes.Stelem_R4);
+				} else if (typeof (SCRIPTFLOAT) == typeof (double)) {
+					scg.ilGen.Emit (OpCodes.Stelem_R8);
+				} else {
+					throw new Exception ("unknown type");
+				}
 			} else if (type is TokenTypeInt) {
 				scg.ilGen.Emit (OpCodes.Stelem_I4);
 			} else {
@@ -344,7 +357,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public CompValu z;
 		public CompValu w;
 
-		private static ConstructorInfo lslRotConstructorInfo = typeof (LSL_Rotation).GetConstructor (new Type[] { typeof (float), typeof (float), typeof (float), typeof (float) });
+		private static ConstructorInfo lslRotConstructorInfo = 
+				typeof (LSL_Rotation).GetConstructor (new Type[] { typeof (SCRIPTFLOAT), 
+				                                                   typeof (SCRIPTFLOAT), 
+				                                                   typeof (SCRIPTFLOAT), 
+				                                                   typeof (SCRIPTFLOAT) });
 
 		public CompValuRot (TokenType type, CompValu x, CompValu y, CompValu z, CompValu w) :
 				base (type)
@@ -490,7 +507,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public CompValu y;
 		public CompValu z;
 
-		private static ConstructorInfo lslVecConstructorInfo = typeof (LSL_Vector).GetConstructor (new Type[] { typeof (float), typeof (float), typeof (float) });
+		private static ConstructorInfo lslVecConstructorInfo = 
+				typeof (LSL_Vector).GetConstructor (new Type[] { typeof (SCRIPTFLOAT), 
+				                                                 typeof (SCRIPTFLOAT), 
+				                                                 typeof (SCRIPTFLOAT) });
 
 		public CompValuVec (TokenType type, CompValu x, CompValu y, CompValu z) : base (type)
 		{

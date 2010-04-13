@@ -25,6 +25,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public int numGblFloats;        // number of float global variables it has
 		public int numGblIntegers;      // number of integer global variables it has
 		public int numGblLists;         // number of list global variables it has
+		public int numGblObjects;       // number of object global variables it has
 		public int numGblRotations;     // number of rotation global variables it has
 		public int numGblStrings;       // number of string global variables it has
 		public int numGblVectors;       // number of vector global variables it has

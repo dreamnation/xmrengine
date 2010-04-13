@@ -25,14 +25,9 @@ using OpenSim.Region.ScriptEngine.Shared.Api;
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 using OpenSim.Region.ScriptEngine.XMREngine;
 using OpenSim.Region.Framework.Scenes;
-using LSL_Float = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLFloat;
-using LSL_Integer = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLInteger;
-using LSL_Key = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
-using LSL_List = OpenSim.Region.ScriptEngine.Shared.LSL_Types.list;
-using LSL_Rotation = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Quaternion;
-using LSL_String = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
-using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
 using log4net;
+
+#include "lsltypes.h"
 
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
@@ -70,6 +65,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             suspendOnCheckRunHold = true;
             lock (m_RunLock)
             {
+                CheckRunLockInvariants(true);
+
                 /*
                  * Get copy of script stack in relocateable form.
                  */
@@ -159,7 +156,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 /*
                  * Let script run again.
                  */
-                suspendOnCheckRunHold = true;
+                suspendOnCheckRunHold = false;
+
+                CheckRunLockInvariants(true);
             }
 
             /*
@@ -236,6 +235,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             SendObjArray (stream, sendObj, this.gblFloats);
             SendObjArray (stream, sendObj, this.gblIntegers);
             SendObjArray (stream, sendObj, this.gblLists);
+            SendObjArray (stream, sendObj, this.gblObjects);
             SendObjArray (stream, sendObj, this.gblRotations);
             SendObjArray (stream, sendObj, this.gblStrings);
             SendObjArray (stream, sendObj, this.gblVectors);
@@ -264,7 +264,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 this.migrateOutWriter.Write ((int)graph);
             } else if (graph is LSL_Float) {
                 this.migrateOutWriter.Write ((byte)Ser.LSLFLOAT);
-                this.migrateOutWriter.Write ((float)((LSL_Float)graph).value);
+                this.migrateOutWriter.Write ((SCRIPTFLOAT)((LSL_Float)graph).value);
             } else if (graph is LSL_Integer) {
                 this.migrateOutWriter.Write ((byte)Ser.LSLINT);
                 this.migrateOutWriter.Write ((int)((LSL_Integer)graph).value);
