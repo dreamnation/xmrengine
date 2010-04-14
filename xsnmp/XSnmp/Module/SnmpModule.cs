@@ -169,17 +169,19 @@ namespace Careminster.Modules.Snmp
             IConfig snmpConfig = m_Config.Configs["Snmp"];
         }
 
-        public void Critical (string simname, string message)
+        public void Critical(string message, Scene scene)
         {
-            Trap((int)gravity.crital, simname, message);
+            Trap((int)gravity.crital, message, scene);
         }
-        public void Warning(string simname, string message)
+
+        public void Warning(string message, Scene scene)
         {
-            Trap((int)gravity.warning, simname, message);
+            Trap((int)gravity.warning, message, scene);
         }
-        public void Major(string simname, string message)
+
+        public void Major(string message, Scene scene)
         {
-            Trap((int)gravity.major, simname, message);
+            Trap((int)gravity.major, message, scene);
         }
 
         /**
@@ -189,13 +191,13 @@ namespace Careminster.Modules.Snmp
                  * @param Message = Message sent in the event
                  * @return : void 
                  */
-        public void Trap(int code,string simname,string Message)
+        public void Trap(int code, string Message, Scene scene)
         {
             
             Variable vmes = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 3, 1, 1000,2 }),
                                       new OctetString(Message));
             Variable vsim = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 3, 1, 1000, 1 }),
-                          new OctetString(simname));
+                          new OctetString(scene.RegionInfo.RegionName));
 
             List<Variable> vList = new List<Variable>();
             vList.Add(vmes);
@@ -224,11 +226,11 @@ namespace Careminster.Modules.Snmp
          * @return : void 
          */
 
-        public void ColdStart(int step , string simname)
+        public void ColdStart(int step, Scene scene)
         {
 
             Variable vsim = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 3, 1, 1000, 1 }),
-                                          new OctetString(simname));
+                                          new OctetString(scene.RegionInfo.RegionName));
             Variable vdata = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 3, 1, 1000, 1 }),
                                           new OctetString("Boot step "+step));
 
@@ -251,11 +253,11 @@ namespace Careminster.Modules.Snmp
             //m_log.DebugFormat("[XSnmp] Trap sent to {0}:{1} ", m_tempIp, m_tempPort);            
         }
 
-        public void Shutdown(int step, string simname)
+        public void Shutdown(int step, Scene scene)
         {
 
             Variable vsim = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 3, 1, 1000, 1 }),
-                                          new OctetString(simname));
+                                          new OctetString(scene.RegionInfo.RegionName));
             Variable vdata = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 3, 1, 1000, 1 }),
                                           new OctetString("Shutdown step " + step));
 
