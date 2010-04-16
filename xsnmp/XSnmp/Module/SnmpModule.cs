@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Net;
+using System.Threading;
 using log4net;
 using Nini.Config;
 using OpenSim.Framework;
@@ -16,7 +17,6 @@ using OpenSim.Region.CoreModules.Framework.EventQueue;
 using OpenMetaverse;
 using OpenMetaverse.StructuredData;
 using OpenSim.Region.Framework.Scenes;
-using OpenSim.Framework.Communications.Cache;
 using System.Data;
 using OpenSim.Services.Interfaces;
 using Lextm.SharpSnmpLib.Messaging;
@@ -59,7 +59,7 @@ namespace Careminster.Modules.Snmp
         // Snmp related stuf
         //
         //private TrapV1Message m_trap = new TrapV1Message(VersionCode.V1);
-        private List<IPEndPoint> m_nms = new List<IPEndPoint>;
+        private List<IPEndPoint> m_nms = new List<IPEndPoint>();
         private IPAddress m_ipLocal;
         
         private int m_port;
@@ -95,10 +95,10 @@ namespace Careminster.Modules.Snmp
             
             int m_tempPort = snmpConfig.GetInt("Port", 162);
             string m_tempIp = snmpConfig.GetString("IP", "127.0.0.1");
-            string nmslist = m_tempIp.Split(new char[] { ' ' });
+            string[] nmslist = m_tempIp.Split(new char[] { ' ' });
             foreach (string ip in nmslist)
             {
-                m_nms.Add(new IPEndPoint(IPAddress.Parse(ip), m_tempPort);
+                m_nms.Add(new IPEndPoint(IPAddress.Parse(ip), m_tempPort));
                 m_log.InfoFormat("[XSnmp] NMS set to {0}:{1} ", m_tempIp, m_tempPort);
             }
         }
@@ -210,7 +210,7 @@ namespace Careminster.Modules.Snmp
                                             0,
                                             vList);
             //
-            foreach (IpEndPoint ip in m_nms)
+            foreach (IPEndPoint ip in m_nms)
                 m_trap.Send(ip);
 
             // m_log.DebugFormat("[XSnmp] Trap sent to {0}:{1} ", m_tempIp, m_tempPort);            
@@ -245,7 +245,7 @@ namespace Careminster.Modules.Snmp
                                             0,
                                             vList);
             //
-            foreach (IpEndPoint ip in m_nms)
+            foreach (IPEndPoint ip in m_nms)
                 m_trap.Send(ip);
           
             
@@ -272,7 +272,7 @@ namespace Careminster.Modules.Snmp
                                             0,
                                             vList);
             //
-            foreach (IpEndPoint ip in m_nms)
+            foreach (IPEndPoint ip in m_nms)
                 m_trap.Send(ip);
 
 
