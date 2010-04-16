@@ -445,24 +445,42 @@ namespace Careminster.Modules.Groups
             }
         }
 
+        public GroupRecord GetGroupRecord(string GroupName)
+        {
+            MySqlCommand cmd = m_Connection.CreateCommand();
+
+            cmd.CommandText = "select GroupName, AllowPublish, MaturePublish,"+
+                    "Charter, FounderID, GroupPicture, MembershipFee, "+
+                    "OpenEnrollment, OwnerRoleID, ShowInList from groups "+
+                    "where GroupName = ?GroupName";
+            cmd.Parameters.AddWithValue("GroupName", GroupName);
+
+            return RealGetGroupRecord(cmd);
+        }
+
         public GroupRecord GetGroupRecord(UUID GroupID)
+        {
+            MySqlCommand cmd = m_Connection.CreateCommand();
+
+            cmd.CommandText = "select GroupName, AllowPublish, MaturePublish,"+
+                    "Charter, FounderID, GroupPicture, MembershipFee, "+
+                    "OpenEnrollment, OwnerRoleID, ShowInList from groups "+
+                    "where GroupID = ?GroupID";
+            cmd.Parameters.AddWithValue("GroupID", GroupID.ToString());
+
+            return RealGetGroupRecord(cmd);
+        }
+
+        private GroupRecord RealGetGroupRecord(MySqlCommand cmd)
         {
             lock(m_Connection)
             {
-                MySqlCommand cmd = m_Connection.CreateCommand();
-
-                cmd.CommandText = "select GroupName, AllowPublish, MaturePublish,"+
-                        "Charter, FounderID, GroupPicture, MembershipFee, "+
-                        "OpenEnrollment, OwnerRoleID, ShowInList from groups "+
-                        "where GroupID = ?GroupID";
-                cmd.Parameters.AddWithValue("GroupID", GroupID.ToString());
-
                 IDataReader r = ExecuteReader(cmd);
 
                 if (r.Read())
                 {
                     GroupRecord g = new GroupRecord();
-                    g.GroupID = GroupID;
+                    g.GroupID = new UUID(r["GroupID"].ToString());
                     g.GroupName = r["GroupName"].ToString();
                     g.AllowPublish = Convert.ToInt32(r["AllowPublish"]) > 0 ?
                             true : false;
@@ -2010,15 +2028,14 @@ Console.WriteLine("==> Session ID {0} UUID {1}", imSessionID.ToString(), id.ToSt
 
             foreach (Scene scene in m_Scenes)
             {
-                ScenePresence[] agents = scene.GetScenePresences();
-                foreach (ScenePresence p in agents)
+                scene.ForEachScenePresence(delegate(ScenePresence p)
                 {
                     if (p.IsChildAgent)
-                        continue;
+                        return;
                     IClientAPI client = p.ControllingClient;
                     if (client.IsGroupMember(GroupID))
                         client.RefreshGroupMembership();
-                }
+                });
             }
         }
     }

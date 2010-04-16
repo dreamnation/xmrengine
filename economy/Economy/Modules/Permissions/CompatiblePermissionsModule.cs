@@ -185,7 +185,7 @@ namespace Careminster.Modules.Permissions
             if (m_EstateManagerIsGod && IsEstateManager(user))
                 return true;
 
-            ScenePresence sp = m_scene.GetScenePresence(user);
+            ScenePresence sp = m_Scene.GetScenePresence(user);
             if (sp != null)
             {
                 if (sp.UserLevel >= 200)
