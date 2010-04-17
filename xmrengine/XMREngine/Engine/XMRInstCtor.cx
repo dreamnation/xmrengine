@@ -109,6 +109,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             suspendOnCheckRunTemp = false;
 
             /*
+             * Maybe we are doing checkpoint/restart stress test.
+             * Filling in m_CheckRunStressStream non-null is sufficient to enable test.
+             */
+            string envar = Environment.GetEnvironmentVariable("XMRCheckRunStressTest");
+            if ((envar != null) && ((envar[0] & 1) != 0)) {
+                m_CheckRunStressStream = new MemoryStream(4000);
+            }
+
+            /*
              * Set up list of API calls it has available.
              */
             beAPI = new ScriptBaseClass();
@@ -278,7 +287,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
             if (!File.Exists(m_StateFileName))
             {
-                m_Running = true;  // event processing is enabled
+                m_Running = true;                  // event processing is enabled
+                eventCode = ScriptEventCode.None;  // not processing any event
 
                 // default state_entry() must initialize global variables
                 doGblInit = true;

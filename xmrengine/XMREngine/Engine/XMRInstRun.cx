@@ -48,9 +48,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Ignore event if we don't even have such an handler.
              */
-            ScriptEventCode eventCode = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), 
+            ScriptEventCode evc = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), 
                                                                      evt.EventName);
-            if (!m_HaveEventHandlers[(int)eventCode]) {
+            if (!m_HaveEventHandlers[(int)evc]) {
                 return;
             }
 
@@ -87,12 +87,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * Only so many of each event type allowed to queue.
                  */
                 int maxAllowed = MAXEVENTQUEUE;
-                if (eventCode == ScriptEventCode.timer) maxAllowed = 1;
-                if (m_EventCounts[(int)eventCode] >= maxAllowed)
+                if (evc == ScriptEventCode.timer) maxAllowed = 1;
+                if (m_EventCounts[(int)evc] >= maxAllowed)
                 {
                     return;
                 }
-                m_EventCounts[(int)eventCode] ++;
+                m_EventCounts[(int)evc] ++;
 
                 /*
                  * Put event on end of instance's event queue.
@@ -177,9 +177,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
 
                 /*
+                 * Maybe we are stress-testing the checkpoint/restart stuff.
+                 */
+                if (m_CheckRunStressWrite)
+                {
+                    m_RunOnePhase = "restart stress test";
+                    m_LastRanAt = now;
+                    m_CheckRunStressOdd   = !m_CheckRunStressOdd;
+                    m_CheckRunStressStack = m_CheckRunStressOdd ? 1 : 2;
+                    e = microthread.StartEx ();  // calls Main() on microthread stack
+                }
+
+                /*
                  * Do some more of the last event if it didn't finish.
                  */
-                if (this.eventCode != ScriptEventCode.None)
+                else if (this.eventCode != ScriptEventCode.None)
                 {
                     m_RunOnePhase = "resume old event handler";
                     m_LastRanAt   = now;
@@ -195,7 +207,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 {
                     m_RunOnePhase = "lock event queue";
                     EventParams evt = null;
-                    ScriptEventCode eventCode = ScriptEventCode.None;
+                    ScriptEventCode evc = ScriptEventCode.None;
 
                     lock (m_QueueLock)
                     {
@@ -203,9 +215,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         if (m_EventQueue.Count > 0)
                         {
                             evt = m_EventQueue.Dequeue();
-                            eventCode = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), 
-                                                                     evt.EventName);
-                            m_EventCounts[(int)eventCode] --;
+                            evc = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), 
+                                                               evt.EventName);
+                            m_EventCounts[(int)evc] --;
                         }
                     }
 
@@ -216,6 +228,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     if (evt == null)
                     {
                         m_RunOnePhase = "nothing to do";
+                        CheckRunLockInvariants(true);
                         return XMRInstState.FINISHED;
                     }
 
@@ -227,7 +240,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_DetectParams = evt.DetectParams;
                     m_LastRanAt    = now;
                     m_InstEHEvent ++;
-                    e = StartEventHandler (eventCode, evt.Params);
+                    e = StartEventHandler (evc, evt.Params);
                 }
                 m_RunOnePhase = "done running";
                 m_CPUTime    += (int)DateTime.UtcNow.Subtract(now).TotalMilliseconds;
@@ -240,6 +253,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_RunOnePhase = "handling exception " + e.Message;
                     HandleScriptException(e);
                     m_RunOnePhase = "return had exception " + e.Message;
+                    CheckRunLockInvariants(true);
                     return XMRInstState.FINISHED;
                 }
 
@@ -268,6 +282,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /**
          * @brief Immediately after taking m_RunLock or just before releasing it, check invariants.
          */
+        private ScriptEventCode lastEventCode = ScriptEventCode.None;
+        private int             lastActive    = 0;
+        private string          lastRunPhase  = "";
+
         public void CheckRunLockInvariants(bool throwIt)
         {
             /*
@@ -280,13 +298,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 ScriptEventCode ec = this.eventCode;
                 if (((ec == ScriptEventCode.None) && (active != 0)) ||
                     ((ec != ScriptEventCode.None) && (active >= 0))) {
+                    Console.WriteLine("CheckRunLockInvariants: script=" + m_DescName);
                     Console.WriteLine("CheckRunLockInvariants: eventcode=" + ec.ToString() + ", active=" + active.ToString());
                     Console.WriteLine("CheckRunLockInvariants: m_RunOnePhase=" + m_RunOnePhase);
+                    Console.WriteLine("CheckRunLockInvariants: lastec=" + lastEventCode + ", lastAct=" + lastActive + ", lastPhase=" + lastRunPhase);
                     if (throwIt) {
                         throw new Exception("CheckRunLockInvariants: eventcode=" + ec.ToString() + ", active=" + active.ToString());
                     }
-                    MMRUThread.tkill(MMRUThread.gettid(), 11); // SIGSEGV
+                    MMRUThread.tkill(MMRUThread.gettid(), 11); // SIGSEGV to get a core dump
                 }
+                lastEventCode = ec;
+                lastActive    = active;
+                lastRunPhase  = m_RunOnePhase;
             }
         }
 
@@ -363,6 +386,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         private void HandleScriptException(Exception e)
         {
+            /*
+             * It threw some kind of exception, so it's no longer running an event handler.
+             */
+            eventCode = ScriptEventCode.None;
+
             if (e is ScriptDeleteException)
             {
                 /*
@@ -733,6 +761,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 MMRUThread.Suspend ();
                 m_CheckRunPhase = "resumed";
             }
+
+            /*
+             * For extreme stress test, checkpoint/restart every step.
+             */
+            if (m_CheckRunStressStream != null) {
+                m_CheckRunPhase = "stressing";
+                m_CheckRunStressWrite = true;
+                m_CheckRunStressStream.Seek (0, SeekOrigin.Begin);
+                subsArray[(int)SubsArray.BEAPI] = beAPI;
+                migrateOutWriter = new BinaryWriter (m_CheckRunStressStream);
+                continuation.Save (m_CheckRunStressStream, subsArray, null);
+                migrateInReader  = null;
+                migrateOutWriter = null;
+                if (m_CheckRunStressWrite) {
+                    MMRUThread.Suspend ();
+                }
+            }
+
             m_CheckRunPhase = "returning";
         }
     }

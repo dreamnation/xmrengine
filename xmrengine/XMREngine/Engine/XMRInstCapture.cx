@@ -257,6 +257,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         private void SendObjValue (Stream stream, object graph)
         {
+            if (stream == null) throw new ArgumentNullException ("stream");
+            if (this.migrateOutWriter == null) throw new ArgumentNullException ("migrateOutWriter");
+
             if (graph == null) {
                 this.migrateOutWriter.Write ((byte)Ser.NULL);
             } else if (graph is ScriptEventCode) {
