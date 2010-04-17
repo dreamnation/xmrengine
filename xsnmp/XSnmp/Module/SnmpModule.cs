@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Net;
+using System.Threading;
 using log4net;
 using Nini.Config;
 using OpenSim.Framework;
@@ -16,7 +17,6 @@ using OpenSim.Region.CoreModules.Framework.EventQueue;
 using OpenMetaverse;
 using OpenMetaverse.StructuredData;
 using OpenSim.Region.Framework.Scenes;
-using OpenSim.Framework.Communications.Cache;
 using System.Data;
 using OpenSim.Services.Interfaces;
 using Lextm.SharpSnmpLib.Messaging;
@@ -59,9 +59,8 @@ namespace Careminster.Modules.Snmp
         // Snmp related stuf
         //
         //private TrapV1Message m_trap = new TrapV1Message(VersionCode.V1);
-        private IPEndPoint m_nms;
+        private List<IPEndPoint> m_nms = new List<IPEndPoint>();
         private IPAddress m_ipLocal;
-        private IPAddress m_ipNms;
         
         private int m_port;
 
@@ -70,6 +69,8 @@ namespace Careminster.Modules.Snmp
         
         public void Initialise(IConfigSource config)
         {
+            Watchdog.OnWatchdogTimeout += WatchdogTimeout;
+
             IConfig snmpConfig = config.Configs["Snmp"];
 
             if (snmpConfig == null)
@@ -94,9 +95,12 @@ namespace Careminster.Modules.Snmp
             
             int m_tempPort = snmpConfig.GetInt("Port", 162);
             string m_tempIp = snmpConfig.GetString("IP", "127.0.0.1");
-            m_nms = new IPEndPoint(IPAddress.Parse(m_tempIp), m_tempPort);
-            m_ipNms = IPAddress.Parse(m_tempIp);
-            m_log.InfoFormat("[XSnmp] NMS set to {0}:{1} ", m_tempIp, m_tempPort);
+            string[] nmslist = m_tempIp.Split(new char[] { ' ' });
+            foreach (string ip in nmslist)
+            {
+                m_nms.Add(new IPEndPoint(IPAddress.Parse(ip), m_tempPort));
+                m_log.InfoFormat("[XSnmp] NMS set to {0}:{1} ", m_tempIp, m_tempPort);
+            }
         }
 
         public void AddRegion(Scene scene)
@@ -165,21 +169,19 @@ namespace Careminster.Modules.Snmp
             IConfig snmpConfig = m_Config.Configs["Snmp"];
         }
 
-        public void Alert(string message)
+        public void Critical(string message, Scene scene)
         {
+            Trap((int)gravity.crital, message, scene);
         }
 
-        public void Critical (string simname, string message)
+        public void Warning(string message, Scene scene)
         {
-            Trap((int)gravity.crital, simname, message);
+            Trap((int)gravity.warning, message, scene);
         }
-        public void Warning(string simname, string message)
+
+        public void Major(string message, Scene scene)
         {
-            Trap((int)gravity.warning, simname, message);
-        }
-        public void Major(string simname, string message)
-        {
-            Trap((int)gravity.major, simname, message);
+            Trap((int)gravity.major, message, scene);
         }
 
         /**
@@ -189,13 +191,13 @@ namespace Careminster.Modules.Snmp
                  * @param Message = Message sent in the event
                  * @return : void 
                  */
-        public void Trap(int code,string simname,string Message)
+        public void Trap(int code, string Message, Scene scene)
         {
             
             Variable vmes = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 3, 1, 1000,2 }),
                                       new OctetString(Message));
             Variable vsim = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 3, 1, 1000, 1 }),
-                          new OctetString(simname));
+                          new OctetString(scene.RegionInfo.RegionName));
 
             List<Variable> vList = new List<Variable>();
             vList.Add(vmes);
@@ -208,7 +210,8 @@ namespace Careminster.Modules.Snmp
                                             0,
                                             vList);
             //
-            m_trap.Send(m_nms);
+            foreach (IPEndPoint ip in m_nms)
+                m_trap.Send(ip);
 
             // m_log.DebugFormat("[XSnmp] Trap sent to {0}:{1} ", m_tempIp, m_tempPort);            
         }
@@ -223,11 +226,11 @@ namespace Careminster.Modules.Snmp
          * @return : void 
          */
 
-        public void ColdStart(int step , string simname)
+        public void ColdStart(int step, Scene scene)
         {
 
             Variable vsim = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 3, 1, 1000, 1 }),
-                                          new OctetString(simname));
+                                          new OctetString(scene.RegionInfo.RegionName));
             Variable vdata = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 3, 1, 1000, 1 }),
                                           new OctetString("Boot step "+step));
 
@@ -242,18 +245,19 @@ namespace Careminster.Modules.Snmp
                                             0,
                                             vList);
             //
-            m_trap.Send(m_nms);
+            foreach (IPEndPoint ip in m_nms)
+                m_trap.Send(ip);
           
             
 
             //m_log.DebugFormat("[XSnmp] Trap sent to {0}:{1} ", m_tempIp, m_tempPort);            
         }
 
-        public void Shutdown(int step, string simname)
+        public void Shutdown(int step, Scene scene)
         {
 
             Variable vsim = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 3, 1, 1000, 1 }),
-                                          new OctetString(simname));
+                                          new OctetString(scene.RegionInfo.RegionName));
             Variable vdata = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 3, 1, 1000, 1 }),
                                           new OctetString("Shutdown step " + step));
 
@@ -268,11 +272,16 @@ namespace Careminster.Modules.Snmp
                                             0,
                                             vList);
             //
-            m_trap.Send(m_nms);
+            foreach (IPEndPoint ip in m_nms)
+                m_trap.Send(ip);
 
 
 
             //m_log.DebugFormat("[XSnmp] Trap sent to {0}:{1} ", m_tempIp, m_tempPort);            
+        }
+
+        private void WatchdogTimeout(Thread thread, int lastTick)
+        {
         }
     }
 }
