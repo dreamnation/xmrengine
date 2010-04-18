@@ -83,6 +83,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		                                                                     new Type[] { typeof (object),
 		                                                                                  typeof (object) });
 
+		// type = TokenTypeObject always, as our array elements are always of type 'object'
+		// arr  = where the array object itself is stored
+		// idx  = where the index value is stored
 		public CompValuArEle (TokenType type, CompValu arr, CompValu idx) : base (type)
 		{
 			this.arr = arr;

@@ -1950,8 +1950,78 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private CompValu GenerateFromRValIsType (TokenRValIsType rValIsType)
 		{
-			ErrorMsg (rValIsType, "not supported");
-			return new CompValuVoid (rValIsType);
+			/*
+			 * Expression we want to know the type of.
+			 */
+			CompValu val = GenerateFromRVal (rValIsType.rValExp);
+
+			/*
+			 * Pass it in to top-level type expression decoder.
+			 */
+			return GenerateFromTypeExp (val, rValIsType.typeExp);
+		}
+
+		/**
+		 * @brief See if the type of the given value matches the type expression.
+		 * @param val = where the value to be evaluated is stored
+		 * @param typeExp = script tokens representing type expression
+		 * @returns location where the boolean result is stored
+		 */
+		private CompValu GenerateFromTypeExp (CompValu val, TokenTypeExp typeExp)
+		{
+			if (typeExp is TokenTypeExpBinOp) {
+				CompValu left   = GenerateFromTypeExp (val, ((TokenTypeExpBinOp)typeExp).leftOp);
+				CompValu right  = GenerateFromTypeExp (val, ((TokenTypeExpBinOp)typeExp).rightOp);
+				CompValu result = new CompValuTemp (tokenTypeBool, null, this);
+				Token op = ((TokenTypeExpBinOp)typeExp).binOp;
+				result.PopPre (this);
+				left.PushVal (this);
+				right.PushVal (this);
+				if (op is TokenKwAnd) {
+					ilGen.Emit (OpCodes.And);
+				} else if (op is TokenKwOr) {
+					ilGen.Emit (OpCodes.Or);
+				} else {
+					throw new Exception ("unknown TokenTypeExpBinOp " + op.GetType ());
+				}
+				result.PopPost (this);
+				return result;
+			}
+			if (typeExp is TokenTypeExpNot) {
+				CompValu interm = GenerateFromTypeExp (val, ((TokenTypeExpNot)typeExp).typeExp);
+				CompValu result = new CompValuTemp (tokenTypeBool, null, this);
+				result.PopPre (this);
+				interm.PushVal (this, tokenTypeBool);
+				PushConstantI4 (1);
+				ilGen.Emit (OpCodes.Xor);
+				result.PopPost (this);
+				return result;
+			}
+			if (typeExp is TokenTypeExpPar) {
+				return GenerateFromTypeExp (val, ((TokenTypeExpPar)typeExp).typeExp);
+			}
+			if (typeExp is TokenTypeExpType) {
+				CompValu result = new CompValuTemp (tokenTypeBool, null, this);
+				result.PopPre (this);
+				val.PushVal (this);
+				ilGen.Emit (OpCodes.Isinst, ((TokenTypeExpType)typeExp).typeToken.typ);
+				ilGen.Emit (OpCodes.Ldnull);
+				ilGen.Emit (OpCodes.Ceq);
+				PushConstantI4 (1);
+				ilGen.Emit (OpCodes.Xor);
+				result.PopPost (this);
+				return result;
+			}
+			if (typeExp is TokenTypeExpUndef) {
+				CompValu result = new CompValuTemp (tokenTypeBool, null, this);
+				result.PopPre (this);
+				val.PushVal (this);
+				ilGen.Emit (OpCodes.Ldnull);
+				ilGen.Emit (OpCodes.Ceq);
+				result.PopPost (this);
+				return result;
+			}
+			throw new Exception ("unknown TokenTypeExp type " + typeExp.GetType ());
 		}
 
 		/**
