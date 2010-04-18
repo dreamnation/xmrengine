@@ -31,19 +31,7 @@ using Lextm.SharpSnmpLib;
 //[06:55] Melanie_t: snmp->Trap("Help!");
 //[06:55] Melanie_t: }
 
-//
-// Mib Description (prototype)
-// Sacha 040810 Creation
-// root : 1.3.6.1.3   (experimental branch)
-//  root.gridid (1 meta7, 2 xxxx, 3 yyyyy)
-//  root.gridid.1 ActualBootStatus 
-//  root.gridid.1000 Trap data
-//  root.gridid.1000.1 SimName
-//  root.gridid.1000.2 Text 
-//  
-//  The AlertCode is part of the TrapHeader event
-//
-
+// Mib Description : see m7mib.txt
 
 namespace Careminster.Modules.Snmp
 {
@@ -54,13 +42,18 @@ namespace Careminster.Modules.Snmp
         private List<Scene> m_Scenes = new List<Scene>();
         private bool m_Enabled = false;
         private IConfigSource m_Config;
-        
+
+        private ObjectIdentifier ctrapBoot = new ObjectIdentifier(new uint[] { 1, 3, 6, 1,4,1,1212,3}) ;
+        private ObjectIdentifier ctrapColdStart = new ObjectIdentifier(new uint[] { 1, 3, 6, 1,4,1,1212,1,3}) ;
+        private ObjectIdentifier ctrapLinkUpDown = new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4,1,1212,1,4 } );
+
         // 
         // Snmp related stuf
         //
         //private TrapV1Message m_trap = new TrapV1Message(VersionCode.V1);
         private List<IPEndPoint> m_nms = new List<IPEndPoint>();
         private IPAddress m_ipLocal;
+	private IPAddress m_ipDebug ;
         
         private int m_port;
 
@@ -93,6 +86,7 @@ namespace Careminster.Modules.Snmp
             // Settings our stuff
             //
             
+	    m_ipDebug=IPAddress.Parse("192.168.0.202");
             int m_tempPort = snmpConfig.GetInt("Port", 162);
             string m_tempIp = snmpConfig.GetString("IP", "127.0.0.1");
             string[] nmslist = m_tempIp.Split(new char[] { ' ' });
@@ -168,7 +162,11 @@ namespace Careminster.Modules.Snmp
         {
             IConfig snmpConfig = m_Config.Configs["Snmp"];
         }
+/*
 
+Generic Trap Events
+
+*/
         public void Critical(string message, Scene scene)
         {
             Trap((int)gravity.crital, message, scene);
@@ -184,6 +182,19 @@ namespace Careminster.Modules.Snmp
             Trap((int)gravity.major, message, scene);
         }
 
+
+
+//
+// SimBoot related stuff
+//
+//  Event Seq : 
+//   ColdStart event 
+//   LinkDown Event ( raised a critcal alarm )
+//	bootTrap events for each critical steps
+//   LinkUp Event (Clear the previous Linkdown alarm
+//
+
+
         /**
                  * @brief Send a trap event to a supevisor.
                  * @param code = Code gravity 
@@ -194,9 +205,9 @@ namespace Careminster.Modules.Snmp
         public void Trap(int code, string Message, Scene scene)
         {
             
-            Variable vmes = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 3, 1, 1000,2 }),
+            Variable vmes = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4, 1, 1212,2 }),
                                       new OctetString(Message));
-            Variable vsim = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 3, 1, 1000, 1 }),
+            Variable vsim = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4, 1, 1212, 1 }),
                           new OctetString(scene.RegionInfo.RegionName));
 
             List<Variable> vList = new List<Variable>();
@@ -204,7 +215,7 @@ namespace Careminster.Modules.Snmp
             vList.Add(vsim);
             TrapV1Message m_trap = new TrapV1Message(VersionCode.V1, IPAddress.Loopback,
                                             new OctetString("public"),
-                                            new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 3 }),
+                                            new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4 }),
                                             GenericCode.EnterpriseSpecific,
                                             code,
                                             0,
@@ -229,17 +240,17 @@ namespace Careminster.Modules.Snmp
         public void ColdStart(int step, Scene scene)
         {
 
-            Variable vsim = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 3, 1, 1000, 1 }),
+            Variable vsim = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4, 1, 1212, 1 }),
                                           new OctetString(scene.RegionInfo.RegionName));
-            Variable vdata = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 3, 1, 1000, 1 }),
+            Variable vdata = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4, 1, 1212, 1 }),
                                           new OctetString("Boot step "+step));
 
             List<Variable> vList = new List<Variable>();
             vList.Add(vsim);
             vList.Add(vdata);
-            TrapV1Message m_trap = new TrapV1Message(VersionCode.V1, IPAddress.Loopback,
+            TrapV1Message m_trap = new TrapV1Message(VersionCode.V1, m_ipDebug,
                                             new OctetString("public"),
-                                            new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 3,1 }),
+					    ctrapColdStart,
                                             GenericCode.ColdStart,
                                             step,
                                             0,
@@ -247,18 +258,59 @@ namespace Careminster.Modules.Snmp
             //
             foreach (IPEndPoint ip in m_nms)
                 m_trap.Send(ip);
-          
-            
-
-            //m_log.DebugFormat("[XSnmp] Trap sent to {0}:{1} ", m_tempIp, m_tempPort);            
         }
+
+
+	public void LinkDown(Scene scene)
+        {
+
+            Variable vsim = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4, 1, 1212, 1 }),
+                                          new OctetString(scene.RegionInfo.RegionName));
+
+            List<Variable> vList = new List<Variable>();
+            vList.Add(vsim);
+            TrapV1Message m_trap = new TrapV1Message(VersionCode.V1, m_ipDebug,
+                                            new OctetString("public"),
+                                            ctrapLinkUpDown,
+					    GenericCode.EnterpriseSpecific,
+                                            98,
+                                            0,
+                                            vList);
+            //
+            foreach (IPEndPoint ip in m_nms)
+                m_trap.Send(ip);
+        }
+
+	public void LinkUp(Scene scene)
+        {
+
+            Variable vsim = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4, 1, 1000, 1 }),
+                                          new OctetString(scene.RegionInfo.RegionName));
+            
+            List<Variable> vList = new List<Variable>();
+            vList.Add(vsim);
+            TrapV1Message m_trap = new TrapV1Message(VersionCode.V1, m_ipDebug,
+                                            new OctetString("public"),
+                                            ctrapLinkUpDown,
+					    GenericCode.EnterpriseSpecific,
+                                            99,
+                                            0,
+                                            vList);
+            //
+            foreach (IPEndPoint ip in m_nms)
+                m_trap.Send(ip);
+        }
+
+
+
+
 
         public void Shutdown(int step, Scene scene)
         {
 
-            Variable vsim = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 3, 1, 1000, 1 }),
+            Variable vsim = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4, 1, 1000, 1 }),
                                           new OctetString(scene.RegionInfo.RegionName));
-            Variable vdata = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 3, 1, 1000, 1 }),
+            Variable vdata = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4, 1, 1000, 1 }),
                                           new OctetString("Shutdown step " + step));
 
             List<Variable> vList = new List<Variable>();
@@ -266,7 +318,8 @@ namespace Careminster.Modules.Snmp
             vList.Add(vdata);
             TrapV1Message m_trap = new TrapV1Message(VersionCode.V1, IPAddress.Loopback,
                                             new OctetString("public"),
-                                            new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 3, 1 }),
+						ctrapBoot,
+                                            //new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4, 1 }),
                                             GenericCode.LinkDown,
                                             step,
                                             0,
