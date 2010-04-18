@@ -114,7 +114,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private StateSource m_StateSource;
         public  string m_DescName;
         private bool[] m_HaveEventHandlers;
-        private UIntPtr m_StackSize;
+        public  UIntPtr m_StackSize;
         private ArrayList m_CompilerErrors;
         private DateTime m_LastRanAt = DateTime.MinValue;
         private string m_RunOnePhase = "hasn't run";
@@ -257,7 +257,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /*
          * Makes sure migration data version is same on both ends.
          */
-        public static readonly byte migrationVersion = 6;
+        public static readonly byte migrationVersion = 7;
 
         /**
          * @brief types of data we serialize

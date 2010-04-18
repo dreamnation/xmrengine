@@ -255,7 +255,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * @param stream = network stream to send it over
          * @param graph = object to send
          */
-        private void SendObjValue (Stream stream, object graph)
+        public void SendObjValue (Stream stream, object graph)
         {
             if (stream == null) throw new ArgumentNullException ("stream");
             if (this.migrateOutWriter == null) throw new ArgumentNullException ("migrateOutWriter");

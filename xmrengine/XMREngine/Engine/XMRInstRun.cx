@@ -601,8 +601,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if (m_IState != XMRInstState.RESETTING) throw new Exception("bad state");
                 if (microthread.Active () < 0) {
                     microthread.Dispose ();
-                    microthread = new ScriptUThread (m_StackSize, m_DescName);
-                    microthread.instance = this;
+                    microthread = new ScriptUThread (this);
                 }
                 m_IState = XMRInstState.ONSTARTQ;
                 CheckRunLockInvariants(true);

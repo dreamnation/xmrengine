@@ -411,18 +411,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Set up sub-objects and cross-polinate so everything can access everything.
              */
-            this.microthread  = new ScriptUThread (m_StackSize, m_DescName);
-            this.continuation = new ScriptContinuation ();
-            this.microthread.instance  = this;
-            this.continuation.instance = this;
-
-            /*
-             * We do our own object serialization.
-             * It avoids null pointer refs and is much more efficient because we
-             * have a limited number of types to deal with.
-             */
-            this.continuation.sendObj = this.SendObjValue;
-            this.continuation.recvObj = this.RecvObjValue;
+            this.microthread  = new ScriptUThread (this);
+            this.continuation = new ScriptContinuation (this);
 
             /*
              * Constant subsArray values...
@@ -528,6 +518,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     (XmlElement)scriptStateN.SelectSingleNode("Snapshot");
 
             Byte[] data = Convert.FromBase64String(snapshotN.InnerText);
+#if 000
+            if (false) {
+                string name = m_ScriptBasePath + "/" + m_ItemID.ToString() + ".stack";
+                m_log.Debug("[XMREngine]: LoadScriptState*: writing " + name);
+                File.WriteAllBytes(name, data);
+            }
+#endif
             MemoryStream ms = new MemoryStream();
             ms.Write(data, 0, data.Length);
             ms.Seek(0, SeekOrigin.Begin);
@@ -825,7 +822,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * @param stream = stream to read the value from
          * @returns value (boxed as needed)
          */
-        private object RecvObjValue (Stream stream)
+        public object RecvObjValue (Stream stream)
         {
             Ser code = (Ser)this.migrateInReader.ReadByte ();
             switch (code) {
