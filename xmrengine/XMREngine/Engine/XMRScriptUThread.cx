@@ -38,8 +38,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
         public XMRInstance instance;
 
-        public ScriptUThread (UIntPtr stackSize, string descName) : base (stackSize, descName)
-        { }
+        public ScriptUThread (XMRInstance instance) : base (instance.m_StackSize, instance.m_DescName)
+        {
+            this.instance = instance;
+        }
 
         /*
          * Called on the microthread stack as part of Start().
@@ -51,12 +53,43 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             Exception except;
 
             /*
+             * Restoring the stress test trumps any other state.
+             */
+            if (instance.m_CheckRunStressWrite) {
+
+                /*
+                 * Use a different stack position each time.
+                 */
+                if (-- instance.m_CheckRunStressStack >= 0) {
+                    except = MainEx();
+                    instance.m_CheckRunStressStack ++; // prevent TCO of MainEx() call
+                } else {
+
+                    /*
+                     * Do a longjmp() to where the Save() call was made at bottom of
+                     * CheckRun() from a slightly different stack position.
+                     *
+                     * We have to clear m_CheckRunStressWrite so CheckRun() will know
+                     * we are doing the restart and not still doing the checkpoint.
+                     */
+                    instance.m_CheckRunStressWrite = false;
+                    instance.m_CheckRunStressStream.Seek (0, SeekOrigin.Begin);
+                    instance.subsArray[(int)SubsArray.BEAPI] = instance.beAPI;
+                    instance.continuation = new ScriptContinuation (instance);
+                    instance.migrateInReader = new BinaryReader (instance.m_CheckRunStressStream);
+                    except = instance.continuation.LoadEx (instance.m_CheckRunStressStream, 
+                                                           instance.subsArray, 
+                                                           null);
+                }
+            }
+
+            /*
              * The normal case is this script event handler is just being
              * called directly at its entrypoint.  The RunItEx() method
              * calls RunCont() below.  Any exceptions thrown by RunCont()
              * are returned by RunItEx().
              */
-            if (instance.migrateInStream == null) {
+            else if (instance.migrateInStream == null) {
                 except = instance.continuation.RunItEx ();
             }
 
@@ -76,11 +109,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                                                        instance.subsArray,
                                                        instance.dllsArray);
             }
-
-            /*
-             * Event no longer being processed, ie, the microthread is exiting.
-             */
-            instance.eventCode = ScriptEventCode.None;
             return except;
         }
     }
@@ -92,6 +120,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
     public class ScriptContinuation : MMRCont {
 
         public XMRInstance instance;
+
+        public ScriptContinuation (XMRInstance instance)
+        {
+            this.instance = instance;
+
+            /*
+             * We do our own object serialization.
+             * It avoids null pointer refs and is much more efficient because we
+             * have a limited number of types to deal with.
+             */
+            this.sendObj = instance.SendObjValue;
+            this.recvObj = instance.RecvObjValue;
+        }
 
         /*
          * Called by RunItEx() to start the event handler at its entrypoint.
@@ -168,6 +209,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                 seh = sw.objCode.scriptEventHandlerTable[newStateCode,(int)ScriptEventCode.state_entry];
                 if (seh != null) seh (sw);
             }
+
+            /*
+             * Event no longer being processed.
+             */
+            sw.eventCode = ScriptEventCode.None;
         }
 
         /**

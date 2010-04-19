@@ -435,7 +435,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			bool error;
 			char c;
-			int basse, j, m, mantissa;
+			int j;
+			uint basse, m, mantissa;
 
 			basse    = 10;
 			error    = false;
@@ -443,7 +444,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			for (j = i; j < source.Length; j ++) {
 				c = source[j];
 				if ((c >= '0') && (c <= '9')) {
-					m = mantissa * basse + (c - '0');
+					m = mantissa * basse + (uint)(c - '0');
 					if (m / basse != mantissa) {
 						if (!error) TokenError (i, "integer overflow");
 						error = true;
@@ -452,7 +453,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					continue;
 				}
 				if ((basse == 16) && ((c >= 'A') && (c <= 'F'))) {
-					m = mantissa * basse + (c - 'A') + 10;
+					m = mantissa * basse + (uint)(c - 'A') + 10U;
 					if (m / basse != mantissa) {
 						if (!error) TokenError (i, "integer overflow");
 						error = true;
@@ -461,7 +462,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					continue;
 				}
 				if ((basse == 16) && ((c >= 'a') && (c <= 'f'))) {
-					m = mantissa * basse + (c - 'a') + 10;
+					m = mantissa * basse + (uint)(c - 'a') + 10U;
 					if (m / basse != mantissa) {
 						if (!error) TokenError (i, "integer overflow");
 						error = true;
@@ -476,7 +477,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				break;
 			}
 			if (!error) {
-				AppendToken (new TokenInt (emsg, lineNo, i - bolIdx, mantissa));
+				AppendToken (new TokenInt (emsg, lineNo, i - bolIdx, (int)mantissa));
 			}
 			return j;
 		}

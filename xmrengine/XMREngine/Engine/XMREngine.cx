@@ -124,6 +124,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 m_Config = config.Configs["XMREngine"];
 
             m_Enabled = m_Config.GetBoolean("Enabled", false);
+            string envar = Environment.GetEnvironmentVariable("XMREngineDisable");
+            if ((envar != null) && ((envar[0] & 1) != 0)) {
+                m_Enabled = false;
+            }
 
             if (!m_Enabled)
                 return;
