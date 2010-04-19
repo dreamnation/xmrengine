@@ -1428,6 +1428,46 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
             return errors;
         }
+
+        public void SuspendScript(UUID itemID)
+        {
+            XMRInstance instance = null;
+
+            lock (m_InstancesDict)
+            {
+                if (!m_InstancesDict.TryGetValue(itemID, out instance))
+                {
+                    return;
+                }
+            }
+
+            if (m_TraceCalls)
+            {
+                m_log.DebugFormat("[XMREngine]: XMREngine.SuspendScript({0})", itemID.ToString());
+            }
+
+            instance.Suspend();
+        }
+
+        public void ResumeScript(UUID itemID)
+        {
+            XMRInstance instance = null;
+
+            lock (m_InstancesDict)
+            {
+                if (!m_InstancesDict.TryGetValue(itemID, out instance))
+                {
+                    return;
+                }
+            }
+
+            if (m_TraceCalls)
+            {
+                m_log.DebugFormat("[XMREngine]: XMREngine.ResumeScript({0})", itemID.ToString());
+            }
+
+            instance.Resume();
+        }
     }
 
     [Serializable]

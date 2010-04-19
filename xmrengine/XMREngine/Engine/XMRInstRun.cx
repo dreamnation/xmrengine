@@ -104,8 +104,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * flag it to be on m_StartQueue as we are about to do so.
                  * Flag it now before unlocking so another thread won't try
                  * to do the same thing right now.
+                 * Dont' flag it if it's still suspended!
                  */
-                if (m_IState == XMRInstState.IDLE) {
+                if (m_IState == XMRInstState.IDLE && (!m_Suspended)) {
                     m_IState = XMRInstState.ONSTARTQ;
                     startIt = true;
                 }
@@ -208,6 +209,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_RunOnePhase = "lock event queue";
                     EventParams evt = null;
                     ScriptEventCode evc = ScriptEventCode.None;
+
+                    /* We can't get here unless the script has been resumed
+                     * after creation, then suspended again, and then had
+                     * an event posted to it. We just pretend there is no
+                     * event int he queue and let the normal mechanics
+                     * carry out the suspension. A Resume will handle the
+                     * restarting gracefully. This is taking the easy way
+                     * out and may be improved in the future.
+                     */
+
+                    if (m_Suspended)
+                    {
+                        m_RunOnePhase = "nothing to do";
+                        CheckRunLockInvariants(true);
+                        return XMRInstState.FINISHED;
+                    }
 
                     lock (m_QueueLock)
                     {
@@ -779,6 +796,26 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             m_CheckRunPhase = "returning";
+        }
+
+        public void Resume()
+        {
+            lock (m_QueueLock)
+            {
+                m_Suspended = false;
+                if (m_EventQueue.Count > 0 && m_IState == XMRInstState.IDLE) {
+                    m_IState = XMRInstState.ONSTARTQ;;
+                    m_Engine.QueueToStart(this);
+                }
+            }
+        }
+
+        public void Suspend()
+        {
+            lock (m_QueueLock)
+            {
+                m_Suspended = true;
+            }
         }
     }
 }
