@@ -124,6 +124,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public void Die()
         {
+            // llDie doesn't work in attachments!
+            if (m_Part.ParentGroup.RootPart.IsAttachment)
+                return;
+
             m_Die = true;
             throw new XMRScriptResetException();
         }
