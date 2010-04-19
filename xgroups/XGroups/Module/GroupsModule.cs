@@ -447,9 +447,9 @@ namespace Careminster.Modules.Groups
 
         public GroupRecord GetGroupRecord(string GroupName)
         {
-            MySqlCommand cmd = m_Connection.CreateCommand();
+            MySqlCommand cmd = new MySqlCommand();
 
-            cmd.CommandText = "select GroupName, AllowPublish, MaturePublish,"+
+            cmd.CommandText = "select GroupID, GroupName, AllowPublish, MaturePublish,"+
                     "Charter, FounderID, GroupPicture, MembershipFee, "+
                     "OpenEnrollment, OwnerRoleID, ShowInList from groups "+
                     "where GroupName = ?GroupName";
@@ -460,9 +460,9 @@ namespace Careminster.Modules.Groups
 
         public GroupRecord GetGroupRecord(UUID GroupID)
         {
-            MySqlCommand cmd = m_Connection.CreateCommand();
+            MySqlCommand cmd = new MySqlCommand();
 
-            cmd.CommandText = "select GroupName, AllowPublish, MaturePublish,"+
+            cmd.CommandText = "select GroupID, GroupName, AllowPublish, MaturePublish,"+
                     "Charter, FounderID, GroupPicture, MembershipFee, "+
                     "OpenEnrollment, OwnerRoleID, ShowInList from groups "+
                     "where GroupID = ?GroupID";
@@ -475,6 +475,8 @@ namespace Careminster.Modules.Groups
         {
             lock(m_Connection)
             {
+                cmd.Connection = m_Connection;
+
                 IDataReader r = ExecuteReader(cmd);
 
                 if (r.Read())
