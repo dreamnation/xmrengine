@@ -269,11 +269,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		private static void TypeCastObject2Rotation (ScriptMyILGen ilGen)
 		{
-			ilGen.Emit (OpCodes.Castclass, typeof (LSL_Rotation));
+			ilGen.Emit (OpCodes.Unbox_Any, typeof (LSL_Rotation));
 		}
 		private static void TypeCastObject2Vector (ScriptMyILGen ilGen)
 		{
-			ilGen.Emit (OpCodes.Castclass, typeof (LSL_Vector));
+			ilGen.Emit (OpCodes.Unbox_Any, typeof (LSL_Vector));
 		}
 		private static void TypeCastRotation2Bool (ScriptMyILGen ilGen)
 		{
@@ -281,6 +281,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		private static void TypeCastRotation2Object (ScriptMyILGen ilGen)
 		{
+			ilGen.Emit (OpCodes.Box, typeof (LSL_Rotation));
 		}
 		private static void TypeCastString2Bool (ScriptMyILGen ilGen)
 		{
