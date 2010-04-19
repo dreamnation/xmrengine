@@ -88,7 +88,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  */
                 int maxAllowed = MAXEVENTQUEUE;
                 if (evc == ScriptEventCode.timer) maxAllowed = 1;
-                if (evc == ScriptEventCode.link_message) maxAllowed = 300;
                 if (m_EventCounts[(int)evc] >= maxAllowed)
                 {
                     return;
