@@ -545,20 +545,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 m_EventCounts[(int)eventCode] ++;
             }
 
-            // See if we are supposed to send an 'on_rez' event
-            if (m_PostOnRez)
-            {
-                PostEvent(new EventParams("on_rez",
-                        new Object[] { m_StartParam }, zeroDetectParams));
-            }
-
-            // Maybe an 'attach' event too
-            if (m_StateSource == StateSource.AttachedRez)
-            {
-                PostEvent(new EventParams("attach",
-                        new object[] { m_Part.AttachedAvatar.ToString() }, 
-                        zeroDetectParams));
-            }
+            // Don't send any events here. They've already been posted and
+            // are safe and sound in the queue. Posting them here causes
+            // duplicate delivery.
         }
 
         /**

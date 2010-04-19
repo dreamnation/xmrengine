@@ -1457,6 +1457,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             {
                 if (!m_InstancesDict.TryGetValue(itemID, out instance))
                 {
+                    m_log.ErrorFormat("[XMREngine]: ResumeScript called for {0}, which was not found", itemID.ToString());
                     return;
                 }
             }
