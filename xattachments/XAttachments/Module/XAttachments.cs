@@ -31,6 +31,9 @@ namespace Careminster
 
         protected string m_FSBase;
 
+        private System.Text.UTF8Encoding utf8encoding =
+                new System.Text.UTF8Encoding();
+
         public XAttachments(IConfigSource config) : base(config)
         {
             MainConsole.Instance.Commands.AddCommand("fs", false,
@@ -54,7 +57,7 @@ namespace Careminster
             m_log.Info("[ATTACHMENTS]: XAttachments service enabled");
         }
 
-        public byte[] GetFsData(string id)
+        public string Get(string id)
         {
             string file = HashToFile(id);
             string diskFile = Path.Combine(m_FSBase, file);
@@ -65,16 +68,16 @@ namespace Careminster
                 {
                     byte[] content = File.ReadAllBytes(diskFile);
 
-                    return content;
+                    return utf8encoding.GetString(content);
                 }
                 catch
                 {
                 }
             }
-            return new Byte[0];
+            return String.Empty;
         }
 
-        private void Store(string id, byte[] data)
+        public void Store(string id, string sdata)
         {
             string file = HashToFile(id);
             string diskFile = Path.Combine(m_FSBase, file);
@@ -83,6 +86,7 @@ namespace Careminster
 
             File.Delete(diskFile);
 
+            byte[] data = utf8encoding.GetBytes(sdata);
             FileStream fs = File.Create(diskFile);
 
             fs.Write(data, 0, data.Length);
@@ -108,6 +112,19 @@ namespace Careminster
                 return;
             }
             MainConsole.Instance.Output("Attachments not found");
+        }
+
+        public string HashToPath(string hash)
+        {
+            return Path.Combine(hash.Substring(0, 2),
+                   Path.Combine(hash.Substring(2, 2),
+                   Path.Combine(hash.Substring(4, 2),
+                   hash.Substring(6, 4))));
+        }
+
+        public string HashToFile(string hash)
+        {
+            return Path.Combine(HashToPath(hash), hash);
         }
     }
 }
