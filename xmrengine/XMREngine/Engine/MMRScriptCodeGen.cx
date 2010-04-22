@@ -662,7 +662,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Output code body.
 			 */
-			GenerateStmtBlock (declFunc.body, true);
+			GenerateStmtBlock (declFunc.body);
 
 			/*
 			 * Output epilog that subtracts heap usage by local vars.
@@ -725,33 +725,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void GenerateStmt (TokenStmt stmt)
 		{
 			errorMessageToken = stmt;
-			if (stmt is TokenStmtBlock)   { GenerateStmtBlock   ((TokenStmtBlock)stmt, false); return; }
-			if (stmt is TokenStmtDo)      { GenerateStmtDo      ((TokenStmtDo)stmt);           return; }
-			if (stmt is TokenStmtFor)     { GenerateStmtFor     ((TokenStmtFor)stmt);          return; }
-			if (stmt is TokenStmtForEach) { GenerateStmtForEach ((TokenStmtForEach)stmt);      return; }
-			if (stmt is TokenStmtIf)      { GenerateStmtIf      ((TokenStmtIf)stmt);           return; }
-			if (stmt is TokenStmtJump)    { GenerateStmtJump    ((TokenStmtJump)stmt);         return; }
-			if (stmt is TokenStmtLabel)   { GenerateStmtLabel   ((TokenStmtLabel)stmt);        return; }
-			if (stmt is TokenStmtNull)    {                                                    return; }
-			if (stmt is TokenStmtRet)     { GenerateStmtRet     ((TokenStmtRet)stmt);          return; }
-			if (stmt is TokenStmtRVal)    { GenerateStmtRVal    ((TokenStmtRVal)stmt);         return; }
-			if (stmt is TokenStmtState)   { GenerateStmtState   ((TokenStmtState)stmt);        return; }
-			if (stmt is TokenStmtWhile)   { GenerateStmtWhile   ((TokenStmtWhile)stmt);        return; }
+			if (stmt is TokenStmtBlock)   { GenerateStmtBlock   ((TokenStmtBlock)stmt);   return; }
+			if (stmt is TokenStmtDo)      { GenerateStmtDo      ((TokenStmtDo)stmt);      return; }
+			if (stmt is TokenStmtFor)     { GenerateStmtFor     ((TokenStmtFor)stmt);     return; }
+			if (stmt is TokenStmtForEach) { GenerateStmtForEach ((TokenStmtForEach)stmt); return; }
+			if (stmt is TokenStmtIf)      { GenerateStmtIf      ((TokenStmtIf)stmt);      return; }
+			if (stmt is TokenStmtJump)    { GenerateStmtJump    ((TokenStmtJump)stmt);    return; }
+			if (stmt is TokenStmtLabel)   { GenerateStmtLabel   ((TokenStmtLabel)stmt);   return; }
+			if (stmt is TokenStmtNull)    {                                               return; }
+			if (stmt is TokenStmtRet)     { GenerateStmtRet     ((TokenStmtRet)stmt);     return; }
+			if (stmt is TokenStmtRVal)    { GenerateStmtRVal    ((TokenStmtRVal)stmt);    return; }
+			if (stmt is TokenStmtState)   { GenerateStmtState   ((TokenStmtState)stmt);   return; }
+			if (stmt is TokenStmtWhile)   { GenerateStmtWhile   ((TokenStmtWhile)stmt);   return; }
 			throw new Exception ("unknown TokenStmt type " + stmt.GetType ().ToString ());
 		}
 
 		/**
 		 * @brief generate statement block (ie, with braces)
 		 */
-		private void GenerateStmtBlock (TokenStmtBlock stmtBlock, bool fromFunc)
+		private void GenerateStmtBlock (TokenStmtBlock stmtBlock)
 		{
 			/*
-			 * If this is an inner statement block, start a new variable defintion block.
-			 * If this is a top-level statement block, the caller must do this as necessary.
+			 * Start a new variable defintion block.
 			 */
-			if (!fromFunc) {
-				PushVarDefnBlock ();
-			}
+			PushVarDefnBlock ();
 
 			/*
 			 * Push new current statement block pointer for anyone who cares.
@@ -776,12 +773,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			curStmtBlock = oldStmtBlock;
 
 			/*
-			 * If this is an inner statement block, pop the local var definition stack.
-			 * If this is a top-level statement block, the caller must do this as necessary.
+			 * Pop the local var definition stack.
 			 */
-			if (!fromFunc) {
-				PopVarDefnBlock ();
-			}
+			PopVarDefnBlock ();
 		}
 
 		/**
