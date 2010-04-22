@@ -65,6 +65,12 @@ bootStatus TRAP-TYPE
 	--&ACTIONS { region name, bootsteps }
 	--&MESG   "$1 Error: $2"
 	DESCRIPTION "The sim $1 is booting. Actual step $2 "
+	::= 2
+
+bootCold TRAP-TYPE
+	ENTERPRISE Meta7-Boot-Events
+	VARIABLES { simName, appError }
+	DESCRIPTION "ColdBoot Event"
 	::= 1
 
 TrapError TRAP-TYPE
@@ -78,4 +84,16 @@ watchDog TRAP-TYPE
 	VARIABLES { simName, appError }
 	DESCRIPTION "Watchdog error trigged "
 	::= 2
+
+SimDown TRAP-TYPE
+	ENTERPRISE Meta7-App-Events
+	VARIABLES { simName }
+	DESCRIPTION "SimLink Down"
+	::= 3
+
+SimUp TRAP-TYPE
+	ENTERPRISE Meta7-App-Events
+	VARIABLES { simName }
+	DESCRIPTION "SimLink Up"
+	::= 4
 END
