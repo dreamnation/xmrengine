@@ -767,20 +767,31 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				return null;
 			}
 
-			/*
-			 * Can't override any other var out through and including function parameters.
-			 */
-			for (TokenStmtBlock stmtBlock = currentStmtBlock; stmtBlock != null; stmtBlock = stmtBlock.outerStmtBlock) {
-				if (stmtBlock.variables.ContainsKey (tokenDeclVar.name.val)) {
-					ErrorMsg (tokenDeclVar, "duplicate variable definition");
-					ErrorMsg (stmtBlock.variables[tokenDeclVar.name.val].name, "previously defined here");
-					return tokenDeclVar;
+			if (false) {
+				/*
+				 * Can't override any other var out through and including function parameters.
+				 */
+				for (TokenStmtBlock stmtBlock = currentStmtBlock; stmtBlock != null; stmtBlock = stmtBlock.outerStmtBlock) {
+					if (stmtBlock.variables.ContainsKey (tokenDeclVar.name.val)) {
+						ErrorMsg (tokenDeclVar, "duplicate variable definition");
+						ErrorMsg (stmtBlock.variables[tokenDeclVar.name.val].name, "previously defined here");
+						return tokenDeclVar;
+					}
 				}
-			}
-			foreach (TokenName name in currentDeclFunc.argDecl.names) {
-				if (name.val == tokenDeclVar.name.val) {
+				foreach (TokenName name in currentDeclFunc.argDecl.names) {
+					if (name.val == tokenDeclVar.name.val) {
+						ErrorMsg (tokenDeclVar, "duplicate variable definition");
+						ErrorMsg (name, "previously defined here");
+						return tokenDeclVar;
+					}
+				}
+			} else {
+				/*
+				 * Can't be same name already in block.
+				 */
+				if (currentStmtBlock.variables.ContainsKey (tokenDeclVar.name.val)) {
 					ErrorMsg (tokenDeclVar, "duplicate variable definition");
-					ErrorMsg (name, "previously defined here");
+					ErrorMsg (currentStmtBlock.variables[tokenDeclVar.name.val].name, "previously defined here");
 					return tokenDeclVar;
 				}
 			}
