@@ -558,6 +558,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 PostEvent(new EventParams("attach",
                         new object[] { m_Part.AttachedAvatar.ToString() }, 
                         zeroDetectParams));
+            }
         }
 
         /**

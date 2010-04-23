@@ -125,7 +125,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public void Die()
         {
             // llDie doesn't work in attachments!
-            if (m_Part.ParentGroup.RootPart.IsAttachment)
+            if (m_Part.ParentGroup.RootPart.IsAttachment || m_DetachQuantum > 0)
                 return;
 
             m_Die = true;

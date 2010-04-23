@@ -287,5 +287,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         // all possible link message receivers' queues are established.
         //
         private bool m_Suspended = true;
+
+        // When llDie is executed within the attach(NULL_KEY) event of
+        // a script being detached to inventory, the DeleteSceneObject call
+        // it causes will delete the script instances before their state can
+        // be saved. Therefore, the instance needs to know that it's being
+        // detached to inventory, rather than to ground.
+        // Also, the attach(NULL_KEY) event needs to run with priority, and
+        // it also needs to have a limited quantum.
+        // If this is nonzero, we're detaching to inventory.
+        private int m_DetachQuantum = 0;
     }
 }

@@ -97,7 +97,25 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 /*
                  * Put event on end of instance's event queue.
                  */
-                m_EventQueue.Enqueue(evt);
+
+                if (evc == ScriptEventCode.attach)
+                {
+                    /*
+                     * The attach event sneaks to the front of the queue.
+                     * This is needed for quantum limiting to work.
+                     */
+
+                    int count = m_EventQueue.Count;
+                    m_EventQueue.Enqueue(evt);
+
+                    while(count-- > 0)
+                        m_EventQueue.Enqueue(m_EventQueue.Dequeue());
+                    
+                }
+                else
+                {
+                    m_EventQueue.Enqueue(evt);
+                }
 
                 /*
                  * If instance is idle (ie, not running or waiting to run),
