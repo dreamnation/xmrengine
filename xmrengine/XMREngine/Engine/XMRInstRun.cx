@@ -110,6 +110,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                     while(count-- > 0)
                         m_EventQueue.Enqueue(m_EventQueue.Dequeue());
+
+                    /* If we're detaching, limit the qantum. This will also
+                     * cause the script to self-suspend after running this
+                     * event
+                     */
+                    if (evt.Params[0] == UUID.Zero.ToString())
+                        m_DetachQuantum = 25;
                     
                 }
                 else
@@ -212,6 +219,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  */
                 else if (this.eventCode != ScriptEventCode.None)
                 {
+                    if (m_DetachQuantum > 0 && --m_DetachQuantum == 0)
+                    {
+                        m_Suspended = true;
+                        m_RunOnePhase = "nothing to do";
+                        CheckRunLockInvariants(true);
+                        return XMRInstState.FINISHED;
+                    }
+
                     m_RunOnePhase = "resume old event handler";
                     m_LastRanAt   = now;
                     m_InstEHSlice ++;
@@ -249,6 +264,26 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         m_RunOnePhase = "dequeue event";
                         if (m_EventQueue.Count > 0)
                         {
+                            if (m_DetachQuantum > 0)
+                            {
+                                evt = m_EventQueue.Peek();
+                                evc = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), 
+                                                               evt.EventName);
+                                if (evc != ScriptEventCode.attach)
+                                {
+                                    /*
+                                     * This is the case where the attach event
+                                     * has completed and another event is queued
+                                     * Stop it from running and suspend
+                                     */
+                                    m_Suspended = true;
+                                    m_DetachQuantum = 0;
+                                    m_RunOnePhase = "nothing to do";
+                                    CheckRunLockInvariants(true);
+                                    return XMRInstState.FINISHED;
+                                }
+                            }
+
                             evt = m_EventQueue.Dequeue();
                             evc = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), 
                                                                evt.EventName);
@@ -262,6 +297,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      */
                     if (evt == null)
                     {
+                        if (m_DetachQuantum > 0)
+                        {
+                            /*
+                             * This will happen if the attach event has run
+                             * and exited with time slice left.
+                             */
+                            m_Suspended = true;
+                            m_DetachQuantum = 0;
+                        }
                         m_RunOnePhase = "nothing to do";
                         CheckRunLockInvariants(true);
                         return XMRInstState.FINISHED;
