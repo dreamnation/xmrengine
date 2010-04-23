@@ -54,6 +54,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public XmlElement GetExecutionState(XmlDocument doc)
         {
+            /*
+             * When we're detaching an attachment, we need to wait here.
+             */
+
+            m_DetachReady.WaitOne();
+
             XmlElement scriptStateN = doc.CreateElement("", "ScriptState", "");
             scriptStateN.SetAttribute("Asset", m_AssetID.ToString());
 

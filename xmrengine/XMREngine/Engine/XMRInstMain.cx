@@ -297,5 +297,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         // it also needs to have a limited quantum.
         // If this is nonzero, we're detaching to inventory.
         private int m_DetachQuantum = 0;
+
+        // Finally, we need to wait until the quantum is done, or the script
+        // suspends itself. This should be efficient, so we use an event
+        // for it instead of spinning busy.
+        // It's born ready, but will be reset when the detach is posted.
+        // It will then be set again on suspend/completion
+        private ManualResetEvent m_DetachReady = new ManualResetEvent(true);
     }
 }

@@ -116,7 +116,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      * event
                      */
                     if (evt.Params[0] == UUID.Zero.ToString())
-                        m_DetachQuantum = 25;
+                    {
+                        m_DetachReady.Reset();
+                        m_DetachQuantum = 100;
+                    }
                     
                 }
                 else
@@ -222,6 +225,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     if (m_DetachQuantum > 0 && --m_DetachQuantum == 0)
                     {
                         m_Suspended = true;
+                        m_DetachReady.Set();
                         m_RunOnePhase = "nothing to do";
                         CheckRunLockInvariants(true);
                         return XMRInstState.FINISHED;
@@ -277,6 +281,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                                      * Stop it from running and suspend
                                      */
                                     m_Suspended = true;
+                                    m_DetachReady.Set();
                                     m_DetachQuantum = 0;
                                     m_RunOnePhase = "nothing to do";
                                     CheckRunLockInvariants(true);
@@ -304,6 +309,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                              * and exited with time slice left.
                              */
                             m_Suspended = true;
+                            m_DetachReady.Set();
                             m_DetachQuantum = 0;
                         }
                         m_RunOnePhase = "nothing to do";
