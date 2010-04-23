@@ -1,4 +1,4 @@
-   <Project name="XAttachments" path="addon-modules/XAttachments/Module" type="Library">
+   <Project name="XAttachments" path="addon-modules/XAttachments/Robust" type="Library">
      <Configuration name="Debug">
        <Options>
          <OutputPath>../../../bin/</OutputPath>
