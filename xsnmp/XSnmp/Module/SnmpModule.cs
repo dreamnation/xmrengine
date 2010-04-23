@@ -54,6 +54,10 @@ namespace Careminster.Modules.Snmp
         private List<IPEndPoint> m_nms = new List<IPEndPoint>();
         private IPAddress m_ipLocal;
 	private IPAddress m_ipDebug ;
+	private IPAddress m_ipNode ;				/* This is a Fake IP */
+								/* It should be used to enable NMS discovery */
+								/* This IP should be unique per region and will never be used directly */
+
         
         private int m_port;
 
@@ -88,7 +92,9 @@ namespace Careminster.Modules.Snmp
             
 	    m_ipDebug=IPAddress.Parse("192.168.0.202");
             int m_tempPort = snmpConfig.GetInt("Port", 162);
-            string m_tempIp = snmpConfig.GetString("IP", "127.0.0.1");
+            string m_tempIp = snmpConfig.GetString("IPNode", "192.168.0.201");
+	    m_ipNode=IPAddress.Parse(m_tempIp);
+            m_tempIp = snmpConfig.GetString("IP", "127.0.0.1");
             string[] nmslist = m_tempIp.Split(new char[] { ' ' });
             foreach (string ip in nmslist)
             {
@@ -181,7 +187,36 @@ Generic Trap Events
         {
             Trap((int)gravity.major, message, scene);
         }
+/*
 
+Specific bootTrap events
+ trap 	: ctrapBoot
+ key	: 2
+ Param1 : SimName
+ Param2 : data (string)
+*/
+
+	public void BootInfo(string data, Scene scene){
+	    Variable vmes = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4, 1, 1212,2 }),
+                                      new OctetString(data));
+            Variable vsim = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4, 1, 1212, 1 }),
+                          new OctetString(scene.RegionInfo.RegionName));
+
+            List<Variable> vList = new List<Variable>();
+            vList.Add(vmes);
+            vList.Add(vsim);
+            TrapV1Message m_trap = new TrapV1Message(VersionCode.V1, m_ipDebug,
+                                            new OctetString("public"),
+					    ctrapBoot,
+                                            GenericCode.EnterpriseSpecific,
+                                            2,
+                                            0,
+                                            vList);
+            //
+            foreach (IPEndPoint ip in m_nms)
+                m_trap.Send(ip);
+
+}
 
 
 //
@@ -213,7 +248,7 @@ Generic Trap Events
             List<Variable> vList = new List<Variable>();
             vList.Add(vmes);
             vList.Add(vsim);
-            TrapV1Message m_trap = new TrapV1Message(VersionCode.V1, IPAddress.Loopback,
+            TrapV1Message m_trap = new TrapV1Message(VersionCode.V1, m_ipNode,
                                             new OctetString("public"),
                                             new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4 }),
                                             GenericCode.EnterpriseSpecific,
@@ -248,7 +283,7 @@ Generic Trap Events
             List<Variable> vList = new List<Variable>();
             vList.Add(vsim);
             vList.Add(vdata);
-            TrapV1Message m_trap = new TrapV1Message(VersionCode.V1, m_ipDebug,
+            TrapV1Message m_trap = new TrapV1Message(VersionCode.V1, m_ipNode,
                                             new OctetString("public"),
 					    ctrapColdStart,
                                             GenericCode.ColdStart,
@@ -269,7 +304,7 @@ Generic Trap Events
 
             List<Variable> vList = new List<Variable>();
             vList.Add(vsim);
-            TrapV1Message m_trap = new TrapV1Message(VersionCode.V1, m_ipDebug,
+            TrapV1Message m_trap = new TrapV1Message(VersionCode.V1, m_ipNode,
                                             new OctetString("public"),
                                             ctrapLinkUpDown,
 					    GenericCode.EnterpriseSpecific,
@@ -289,7 +324,7 @@ Generic Trap Events
             
             List<Variable> vList = new List<Variable>();
             vList.Add(vsim);
-            TrapV1Message m_trap = new TrapV1Message(VersionCode.V1, m_ipDebug,
+            TrapV1Message m_trap = new TrapV1Message(VersionCode.V1, m_ipNode,
                                             new OctetString("public"),
                                             ctrapLinkUpDown,
 					    GenericCode.EnterpriseSpecific,
