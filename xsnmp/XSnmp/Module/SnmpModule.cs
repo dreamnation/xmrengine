@@ -46,6 +46,7 @@ namespace Careminster.Modules.Snmp
         private ObjectIdentifier ctrapBoot = new ObjectIdentifier(new uint[] { 1, 3, 6, 1,4,1,1212,3}) ;
         private ObjectIdentifier ctrapColdStart = new ObjectIdentifier(new uint[] { 1, 3, 6, 1,4,1,1212,1,3}) ;
         private ObjectIdentifier ctrapLinkUpDown = new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4,1,1212,1,4 } );
+        private ObjectIdentifier ctrapWatchDog = new ObjectIdentifier(new uint[] { 1, 3, 6, 1,4,1,1212,4}) ;
 
         // 
         // Snmp related stuf
@@ -205,7 +206,7 @@ Specific bootTrap events
             List<Variable> vList = new List<Variable>();
             vList.Add(vmes);
             vList.Add(vsim);
-            TrapV1Message m_trap = new TrapV1Message(VersionCode.V1, m_ipDebug,
+            TrapV1Message m_trap = new TrapV1Message(VersionCode.V1, m_ipNode,
                                             new OctetString("public"),
 					    ctrapBoot,
                                             GenericCode.EnterpriseSpecific,
@@ -277,7 +278,7 @@ Specific bootTrap events
 
             Variable vsim = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4, 1, 1212, 1 }),
                                           new OctetString(scene.RegionInfo.RegionName));
-            Variable vdata = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4, 1, 1212, 1 }),
+            Variable vdata = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4, 1, 1212, 2 }),
                                           new OctetString("Boot step "+step));
 
             List<Variable> vList = new List<Variable>();
@@ -319,7 +320,7 @@ Specific bootTrap events
 	public void LinkUp(Scene scene)
         {
 
-            Variable vsim = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4, 1, 1000, 1 }),
+            Variable vsim = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4, 1, 1212, 1 }),
                                           new OctetString(scene.RegionInfo.RegionName));
             
             List<Variable> vList = new List<Variable>();
@@ -343,9 +344,9 @@ Specific bootTrap events
         public void Shutdown(int step, Scene scene)
         {
 
-            Variable vsim = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4, 1, 1000, 1 }),
+            Variable vsim = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4, 1, 1212, 2 }),
                                           new OctetString(scene.RegionInfo.RegionName));
-            Variable vdata = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4, 1, 1000, 1 }),
+            Variable vdata = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4, 1, 1212, 1 }),
                                           new OctetString("Shutdown step " + step));
 
             List<Variable> vList = new List<Variable>();
@@ -368,8 +369,36 @@ Specific bootTrap events
             //m_log.DebugFormat("[XSnmp] Trap sent to {0}:{1} ", m_tempIp, m_tempPort);            
         }
 
+//
+//
+// Critical events : One threads is down 
+// means the sim is unstable
+// No recovery possible
+//
         private void WatchdogTimeout(Thread thread, int lastTick)
         {
+// thread.Name, thread.ThreadState, now - lastTick)
+	  Variable vdata = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4, 1, 1212, 1 }),
+	                                            new OctetString("the thread "+thread.Name +" is "+thread.ThreadState) );
+	  
+
+            List<Variable> vList = new List<Variable>();
+            vList.Add(vdata);
+            TrapV1Message m_trap = new TrapV1Message(VersionCode.V1, m_ipNode,
+                                            new OctetString("public"),
+						ctrapWatchDog,
+                                            //new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4, 1 }),
+					    GenericCode.EnterpriseSpecific,
+                                            1,
+                                            0,
+                                            vList);
+            //
+            foreach (IPEndPoint ip in m_nms)
+                m_trap.Send(ip);
+
+
+
+            //m_log.DebugFormat("[XSnmp] Trap sent to {0}:{1} ", m_tempIp, m_tempPort);            
         }
     }
 }
