@@ -50,6 +50,8 @@ namespace Careminster.Modules.XAttachments
             m_Scene = scene;
 
             scene.EventManager.OnRemovePresence += OnRemovePresence;
+
+            scene.RegisterModuleInterface<IAttachmentsService>(this);
         }
 
         public void RegionLoaded(Scene scene)
@@ -76,7 +78,23 @@ namespace Careminster.Modules.XAttachments
 
         public string Get(string id)
         {
-            return String.Empty;
+            if (m_URL == String.Empty)
+                return String.Empty;
+
+            RestClient rc = new RestClient(m_URL);
+            rc.AddResourcePath("attachments");
+            rc.AddResourcePath(id);
+
+            rc.RequestMethod = "GET";
+
+            Stream s = rc.Request();
+            StreamReader sr = new StreamReader(s);
+
+            string data = sr.ReadToEnd();
+            sr.Close();
+            s.Close();
+
+            return data;
         }
 
         public void Store(string id, string data)
