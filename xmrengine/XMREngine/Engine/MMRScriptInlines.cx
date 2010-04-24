@@ -9,7 +9,6 @@ using System.Reflection;
 using System.Reflection.Emit;
 using System.Text;
 
-using Mono.Tasklets;
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 
 #include "lsltypes.h"
@@ -34,15 +33,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public int keepNulls;         // valid for CodeGenLLParseString2List only
 
 		private static TokenTypeFloat tokenTypeFloat  = new TokenTypeFloat (null);
-		private static TokenTypeStr   tokenTypeString = new TokenTypeStr (null);
+///		private static TokenTypeStr   tokenTypeString = new TokenTypeStr (null);
 
-		private static MethodInfo consoleWrite = ScriptCodeGen.GetStaticMethod (typeof (XMRInstance), "ConsoleWrite",
-				new Type[] { typeof (XMRInstance), typeof (string) });
+///		private static MethodInfo consoleWrite = ScriptCodeGen.GetStaticMethod (typeof (XMRInstAbstract), "ConsoleWrite",
+///				new Type[] { typeof (XMRInstAbstract), typeof (string) });
 		private static MethodInfo roundMethInfo = ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Round", 
 				new Type[] { typeof (double), typeof (MidpointRounding) });
-		private static MethodInfo parseString2ListMethInfo = ScriptCodeGen.GetStaticMethod (typeof (XMRHelpers), 
-		                                                                                    "ParseString2List",
-				new Type[] { typeof (string), typeof (LSL_List), typeof (LSL_List), typeof (bool) });
 
 		/**
 		 * @brief Create a dictionary of inline backend API functions.
@@ -125,18 +121,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			inf = new InlineFunction (ifd, "llTan(float)",         typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Tan",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
 
 			/*
-			 * These are replaced by code in xmrhelpers.so so they don't generate a lot of shitty malloc's and memcpy's.
-			 */
-			string envar = Environment.GetEnvironmentVariable ("XMRHelpersEnable");
-			if ((envar != null) && ((envar[0] & 1) != 0)) {
-				inf = new InlineFunction (ifd, "llParseString2List(string,list,list)",     typeof (LSL_List), null); inf.codeGen = inf.CodeGenLLParseString2List; inf.keepNulls = 0;
-				inf = new InlineFunction (ifd, "llParseStringKeepNulls(string,list,list)", typeof (LSL_List), null); inf.codeGen = inf.CodeGenLLParseString2List; inf.keepNulls = 1;
-			}
-
-			/*
 			 * Our internally defined functions.
 			 */
-			inf = new InlineFunction (ifd, "consoleWrite(string)", typeof (void), null); inf.codeGen = inf.CodeGenConsoleWrite;
+///			inf = new InlineFunction (ifd, "consoleWrite(string)", typeof (void), null); inf.codeGen = inf.CodeGenConsoleWrite;
 			inf = new InlineFunction (ifd, "xmrHeapLeft()",        typeof (int),  null); inf.codeGen = inf.CodeGenXMRHeapLeft;
 			inf = new InlineFunction (ifd, "xmrStackLeft()",       typeof (int),  null); inf.codeGen = inf.CodeGenXMRStackLeft;
 
@@ -230,10 +217,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					}
 				} catch (Exception except) {
 
-					string msg = except.ToString ();
-					int i = msg.IndexOf ("\n");
-					if (i > 0) msg = msg.Substring (0, i);
-					Console.WriteLine ("InlineFunction*: {0}:     {1}", key, msg);
+					///??? string msg = except.ToString ();
+					///??? int i = msg.IndexOf ("\n");
+					///??? if (i > 0) msg = msg.Substring (0, i);
+					///??? Console.WriteLine ("InlineFunction*: {0}:     {1}", key, msg);
 
 					///??? IGNORE ANY THAT FAIL - LIKE UNRECOGNIZED TYPE ???///
 					///???                          and OVERLOADED NAMES ???///
@@ -310,27 +297,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			result.PopPost (scg, tokenTypeFloat);
 		}
 
-		private void CodeGenLLParseString2List (ScriptCodeGen scg, Token token, CompValu result, CompValu[] args)
-		{
-			result.PopPre (scg);
-			args[0].PushVal (scg, tokenTypeString);  // converts from LSL_String -> string
-			args[1].PushVal (scg);                   // it can only be LSL_List
-			args[2].PushVal (scg);                   // it can only be LSL_List
-			scg.PushConstantI4 (this.keepNulls);     // 0:ParseString2List, 1:ParseStringKeepNulls
-			scg.ilGen.Emit (OpCodes.Call, parseString2ListMethInfo);
-			result.PopPost (scg);                    // it can only be LSL_List
-		}
-
 		/**
 		 * @brief Generate code to print a debug string on stdout.
 		 *        Script-level prototype:  void consoleWrite(string)
 		 */
-		private void CodeGenConsoleWrite (ScriptCodeGen scg, Token token, CompValu result, CompValu[] args)
-		{
-			scg.ilGen.Emit (OpCodes.Ldarg_0);
-			args[0].PushVal (scg, tokenTypeString);
-			scg.ilGen.Emit (OpCodes.Call, consoleWrite);
-		}
+///		private void CodeGenConsoleWrite (ScriptCodeGen scg, Token token, CompValu result, CompValu[] args)
+///		{
+///			scg.ilGen.Emit (OpCodes.Ldarg_0);
+///			args[0].PushVal (scg, tokenTypeString);
+///			scg.ilGen.Emit (OpCodes.Call, consoleWrite);
+///		}
 
 		/**
 		 * @brief Generate code to return number of bytes of heap they have left.
@@ -348,14 +324,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief Generate code to return number of bytes of stack they have left.
 		 *        Script-level prototype:  integer xmrStackLeft()
 		 */
+		private static MethodInfo stackLeftMethodInfo = typeof (XMRInstAbstract).GetMethod ("StackLeft", new Type[0]);
 		private void CodeGenXMRStackLeft (ScriptCodeGen scg, Token token, CompValu result, CompValu[] args)
 		{
 			result.PopPre (scg);
-			scg.ilGen.Emit (OpCodes.Call, ScriptCodeGen.stackLeftMethodInfo);
-			scg.ilGen.Emit (OpCodes.Conv_I4);
 			scg.ilGen.Emit (OpCodes.Ldarg_0);
-			scg.ilGen.Emit (OpCodes.Ldfld, ScriptCodeGen.stackLimitFieldInfo);
-			scg.ilGen.Emit (OpCodes.Sub);
+			scg.ilGen.Emit (OpCodes.Call, stackLeftMethodInfo);
 			result.PopPost (scg, retType);
 		}
 

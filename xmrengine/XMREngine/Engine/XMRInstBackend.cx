@@ -97,9 +97,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /**
          * @brief Called by consoleWrite(string) call.
          */
-        public static void ConsoleWrite (XMRInstance instance, string s)
+        public override void ConsoleWrite (string s)
         {
-            Console.WriteLine ("XMRInstance.ConsoleWrite: " + instance.m_DescName + ": " + s);
+            Console.WriteLine ("XMRInstance.ConsoleWrite: " + this.m_DescName + ": " + s);
         }
 
         /**
@@ -155,6 +155,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             AsyncCommandManager.RemoveScript(m_Engine, m_LocalID, m_ItemID);
             m_Part.SetScriptEvents(m_ItemID, 
                                    GetStateEventFlags(stateCode));
+        }
+
+        /**
+         * @brief Script is calling xmrStackLeft().
+         */
+        public override int StackLeft()
+        {
+            return (int)MMRUThread.StackLeft();
         }
     }
 

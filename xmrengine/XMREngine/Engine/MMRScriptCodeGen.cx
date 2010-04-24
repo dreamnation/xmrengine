@@ -3,8 +3,6 @@
  *  All rights reserved.                                *
 \********************************************************/
 
-using log4net;
-using Mono.Tasklets;
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 using OpenSim.Region.ScriptEngine.XMREngine;
 using System;
@@ -26,11 +24,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 	public class ScriptCodeGen
 	{
-		private static readonly ILog m_log =
-			LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
-
 		public static readonly string OBJECT_CODE_MAGIC = "XMRObjectCode";
-		public static readonly int COMPILED_VERSION_VALUE = 8;  // incremented when compiler changes for compatibility testing
+		public static readonly int COMPILED_VERSION_VALUE = 10;  // incremented when compiler changes for compatibility testing
 
 		public static readonly int CALL_FRAME_MEMUSE = 64;
 		public static readonly int STRING_LEN_TO_MEMUSE = 2;
@@ -44,7 +39,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static Dictionary<string, InlineFunction> inlineFunctions = InlineFunction.CreateDictionary ();
 		private static Dictionary<string, TokenDeclFunc> legalEventHandlers = CreateLegalEventHandlers ();
 		private static TokenTypeBool  tokenTypeBool  = new TokenTypeBool  (null);
-		private static Type[] instanceTypeArg = new Type[] { typeof (XMRInstance) };
+		private static Type[] instanceTypeArg = new Type[] { typeof (XMRInstAbstract) };
 
 		private static ConstructorInfo lslFloatConstructorInfo = typeof (LSL_Float).GetConstructor (new Type[] { typeof (SCRIPTFLOAT) });
 		private static ConstructorInfo lslIntegerConstructorInfo = typeof (LSL_Integer).GetConstructor (new Type[] { typeof (int) });
@@ -57,23 +52,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static FieldInfo arrayCountFieldInfo   = typeof (XMR_Array).GetField ("__pub_count");
 		private static FieldInfo arrayIndexFieldInfo   = typeof (XMR_Array).GetField ("__pub_index");
 		private static FieldInfo arrayValueFieldInfo   = typeof (XMR_Array).GetField ("__pub_value");
-		public  static FieldInfo beAPIFieldInfo        = typeof (XMRInstance).GetField ("beAPI");
-		private static FieldInfo doGblInitFieldInfo    = typeof (XMRInstance).GetField ("doGblInit");
-		private static FieldInfo ehArgsFieldInfo       = typeof (XMRInstance).GetField ("ehArgs");
-		public  static FieldInfo heapLeftFieldInfo     = typeof (XMRInstance).GetField ("heapLeft");
-		private static FieldInfo heapLimitFieldInfo    = typeof (XMRInstance).GetField ("heapLimit");
+		public  static FieldInfo beAPIFieldInfo        = typeof (XMRInstAbstract).GetField ("beAPI");
+		private static FieldInfo doGblInitFieldInfo    = typeof (XMRInstAbstract).GetField ("doGblInit");
+		private static FieldInfo ehArgsFieldInfo       = typeof (XMRInstAbstract).GetField ("ehArgs");
+		public  static FieldInfo heapLeftFieldInfo     = typeof (XMRInstAbstract).GetField ("heapLeft");
+		private static FieldInfo heapLimitFieldInfo    = typeof (XMRInstAbstract).GetField ("heapLimit");
 		private static FieldInfo rotationXFieldInfo    = typeof (LSL_Rotation).GetField ("x");
 		private static FieldInfo rotationYFieldInfo    = typeof (LSL_Rotation).GetField ("y");
 		private static FieldInfo rotationZFieldInfo    = typeof (LSL_Rotation).GetField ("z");
 		private static FieldInfo rotationSFieldInfo    = typeof (LSL_Rotation).GetField ("s");
-		public  static FieldInfo stackLimitFieldInfo   = typeof (XMRInstance).GetField ("stackLimit");
-		private static FieldInfo stateChangedFieldInfo = typeof (XMRInstance).GetField ("stateChanged");
-		private static FieldInfo stateCodeFieldInfo    = typeof (XMRInstance).GetField ("stateCode");
+		private static FieldInfo stateChangedFieldInfo = typeof (XMRInstAbstract).GetField ("stateChanged");
+		private static FieldInfo stateCodeFieldInfo    = typeof (XMRInstAbstract).GetField ("stateCode");
 		private static FieldInfo vectorXFieldInfo      = typeof (LSL_Vector).GetField ("x");
 		private static FieldInfo vectorYFieldInfo      = typeof (LSL_Vector).GetField ("y");
 		private static FieldInfo vectorZFieldInfo      = typeof (LSL_Vector).GetField ("z");
 
-		private static MethodInfo checkRunMethodInfo = typeof (XMRInstance).GetMethod ("CheckRun", new Type[] { typeof (int) });
+		private static MethodInfo checkRunMethodInfo = typeof (XMRInstAbstract).GetMethod ("CheckRun", new Type[] { typeof (int) });
 		private static MethodInfo forEachMethodInfo = typeof (XMR_Array).GetMethod ("ForEach", 
 		                                                                            new Type[] { typeof (int),
 		                                                                                         typeof (object).MakeByRefType (),
@@ -86,16 +80,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static MethodInfo lslVectorNegateMethodInfo = GetStaticMethod (typeof (ScriptCodeGen), 
 		                                                                       "LSLVectorNegate", 
 		                                                                       new Type[] { typeof (LSL_Vector) });
-		public  static MethodInfo stackLeftMethodInfo = GetStaticMethod (typeof (MMRUThread), "StackLeft", new Type[0]);
 
-		public static bool CodeGen (TokenScript tokenScript, string descName, string objFileName)
+		public static bool CodeGen (TokenScript tokenScript, BinaryWriter objFileWriter)
 		{
 			TypeCast.CreateLegalTypeCasts ();
 
 			/*
 			 * Run compiler such that it has a 'this' context for convenience.
 			 */
-			ScriptCodeGen scg = new ScriptCodeGen (tokenScript, descName, objFileName);
+			ScriptCodeGen scg = new ScriptCodeGen (tokenScript, objFileWriter);
 
 			/*
 			 * Return pointer to resultant script object code.
@@ -112,7 +105,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private TokenDeclFunc curDeclFunc = null;
 		private TokenStmtBlock curStmtBlock = null;
 		private BinaryWriter objFileWriter = null;
-		private string descName = null;
 		private TokenScript tokenScript = null;
 
 		private Dictionary<string, TokenDeclFunc> scriptFunctions = null;
@@ -133,12 +125,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		                                        // given a script-visible local variable (or argument variable),
 		                                        // ... return the corresponding heapTracker variable, if any.
 
-		private ScriptCodeGen (TokenScript tokenScript, string descName, string objFileName)
+		private ScriptCodeGen (TokenScript tokenScript, BinaryWriter objFileWriter)
 		{
-			this.tokenScript = tokenScript;
-			this.descName    = descName;
+			this.tokenScript   = tokenScript;
+			this.objFileWriter = objFileWriter;
 
-			objFileWriter = new BinaryWriter (File.Create (objFileName));
 			try {
 				PerformCompilation ();
 			} finally {
@@ -456,7 +447,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			int statecode = stateIndices[statename];
 			int eventcode = (int)Enum.Parse (typeof (ScriptEventCode), eventname);
 			string functionName = "__seh_" + statecode.ToString() + "_" + eventcode.ToString () + "_" + 
-			                                 statename + "_" + eventname + "$MMRContableAttribute$" + descName;
+			                                 statename + "_" + eventname + "$MMRContableAttribute$";
 			ilGen = new ScriptMyILGen (functionName,
 			                           typeof (void),
 			                           instanceTypeArg,
@@ -569,7 +560,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * We splice in XMRInstance for the first arg as the function is static.
 			 */
 			Type[] argTypes = new Type[argDecl.types.Length+1];
-			argTypes[0] = typeof (XMRInstance);
+			argTypes[0] = typeof (XMRInstAbstract);
 			for (int i = 0; i < argDecl.types.Length; i ++) {
 				argTypes[i+1] = argDecl.types[i].typ;
 			}
@@ -577,7 +568,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Set up entrypoint.
 			 */
-			string methodName = "__fun_" + name + "$MMRContableAttribute$" + descName;
+			string methodName = "__fun_" + name + "$MMRContableAttribute$";
 			declFunc.ilGen = new ScriptMyILGen (methodName,
 			                                    declFunc.retType.typ,
 			                                    argTypes,
@@ -2399,7 +2390,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 *   'scriptObjCode' is an in-memory object with methods filled in from the CIL code
 		 * Throws an exception if there is any error (theoretically).
 		 */
-		public static ScriptObjCode PerformGeneration (BinaryReader objFileReader, 
+		public static ScriptObjCode PerformGeneration (string descName,
+		                                               BinaryReader objFileReader, 
 		                                               StreamWriter asmFileWriter)
 		{
 			/*
@@ -2463,6 +2455,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			EndMethodWrapper endMethodWrapper = new EndMethodWrapper ();
 			endMethodWrapper.scriptObjCode = scriptObjCode;
+			endMethodWrapper.descName      = descName;
 			scriptObjCode.scriptEventHandlerTable = new ScriptEventHandler[nStates,(int)ScriptEventCode.Size];
 			scriptObjCode.dynamicMethods = new Dictionary<string, DynamicMethod> ();
 			ScriptMyILGen.CreateObjCode (objFileReader, endMethodWrapper.EndMethod, asmFileWriter);
@@ -2476,6 +2469,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private class EndMethodWrapper {
 			public ScriptObjCode scriptObjCode;
+			public string descName;
+
 			public void EndMethod (DynamicMethod method)
 			{
 				string methName = method.Name;
@@ -2489,7 +2484,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				 * We enter all script event handler methods in the ScriptEventHandler table.
 				 * They are named:  __seh_<statenumber>_<eventnumber>_<bunchofstuffwedontcareabout>
 				 */
-				if (methName.Substring (0, 6) == "__seh_") {
+				if (methName.StartsWith ("__seh_")) {
 					int j = methName.IndexOf ('_', 6);      // terminates <statenumber>
 					int k = methName.IndexOf ('_', j + 1);  // terminates <eventnumber>
 					int stateCode = Int32.Parse (methName.Substring (6, j - 6));

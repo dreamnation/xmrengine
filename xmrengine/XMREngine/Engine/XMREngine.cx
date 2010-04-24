@@ -466,6 +466,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void SetState(UUID itemID, string newState)
         {
+            if (m_TraceCalls)
+            {
+                m_log.DebugFormat("[XMREngine]: XMREngine.SetState({0},{1})", itemID.ToString(), newState);
+            }
         }
 
         public void ApiResetScript(UUID itemID)
@@ -754,7 +758,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             if (m_TraceCalls)
             {
-                m_log.DebugFormat("[XMREngine]: OnRezScript({0}...)", itemID.ToString());
+                m_log.DebugFormat("[XMREngine]: OnRezScript(...,{0},...)", itemID.ToString());
             }
 
             if (script.StartsWith("//MRM:"))
@@ -931,6 +935,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             SceneObjectPart part =
                     m_Scene.GetSceneObjectPart(localID);
             XMRInstance instance = null;
+
+            if (m_TraceCalls)
+            {
+                m_log.DebugFormat("[XMREngine]: OnRemoveScript(...,{0})", itemID.ToString());
+            }
 
             /*
              * Remove from our list of known scripts.

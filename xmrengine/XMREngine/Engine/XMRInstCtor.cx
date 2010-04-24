@@ -251,7 +251,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * ScriptObjCode from that.
              */
             ScriptObjCode objCode = ScriptCompile.Compile(m_SourceCode, 
-                                                          m_DescName,
                                                           m_AssetID.ToString(), 
                                                           m_ScriptBasePath, 
                                                           ErrorHandler);

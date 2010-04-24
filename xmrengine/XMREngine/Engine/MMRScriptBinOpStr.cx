@@ -3,7 +3,6 @@
  *  All rights reserved.                           *
 \***************************************************/
 
-using Mono.Tasklets;
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 using OpenSim.Region.ScriptEngine.XMREngine;
 using System;

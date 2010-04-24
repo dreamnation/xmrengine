@@ -33,8 +33,6 @@ using log4net;
 //
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
-    public delegate void ScriptEventHandler (XMRInstance instance);
-
     public enum SubsArray {
         SCRIPT = 0,
         BEAPI,
@@ -71,7 +69,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         DISPOSED    // has been disposed
     }
 
-    public partial class XMRInstance : IDisposable
+    public partial class XMRInstance : XMRInstAbstract, IDisposable
     {
         /******************************************************************\
          *  This module contains the instance variables for XMRInstance.  *
@@ -161,36 +159,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private Dictionary<string,IScriptApi> m_Apis =
                 new Dictionary<string,IScriptApi>();
 
-        public int stateCode = 0;                 // state the script is in (0 = 'default')
         public ScriptEventCode eventCode = ScriptEventCode.None;
                                                   // event handler being executed (None when idle)
                                                   // - code assumes that only the event handling microthread
                                                   //   transitions eventCode from non-idle to idle
                                                   // - idle to non-idle is always Interlocked
-        public ScriptBaseClass beAPI;             // passed as 'this' to methods such as llSay()
-        public object[] ehArgs;                   // event handler argument array
-        public bool stateChanged = false;         // script sets this if/when it executes a 'state' statement
-        public bool doGblInit = true;             // default state_entry() needs to initialize global variables
         public ScriptObjCode objCode;             // the script's object code pointer
-        public uint stackLimit;                   // CheckRun() must always see this much stack available
-        public int heapLimit;                     // let script use this many bytes of heap maximum
-                                                  // includes global vars, local vars, that reference heap
-                                                  // does not include value-type vars, that is part of stackLimit
-        public int heapLeft;                      // how much of heapLimit remains available
-
-        /*
-         * These arrays hold the global variable values for the script instance.
-         * The array lengths are determined by the script compilation,
-         * and are found in ScriptObjCode.numGblArrays, .numGblFloats, etc.
-         */
-        public XMR_Array[]    gblArrays;
-        public SCRIPTFLOAT[]  gblFloats;
-        public int[]          gblIntegers;
-        public LSL_List[]     gblLists;
-        public object[]       gblObjects;
-        public LSL_Rotation[] gblRotations;
-        public string[]       gblStrings;
-        public LSL_Vector[]   gblVectors;
 
         /*
          * We will use this microthread to run the scripts event handlers.
