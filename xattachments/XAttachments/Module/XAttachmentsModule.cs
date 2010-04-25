@@ -124,7 +124,7 @@ namespace Careminster.Modules.XAttachments
                 MemoryStream ms = new MemoryStream();
                 XmlTextWriter xw = new XmlTextWriter(ms, null);
 
-                att.SaveScriptedState(xw);
+                att.SaveScriptedState(xw, true);
                 xw.Flush();
                 xw.Close();
                 string state = enc.GetString(ms.ToArray());
