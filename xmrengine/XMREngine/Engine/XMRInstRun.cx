@@ -787,7 +787,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * @param line = script source line number (for debugging)
          */
         [MMRContableAttribute ()]
-        public void CheckRun (int line)
+        public override void CheckRun (int line)
         {
             m_CheckRunPhase = "entered";
             m_CheckRunLine = line;

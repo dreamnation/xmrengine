@@ -10,6 +10,8 @@ using System.Reflection.Emit;
 
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
+	public delegate void ScriptEventHandler (XMRInstAbstract instance);
+
 	/*
 	 * This object represents the output of the compilation.
 	 * Once the compilation is complete, its contents should be

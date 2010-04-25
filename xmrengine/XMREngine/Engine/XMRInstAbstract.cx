@@ -1,0 +1,50 @@
+/***************************************************\
+ *  COPYRIGHT 2010, Mike Rieker, Beverly, MA, USA  *
+ *  All rights reserved.                           *
+\***************************************************/
+
+#include "lsltypes.h"
+
+using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
+
+namespace OpenSim.Region.ScriptEngine.XMREngine
+{
+    /*
+     * Contains only items required by the stand-alone compiler
+     * so it doesn't need to pull in all of OpenSim.
+     */
+    public abstract class XMRInstAbstract
+    {
+        public ScriptBaseClass beAPI;      // passed as 'this' to methods such as llSay()
+        public object[] ehArgs;            // event handler argument array
+        public bool stateChanged = false;  // script sets this if/when it executes a 'state' statement
+        public bool doGblInit = true;      // default state_entry() needs to initialize global variables
+        public uint stackLimit;            // CheckRun() must always see this much stack available
+        public int heapLimit;              // let script use this many bytes of heap maximum
+                                           // includes global vars, local vars, that reference heap
+                                           // does not include value-type vars, that is part of stackLimit
+        public int heapLeft;               // how much of heapLimit remains available
+        public int stateCode = 0;          // state the script is in (0 = 'default')
+
+        /*
+         * These arrays hold the global variable values for the script instance.
+         * The array lengths are determined by the script compilation,
+         * and are found in ScriptObjCode.numGblArrays, .numGblFloats, etc.
+         */
+        public XMR_Array[]    gblArrays;
+        public SCRIPTFLOAT[]  gblFloats;
+        public int[]          gblIntegers;
+        public LSL_List[]     gblLists;
+        public object[]       gblObjects;
+        public LSL_Rotation[] gblRotations;
+        public string[]       gblStrings;
+        public LSL_Vector[]   gblVectors;
+
+        /*
+         * Function prototypes.
+         */
+        public abstract void ConsoleWrite (string s);
+        public abstract void CheckRun (int line);
+        public abstract int  StackLeft ();
+    }
+}
