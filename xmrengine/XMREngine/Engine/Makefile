@@ -24,7 +24,7 @@ SAOPENSIMDLLS = \
 
 GCC := gcc $(CFLAGS) -Wall -O2 -g
 
-default: xmrengcomp.zip csfiles
+default: csfiles xmrengcomp.zip 
 
 # ------------------------------------------------------------------------------
 
