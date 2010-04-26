@@ -103,6 +103,8 @@ namespace Careminster.Modules.XAttachments
 
         private void OnRemovePresence(UUID AgentID)
         {
+            bool haveAttachments = false;
+
             if (m_URL == String.Empty)
                 return;
 
@@ -130,8 +132,14 @@ namespace Careminster.Modules.XAttachments
                 string state = enc.GetString(ms.ToArray());
 
                 if (state != String.Empty)
+                {
+                    haveAttachments = true;
                     states[att.GetFromItemID()] = state;
+                }
             }
+
+            if (!haveAttachments)
+                return;
 
             MemoryStream attStream = new MemoryStream();
             XmlTextWriter attWriter = new XmlTextWriter(attStream, null);

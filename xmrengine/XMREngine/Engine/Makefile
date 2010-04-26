@@ -19,8 +19,8 @@ SAFILES = \
 	XMRInstAbstract.cs
 
 SAOPENSIMDLLS = \
-	../../../../opensim/bin/OpenSim.Region.ScriptEngine.Shared.dll \
-	../../../../opensim/bin/OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll \
+	../../../bin/OpenSim.Region.ScriptEngine.Shared.dll \
+	../../../bin/OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll \
 
 GCC := gcc $(CFLAGS) -Wall -O2 -g
 
@@ -42,8 +42,8 @@ xmrengcomp.exe: $(SAFILES) $(SAOPENSIMDLLS) MMRScriptCompile.cx
 	rm -f MMRScriptCompile_sa.cs
 	cpp -C -P -nostdinc -o MMRScriptCompile_sa.cs -DSTANDALONE_COMPILER MMRScriptCompile.cx
 	gmcs -debug -out:xmrengcomp.exe \
-		-reference:../../../../opensim/bin/OpenSim.Region.ScriptEngine.Shared.dll \
-		-reference:../../../../opensim/bin/OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll \
+		-reference:../../../bin/OpenSim.Region.ScriptEngine.Shared.dll \
+		-reference:../../../bin/OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll \
 		MMRScriptCompile_sa.cs \
 		$(SAFILES)
 	rm -f MMRScriptCompile_sa.cs
