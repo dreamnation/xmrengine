@@ -18,38 +18,51 @@ SAFILES = \
 	XMRArray.cs \
 	XMRInstAbstract.cs
 
+OPENSIMDLLDIR = ../../../../opensim/bin
 SAOPENSIMDLLS = \
-	../../../../opensim/bin/OpenSim.Region.ScriptEngine.Shared.dll \
-	../../../../opensim/bin/OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll \
+	OpenSim.Region.ScriptEngine.Shared.dll \
+	OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll
 
 GCC := gcc $(CFLAGS) -Wall -O2 -g
 
-default: xmrengcomp.zip csfiles
+default: csfiles xmrengcomp.zip xmrengcomp_secret.exe
 
 # ------------------------------------------------------------------------------
-
-xmrengcomp.zip: xmrengcomp.exe $(SAOPENSIMDLLS)
-	rm -f OpenSim.Region.ScriptEngine.Shared.dll
-	rm -f OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll
-	ln -s ../../../../opensim/bin/OpenSim.Region.ScriptEngine.Shared.dll
-	ln -s ../../../../opensim/bin/OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll
+#
+# Create distributable xmrengcomp stand-alone compiler
+#
+xmrengcomp.zip: xmrengcomp.exe $(patsubst %,$(OPENSIMDLLDIR)/%,$(SAOPENSIMDLLS))
+	$(foreach dll,$(SAOPENSIMDLLS),$(shell cp $(OPENSIMDLLDIR)/$(dll) $(dll)))
 	rm -f xmrengcomp.zip
-	zip -D xmrengcomp.zip xmrengcomp.exe OpenSim.Region.ScriptEngine.Shared.dll OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll
-	rm -f OpenSim.Region.ScriptEngine.Shared.dll
-	rm -f OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll
+	zip -D xmrengcomp.zip xmrengcomp.exe $(SAOPENSIMDLLS)
+	rm -f $(SAOPENSIMDLLS)
 
-xmrengcomp.exe: $(SAFILES) $(SAOPENSIMDLLS) MMRScriptCompile.cx
+xmrengcomp.exe: $(SAFILES) MMRScriptCompile.cx $(patsubst %,$(OPENSIMDLLDIR)/%,$(SAOPENSIMDLLS))
 	rm -f MMRScriptCompile_sa.cs
 	cpp -C -P -nostdinc -o MMRScriptCompile_sa.cs -DSTANDALONE_COMPILER MMRScriptCompile.cx
 	gmcs -debug -out:xmrengcomp.exe \
-		-reference:../../../../opensim/bin/OpenSim.Region.ScriptEngine.Shared.dll \
-		-reference:../../../../opensim/bin/OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll \
+		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(SAOPENSIMDLLS)) \
+		MMRScriptCompile_sa.cs \
+		$(SAFILES)
+	rm -f MMRScriptCompile_sa.cs
+
+#
+# Create internal-use-only xmrengcomp stand-alone compiler
+# ...includes the -asm and -genkey command-line options
+#
+xmrengcomp_secret.exe: $(SAFILES) MMRScriptCompile.cx $(patsubst %,$(OPENSIMDLLDIR)/%,$(SAOPENSIMDLLS))
+	rm -f MMRScriptCompile_sa.cs
+	cpp -C -P -nostdinc -o MMRScriptCompile_sa.cs -DSTANDALONE_COMPILER -DSECRET_STUFF MMRScriptCompile.cx
+	gmcs -debug -out:xmrengcomp_secret.exe \
+		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(SAOPENSIMDLLS)) \
 		MMRScriptCompile_sa.cs \
 		$(SAFILES)
 	rm -f MMRScriptCompile_sa.cs
 
 # ------------------------------------------------------------------------------
-
+#
+# Create files needed for OpenSim
+#
 csfiles: $(patsubst %.cx,%.cs,$(wildcard *.cx))
 
 %.cs: %.cx $(wildcard *.h)

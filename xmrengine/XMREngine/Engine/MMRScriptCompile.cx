@@ -43,14 +43,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     sourceBuilder.Append ('\n');
                     continue;
                 }
-            //  if (arg == "-asm") {
-            //      asmFileName = args[++i];
-            //      continue;
-            //  }
+#ifdef SECRET_STUFF
+                if (arg == "-asm") {
+                    asmFileName = args[++i];
+                    continue;
+                }
                 if (arg == "-genkey") {
                     GenKey ();
                     return;
                 }
+#endif
                 if (arg == "-out") {
                     objFileName = args[++i];
                     continue;
@@ -81,7 +83,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * If they want the assembly file, disassemble object file to get it.
              */
-#if 000
+#if SECRET_STUFF
             if (asmFileName != null) {
                 BinaryReader objFileReader = new BinaryReader (fileStream);
                 StreamWriter asmFileWriter = File.CreateText (asmFileName);
@@ -118,6 +120,7 @@ version:
             Console.WriteLine ("({0},{1}) {2}", token.line, token.posn, message);
         }
 
+#ifdef SECRET_STUFF
         /**
          * @brief This is run only once by Meta7 to generate our public and private
          *        key pair.  A new key can be generated if the compile version changes.
@@ -174,6 +177,7 @@ version:
             sb.Append (" };");
             return sb.ToString ();
         }
+#endif
 #else
         private static readonly log4net.ILog m_log =
             log4net.LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
@@ -314,22 +318,36 @@ version:
             /*
              * Scan abstract syntax tree to write object file.
              */
-            Stream fileStream = File.Create (objFileName);
 #ifdef STANDALONE_COMPILER
-            fileStream.Write (version, 0, version.Length);
-            fileStream = Encrypt (fileStream);
+            MemoryStream fileStream = new MemoryStream ();
+#else
+            Stream fileStream = File.Create (objFileName);
 #endif
             BinaryWriter objFileWriter = new BinaryWriter (fileStream);
             if (!ScriptCodeGen.CodeGen(tokenScript, objFileWriter))
             {
+                fileStream.Close ();
                 File.Delete (objFileName);
                 return null;
             }
 
             /*
              * Return a reader so the loader can load the file.
+             * For stand-alone compiler, write the encrypted file and return a ref
+             *    to the memory stream with the plaintext data.
+             * For the script engine itself, just rewind the plaintext object file.
              */
-            return File.OpenRead (objFileName);
+            fileStream.Flush ();
+            fileStream.Seek (0, SeekOrigin.Begin);
+#ifdef STANDALONE_COMPILER
+            Stream encFileStream = File.Create (objFileName);
+            encFileStream.Write (version, 0, version.Length);
+            encFileStream = Encrypt (encFileStream);
+            byte[] plaintextBytes = fileStream.GetBuffer ();
+            encFileStream.Write (plaintextBytes, 0, plaintextBytes.Length);
+            encFileStream.Close ();
+#endif
+            return fileStream;
         }
 
         /*
