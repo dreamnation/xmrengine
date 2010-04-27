@@ -133,7 +133,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			try {
 				PerformCompilation ();
 			} finally {
-				objFileWriter.Close ();
 				objFileWriter = null;
 				scriptObjCode = null;
 			}
