@@ -312,13 +312,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 else if (m_StateSource == StateSource.NewRez)
                 {
                     PostEvent(new EventParams("changed",
-                            new Object[] { 256 }, 
+                            new Object[] { ScriptBaseClass.CHANGED_REGION_START }, 
                             zeroDetectParams));
                 }
                 else if (m_StateSource == StateSource.PrimCrossing)
                 {
                     PostEvent(new EventParams("changed",
-                            new Object[] { 512 }, 
+                            new Object[] { ScriptBaseClass.CHANGED_REGION }, 
                             zeroDetectParams));
                 }
 
