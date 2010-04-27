@@ -500,7 +500,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             XmlElement permissionsN = (XmlElement)scriptStateN.SelectSingleNode("Permissions");
             m_Item.PermsGranter = new UUID(permissionsN.GetAttribute("granter"));
             m_Item.PermsMask = Convert.ToInt32(permissionsN.GetAttribute("mask"));
-            m_Part.Inventory.UpdateInventoryItem(m_Item);
+            m_Part.Inventory.UpdateInventoryItem(m_Item, false);
 
             // get values used by stuff like llDetectedGrab, etc.
             detParams = RestoreDetectParams(scriptStateN.SelectSingleNode("DetectArray"));
