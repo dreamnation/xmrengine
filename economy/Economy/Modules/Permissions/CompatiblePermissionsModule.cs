@@ -26,6 +26,7 @@ namespace Careminster.Modules.Permissions
         protected Scene m_Scene;
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
+
         #region Constants
         
         private uint PERM_ALL = (uint)2147483647;
@@ -39,6 +40,7 @@ namespace Careminster.Modules.Permissions
         private bool m_Enabled = false;
 
         private IFriendsModule m_friendsModule = null;
+
 
         #endregion
 
@@ -109,6 +111,7 @@ namespace Careminster.Modules.Permissions
             m_Scene.Permissions.OnDeleteUserInventory += CanDeleteUserInventory;
             m_Scene.Permissions.OnTeleport += CanTeleport;
             m_Scene.Permissions.OnResetScript += CanResetScript;
+		
         }
 
         public void RegionLoaded(Scene scene)
