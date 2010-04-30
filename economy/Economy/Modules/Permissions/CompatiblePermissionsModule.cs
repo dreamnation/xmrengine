@@ -1129,11 +1129,21 @@ namespace Careminster.Modules.Permissions
 
             public bool CanLinkObject(UUID userID, UUID objectID)
             {
+                uint perms=GetEffectivePermissions(editorID, objectID);
+
+                if((perms & PERM_MODIFY) == 0)
+                    return false;
+
                 return true;
             }
 
             public bool CanDelinkObject(UUID userID, UUID objectID)
             {
+                uint perms=GetEffectivePermissions(editorID, objectID);
+
+                if((perms & PERM_MODIFY) == 0)
+                    return false;
+
                 return true;
             }
 
