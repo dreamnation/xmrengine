@@ -1,0 +1,414 @@
+/***************************************************\
+ *  COPYRIGHT 2010, Mike Rieker, Beverly, MA, USA  *
+ *  All rights reserved.                           *
+\***************************************************/
+
+#include "lsltypes.h"
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
+
+#define DEBUG(x) // Console.WriteLine(x)
+
+namespace OpenSim.Region.ScriptEngine.XMREngine {
+
+	/**
+	 * @brief byte-sized codes used to identify items in the stream.
+	 */
+	public enum TokenCode : byte {
+		DUMMY,
+		TOKENINDEX,
+		TOKENTYPE,
+		TOKENFILE,
+		TOKENLINE,
+		TOKENPOSN,
+		BOOL,
+		BYTE,
+		CHAR,
+		SCRFLOAT,
+		INT,
+		STRING
+	}
+
+	/**
+	 * @brief Used to write tokens to a stream.
+	 */
+	public class TokenWriter {
+
+		private BinaryWriter writer;
+		private Dictionary<string, int> stringDict = new Dictionary<string, int> ();
+		private Dictionary<Token,  int> tokenDict  = new Dictionary<Token,  int> ();
+		private Dictionary<Type,   int> typeDict   = new Dictionary<Type,   int> ();
+		private int stringIndex   = 0;
+		private int tokenDepth    = 0;
+		private int tokenIndex    = 0;
+		private int tokenLastLine = 0;
+		private int tokenLastPosn = 0;
+		private int typeIndex     = 0;
+		private string tokenLastFile = "";
+
+		public TokenWriter (BinaryWriter writer)
+		{
+			this.writer = writer;
+		}
+
+		/**
+		 * @brief Write a token to the stream (and everything it references).
+		 */
+		public void Write (Token token)
+		{
+			int index;
+			Type type;
+
+			/*
+			 * Indicate to reader that a token index is next.
+			 */
+			writer.Write ((byte)TokenCode.TOKENINDEX);
+
+			/*
+			 * Null tokens are indicated by an index of 0.
+			 */
+			if (token == null) {
+				DEBUG ("WriteToken*: null");
+				writer.Write (0);
+				return;
+			}
+
+			/*
+			 * If token is already in dictionary, just output its positive index.
+			 */
+			if (tokenDict.TryGetValue (token, out index)) {
+				if (index <= 0) throw new Exception ("bad index");
+				DEBUG ("WriteToken*: known token " + token.GetType ().Name + " " + token.SrcLoc);
+				writer.Write (index);
+				return;
+			}
+
+			/*
+			 * Never seen before, make up dictionary entry with new index.
+			 * Output index as a negative number so reader can tell it is new.
+			 */
+			index = ++ tokenIndex;
+			if (index <= 0) throw new Exception ("index overflow");
+			tokenDict[token] = index;
+			writer.Write (-index);
+
+			/*
+			 * Output the token type string so reader can reconstruct it.
+			 * Keep the type strings in a dictionary to save a lot of space.
+			 */
+			writer.Write ((byte)TokenCode.TOKENTYPE);
+			type = token.GetType ();
+			if (typeDict.TryGetValue (type, out index)) {
+				if (index <= 0) throw new Exception ("bad index");
+				writer.Write (index);
+			} else {
+				index = ++ typeIndex;
+				if (index <= 0) throw new Exception ("index overflow");
+				typeDict[type] = index;
+				writer.Write (-index);
+				writer.Write (type.AssemblyQualifiedName);
+			}
+
+			/*
+			 * Indicate the source file/line/posn the token comes from.
+			 */
+			if (token.file != tokenLastFile) {
+				writer.Write ((byte)TokenCode.TOKENFILE);
+				writer.Write (token.file);
+				tokenLastFile = token.file;
+			}
+			if (token.line != tokenLastLine) {
+				writer.Write ((byte)TokenCode.TOKENLINE);
+				writer.Write (token.line);
+				tokenLastLine = token.line;
+			}
+			writer.Write ((byte)TokenCode.TOKENPOSN);
+			writer.Write (token.posn);
+
+			/*
+			 * Finally output any token-specific data.
+			 */
+			tokenDepth ++;
+			DEBUG ("WriteToken*: [" + tokenDepth + "] starting " + token.GetType ().Name + " " + token.SrcLoc);
+			token.WriteOut (this);
+			DEBUG ("WriteToken*: [" + tokenDepth + "] finished " + token.GetType ().Name + " " + token.SrcLoc);
+			tokenDepth --;
+		}
+
+		/**
+		 * @brief Write various elementary data types to the stream.
+		 */
+		public void Write (bool v)
+		{
+			writer.Write ((byte)TokenCode.BOOL);
+			writer.Write (v);
+		}
+
+		public void Write (byte v)
+		{
+			writer.Write ((byte)TokenCode.BYTE);
+			writer.Write (v);
+		}
+
+		public void Write (char v)
+		{
+			writer.Write ((byte)TokenCode.CHAR);
+			writer.Write (v);
+		}
+
+		public void Write (SCRIPTFLOAT v)
+		{
+			writer.Write ((byte)TokenCode.SCRFLOAT);
+			writer.Write ((double)v);
+		}
+
+		public void Write (int v)
+		{
+			writer.Write ((byte)TokenCode.INT);
+			writer.Write (v);
+		}
+
+		public void Write (string v)
+		{
+			int index;
+
+			writer.Write ((byte)TokenCode.STRING);
+			if (stringDict.TryGetValue (v, out index)) {
+				writer.Write (index);
+			} else {
+				index = ++ stringIndex;
+				stringDict[v] = index;
+				writer.Write (-index);
+				writer.Write (v);
+			}
+		}
+	}
+
+	/**
+	 * @brief Used to read tokens from a stream.
+	 */
+	public class TokenReader {
+		private delegate void ReadInDelegate (TokenReader reader);
+
+		private static Type[] ctorArgTypes   = new Type[] { typeof (Token) };
+		private static Type[] readInArgTypes = new Type[] { typeof (TokenReader) };
+
+		private BinaryReader reader;
+		private bool havePeekCode = false;
+		private int lastLine = 0;
+		private int tokenDepth = 0;
+		private List<ConstructorInfo> ctorArray   = new List<ConstructorInfo> ();
+		private List<MethodInfo>      readInArray = new List<MethodInfo> ();
+		private List<string>          stringArray = new List<string> ();
+		private List<Token>           tokenArray  = new List<Token> ();
+		private object[] readInArgs;
+		private string lastFile = "";
+		private TokenCode peekCode;
+		private TokenErrorMessage emsg;
+
+		/**
+		 * @brief Constructor
+		 * @param reader = where to read stream data from
+		 * @param emsg = error message printer for reconstructed tokens
+		 */
+		public TokenReader (BinaryReader reader, TokenErrorMessage emsg)
+		{
+			this.reader   = reader;
+			this.emsg     = emsg;
+			readInArgs    = new object[] { this };
+			ctorArray.Add   (null);
+			readInArray.Add (null);
+			stringArray.Add (null);
+			tokenArray.Add  (null);
+			if (tokenArray[0] != null) throw new Exception ("add error");
+		}
+
+		/**
+		 * @brief Read next token from the stream
+		 * @returns token reference (which may be null)
+		 */
+		public Token ReadToken ()
+		{
+			ConstructorInfo ctor;
+			MethodInfo readInMeth;
+			Token token;
+
+			/*
+			 * Retrieve token index.
+			 */
+			CheckCode (TokenCode.TOKENINDEX);
+			int tokenIndex = reader.ReadInt32 ();
+
+			/*
+			 * .ge. 0 means we already have reconstructed it.
+			 * .eq. 0 is a null entry in the array.
+			 */
+			if (tokenIndex >= 0) {
+				token = tokenArray[tokenIndex];
+				if (token == null) {
+					DEBUG ("ReadToken*: null token");
+				} else {
+					DEBUG ("ReadToken*: known " + token.GetType ().Name + " " + token.SrcLoc);
+				}
+				return tokenArray[tokenIndex];
+			}
+
+			/*
+			 * .lt. 0 means it is a token we haven't seen yet.
+			 * Read its type string and find constructor.
+			 */
+			CheckCode (TokenCode.TOKENTYPE);
+			int typeIndex = reader.ReadInt32 ();
+			if (typeIndex < 0) {
+				string typeName = reader.ReadString ();
+				Type type = Type.GetType (typeName, true);
+				ctor = type.GetConstructor (ctorArgTypes);
+				if (ctor == null) {
+					throw new Exception ("Token type " + typeName + " has no proper constructor");
+				}
+				readInMeth = type.GetMethod ("ReadIn", readInArgTypes);
+				if (readInMeth == null) {
+					throw new Exception ("Token type " + typeName + " has no proper ReadIn() method");
+				}
+				ctorArray.Add   (ctor);
+				readInArray.Add (readInMeth);
+				if (ctorArray[-typeIndex]   != ctor)       throw new Exception ("add error");
+				if (readInArray[-typeIndex] != readInMeth) throw new Exception ("add error");
+			} else {
+				ctor       = ctorArray[typeIndex];
+				readInMeth = readInArray[typeIndex];
+			}
+
+			/*
+			 * Get original token's source file/line/posn information.
+			 */
+			if (PeekCode (TokenCode.TOKENFILE)) {
+				lastFile = reader.ReadString ();
+			}
+			if (PeekCode (TokenCode.TOKENLINE)) {
+				lastLine = reader.ReadInt32 ();
+			}
+			CheckCode (TokenCode.TOKENPOSN);
+			int posn = reader.ReadInt32 ();
+
+			/*
+			 * Construct a base token simply to contain the emsg/file/line/posn information
+			 * to make it easy to pass to actual token's constructor.
+			 */
+			token = new Token (emsg, lastFile, lastLine, posn);
+			tokenDepth ++;
+			DEBUG ("ReadToken*: [" + tokenDepth + "] constructing " + ctor.DeclaringType.Name + " " + token.SrcLoc);
+
+			/*
+			 * Call the actual token type's constructor with the base token.
+			 * Then it will know where it came from in the source but it
+			 * doesn't know any of its type-specific values.
+			 *
+			 * Save it in the array right away in case restoring its values
+			 * comes across the token recursively.
+			 */
+			token = (Token)ctor.Invoke (new object[] { token });
+			tokenArray.Add (token);
+			if (tokenArray[-tokenIndex] != token) throw new Exception ("add error");
+
+			/*
+			 * Call the actual token's ReadIn() method so it can retrieve
+			 * its type-specific values.
+			 *
+			 * Use a delegate instead of readInMeth.Invoke() to eliminate
+			 * stack frame garbage in case of exception.
+			 */
+			ReadInDelegate readInDelegate = (ReadInDelegate)Delegate.CreateDelegate 
+								(typeof (ReadInDelegate), token, readInMeth);
+			readInDelegate (this);
+
+			DEBUG ("ReadToken*: [" + tokenDepth + "] done reading " + token.GetType ().Name + " " + token.SrcLoc);
+			tokenDepth --;
+			return token;
+		}
+
+		/*
+		 * Check the next TokenCode in the stream to be sure it is what it should be.
+		 * Throw an exception if not.  Swallow the code if it matches.
+		 */
+		public void CheckCode (TokenCode code)
+		{
+			if (!PeekCode (code)) {
+				throw new Exception ("expected code " + code + ", have code " + peekCode);
+			}
+		}
+
+
+		/**
+		 * @brief See if the next TokenCode in the stream is what is specified.
+		 * @param code = what code to check for
+		 * @returns true: code is as specified, code swallowed
+		 *         false: code doesn't match, stream untouched
+		 */
+		public bool PeekCode (TokenCode code)
+		{
+			if (!havePeekCode) {
+				peekCode = (TokenCode)reader.ReadByte ();
+				havePeekCode = true;
+			}
+			if (peekCode == code) {
+				havePeekCode = false;
+				return true;
+			}
+			return false;
+		}
+
+		/**
+		 * @brief Read various elementary data types from stream.
+		 */
+		public bool ReadBool ()
+		{
+			CheckCode (TokenCode.BOOL);
+			return reader.ReadBoolean ();
+		}
+
+		public byte ReadByte ()
+		{
+			CheckCode (TokenCode.BYTE);
+			return reader.ReadByte ();
+		}
+
+		public char ReadChar ()
+		{
+			CheckCode (TokenCode.CHAR);
+			return reader.ReadChar ();
+		}
+
+		public SCRIPTFLOAT ReadScriptFloat ()
+		{
+			CheckCode (TokenCode.SCRFLOAT);
+			return (SCRIPTFLOAT)reader.ReadDouble ();
+		}
+
+		public int ReadInt ()
+		{
+			CheckCode (TokenCode.INT);
+			return reader.ReadInt32 ();
+		}
+
+		public string ReadString ()
+		{
+			int index;
+			string str;
+
+			CheckCode (TokenCode.STRING);
+			index = reader.ReadInt32 ();
+			if (index < 0) {
+				str = reader.ReadString ();
+				stringArray.Add (str);
+				if (stringArray[-index] != str) throw new Exception ("add error");
+			} else {
+				str = stringArray[index];
+			}
+			return str;
+		}
+	}
+}

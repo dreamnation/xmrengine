@@ -1,0 +1,1014 @@
+/***************************************************\
+ *  COPYRIGHT 2009, Mike Rieker, Beverly, MA, USA  *
+ *  All rights reserved.                           *
+\***************************************************/
+
+#include "lsltypes.h"
+
+using System.Text;
+
+/**
+ * @brief Parse raw source file string into token list.
+ *
+ * Usage:
+ *
+ *    emsg = some function to output error messages to
+ *    source = string containing entire source file
+ *
+ *    TokenBegin tokenBegin = TokenBegin.Construct (emsg, source);
+ *
+ *    tokenBegin = null: tokenizing error
+ *                 else: first (dummy) token in file
+ *                       the rest are chained by nextToken,prevToken
+ *                       final token is always a (dummy) TokenEnd
+ */
+
+using System;
+using System.Collections.Generic;
+
+namespace OpenSim.Region.ScriptEngine.XMREngine {
+
+    public delegate void TokenErrorMessage (Token token, string message);
+
+    /**
+     * @brief base class for all tokens
+     */
+    public class Token {
+        public static readonly int MAX_NAME_LEN = 255;
+        public static readonly int MAX_STRING_LEN = 4096;
+
+        public Token nextToken;
+        public Token prevToken;
+
+        // used for error message printing
+        public TokenErrorMessage emsg;
+        public string file = "";
+        public int line;
+        public int posn;
+
+        /**
+         * @brief construct a token coming directly from a source file
+         * @param emsg = object that error messages get sent to
+         * @param file = source file name (or "" if none)
+         * @param line = source file line number
+         * @param posn = token's position within that source line
+         */
+        public Token (TokenErrorMessage emsg, string file, int line, int posn)
+        {
+            this.emsg = emsg;
+            this.file = file;
+            this.line = line;
+            this.posn = posn;
+        }
+
+        /**
+         * @brief construct a token with same error message parameters
+         * @param original = original token to create from
+         */
+        public Token (Token original)
+        {
+            if (original != null) {
+                this.emsg = original.emsg;
+                this.file = original.file;
+                this.line = original.line;
+                this.posn = original.posn;
+            }
+        }
+
+        /**
+         * @brief Serializable derivations must override this method.
+         * @param writer = tokenwriter that the token gets written to.
+         */
+        public virtual void WriteOut (TokenWriter writer)
+        {
+            throw new Exception (this.GetType() + " missing WriteOut() method");
+        }
+
+        public virtual void ReadIn (TokenReader reader)
+        {
+            throw new Exception (this.GetType() + " missing ReadIn() method");
+        }
+
+        /**
+         * @brief output an error message associated with this token
+         *        sends the message to the token's error object
+         * @param message = error message string
+         */
+        public void ErrorMsg (string message)
+        {
+            if (emsg != null) {
+                emsg (this, message);
+            }
+        }
+
+        /*
+         * Generate a unique string (for use in CIL label names, etc)
+         */
+        public string Unique
+        {
+            get { return file + "_" + line + "_" + posn; }
+        }
+
+        /*
+         * Generate source location string (for use in error messages)
+         */
+        public string SrcLoc
+        {
+            get { return file + "(" + line + "," + posn + ")"; }
+        }
+    }
+
+
+    /**
+     * @brief token that begins a source file
+     *        Along with TokenEnd, it keeps insertion/removal of intermediate tokens
+     *        simple as the intermediate tokens always have non-null nextToken,prevToken.
+     */
+    public class TokenBegin : Token {
+
+        private bool youveAnError;  // there was some error tokenizing
+        private int bolIdx;         // index in 'source' at begining of current line
+        private int lineNo;         // current line in source file, starting at 0
+        private string filNam;      // current source file name
+        private string source;      // the whole script source code
+        private Token lastToken;    // last token created so far
+        private bool optionArrays;  // has seen 'XMROption arrays;'
+
+        /**
+         * @brief convert a source file in the form of a string
+         *        to a list of raw tokens
+         * @param emsg   = where to output messages to
+         * @param source = whole source file contents
+         * @returns null: conversion error, message already output
+         *          else: list of tokens, starting with TokenBegin, ending with TokenEnd.
+         */
+        public static TokenBegin Construct (TokenErrorMessage emsg, string source)
+        {
+            BuildDelimeters();
+            BuildKeywords();
+
+            TokenBegin tokenBegin = new TokenBegin (emsg, "", 0, 0);
+            tokenBegin.lastToken  = tokenBegin;
+            tokenBegin.source     = source;
+            tokenBegin.Tokenize ();
+            if (tokenBegin.youveAnError) return null;
+            tokenBegin.AppendToken (new TokenEnd (emsg, tokenBegin.filNam, ++ tokenBegin.lineNo, 0));
+            return tokenBegin;
+        }
+
+        private TokenBegin (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
+
+        /*
+         * Produces raw token stream: names, numbers, strings, keywords/delimeters.
+         * @param this.source = whole source file in one string
+         * @returns this.nextToken = filled in with tokens
+         *          this.youveAnError = true: some tokenizing error
+         *                             false: successful
+         */
+        private void Tokenize ()
+        {
+            youveAnError = false;
+            bolIdx = 0;
+            lineNo = 0;
+            filNam = "";
+            for (int i = 0; i < source.Length; i ++) {
+                char c = source[i];
+                if (c == '\n') {
+
+                    /*
+                     * Increment source line number and set char index of beg of next line.
+                     */
+                    lineNo ++;
+                    bolIdx = i + 1;
+
+                    /*
+                     * Check for '#' lineno filename newline
+                     * lineno is line number of next line in file
+                     * If found, save values and remove tokens from stream
+                     */
+                    if ((lastToken is TokenStr) &&
+                        (lastToken.prevToken is TokenInt) &&
+                        (lastToken.prevToken.prevToken is TokenKwHash)) {
+                        filNam = ((TokenStr)lastToken).val;
+                        lineNo = ((TokenInt)lastToken.prevToken).val;
+                        lastToken = lastToken.prevToken.prevToken.prevToken;
+                        lastToken.nextToken = null;
+                    }
+                    continue;
+                }
+
+                /*
+                 * Skip over whitespace.
+                 */
+                if (c <= ' ') continue;
+
+                /*
+                 * Skip over comments.
+                 */
+                if ((i + 2 <= source.Length) && source.Substring (i, 2).Equals ("//")) {
+                    while ((i < source.Length) && (source[i] != '\n')) i ++;
+                    lineNo ++;
+                    bolIdx = i + 1;
+                    continue;
+                }
+                if ((i + 2 <= source.Length) && (source.Substring (i, 2).Equals ("/*"))) {
+                    while ((i + 1 < source.Length) && (((c = source[i]) != '*') || (source[i+1] != '/'))) {
+                        if (c == '\n') {
+                            lineNo ++;
+                            bolIdx = i + 1;
+                        }
+                        i ++;
+                    }
+                    i ++;
+                    continue;
+                }
+
+                /*
+                 * Check for numbers.
+                 */
+                if ((c >= '0') && (c <= '9')) {
+                    int j = TryParseFloat (i);
+                    if (j == 0) j = TryParseInt (i);
+                    i = -- j;
+                    continue;
+                }
+                if ((c == '.') && (source[i+1] >= '0') && (source[i+1] <= '9')) {
+                    int j = TryParseFloat (i);
+                    if (j > 0) i = -- j;
+                    continue;
+                }
+
+                /*
+                 * Check for quoted strings.
+                 */
+                if (c == '"') {
+                    StringBuilder sb = new StringBuilder ();
+                    bool backslash;
+                    int j;
+
+                    backslash = false;
+                    for (j = i; ++ j < source.Length;) {
+                        c = source[j];
+                        if (c == '\\' && !backslash) {
+                            backslash = true;
+                            continue;
+                        }
+                        if (c == '\n') {
+                            lineNo ++;
+                            bolIdx = j + 1;
+                        } else {
+                            if (!backslash && (c == '"')) break;
+                            if (backslash && (c == 'n')) c = '\n';
+                        }
+                        backslash = false;
+                        sb.Append (c);
+                    }
+                    if (j - i > MAX_STRING_LEN) {
+                        TokenError (i, "string too long, max " + MAX_STRING_LEN);
+                    } else {
+                        AppendToken (new TokenStr (emsg, filNam, lineNo, i - bolIdx, sb.ToString ()));
+                    }
+                    i = j;
+                    continue;
+                }
+
+                /*
+                 * Check for keywords/names.
+                 */
+                if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c == '_')) {
+                    int j;
+
+                    for (j = i; ++ j < source.Length;) {
+                        c = source[j];
+                        if (c >= 'a' && c <= 'z') continue;
+                        if (c >= 'A' && c <= 'Z') continue;
+                        if (c >= '0' && c <= '9') continue;
+                        if (c != '_') break;
+                    }
+                    if (j - i > MAX_NAME_LEN) {
+                        TokenError (i, "name too long, max " + MAX_NAME_LEN);
+                    } else {
+                        string name = source.Substring (i, j - i);
+                        if (keywords.ContainsKey (name)) {
+                            Object[] args = new Object[] { emsg, filNam, lineNo, i - bolIdx };
+                            AppendToken ((Token)keywords[name].Invoke (args));
+                        } else if (optionArrays && arrayKeywords.ContainsKey (name)) {
+                            Object[] args = new Object[] { emsg, filNam, lineNo, i - bolIdx };
+                            AppendToken ((Token)arrayKeywords[name].Invoke (args));
+                        } else {
+                            AppendToken (new TokenName (emsg, filNam, lineNo, i - bolIdx, name));
+                        }
+                    }
+                    i = -- j;
+                    continue;
+                }
+
+                /*
+                 * Check for option enables.
+                 */
+                if ((c == ';') && (lastToken is TokenName) && 
+                                  (((TokenName)lastToken).val == "arrays") &&
+                                  (lastToken.prevToken is TokenName) && 
+                                  (((TokenName)lastToken.prevToken).val == "XMROption")) {
+                    optionArrays = true;
+                    lastToken = lastToken.prevToken.prevToken;
+                    lastToken.nextToken = null;
+                    continue;
+                }
+
+                /*
+                 * Lastly, check for delimeters.
+                 */
+                {
+                    int j;
+                    int len = 0;
+
+                    for (j = 0; j < delims.Length; j ++) {
+                        len = delims[j].str.Length;
+                        if ((i + len <= source.Length) && (source.Substring (i, len).Equals (delims[j].str))) break;
+                    }
+                    if (j < delims.Length) {
+                        Object[] args = { emsg, filNam, lineNo, i - bolIdx };
+                        Token kwToken = (Token)delims[j].ctorInfo.Invoke (args);
+                        AppendToken (kwToken);
+                        i += -- len;
+                        continue;
+                    }
+                }
+
+                /*
+                 * Don't know what it is!
+                 */
+                TokenError (i, "unknown character '" + c + "'");
+            }
+        }
+
+        /**
+         * @brief try to parse a floating-point number from the source
+         * @param i = starting position within this.source of number
+         * @returns 0: not a floating point number, try something else
+         *       else: position in this.source of terminating character, ie, past number
+         *             TokenFloat appended to token list
+         *             or error message has been output
+         */
+        private int TryParseFloat (int i)
+        {
+            bool decimals, error, negexp, nulexp;
+            char c;
+            double f, f10;
+            int exponent, j, x, y;
+            ulong m, mantissa;
+
+            decimals = false;
+            error    = false;
+            exponent = 0;
+            mantissa = 0;
+            for (j = i; j < source.Length; j ++) {
+                c = source[j];
+                if ((c >= '0') && (c <= '9')) {
+                    m = mantissa * 10 + (ulong)(c - '0');
+                    if (m / 10 != mantissa) {
+                        if (!decimals) exponent ++;
+                    } else {
+                        mantissa = m;
+                        if (decimals) exponent --;
+                    }
+                    continue;
+                }
+                if (c == '.') {
+                    if (decimals) {
+                        TokenError (i, "more than one decimal point");
+                        return j;
+                    }
+                    decimals = true;
+                    continue;
+                }
+                if ((c == 'E') || (c == 'e')) {
+                    if (++ j >= source.Length) {
+                        TokenError (i, "floating exponent off end of source");
+                        return j;
+                    }
+                    c = source[j];
+                    negexp = (c == '-');
+                    if (negexp || (c == '+')) j ++;
+                    y = 0;
+                    nulexp = true;
+                    for (; j < source.Length; j ++) {
+                        c = source[j];
+                        if ((c < '0') || (c > '9')) break;
+                        x = y * 10 + (c - '0');
+                        if (x / 10 != y) {
+                            if (!error) TokenError (i, "floating exponent overflow");
+                            error = true;
+                        }
+                        y = x;
+                        nulexp = false;
+                    }
+                    if (nulexp) {
+                        TokenError (i, "bad or missing floating exponent");
+                        return j;
+                    }
+                    if (negexp) {
+                        x = exponent - y;
+                        if (x > exponent) {
+                            if (!error) TokenError (i, "floating exponent overflow");
+                            error = true;
+                        }
+                    } else {
+                        x = exponent + y;
+                        if (x < exponent) {
+                            if (!error) TokenError (i, "floating exponent overflow");
+                            error = true;
+                        }
+                    }
+                    exponent = x;
+                }
+                break;
+            }
+            if (!decimals) {
+                return 0;
+            }
+
+            f = mantissa;
+            if ((exponent != 0) && (mantissa != 0) && !error) {
+                f10 = 10.0;
+                if (exponent < 0) {
+                    exponent = -exponent;
+                    while (exponent > 0) {
+                        if ((exponent & 1) != 0) {
+                            f /= f10;
+                        }
+                        exponent /= 2;
+                        f10 *= f10;
+                    }
+                } else {
+                    while (exponent > 0) {
+                        if ((exponent & 1) != 0) {
+                            f *= f10;
+                        }
+                        exponent /= 2;
+                        f10 *= f10;
+                    }
+                }
+            }
+            if (!error) {
+                AppendToken (new TokenFloat (emsg, filNam, lineNo, i - bolIdx, f));
+            }
+            return j;
+        }
+
+        /**
+         * @brief try to parse an integer number from the source
+         * @param i = starting position within this.source of number
+         * @returns 0: not an integer number, try something else
+         *       else: position in this.source of terminating character, ie, past number
+         *             TokenInt appended to token list
+         *             or error message has been output
+         */
+        private int TryParseInt (int i)
+        {
+            bool error;
+            char c;
+            int j;
+            uint basse, m, mantissa;
+
+            basse    = 10;
+            error    = false;
+            mantissa = 0;
+            for (j = i; j < source.Length; j ++) {
+                c = source[j];
+                if ((c >= '0') && (c <= '9')) {
+                    m = mantissa * basse + (uint)(c - '0');
+                    if (m / basse != mantissa) {
+                        if (!error) TokenError (i, "integer overflow");
+                        error = true;
+                    }
+                    mantissa = m;
+                    continue;
+                }
+                if ((basse == 16) && ((c >= 'A') && (c <= 'F'))) {
+                    m = mantissa * basse + (uint)(c - 'A') + 10U;
+                    if (m / basse != mantissa) {
+                        if (!error) TokenError (i, "integer overflow");
+                        error = true;
+                    }
+                    mantissa = m;
+                    continue;
+                }
+                if ((basse == 16) && ((c >= 'a') && (c <= 'f'))) {
+                    m = mantissa * basse + (uint)(c - 'a') + 10U;
+                    if (m / basse != mantissa) {
+                        if (!error) TokenError (i, "integer overflow");
+                        error = true;
+                    }
+                    mantissa = m;
+                    continue;
+                }
+                if (((c == 'x') || (c == 'X')) && (mantissa == 0) && (basse == 10)) {
+                    basse = 16;
+                    continue;
+                }
+                break;
+            }
+            if (!error) {
+                AppendToken (new TokenInt (emsg, filNam, lineNo, i - bolIdx, (int)mantissa));
+            }
+            return j;
+        }
+
+        /**
+         * @brief append token on to end of list
+         * @param newToken = token to append
+         * @returns with token appended onto this.lastToken
+         */
+        private void AppendToken (Token newToken)
+        {
+            newToken.nextToken  = null;
+            newToken.prevToken  = lastToken;
+            lastToken.nextToken = newToken;
+            lastToken           = newToken;
+        }
+
+        /**
+         * @brief print tokenizing error message
+         *        and remember that we've an error
+         * @param i = position within source file of the error
+         * @param message = error message text
+         * @returns with this.youveAnError set
+         */
+        private void TokenError (int i, string message)
+        {
+            Token temp = new Token (this.emsg, this.filNam, this.lineNo, i - this.bolIdx);
+            temp.ErrorMsg (message);
+            youveAnError = true;
+        }
+
+        /**
+         * @brief get a token's constructor
+         * @param tokenType = token's type
+         * @returns token's constructor
+         */
+        private static Type[] constrTypes = new Type[] {
+            typeof (TokenErrorMessage), typeof (string), typeof (int), typeof (int)
+        };
+
+        private static System.Reflection.ConstructorInfo GetTokenCtor (Type tokenType)
+        {
+            return tokenType.GetConstructor (constrTypes);
+        }
+
+        /**
+         * @brief delimeter table
+         */
+        private static void BuildDelimeters () { }
+
+        private class Delim {
+            public string str;
+            public System.Reflection.ConstructorInfo ctorInfo;
+            public Delim (string str, Type type)
+            {
+                this.str = str;
+                ctorInfo = GetTokenCtor (type);
+            }
+        }
+
+        private static Delim[] delims = new Delim[] {
+            new Delim ("<<=", typeof (TokenKwAsnLSh)),
+            new Delim (">>=", typeof (TokenKwAsnRSh)),
+            new Delim ("<=",  typeof (TokenKwCmpLE)),
+            new Delim (">=",  typeof (TokenKwCmpGE)),
+            new Delim ("==",  typeof (TokenKwCmpEQ)),
+            new Delim ("!=",  typeof (TokenKwCmpNE)),
+            new Delim ("++",  typeof (TokenKwIncr)),
+            new Delim ("--",  typeof (TokenKwDecr)),
+            new Delim ("&&",  typeof (TokenKwAndAnd)),
+            new Delim ("||",  typeof (TokenKwOrOr)),
+            new Delim ("+=",  typeof (TokenKwAsnAdd)),
+            new Delim ("&=",  typeof (TokenKwAsnAnd)),
+            new Delim ("-=",  typeof (TokenKwAsnSub)),
+            new Delim ("*=",  typeof (TokenKwAsnMul)),
+            new Delim ("/=",  typeof (TokenKwAsnDiv)),
+            new Delim ("%=",  typeof (TokenKwAsnMod)),
+            new Delim ("|=",  typeof (TokenKwAsnOr)),
+            new Delim ("^=",  typeof (TokenKwAsnXor)),
+            new Delim ("<<",  typeof (TokenKwLSh)),
+            new Delim (">>",  typeof (TokenKwRSh)),
+            new Delim ("~",   typeof (TokenKwTilde)),
+            new Delim ("!",   typeof (TokenKwExclam)),
+            new Delim ("@",   typeof (TokenKwAt)),
+            new Delim ("%",   typeof (TokenKwMod)),
+            new Delim ("^",   typeof (TokenKwXor)),
+            new Delim ("&",   typeof (TokenKwAnd)),
+            new Delim ("*",   typeof (TokenKwMul)),
+            new Delim ("(",   typeof (TokenKwParOpen)),
+            new Delim (")",   typeof (TokenKwParClose)),
+            new Delim ("-",   typeof (TokenKwSub)),
+            new Delim ("+",   typeof (TokenKwAdd)),
+            new Delim ("=",   typeof (TokenKwAssign)),
+            new Delim ("{",   typeof (TokenKwBrcOpen)),
+            new Delim ("}",   typeof (TokenKwBrcClose)),
+            new Delim ("[",   typeof (TokenKwBrkOpen)),
+            new Delim ("]",   typeof (TokenKwBrkClose)),
+            new Delim (";",   typeof (TokenKwSemi)),
+            new Delim (":",   typeof (TokenKwColon)),
+            new Delim ("<",   typeof (TokenKwCmpLT)),
+            new Delim (">",   typeof (TokenKwCmpGT)),
+            new Delim (",",   typeof (TokenKwComma)),
+            new Delim (".",   typeof (TokenKwDot)),
+            new Delim ("?",   typeof (TokenKwQMark)),
+            new Delim ("/",   typeof (TokenKwDiv)),
+            new Delim ("|",   typeof (TokenKwOr)),
+            new Delim ("#",   typeof (TokenKwHash))
+        };
+
+        /**
+         * @brief keyword table
+         *        The keyword table translates a keyword string
+         *        to the corresponding token constructor.
+         */
+        private static void BuildKeywords ()
+        {
+            if (keywords == null) {
+                Dictionary<string, System.Reflection.ConstructorInfo> kws = new Dictionary<string, System.Reflection.ConstructorInfo> ();
+
+                kws.Add ("default",  GetTokenCtor (typeof (TokenKwDefault)));
+                kws.Add ("do",       GetTokenCtor (typeof (TokenKwDo)));
+                kws.Add ("else",     GetTokenCtor (typeof (TokenKwElse)));
+                kws.Add ("float",    GetTokenCtor (typeof (TokenTypeFloat)));
+                kws.Add ("for",      GetTokenCtor (typeof (TokenKwFor)));
+                kws.Add ("if",       GetTokenCtor (typeof (TokenKwIf)));
+                kws.Add ("integer",  GetTokenCtor (typeof (TokenTypeInt)));
+                kws.Add ("list",     GetTokenCtor (typeof (TokenTypeList)));
+                kws.Add ("jump",     GetTokenCtor (typeof (TokenKwJump)));
+                kws.Add ("key",      GetTokenCtor (typeof (TokenTypeStr)));
+                kws.Add ("return",   GetTokenCtor (typeof (TokenKwRet)));
+                kws.Add ("rotation", GetTokenCtor (typeof (TokenTypeRot)));
+                kws.Add ("state",    GetTokenCtor (typeof (TokenKwState)));
+                kws.Add ("string",   GetTokenCtor (typeof (TokenTypeStr)));
+                kws.Add ("vector",   GetTokenCtor (typeof (TokenTypeVec)));
+                kws.Add ("while",    GetTokenCtor (typeof (TokenKwWhile)));
+
+                //MB();
+                keywords = kws;
+            }
+
+            if (arrayKeywords == null) {
+                Dictionary<string, System.Reflection.ConstructorInfo> kws = new Dictionary<string, System.Reflection.ConstructorInfo> ();
+
+                kws.Add ("array",   GetTokenCtor (typeof (TokenTypeArray)));
+                kws.Add ("foreach", GetTokenCtor (typeof (TokenKwForEach)));
+                kws.Add ("in",      GetTokenCtor (typeof (TokenKwIn)));
+                kws.Add ("is",      GetTokenCtor (typeof (TokenKwIs)));
+                kws.Add ("object",  GetTokenCtor (typeof (TokenTypeObject)));
+                kws.Add ("undef",   GetTokenCtor (typeof (TokenKwUndef)));
+
+                //MB();
+                arrayKeywords = kws;
+            }
+            //MB();
+        }
+
+        private static Dictionary<string, System.Reflection.ConstructorInfo> keywords = null;
+        private static Dictionary<string, System.Reflection.ConstructorInfo> arrayKeywords = null;
+    }
+
+
+
+    /**
+     * @brief All output token types in addition to TokenBegin.
+     *        They are all sub-types of Token.
+     */
+
+    public class TokenFloat : Token {
+        public SCRIPTFLOAT val;
+        public TokenFloat (TokenErrorMessage emsg, string file, int line, int posn, SCRIPTFLOAT val) : base (emsg, file, line, posn)
+        {
+            this.val = val;
+        }
+
+        /**
+         * @brief Serialization/Deserialization.
+         */
+        public TokenFloat (Token original) : base (original) { }
+        public override void WriteOut (TokenWriter writer)
+        {
+            writer.Write (val);
+        }
+        public override void ReadIn (TokenReader reader)
+        {
+            val = reader.ReadScriptFloat ();
+        }
+    }
+
+    public class TokenInt : Token {
+        public int val;
+        public TokenInt (TokenErrorMessage emsg, string file, int line, int posn, int val) : base (emsg, file, line, posn)
+        {
+            this.val = val;
+        }
+
+        /**
+         * @brief Serialization/Deserialization.
+         */
+        public TokenInt (Token original) : base (original) { }
+        public override void WriteOut (TokenWriter writer)
+        {
+            writer.Write (val);
+        }
+        public override void ReadIn (TokenReader reader)
+        {
+            val = reader.ReadInt ();
+        }
+    }
+
+    public class TokenName : Token {
+        public string val;
+        public TokenName (TokenErrorMessage emsg, string file, int line, int posn, string val) : base (emsg, file, line, posn)
+        {
+            this.val = val;
+        }
+        public TokenName (Token original, string val) : base (original)
+        {
+            this.val = val;
+        }
+
+        /**
+         * @brief Serialization/Deserialization.
+         */
+        public TokenName (Token original) : base (original) { }
+        public override void WriteOut (TokenWriter writer)
+        {
+            writer.Write (val);
+        }
+        public override void ReadIn (TokenReader reader)
+        {
+            val = reader.ReadString ();
+        }
+    }
+
+    public class TokenStr : Token {
+        public string val;
+        public TokenStr (TokenErrorMessage emsg, string file, int line, int posn, string val) : base (emsg, file, line, posn)
+        {
+            this.val = val;
+        }
+
+        /**
+         * @brief Serialization/Deserialization.
+         */
+        public TokenStr (Token original) : base (original) { }
+        public override void WriteOut (TokenWriter writer)
+        {
+            writer.Write (val);
+        }
+        public override void ReadIn (TokenReader reader)
+        {
+            val = reader.ReadString ();
+        }
+    }
+
+    /*
+     * This class is inherited by tokens that carry no information that needs to be serialized/deserialized.
+     * All their information is in their actual type and file/line/posn info which is always saved/restored.
+     * Keywords are a good example as they have no value other than their actual type.
+     */
+    public class TokenNS : Token {
+        public TokenNS (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
+        public TokenNS (Token original) : base (original)  { }
+        public override void WriteOut (TokenWriter writer) { }
+        public override void ReadIn   (TokenReader reader) { }
+    }
+
+    /*
+     * This one marks the end-of-file.
+     */
+    public class TokenEnd : Token { public TokenEnd (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { } }
+
+    /*
+     * Various keywords and delimeters.
+     */
+#define DEFTOKENKW(name,str) \
+    public class TokenKw##name : TokenNS {                                                                                  \
+        public TokenKw##name (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }  \
+        public override string ToString () {                                                                                \
+            return str;                                                                                                     \
+        }                                                                                                                   \
+        public TokenKw##name (Token original) : base (original) { }                                                         \
+    }
+
+    DEFTOKENKW(AsnLSh  , "<<")
+    DEFTOKENKW(AsnRSh  , ">>")
+    DEFTOKENKW(CmpLE   , "<=")
+    DEFTOKENKW(CmpGE   , ">=")
+    DEFTOKENKW(CmpEQ   , "==")
+    DEFTOKENKW(CmpNE   , "!=")
+    DEFTOKENKW(Incr    , "++")
+    DEFTOKENKW(Decr    , "--")
+    DEFTOKENKW(AndAnd  , "&&")
+    DEFTOKENKW(OrOr    , "||")
+    DEFTOKENKW(AsnAdd  , "+=")
+    DEFTOKENKW(AsnAnd  , "&=")
+    DEFTOKENKW(AsnSub  , "-=")
+    DEFTOKENKW(AsnMul  , "*=")
+    DEFTOKENKW(AsnDiv  , "/=")
+    DEFTOKENKW(AsnMod  , "%=")
+    DEFTOKENKW(AsnOr   , "|=")
+    DEFTOKENKW(AsnXor  , "^=")
+    DEFTOKENKW(LSh     , "<<")
+    DEFTOKENKW(RSh     , ">>")
+    DEFTOKENKW(Tilde   , "~")
+    DEFTOKENKW(Exclam  , "!")
+    DEFTOKENKW(At      , "@")
+    DEFTOKENKW(Mod     , "%")
+    DEFTOKENKW(Xor     , "^")
+    DEFTOKENKW(And     , "&")
+    DEFTOKENKW(Mul     , "*")
+    DEFTOKENKW(ParOpen , "(")
+    DEFTOKENKW(ParClose, ")")
+    DEFTOKENKW(Sub     , "-")
+    DEFTOKENKW(Add     , "+")
+    DEFTOKENKW(Assign  , "=")
+    DEFTOKENKW(BrcOpen , "{")
+    DEFTOKENKW(BrcClose, "}")
+    DEFTOKENKW(BrkOpen , "[")
+    DEFTOKENKW(BrkClose, "]")
+    DEFTOKENKW(Semi    , ";")
+    DEFTOKENKW(Colon   , ":")
+    DEFTOKENKW(CmpLT   , "<")
+    DEFTOKENKW(CmpGT   , ">")
+    DEFTOKENKW(Comma   , ":")
+    DEFTOKENKW(Dot     , ".")
+    DEFTOKENKW(QMark   , "?")
+    DEFTOKENKW(Div     , "/")
+    DEFTOKENKW(Or      , "|")
+    DEFTOKENKW(Hash    , "#")
+
+    DEFTOKENKW(Default , "default")
+    DEFTOKENKW(Do      , "do")
+    DEFTOKENKW(Else    , "else")
+    DEFTOKENKW(For     , "for")
+    DEFTOKENKW(ForEach , "foreach")
+    DEFTOKENKW(If      , "if")
+    DEFTOKENKW(In      , "in")
+    DEFTOKENKW(Is      , "is")
+    DEFTOKENKW(Jump    , "jump")
+    DEFTOKENKW(Ret     , "return")
+    DEFTOKENKW(State   , "state")
+    DEFTOKENKW(Undef   , "undef")
+    DEFTOKENKW(While   , "while")
+
+    /*
+     * Various datatypes.
+     */
+    public class TokenType : TokenNS {
+        public System.Type typ;
+        public System.Type lslBoxing;  // null: normal
+                                       // else: LSL-style boxing, ie, LSL_Integer, LSL_Float, LSL_String
+                                       //       typ=System.Int32;  lslBoxing=LSL_Integer
+                                       //       typ=System.Float;  lslBoxing=LSL_Float
+                                       //       typ=System.String; lslBoxing=LSL_String
+
+        public TokenType (TokenErrorMessage emsg, string file, int line, int posn, System.Type typ) : base (emsg, file, line, posn)
+        {
+            this.typ = typ;
+        }
+        public TokenType (Token original, System.Type typ) : base (original)
+        {
+            this.typ = typ;
+        }
+
+        public static TokenType FromSysType (Token original, System.Type typ)
+        {
+            if (typ == typeof (LSL_List)) return new TokenTypeList (original);
+            if (typ == typeof (LSL_Rotation)) return new TokenTypeRot (original);
+            if (typ == typeof (void)) return new TokenTypeVoid (original);
+            if (typ == typeof (LSL_Vector)) return new TokenTypeVec (original);
+            if (typ == typeof (float)) return new TokenTypeFloat (original);
+            if (typ == typeof (int)) return new TokenTypeInt (original);
+            if (typ == typeof (string)) return new TokenTypeStr (original);
+            if (typ == typeof (double)) return new TokenTypeFloat (original);
+            if (typ == typeof (bool)) return new TokenTypeBool (original);
+            if (typ == typeof (object)) return new TokenTypeObject (original);
+            if (typ == typeof (XMR_Array)) return new TokenTypeArray (original);
+
+            if (typ == typeof (LSL_Integer)) {
+                TokenType tokenType = new TokenTypeInt (original);
+                tokenType.lslBoxing = typ;
+                return tokenType;
+            }
+            if (typ == typeof (LSL_Float)) {
+                TokenType tokenType = new TokenTypeFloat (original);
+                tokenType.lslBoxing = typ;
+                return tokenType;
+            }
+            if (typ == typeof (LSL_String)) {
+                TokenType tokenType = new TokenTypeStr (original);
+                tokenType.lslBoxing = typ;
+                return tokenType;
+            }
+
+            throw new Exception ("unknown type " + typ.ToString ());
+        }
+
+        public static TokenType FromLSLType (Token original, string typ)
+        {
+            if (typ == "list")     return new TokenTypeList   (original);
+            if (typ == "rotation") return new TokenTypeRot    (original);
+            if (typ == "vector")   return new TokenTypeVec    (original);
+            if (typ == "float")    return new TokenTypeFloat  (original);
+            if (typ == "integer")  return new TokenTypeInt    (original);
+            if (typ == "key")      return new TokenTypeStr    (original);
+            if (typ == "string")   return new TokenTypeStr    (original);
+            if (typ == "object")   return new TokenTypeObject (original);
+            if (typ == "array")    return new TokenTypeArray  (original);
+            if (typ == "bool")     return new TokenTypeBool   (original);
+
+            throw new Exception ("unknown type " + typ);
+        }
+
+        /**
+         * @brief Estimate the number of bytes of memory taken by one of these
+         *        objects.  For objects with widely varying size, return the
+         *        smallest it can be.
+         */
+        public static int StaticSize (System.Type typ)
+        {
+            if (typ == typeof (LSL_List))     return  96;
+            if (typ == typeof (LSL_Rotation)) return  80;
+            if (typ == typeof (void))         return   0;
+            if (typ == typeof (LSL_Vector))   return  72;
+            if (typ == typeof (float))        return   8;
+            if (typ == typeof (int))          return   8;
+            if (typ == typeof (string))       return  40;
+            if (typ == typeof (double))       return   8;
+            if (typ == typeof (bool))         return   8;
+            if (typ == typeof (XMR_Array))    return  96;
+            if (typ == typeof (object))       return  32;
+
+            if (typ == typeof (LSL_Integer))  return  32;
+            if (typ == typeof (LSL_Float))    return  32;
+            if (typ == typeof (LSL_String))   return  40;
+
+            throw new Exception ("unknown type " + typ.ToString ());
+        }
+    }
+
+    public class TokenTypeArray : TokenType {
+        public TokenTypeArray (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn, typeof (XMR_Array)) { }
+        public TokenTypeArray (Token original) : base (original, typeof (XMR_Array)) { }
+        public override string ToString () { return "array"; }
+    }
+    public class TokenTypeBool : TokenType {
+        public TokenTypeBool (Token original) : base (original, typeof (bool)) { }
+        public override string ToString () { return "bool"; }
+    }
+    public class TokenTypeFloat : TokenType {
+        public TokenTypeFloat (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn, typeof (SCRIPTFLOAT)) { }
+        public TokenTypeFloat (Token original) : base (original, typeof (SCRIPTFLOAT)) { }
+        public override string ToString () { return "float"; }
+    }
+    public class TokenTypeInt : TokenType {
+        public TokenTypeInt (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn, typeof (int)) { }
+        public TokenTypeInt (Token original) : base (original, typeof (int)) { }
+        public override string ToString () { return "integer"; }
+    }
+    public class TokenTypeList : TokenType {
+        public TokenTypeList (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn, typeof (LSL_List)) { }
+        public TokenTypeList (Token original) : base (original, typeof (LSL_List)) { }
+        public override string ToString () { return "list"; }
+    }
+    public class TokenTypeMeth : TokenType {
+        public TokenDeclFunc[] funcs;
+        public TokenTypeMeth (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn, null) { }
+        public TokenTypeMeth (Token original) : base (original, null)
+        {
+            ///??? this.typ = build a type from retType + argTypes ???///
+        }
+        public override string ToString () { return "method"; }
+    }
+    public class TokenTypeObject : TokenType {
+        public TokenTypeObject (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn, typeof (object)) { }
+        public TokenTypeObject (Token original) : base (original, typeof (object)) { }
+        public override string ToString () { return "object"; }
+    }
+    public class TokenTypeRot : TokenType {
+        public TokenTypeRot (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn, typeof (LSL_Rotation)) { }
+        public TokenTypeRot (Token original) : base (original, typeof (LSL_Rotation)) { }
+        public override string ToString () { return "rotation"; }
+    }
+    public class TokenTypeStr : TokenType {
+        public TokenTypeStr (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn, typeof (string)) { }
+        public TokenTypeStr (Token original) : base (original, typeof (string)) { }
+        public override string ToString () { return "string"; }
+    }
+    public class TokenTypeVec : TokenType {
+        public TokenTypeVec (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn, typeof (LSL_Vector)) { } 
+        public TokenTypeVec (Token original) : base (original, typeof (LSL_Vector)) { }
+        public override string ToString () { return "vector"; }
+    }
+    public class TokenTypeVoid : TokenType {
+        public TokenTypeVoid (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn, typeof (void)) { }
+        public TokenTypeVoid (Token original) : base (original, typeof (void)) { }
+        public override string ToString () { return "void"; }
+    }
+}

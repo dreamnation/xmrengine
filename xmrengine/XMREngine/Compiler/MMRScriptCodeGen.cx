@@ -775,7 +775,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void GenerateStmtDo (TokenStmtDo doStmt)
 		{
-			ScriptMyLabel loopLabel = ilGen.DefineLabel ("doloop_" + doStmt.line + "_" + doStmt.posn);
+			ScriptMyLabel loopLabel = ilGen.DefineLabel ("doloop_" + doStmt.Unique);
 
 			ilGen.MarkLabel (loopLabel);
 			GenerateStmt (doStmt.bodyStmt);
@@ -793,8 +793,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void GenerateStmtFor (TokenStmtFor forStmt)
 		{
-			ScriptMyLabel doneLabel = ilGen.DefineLabel ("fordone_" + forStmt.line + "_" + forStmt.posn);
-			ScriptMyLabel loopLabel = ilGen.DefineLabel ("forloop_" + forStmt.line + "_" + forStmt.posn);
+			ScriptMyLabel doneLabel = ilGen.DefineLabel ("fordone_" + forStmt.Unique);
+			ScriptMyLabel loopLabel = ilGen.DefineLabel ("forloop_" + forStmt.Unique);
 
 			if (forStmt.initStmt != null) {
 				GenerateStmt (forStmt.initStmt);
@@ -836,10 +836,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ErrorMsg (forEachStmt.arrayLVal, "must be an array");
 			}
 
-			ScriptMyLabel doneLabel = ilGen.DefineLabel ("foreachdone_" + forEachStmt.line + "_" + forEachStmt.posn);
-			ScriptMyLabel loopLabel = ilGen.DefineLabel ("foreachloop_" + forEachStmt.line + "_" + forEachStmt.posn);
-			ScriptMyLocal indexVar  = ilGen.DeclareLocal (typeof (int), "foreachidx_" + forEachStmt.line + "_" + forEachStmt.posn);
-			ScriptMyLocal objectVar = ((keyLVal == null) || (valLVal == null)) ? ilGen.DeclareLocal (typeof (object), "foreachobj_" + forEachStmt.line + "_" + forEachStmt.posn) : null;
+			ScriptMyLabel doneLabel = ilGen.DefineLabel ("foreachdone_" + forEachStmt.Unique);
+			ScriptMyLabel loopLabel = ilGen.DefineLabel ("foreachloop_" + forEachStmt.Unique);
+			ScriptMyLocal indexVar  = ilGen.DeclareLocal (typeof (int), "foreachidx_" + forEachStmt.Unique);
+			ScriptMyLocal objectVar = ((keyLVal == null) || (valLVal == null)) ? ilGen.DeclareLocal (typeof (object), "foreachobj_" + forEachStmt.Unique) : null;
 
 			ilGen.MarkLabel (loopLabel);
 
@@ -889,13 +889,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			CompValu testRVal = GenerateFromRVal (ifStmt.testRVal);
 			testRVal.PushVal (this, tokenTypeBool);
-			ScriptMyLabel elseLabel = ilGen.DefineLabel ("ifelse_" + ifStmt.line + "_" + ifStmt.posn);
+			ScriptMyLabel elseLabel = ilGen.DefineLabel ("ifelse_" + ifStmt.Unique);
 			ilGen.Emit (OpCodes.Brfalse, elseLabel);
 			GenerateStmt (ifStmt.trueStmt);
 			if (ifStmt.elseStmt == null) {
 				ilGen.MarkLabel (elseLabel);
 			} else {
-				ScriptMyLabel doneLabel = ilGen.DefineLabel ("ifdone_" + ifStmt.line + "_" + ifStmt.posn);
+				ScriptMyLabel doneLabel = ilGen.DefineLabel ("ifdone_" + ifStmt.Unique);
 				ilGen.Emit (OpCodes.Br, doneLabel);
 				ilGen.MarkLabel (elseLabel);
 				GenerateStmt (ifStmt.elseStmt);
@@ -1035,8 +1035,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void GenerateStmtWhile (TokenStmtWhile whileStmt)
 		{
-			ScriptMyLabel contLabel = ilGen.DefineLabel ("whilecont_" + whileStmt.line + "_" + whileStmt.posn);
-			ScriptMyLabel doneLabel = ilGen.DefineLabel ("whiledone_" + whileStmt.line + "_" + whileStmt.posn);
+			ScriptMyLabel contLabel = ilGen.DefineLabel ("whilecont_" + whileStmt.Unique);
+			ScriptMyLabel doneLabel = ilGen.DefineLabel ("whiledone_" + whileStmt.Unique);
 
 			ilGen.MarkLabel (contLabel);                                // cont:
 			CompValu testRVal = GenerateFromRVal (whileStmt.testRVal);  //   testRVal = while test expression
@@ -1692,7 +1692,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (declFunc.changesState) {
 
 				// if (__sw.StateChanged) return;
-				ScriptMyLabel noStateChangeLabel = ilGen.DefineLabel ("nostatechg_" + call.line + "_" + call.posn);
+				ScriptMyLabel noStateChangeLabel = ilGen.DefineLabel ("nostatechg_" + call.Unique);
 				ilGen.Emit (OpCodes.Ldarg_0);                       // instance
 				ilGen.Emit (OpCodes.Ldfld, stateChangedFieldInfo);  // instance.stateChanged
 				ilGen.Emit (OpCodes.Brfalse, noStateChangeLabel);

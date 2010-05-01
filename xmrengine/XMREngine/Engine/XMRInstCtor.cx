@@ -441,8 +441,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (token != null)
             {
                 m_CompilerErrors.Add(
-                        String.Format("({0},{1}) Error: {2}", token.line,
-                                token.posn, message));
+                        String.Format("{0} Error: {1}", token.SrcLoc, message));
             }
             else if (message != null)
             {

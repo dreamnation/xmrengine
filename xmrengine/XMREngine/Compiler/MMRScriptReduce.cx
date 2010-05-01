@@ -439,7 +439,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				                 else prevStmt.nextToken = thisStmt;
 				prevStmt = thisStmt;
 			}
-			tokenStmtBlock.closebr = token;
 			token = token.nextToken;
 			currentStmtBlock = tokenStmtBlock.outerStmtBlock;
 			return tokenStmtBlock;
@@ -523,7 +522,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 			bool ok                     = ParseStmtFor2 (tokenStmtFor, ref token);
 			currentStmtBlock            = forStmtBlock.outerStmtBlock;
-			forStmtBlock.closebr        = token.prevToken;
 			return ok ? forStmtBlock : null;
 		}
 
@@ -1430,17 +1428,25 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public TokenArgDecl (Token original) : base (original) { }
 
-		public override string ToString ()
+		public override void WriteOut (TokenWriter writer)
 		{
-			System.Text.StringBuilder s = new System.Text.StringBuilder ("(");
-			for (int i = 0; (i < types.Length) || (i < names.Length); i ++) {
-				if (i > 0) s.Append (", ");
-				s.Append (types[i].ToString ());
-				s.Append (" ");
-				s.Append (names[i].ToString ());
+			int n = types.Length;
+			writer.Write (n);
+			for (int i = 0; i < n; i ++) {
+				writer.Write (types[i]);
+				writer.Write (names[i]);
 			}
-			s.Append (")");
-			return s.ToString ();
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			int n = reader.ReadInt ();
+			types = new TokenType[n];
+			names = new TokenName[n];
+			for (int i = 0; i < n; i ++) {
+				types[i] = (TokenType)reader.ReadToken ();
+				names[i] = (TokenName)reader.ReadToken ();
+			}
 		}
 	}
 
@@ -1466,17 +1472,54 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public TokenDeclFunc (Token original) : base (original) { }
 
-		public override string ToString ()
+		public override void WriteOut (TokenWriter writer)
 		{
-			System.Text.StringBuilder s = new System.Text.StringBuilder ("");
-			s.Append (retType.ToString ());
-			s.Append (" ");
-			s.Append (funcName.ToString ());
-			s.Append (" ");
-			s.Append (argDecl.ToString ());
-			s.Append (" ");
-			s.Append (body.ToString ());
-			return s.ToString ();
+			writer.Write (retType);
+			writer.Write (funcName);
+			writer.Write (argDecl);
+			writer.Write (body);
+
+			// the below probably should be rederived when reconstructed
+			writer.Write (labels.Count);
+			foreach (KeyValuePair<string, TokenStmtLabel> kvp in labels) {
+				writer.Write (kvp.Value);
+			}
+			writer.Write (changesState);
+			writer.Write (calledFuncs.Count);
+			foreach (KeyValuePair<string, TokenName> kvp in calledFuncs) {
+				writer.Write (kvp.Value);
+			}
+			writer.Write (localVars.Count);
+			foreach (TokenDeclVar val in localVars) {
+				writer.Write (val);
+			}
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			retType  = (TokenType)     reader.ReadToken ();
+			funcName = (TokenName)     reader.ReadToken ();
+			argDecl  = (TokenArgDecl)  reader.ReadToken ();
+			body     = (TokenStmtBlock)reader.ReadToken ();
+
+			// the below probably should be rederived when reconstructed
+
+			int nLabels = reader.ReadInt ();
+			while (-- nLabels >= 0) {
+				TokenStmtLabel label = (TokenStmtLabel)reader.ReadToken ();
+				labels[label.name.val] = label;
+			}
+			changesState = reader.ReadBool ();
+			int nFuncs = reader.ReadInt ();
+			while (-- nFuncs >= 0) {
+				TokenName func = (TokenName)reader.ReadToken ();
+				calledFuncs[func.val] = func;
+			}
+			int nLocals = reader.ReadInt ();
+			while (-- nLocals >= 0) {
+				TokenDeclVar local = (TokenDeclVar)reader.ReadToken ();
+				localVars.AddLast (local);
+			}
 		}
 	}
 
@@ -1489,6 +1532,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenStateBody body;
 
 		public TokenDeclState (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
+		{
+			writer.Write (name);
+			writer.Write (body);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			name = (TokenName)     reader.ReadToken ();
+			body = (TokenStateBody)reader.ReadToken ();
+		}
 	}
 
 	public class TokenDeclVar : Token {
@@ -1496,6 +1551,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenType type;
 		public TokenName name;
 		public TokenRVal init;  // null if none
+
 		public bool preDefd;    // used by codegen
 		                        // false: normal in-order definition
 		                        //  true: var was defined at top of block
@@ -1517,10 +1573,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			}
 		}
 
-		public override string ToString ()
+		/**
+		 * @brief Serialization/Deserialization.
+		 */
+		public TokenDeclVar (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
 		{
-			return (init == null) ? type.ToString () + " " + name.ToString () + ";" :
-			                        type.ToString () + " " + name.ToString () + " = " + init.ToString () + ";";
+			writer.Write (type);
+			writer.Write (name);
+			writer.Write (init);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			type = (TokenType)reader.ReadToken ();
+			name = (TokenName)reader.ReadToken ();
+			init = (TokenRVal)reader.ReadToken ();
 		}
 	}
 
@@ -1542,9 +1611,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public TokenLValArEle (Token original) : base (original) { }
 
-		public override string ToString ()
+		public override void WriteOut (TokenWriter writer)
 		{
-			return base.ToString ();
+			writer.Write (baseLVal);
+			writer.Write (subRVal);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			baseLVal = (TokenLVal)reader.ReadToken ();
+			subRVal  = (TokenRVal)reader.ReadToken ();
 		}
 	}
 
@@ -1557,9 +1633,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public TokenLValField (Token original) : base (original) { }
 
-		public override string ToString ()
+		public override void WriteOut (TokenWriter writer)
 		{
-			return base.ToString ();
+			writer.Write (baseLVal);
+			writer.Write (field);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			baseLVal = (TokenLVal)reader.ReadToken ();
+			field    = (TokenName)reader.ReadToken ();
 		}
 	}
 
@@ -1574,9 +1657,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			this.name = original;
 		}
 
-		public override string ToString ()
+		/**
+		 * @brief Serialization/Deserialization.
+		 */
+		public TokenLValName (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
 		{
-			return name.ToString ();
+			writer.Write (name);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			name = (TokenName)reader.ReadToken ();
 		}
 	}
 
@@ -1603,6 +1696,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenRValAsnPost (Token original) : base (original) {
 			sideEffects = true;
 		}
+
+		public override void WriteOut (TokenWriter writer)
+		{
+			writer.Write (lVal);
+			writer.Write (postfix);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			lVal = (TokenLVal)reader.ReadToken ();
+			postfix = reader.ReadToken ();
+		}
 	}
 
 	/**
@@ -1614,6 +1719,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public TokenRValAsnPre (Token original) : base (original) {
 			sideEffects = true;
+		}
+
+		public override void WriteOut (TokenWriter writer)
+		{
+			writer.Write (prefix);
+			writer.Write (lVal);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			prefix = reader.ReadToken ();
+			lVal = (TokenLVal)reader.ReadToken ();
 		}
 	}
 
@@ -1630,12 +1747,31 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			sideEffects = true;
 		}
 
-		public override string ToString ()
+		public override void WriteOut (TokenWriter writer)
 		{
-			if (args == null) {
-				return meth.ToString () + " ()";
+			writer.Write (meth);
+			writer.Write (nArgs);
+			TokenRVal arg = args;
+			for (int i = 0; i < nArgs; i ++) {
+				writer.Write (arg);
+				arg = (TokenRVal)arg.nextToken;
 			}
-			return meth.ToString () + " " + args.ToString ();
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			meth  = (TokenLVal)reader.ReadToken ();
+			nArgs = reader.ReadInt ();
+			Token lastArg = null;
+			for (int i = 0; i < nArgs; i ++) {
+				TokenRVal arg = (TokenRVal)reader.ReadToken ();
+				if (lastArg == null) {
+					args = arg;
+				} else {
+					lastArg.nextToken = arg;
+				}
+				lastArg = arg;
+			}
 		}
 	}
 
@@ -1652,6 +1788,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			rVal   = value;
 			sideEffects = value.sideEffects;
 		}
+
+		/**
+		 * @brief Serialization/Deserialization.
+		 */
+		public TokenRValCast (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
+		{
+			writer.Write (castTo);
+			writer.Write (rVal);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			castTo = (TokenType)reader.ReadToken ();
+			rVal   = (TokenRVal)reader.ReadToken ();
+		}
 	}
 
 	/**
@@ -1659,14 +1812,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	 */
 	public class TokenRValFloat : TokenRVal {
 		public TokenFloat flToken;
-		public TokenRValFloat (Token original) : base (original)
+		public TokenRValFloat (TokenFloat original) : base (original)
 		{
-			this.flToken = (TokenFloat)original;
+			this.flToken = original;
 		}
 
-		public override string ToString ()
+		/**
+		 * @brief Serialization/Deserialization.
+		 */
+		public TokenRValFloat (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
 		{
-			return flToken.ToString ();
+			writer.Write (flToken);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			flToken = (TokenFloat)reader.ReadToken ();
 		}
 	}
 
@@ -1675,9 +1838,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	 */
 	public class TokenRValInt : TokenRVal {
 		public TokenInt inToken;
-		public TokenRValInt (Token original) : base (original)
+		public TokenRValInt (TokenInt original) : base (original)
 		{
-			this.inToken = (TokenInt)original;
+			this.inToken = original;
+		}
+
+		/**
+		 * @brief Serialization/Deserialization.
+		 */
+		public TokenRValInt (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
+		{
+			writer.Write (inToken);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			inToken = (TokenInt)reader.ReadToken ();
 		}
 	}
 
@@ -1689,6 +1867,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenTypeExp typeExp;
 
 		public TokenRValIsType (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
+		{
+			writer.Write (rValExp);
+			writer.Write (typeExp);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			rValExp = (TokenRVal)   reader.ReadToken ();
+			typeExp = (TokenTypeExp)reader.ReadToken ();
+		}
 	}
 
 	/**
@@ -1700,12 +1890,48 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public int nItems;
 
 		public TokenRValList (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
+		{
+			writer.Write (nItems);
+			Token t = rVal;
+			for (int i = 0; i < nItems; i ++) {
+				writer.Write (t);
+				t = t.nextToken;
+			}
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			nItems = reader.ReadInt ();
+			Token lastRVal = null;
+			for (int i = 0; i < nItems; i ++) {
+				TokenRVal thisRVal = (TokenRVal)reader.ReadToken ();
+				if (lastRVal == null) {
+					rVal = thisRVal;
+				} else {
+					lastRVal.nextToken = thisRVal;
+				}
+				lastRVal = thisRVal;
+			}
+		}
 	}
 
 	public class TokenRValConst : TokenRVal {
 		public ScriptConst val;
 
 		public TokenRValConst (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
+		{
+			writer.Write (val.name);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			string name = reader.ReadString ();
+			val = ScriptConst.Lookup (name);
+		}
 	}
 
 	/**
@@ -1713,13 +1939,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	 */
 	public class TokenRValLVal : TokenRVal {
 		public TokenLVal lvToken;
-		public TokenRValLVal (Token original) : base (original)
+		public TokenRValLVal (TokenLVal original) : base (original)
 		{
-			this.lvToken = (TokenLVal)original;
+			this.lvToken = original;
 		}
-		public override string ToString ()
+
+		/**
+		 * @brief Serialization/Deserialization.
+		 */
+		public TokenRValLVal (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
 		{
-			return lvToken.ToString ();
+			writer.Write (lvToken);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			lvToken = (TokenLVal)reader.ReadToken ();
 		}
 	}
 
@@ -1737,25 +1974,38 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			opcode    = op;
 			rValRight = right;
 
-			sideEffects = left.sideEffects || right.sideEffects;
+			CalcSideEffects();
+		}
+
+		/**
+		 * @brief Serialization/Deserialization.
+		 */
+		public TokenRValOpBin (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
+		{
+			writer.Write (rValLeft);
+			writer.Write (opcode);
+			writer.Write (rValRight);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			rValLeft  = (TokenRVal)reader.ReadToken ();
+			opcode    =            reader.ReadToken ();
+			rValRight = (TokenRVal)reader.ReadToken ();
+
+			CalcSideEffects();
+		}
+
+		private void CalcSideEffects()
+		{
+			sideEffects = rValLeft.sideEffects || rValRight.sideEffects;
 			if (!sideEffects) {
-				string opStr = op.ToString ();
+				string opStr = opcode.ToString ();
 				sideEffects = opStr.EndsWith ("=") && (opStr != ">=") && 
 				              (opStr != "<=") && (opStr != "!=") && (opStr != "==");
 			}
-		}
-
-		public override string ToString ()
-		{
-			System.Text.StringBuilder s = new System.Text.StringBuilder ();
-			s.Append ('(');
-			s.Append (rValLeft.ToString ());
-			s.Append (')');
-			s.Append (opcode.ToString ());
-			s.Append ('(');
-			s.Append (rValRight.ToString ());
-			s.Append (')');
-			return s.ToString ();
 		}
 	}
 
@@ -1772,6 +2022,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			rVal        = right;
 			sideEffects = right.sideEffects;
 		}
+
+		/**
+		 * @brief Serialization/Deserialization.
+		 */
+		public TokenRValOpUn (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
+		{
+			writer.Write (opcode);
+			writer.Write (rVal);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			opcode      = reader.ReadToken ();
+			rVal        = (TokenRVal)reader.ReadToken ();
+			sideEffects = rVal.sideEffects;
+		}
 	}
 
 	/**
@@ -1783,9 +2051,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public TokenRValParen (Token original) : base (original) { }
 
-		public override string ToString ()
+		public override void WriteOut (TokenWriter writer)
 		{
-			return "(" + rVal.ToString () + ")";
+			writer.Write (rVal);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			rVal = (TokenRVal)reader.ReadToken ();
 		}
 	}
 
@@ -1797,6 +2070,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenRVal wRVal;
 
 		public TokenRValRot (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
+		{
+			writer.Write (xRVal);
+			writer.Write (yRVal);
+			writer.Write (zRVal);
+			writer.Write (wRVal);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			xRVal = (TokenRVal)reader.ReadToken ();
+			yRVal = (TokenRVal)reader.ReadToken ();
+			zRVal = (TokenRVal)reader.ReadToken ();
+			wRVal = (TokenRVal)reader.ReadToken ();
+		}
 	}
 
 	/**
@@ -1804,9 +2093,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	 */
 	public class TokenRValStr : TokenRVal {
 		public TokenStr strToken;
-		public TokenRValStr (Token original) : base (original)
+		public TokenRValStr (TokenStr original) : base (original)
 		{
-			this.strToken = (TokenStr)original;
+			this.strToken = original;
+		}
+
+		/**
+		 * @brief Serialization/Deserialization.
+		 */
+		public TokenRValStr (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
+		{
+			writer.Write (strToken);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			strToken = (TokenStr)reader.ReadToken ();
 		}
 	}
 
@@ -1815,6 +2119,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	 */
 	public class TokenRValUndef : TokenRVal {
 		public TokenRValUndef (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
+		{
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+		}
 	}
 
 	/**
@@ -1828,9 +2140,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public TokenRValVec (Token original) : base (original) { }
 
-		public override string ToString ()
+		public override void WriteOut (TokenWriter writer)
 		{
-			return "<" + xRVal.ToString () + "," + yRVal.ToString () + "," + zRVal.ToString () + ">";
+			writer.Write (xRVal);
+			writer.Write (yRVal);
+			writer.Write (zRVal);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			xRVal = (TokenRVal)reader.ReadToken ();
+			yRVal = (TokenRVal)reader.ReadToken ();
+			zRVal = (TokenRVal)reader.ReadToken ();
 		}
 	}
 	
@@ -1845,25 +2166,41 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public TokenScript (Token original) : base (original) { }
 
-		// One big monster string for the whole script...
-		public override string ToString ()
+		public override void WriteOut (TokenWriter writer)
 		{
-			System.Text.StringBuilder s = new System.Text.StringBuilder ();
+			writer.Write (vars.Count);
 			foreach (KeyValuePair<string, TokenDeclVar> kvp in vars) {
-				s.Append (kvp.Value.ToString ());
-				s.Append ("\n");
+				writer.Write (kvp.Value);
 			}
+			writer.Write (funcs.Count);
 			foreach (KeyValuePair<string, TokenDeclFunc> kvp in funcs) {
-				s.Append (kvp.Value.ToString ());
-				s.Append ("\n");
+				writer.Write (kvp.Value);
 			}
-			s.Append (defaultState);
-			s.Append ("\n");
+			writer.Write (defaultState);
+			writer.Write (states.Count);
 			foreach (KeyValuePair<string, TokenDeclState> kvp in states) {
-				s.Append (kvp.Value.ToString ());
-				s.Append ("\n");
+				writer.Write (kvp.Value);
 			}
-			return s.ToString ();
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			int nVars = reader.ReadInt ();
+			while (-- nVars >= 0) {
+				TokenDeclVar var = (TokenDeclVar)reader.ReadToken ();
+				vars[var.name.val] = var;
+			}
+			int nFuncs = reader.ReadInt ();
+			while (-- nFuncs >= 0) {
+				TokenDeclFunc func = (TokenDeclFunc)reader.ReadToken ();
+				funcs[func.funcName.val] = func;
+			}
+			defaultState = (TokenDeclState)reader.ReadToken ();
+			int nStates = reader.ReadInt ();
+			while (-- nStates >= 0) {
+				TokenDeclState state = (TokenDeclState)reader.ReadToken ();
+				states[state.name.val] = state;
+			}
 		}
 	}
 
@@ -1874,19 +2211,32 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public TokenDeclFunc eventFuncs;
 
-		public int index = -1;  // row in ScriptHandlerEventTable (0=default)
+		public int index = -1;  // (codegen) row in ScriptHandlerEventTable (0=default)
 
 		public TokenStateBody (Token original) : base (original) { }
 
-		public override string ToString ()
+		public override void WriteOut (TokenWriter writer)
 		{
-			System.Text.StringBuilder s = new System.Text.StringBuilder ("{");
-			for (Token t = eventFuncs; t != null; t = t.nextToken) {
-				s.Append (" ");
-				s.Append (t.ToString ());
+			Token t;
+			for (t = eventFuncs; t != null; t = t.nextToken) {
+				writer.Write (t);
 			}
-			s.Append (" }");
-			return s.ToString ();
+			writer.Write (t);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			TokenDeclFunc lastT, thisT;
+
+			lastT = null;
+			while ((thisT = (TokenDeclFunc)reader.ReadToken ()) != null) {
+				if (lastT == null) {
+					eventFuncs = thisT;
+				} else {
+					lastT.nextToken = thisT;
+				}
+				lastT = thisT;
+			}
 		}
 	}
 
@@ -1907,22 +2257,47 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	public class TokenStmtBlock : TokenStmt {
 
 		public Token statements;               // null-terminated list of statements, can also have TokenDeclVar's in here
-		public Token closebr;                  // close-brace token
 		public TokenStmtBlock outerStmtBlock;  // next outer stmtBlock or null if top-level, ie, function definition
 		public TokenDeclFunc function;         // function it is part of
 		public Dictionary<string, TokenDeclVar> variables = new Dictionary<string, TokenDeclVar> ();  // variables declared herein
 
 		public TokenStmtBlock (Token original) : base (original) { }
 
-		public override string ToString ()
+		public override void WriteOut (TokenWriter writer)
 		{
-			System.Text.StringBuilder s = new System.Text.StringBuilder ("{ ");
-			for (Token t = statements; t != null; t = t.nextToken) {
-				s.Append (t.ToString ());
-				s.Append (" ");
+			Token t;
+			for (t = statements; t != null; t = t.nextToken) {
+				writer.Write (t);
 			}
-			s.Append ("}");
-			return s.ToString ();
+			writer.Write (t);
+			writer.Write (outerStmtBlock);
+			writer.Write (function);
+			writer.Write (variables.Count);
+			foreach (KeyValuePair<string, TokenDeclVar> kvp in variables) {
+				writer.Write (kvp.Value);
+			}
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			Token lastT, thisT;
+
+			lastT = null;
+			while ((thisT = reader.ReadToken ()) != null) {
+				if (lastT == null) {
+					statements = thisT;
+				} else {
+					lastT.nextToken = thisT;
+				}
+				lastT = thisT;
+			}
+			outerStmtBlock = (TokenStmtBlock)reader.ReadToken ();
+			function = (TokenDeclFunc)reader.ReadToken ();
+			int nVars = reader.ReadInt ();
+			while (-- nVars >= 0) {
+				TokenDeclVar var = (TokenDeclVar)reader.ReadToken ();
+				variables[var.name.val] = var;
+			}
 		}
 	}
 
@@ -1939,6 +2314,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public ScriptMyLabel labelStruct;
 
 		public TokenStmtLabel (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
+		{
+			writer.Write (name);
+			writer.Write (block);
+			writer.Write (hasBkwdRefs);  ///??? recompute on readin
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			name        = (TokenName)reader.ReadToken ();
+			block       = (TokenStmtBlock)reader.ReadToken ();
+			hasBkwdRefs = reader.ReadBool ();
+		}
 	}
 
 	/**
@@ -1950,9 +2339,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public TokenStmtRVal (Token original) : base (original) { }
 
-		public override string ToString ()
+		public override void WriteOut (TokenWriter writer)
 		{
-			return rVal.ToString () + ";";
+			writer.Write (rVal);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			rVal = (TokenRVal)reader.ReadToken ();
 		}
 	}
 
@@ -1965,6 +2359,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenRVal testRVal;
 
 		public TokenStmtDo (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
+		{
+			writer.Write (bodyStmt);
+			writer.Write (testRVal);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			bodyStmt = (TokenStmt)reader.ReadToken ();
+			testRVal = (TokenRVal)reader.ReadToken ();
+		}
 	}
 
 	/**
@@ -1978,6 +2384,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenStmt bodyStmt;  // there is always a body statement, though it may be a null statement
 
 		public TokenStmtFor (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
+		{
+			writer.Write (initStmt);
+			writer.Write (testRVal);
+			writer.Write (incrRVal);
+			writer.Write (bodyStmt);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			initStmt = (TokenStmt)reader.ReadToken ();
+			testRVal = (TokenRVal)reader.ReadToken ();
+			incrRVal = (TokenRVal)reader.ReadToken ();
+			bodyStmt = (TokenStmt)reader.ReadToken ();
+		}
 	}
 
 	/**
@@ -1991,6 +2413,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenStmt bodyStmt;  // there is always a body statement, though it may be a null statement
 
 		public TokenStmtForEach (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
+		{
+			writer.Write (keyLVal);
+			writer.Write (valLVal);
+			writer.Write (arrayLVal);
+			writer.Write (bodyStmt);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			keyLVal   = (TokenLVal)reader.ReadToken ();
+			valLVal   = (TokenLVal)reader.ReadToken ();
+			arrayLVal = (TokenLVal)reader.ReadToken ();
+			bodyStmt  = (TokenStmt)reader.ReadToken ();
+		}
 	}
 
 	public class TokenStmtIf : TokenStmt {
@@ -2001,17 +2439,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public TokenStmtIf (Token original) : base (original) { }
 
-		public override string ToString ()
+		public override void WriteOut (TokenWriter writer)
 		{
-			System.Text.StringBuilder s = new System.Text.StringBuilder ("if (");
-			s.Append (testRVal.ToString ());
-			s.Append (") ");
-			s.Append (trueStmt.ToString ());
-			if (elseStmt != null) {
-				s.Append (" else ");
-				s.Append (elseStmt.ToString ());
-			}
-			return s.ToString ();
+			writer.Write (testRVal);
+			writer.Write (trueStmt);
+			writer.Write (elseStmt);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			testRVal = (TokenRVal)reader.ReadToken ();
+			trueStmt = (TokenStmt)reader.ReadToken ();
+			elseStmt = (TokenStmt)reader.ReadToken ();
 		}
 	}
 
@@ -2020,11 +2459,29 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenName label;
 
 		public TokenStmtJump (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
+		{
+			writer.Write (label);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			label = (TokenName)reader.ReadToken ();
+		}
 	}
 
 	public class TokenStmtNull : TokenStmt {
 
 		public TokenStmtNull (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
+		{
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+		}
 	}
 
 	public class TokenStmtRet : TokenStmt {
@@ -2032,6 +2489,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenRVal rVal;  // null if void
 
 		public TokenStmtRet (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
+		{
+			writer.Write (rVal);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			rVal = (TokenRVal)reader.ReadToken ();
+		}
 	}
 
 	/**
@@ -2042,6 +2509,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenName state;  // null for default
 
 		public TokenStmtState (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
+		{
+			writer.Write (state);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			state = (TokenName)reader.ReadToken ();
+		}
 	}
 
 	public class TokenStmtWhile : TokenStmt {
@@ -2050,6 +2527,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenStmt bodyStmt;
 
 		public TokenStmtWhile (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
+		{
+			writer.Write (testRVal);
+			writer.Write (bodyStmt);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			testRVal = (TokenRVal)reader.ReadToken ();
+			bodyStmt = (TokenStmt)reader.ReadToken ();
+		}
 	}
 
 	/**
@@ -2065,27 +2554,79 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenTypeExp rightOp;
 
 		public TokenTypeExpBinOp (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
+		{
+			writer.Write (leftOp);
+			writer.Write (binOp);
+			writer.Write (rightOp);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			leftOp  = (TokenTypeExp)reader.ReadToken ();
+			binOp   =               reader.ReadToken ();
+			rightOp = (TokenTypeExp)reader.ReadToken ();
+		}
 	}
 
 	public class TokenTypeExpNot : TokenTypeExp {
 		public TokenTypeExp typeExp;
 
 		public TokenTypeExpNot (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
+		{
+			writer.Write (typeExp);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			typeExp = (TokenTypeExp)reader.ReadToken ();
+		}
 	}
 
 	public class TokenTypeExpPar : TokenTypeExp {
 		public TokenTypeExp typeExp;
 
 		public TokenTypeExpPar (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
+		{
+			writer.Write (typeExp);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			typeExp = (TokenTypeExp)reader.ReadToken ();
+		}
 	}
 
 	public class TokenTypeExpType : TokenTypeExp {
 		public TokenType typeToken;
 
 		public TokenTypeExpType (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
+		{
+			writer.Write (typeToken);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			typeToken = (TokenType)reader.ReadToken ();
+		}
 	}
 
 	public class TokenTypeExpUndef : TokenTypeExp {
 		public TokenTypeExpUndef (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
+		{
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+		}
 	}
 }
