@@ -25,6 +25,7 @@ namespace Careminster.Modules.Permissions
         protected Scene m_Scene;
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
+
         #region Constants
         
         private uint PERM_ALL = (uint)2147483647;
@@ -129,6 +130,7 @@ namespace Careminster.Modules.Permissions
             m_Scene.Permissions.OnDeleteUserInventory += CanDeleteUserInventory;
             m_Scene.Permissions.OnTeleport += CanTeleport;
             m_Scene.Permissions.OnResetScript += CanResetScript;
+		
         }
 
         public void RegionLoaded(Scene scene)
@@ -1129,11 +1131,21 @@ namespace Careminster.Modules.Permissions
 
             public bool CanLinkObject(UUID userID, UUID objectID)
             {
+                uint perms=GetEffectivePermissions(userID, objectID);
+
+                if((perms & PERM_MODIFY) == 0)
+                    return false;
+
                 return true;
             }
 
             public bool CanDelinkObject(UUID userID, UUID objectID)
             {
+                uint perms=GetEffectivePermissions(userID, objectID);
+
+                if((perms & PERM_MODIFY) == 0)
+                    return false;
+
                 return true;
             }
 
