@@ -1,10 +1,17 @@
 
+#include <errno.h>
 #include <mono/jit/jit.h>
 #include <mono/metadata/appdomain.h>
 #include <mono/metadata/environment.h>
 #include <mono/metadata/exception.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+
+#define __USE_GNU
+#include <sched.h>
+#undef __USE_GNU
 
 MonoType *mono_reflection_type_get_handle (MonoReflectionType *ref);
 
@@ -15,7 +22,7 @@ static MonoMethod *lslStringCtorString = NULL;
 static MonoException *NewBoxedLSLString (MonoDomain *domain, gunichar2 *buf, int len, MonoObject **lslStrOut);
 static MonoString *BoxedLSLString2SysString (MonoObject *lslString);
 
-
+
 /**
  * @brief Initialization routine
  *    int rc = xmrHelperInitialize (typeof (LSL_String));
@@ -216,6 +223,61 @@ oom:
 	except = mono_get_exception_out_of_memory ();
 err:
 	return except;
+}
+
+/**
+ * @brief Set and Get processor affinity for a thread.
+ *
+ * delegate int GetTid ();
+ * delegate int GetSetAffinity (int tid, byte[] maskArray);
+ *
+ * GetTid getTid = (GetTid) MMRDLOpen.GetDelegate ("xmrhelpers.so", "GetTid", typeof (GetTid), null);
+ * GetSetAffinity getAffinity = (GetSetAffinity) MMRDLOpen.GetDelegate ("xmrhelpers.so", "GetAffinity", typeof (GetSetAffinity), null);
+ * GetSetAffinity setAffinity = (GetSetAffinity) MMRDLOpen.GetDelegate ("xmrhelpers.so", "SetAffinity", typeof (GetSetAffinity), null);
+ */
+int GetTid (MonoDelegate *delegate)
+{
+	return syscall (SYS_gettid);
+}
+
+int GetAffinity (MonoDelegate *delegate, int tid, MonoArray *maskArray)
+{
+	cpu_set_t mask;
+	int rc, uintlen;
+
+	if (maskArray != NULL) {
+		rc = sched_getaffinity (tid, sizeof mask, &mask);
+		if (rc < 0) {
+			return -errno;
+		}
+
+		uintlen = maskArray->max_length;
+		if (uintlen > sizeof mask) uintlen = sizeof mask;
+		memcpy (maskArray->vector, &mask, uintlen);
+	}
+
+	return sizeof mask;
+}
+
+int SetAffinity (MonoDelegate *delegate, int tid, MonoArray *maskArray)
+{
+	cpu_set_t mask;
+	int rc, uintlen;
+
+	if (maskArray != NULL) {
+		memset (&mask, 0, sizeof mask);
+
+		uintlen = maskArray->max_length;
+		if (uintlen > sizeof mask) uintlen = sizeof mask;
+		memcpy (&mask, maskArray->vector, uintlen);
+
+		rc = sched_setaffinity (tid, sizeof mask, &mask);
+		if (rc < 0) {
+			return -errno;
+		}
+	}
+
+	return sizeof mask;
 }
 
 /**

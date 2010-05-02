@@ -5,7 +5,7 @@ GCC := gcc $(CFLAGS) -Wall -O2 -g
 
 OPENSIMDLLDIR ?= ../../../bin
 
-default: csfiles $(OPENSIMDLLDIR)/xmrengshare.dll
+default: csfiles $(OPENSIMDLLDIR)/xmrengshare.dll $(OPENSIMDLLDIR)/xmrhelpers.so
 
 # ------------------------------------------------------------------------------
 #
@@ -24,13 +24,10 @@ MMRScriptCompile.cs: ../Compiler/MMRScriptCompile.cx
 
 # ------------------------------------------------------------------------------
 
-xmrhelpers: ../../../../opensim/bin/xmrhelpers.so
+xmrhelpers: $(OPENSIMDLLDIR)/xmrhelpers.so
 
-../../../../opensim/bin/xmrhelpers.so: xmrhelpers.so
-	cp xmrhelpers.so ../../../../opensim/bin/
-
-xmrhelpers.so: xmrhelpers.o
-	ld -share -g -o xmrhelpers.so xmrhelpers.o
+$(OPENSIMDLLDIR)/xmrhelpers.so: xmrhelpers.o
+	ld -share -g -o $(OPENSIMDLLDIR)/xmrhelpers.so xmrhelpers.o
 
 xmrhelpers.o: xmrhelpers.c
 	$(GCC) -c -o xmrhelpers.o xmrhelpers.c
