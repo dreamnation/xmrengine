@@ -35,6 +35,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 #ifdef SECRET_STUFF
             bool decode = false;
             string asmFileName = null;
+            string srcFileName = null;
 #endif
             string objFileName = null;
             List<string> sourceFileNames = new List<string> ();
@@ -74,6 +75,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     objFileName = args[++i];
                     continue;
                 }
+#ifdef SECRET_STUFF
+                if (arg == "-src") {
+                    srcFileName = args[++i];
+                    continue;
+                }
+#endif
                 if (arg == "-version") {
                     goto version;
                 }
@@ -88,7 +95,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     goto usage;
                 }
 
-                DecodeFile (sourceFileNames[0], asmFileName, objFileName);
+                DecodeFile (sourceFileNames[0], asmFileName, objFileName, srcFileName);
                 return;
             }
 #endif
@@ -207,7 +214,7 @@ version:
          * @param objFileName = null: don't bother writing decrypted CIL object file
          *                      else: name of decrypted CIL object file to write
          */
-        private static void DecodeFile (string decodeFileName, string asmFileName, string objFileName)
+        private static void DecodeFile (string decodeFileName, string asmFileName, string objFileName, string srcFileName)
         {
             /*
              * Open file to decode.
@@ -235,6 +242,19 @@ version:
                 TokenReader tokenReader = new TokenReader (decodeBinaryReader, StandAloneErrorMessage);
                 TokenScript tokenScript = (TokenScript)tokenReader.ReadToken ();
                 decodeBinaryReader.Close ();
+
+                /*
+                 * Reconstruct source from abstract syntax tree.
+                 */
+                if (srcFileName != null) {
+                    Console.WriteLine ("Reconstructing source to " + srcFileName);
+                    StreamWriter reconstStream = File.CreateText (srcFileName);
+                    try {
+                        ScriptReconst.Reconst (tokenScript, reconstStream);
+                    } finally {
+                        reconstStream.Close ();
+                    }
+                }
 
                 /*
                  * Generate CIL object file to detect compilation errors.

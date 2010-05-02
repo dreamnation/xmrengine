@@ -11,7 +11,7 @@ default: csfiles $(OPENSIMDLLDIR)/xmrengshare.dll $(OPENSIMDLLDIR)/xmrhelpers.so
 #
 # Create files needed for OpenSim
 #
-$(OPENSIMDLLDIR)/xmrengshare.dll:
+$(OPENSIMDLLDIR)/xmrengshare.dll: $(wildcard ../*/*.cx) $(wildcard ../*/*.h)
 	make -C ../Compiler $(OPENSIMDLLDIR)/xmrengshare.dll
 
 csfiles: $(patsubst %.cx,%.cs,$(wildcard *.cx)) MMRScriptCompile.cs

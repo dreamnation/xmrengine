@@ -46,12 +46,12 @@ xmrengcomp.exe: MMRScriptCompile.cx $(patsubst %,$(OPENSIMDLLDIR)/%,$(SAOPENSIMD
 # Create internal-use-only xmrengcomp stand-alone compiler
 # ...includes the -asm, -decode and -genkey command-line options
 #
-xmrengcomp_secret.exe: MMRScriptCompile.cx $(patsubst %,$(OPENSIMDLLDIR)/%,$(SAOPENSIMDLLS))
+xmrengcomp_secret.exe: MMRScriptCompile.cx MMRScriptReconst.cs $(patsubst %,$(OPENSIMDLLDIR)/%,$(SAOPENSIMDLLS))
 	rm -f MMRScriptCompile_sa_secret.cs
 	cpp -C -P -nostdinc -o MMRScriptCompile_sa_secret.cs -DSTANDALONE_COMPILER -DSECRET_STUFF MMRScriptCompile.cx
 	gmcs -debug -out:xmrengcomp_secret.exe \
 		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(SAOPENSIMDLLS)) \
-		MMRScriptCompile_sa_secret.cs
+		MMRScriptCompile_sa_secret.cs MMRScriptReconst.cs
 
 # ------------------------------------------------------------------------------
 #

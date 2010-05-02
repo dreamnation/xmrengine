@@ -1,0 +1,500 @@
+/***************************************************\
+ *  COPYRIGHT 2010, Mike Rieker, Beverly, MA, USA  *
+ *  All rights reserved.                           *
+\***************************************************/
+
+using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
+using OpenSim.Region.ScriptEngine.XMREngine;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
+using System.Reflection.Emit;
+using System.Text;
+
+#include "lsltypes.h"
+
+/**
+ * @brief translate a reduced script token into corresponding CIL code.
+ * The single script token contains a tokenized and textured version of the whole script file.
+ */
+
+namespace OpenSim.Region.ScriptEngine.XMREngine
+{
+
+	public class ScriptReconst
+	{
+		public static void Reconst (TokenScript tokenScript, StreamWriter srcFileWriter)
+		{
+			new ScriptReconst (tokenScript, srcFileWriter);
+		}
+
+		private StreamWriter srcFileWriter = null;
+		private TokenScript tokenScript = null;
+
+		private ScriptReconst (TokenScript tokenScript, StreamWriter srcFileWriter)
+		{
+			this.tokenScript   = tokenScript;
+			this.srcFileWriter = srcFileWriter;
+			PerformReconst ();
+		}
+
+		/**
+		 * @brief Convert 'tokenScript' to 'srcFileWriter' format.
+		 *   'tokenScript' is a parsed/reduced abstract syntax tree of the script source file
+		 *   'srcFileWriter' is a reconstructed source code format
+		 */
+		private void PerformReconst ()
+		{
+			/*
+			 * Global variables.
+			 */
+			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclVar> kvp in tokenScript.vars) {
+				TokenDeclVar declVar = kvp.Value;
+				ReconstDeclVar (declVar);
+			}
+
+			/*
+			 * Functions.
+			 */
+			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclFunc> kvp in tokenScript.funcs) {
+				TokenDeclFunc declFunc = kvp.Value;
+				ReconstFunc (declFunc);
+			}
+
+			/*
+			 * States.
+			 */
+			ReconstState ("default", tokenScript.defaultState);
+			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclState> kvp in tokenScript.states) {
+				TokenDeclState declState = kvp.Value;
+				ReconstState (kvp.Key, declState);
+			}
+		}
+
+		private void ReconstState (string name, TokenDeclState declState)
+		{
+			WriteSrc (name + " {");
+			TokenStateBody body = declState.body;
+			for (Token t = body.eventFuncs; t != null; t = t.nextToken) {
+				ReconstFunc ((TokenDeclFunc)t);
+			}
+			WriteSrc ("}");
+		}
+
+		private void ReconstFunc (TokenDeclFunc declFunc)
+		{
+			if (!(declFunc.retType is TokenTypeVoid)) {
+				WriteSrc (declFunc.retType.ToString () + " ");
+			}
+			WriteSrc (declFunc.funcName.val + " (");
+			TokenArgDecl argDecl = declFunc.argDecl;
+			for (int i = 0; i < argDecl.types.Length; i ++) {
+				if (i > 0) WriteSrc (", ");
+				WriteSrc (argDecl.types[i].ToString () + " " + argDecl.names[i].val);
+			}
+			WriteSrc (")\n");
+			ReconstStmtBlock (declFunc.body);
+			WriteSrc ("\n");
+		}
+
+		private void ReconstDeclVar (TokenDeclVar declVar)
+		{
+			WriteSrc (declVar.type.ToString () + " " + declVar.name.val);
+			if (declVar.init != null) {
+				WriteSrc (" = ");
+				ReconstRVal (declVar.init);
+			}
+			WriteSrc (";");
+		}
+
+		private void ReconstStmt (TokenStmt stmt)
+		{
+			if (stmt is TokenStmtBlock)   ReconstStmtBlock   ((TokenStmtBlock)stmt);
+			if (stmt is TokenStmtLabel)   ReconstStmtLabel   ((TokenStmtLabel)stmt);
+			if (stmt is TokenStmtRVal)    ReconstStmtRVal    ((TokenStmtRVal)stmt);
+			if (stmt is TokenStmtDo)      ReconstStmtDo      ((TokenStmtDo)stmt);
+			if (stmt is TokenStmtFor)     ReconstStmtFor     ((TokenStmtFor)stmt);
+			if (stmt is TokenStmtForEach) ReconstStmtForEach ((TokenStmtForEach)stmt);
+			if (stmt is TokenStmtIf)      ReconstStmtIf      ((TokenStmtIf)stmt);
+			if (stmt is TokenStmtJump)    ReconstStmtJump    ((TokenStmtJump)stmt);
+			if (stmt is TokenStmtNull)    ReconstStmtNull    ((TokenStmtNull)stmt);
+			if (stmt is TokenStmtRet)     ReconstStmtRet     ((TokenStmtRet)stmt);
+			if (stmt is TokenStmtState)   ReconstStmtState   ((TokenStmtState)stmt);
+			if (stmt is TokenStmtWhile)   ReconstStmtWhile   ((TokenStmtWhile)stmt);
+		}
+
+		private void ReconstStmtBlock (TokenStmtBlock stmtBlock)
+		{
+			WriteSrc ("{");
+			for (Token t = stmtBlock.statements; t != null; t = t.nextToken) {
+				if (t is TokenDeclVar) {
+					ReconstDeclVar ((TokenDeclVar)t);
+				} else {
+					ReconstStmt ((TokenStmt)t);
+				}
+			}
+			WriteSrc ("}");
+		}
+
+		private void ReconstStmtLabel (TokenStmtLabel stmtLabel)
+		{
+			WriteSrc ("@" + stmtLabel.name.val + ";");
+		}
+
+		private void ReconstStmtRVal (TokenStmtRVal stmtRVal)
+		{
+			ReconstRVal (stmtRVal.rVal);
+			WriteSrc (";");
+		}
+
+		private void ReconstStmtDo (TokenStmtDo stmtDo)
+		{
+			WriteSrc ("do ");
+			ReconstStmt (stmtDo.bodyStmt);
+			WriteSrc ("while ");
+			ReconstRVal (stmtDo.testRVal);
+			WriteSrc (";");
+		}
+
+		private void ReconstStmtFor (TokenStmtFor stmtFor)
+		{
+			WriteSrc ("for (");
+			indent += 5;
+			ReconstStmt (stmtFor.initStmt);
+			if (stmtFor.testRVal != null) {
+				WriteSrc (" ");
+				ReconstRVal (stmtFor.testRVal);
+			}
+			WriteSrc (";");
+			if (stmtFor.incrRVal != null) {
+				WriteSrc (" ");
+				ReconstRVal (stmtFor.incrRVal);
+			}
+			WriteSrc (") ");
+			indent -= 5;
+			ReconstStmt (stmtFor.bodyStmt);
+		}
+
+		private void ReconstStmtForEach (TokenStmtForEach stmtForEach)
+		{
+			WriteSrc ("foreach (");
+			if (stmtForEach.keyLVal != null) {
+				ReconstLVal (stmtForEach.keyLVal);
+			}
+			WriteSrc (",");
+			if (stmtForEach.valLVal != null) {
+				ReconstLVal (stmtForEach.valLVal);
+			}
+			WriteSrc (" in ");
+			ReconstLVal (stmtForEach.arrayLVal);
+			WriteSrc (") ");
+			ReconstStmt (stmtForEach.bodyStmt);
+		}
+
+		private void ReconstStmtIf (TokenStmtIf stmtIf)
+		{
+			WriteSrc ("if ");
+			ReconstRVal (stmtIf.testRVal);
+			WriteSrc (" ");
+			ReconstStmt (stmtIf.trueStmt);
+			if (stmtIf.elseStmt != null) {
+				WriteSrc (" else ");
+				ReconstStmt (stmtIf.elseStmt);
+			}
+		}
+
+		private void ReconstStmtJump (TokenStmtJump stmtJump)
+		{
+			WriteSrc ("jump " + stmtJump.label.val + ";");
+		}
+
+		private void ReconstStmtNull (TokenStmtNull stmtNull)
+		{
+			WriteSrc (";");
+		}
+
+		private void ReconstStmtRet (TokenStmtRet stmtRet)
+		{
+			WriteSrc ("return");
+			if (stmtRet.rVal != null) {
+				WriteSrc (" ");
+				ReconstRVal (stmtRet.rVal);
+			}
+			WriteSrc (";");
+		}
+
+		private void ReconstStmtState (TokenStmtState stmtState)
+		{
+			WriteSrc ("state " + ((stmtState.state == null) ? "default" : stmtState.state.val) + ";");
+		}
+
+		private void ReconstStmtWhile (TokenStmtWhile stmtWhile)
+		{
+			WriteSrc ("while (");
+			ReconstRVal (stmtWhile.testRVal);
+			WriteSrc (") ");
+			ReconstStmt (stmtWhile.bodyStmt);
+		}
+
+		private void ReconstRVal (TokenRVal rVal)
+		{
+			if (rVal is TokenRValAsnPost) ReconstRValAsnPost ((TokenRValAsnPost)rVal);
+			if (rVal is TokenRValAsnPre)  ReconstRValAsnPre  ((TokenRValAsnPre) rVal);
+			if (rVal is TokenRValCall)    ReconstRValCall    ((TokenRValCall)   rVal);
+			if (rVal is TokenRValCast)    ReconstRValCast    ((TokenRValCast)   rVal);
+			if (rVal is TokenRValFloat)   ReconstRValFloat   ((TokenRValFloat)  rVal);
+			if (rVal is TokenRValInt)     ReconstRValInt     ((TokenRValInt)    rVal);
+			if (rVal is TokenRValIsType)  ReconstRValIsType  ((TokenRValIsType) rVal);
+			if (rVal is TokenRValList)    ReconstRValList    ((TokenRValList)   rVal);
+			if (rVal is TokenRValConst)   ReconstRValConst   ((TokenRValConst)  rVal);
+			if (rVal is TokenRValLVal)    ReconstRValLVal    ((TokenRValLVal)   rVal);
+			if (rVal is TokenRValOpBin)   ReconstRValOpBin   ((TokenRValOpBin)  rVal);
+			if (rVal is TokenRValOpUn)    ReconstRValOpUn    ((TokenRValOpUn)   rVal);
+			if (rVal is TokenRValParen)   ReconstRValParen   ((TokenRValParen)  rVal);
+			if (rVal is TokenRValRot)     ReconstRValRot     ((TokenRValRot)    rVal);
+			if (rVal is TokenRValStr)     ReconstRValStr     ((TokenRValStr)    rVal);
+			if (rVal is TokenRValUndef)   ReconstRValUndef   ((TokenRValUndef)  rVal);
+			if (rVal is TokenRValVec)     ReconstRValVec     ((TokenRValVec)    rVal);
+		}
+
+		private void ReconstRValAsnPost (TokenRValAsnPost rValAsnPost)
+		{
+			ReconstLVal (rValAsnPost.lVal);
+			WriteSrc (" " + rValAsnPost.postfix.ToString ());
+		}
+
+		private void ReconstRValAsnPre (TokenRValAsnPre rValAsnPre)
+		{
+			WriteSrc (rValAsnPre.prefix.ToString () + " ");
+			ReconstLVal (rValAsnPre.lVal);
+		}
+
+		private void ReconstRValCall (TokenRValCall rValCall)
+		{
+			ReconstLVal (rValCall.meth);
+			WriteSrc (" (");
+			for (Token t = rValCall.args; t != null; t = t.nextToken) {
+				if (t != rValCall.args) WriteSrc (", ");
+				ReconstRVal ((TokenRVal)t);
+			}
+			WriteSrc (")");
+		}
+
+		private void ReconstRValCast (TokenRValCast rValCast)
+		{
+			WriteSrc ("(" + rValCast.castTo.ToString () + ")");
+			ReconstRVal (rValCast.rVal);
+		}
+
+		private void ReconstRValFloat (TokenRValFloat rValFloat)
+		{
+			WriteSrc (rValFloat.flToken.val.ToString ());
+		}
+
+		private void ReconstRValInt (TokenRValInt rValInt)
+		{
+			WriteSrc (rValInt.inToken.val.ToString ());
+		}
+
+		private void ReconstRValIsType (TokenRValIsType rValIsType)
+		{
+			ReconstRVal (rValIsType.rValExp);
+			WriteSrc (" is ");
+			ReconstTypeExp (rValIsType.typeExp);
+		}
+
+		private void ReconstRValList (TokenRValList rValList)
+		{
+			WriteSrc ("[");
+			for (Token t = rValList.rVal; t != null; t = t.nextToken) {
+				if (t != rValList.rVal) WriteSrc (", ");
+				ReconstRVal ((TokenRVal)t);
+			}
+			WriteSrc ("]");
+		}
+
+		private void ReconstRValConst (TokenRValConst rValConst)
+		{
+			WriteSrc (rValConst.val.name);
+		}
+
+		private void ReconstRValLVal (TokenRValLVal rValLVal)
+		{
+			ReconstLVal (rValLVal.lvToken);
+		}
+
+		private void ReconstRValOpBin (TokenRValOpBin rValOpBin)
+		{
+			ReconstRVal (rValOpBin.rValLeft);
+			WriteSrc (" " + rValOpBin.opcode.ToString () + " ");
+			ReconstRVal (rValOpBin.rValRight);
+		}
+
+		private void ReconstRValOpUn (TokenRValOpUn rValOpUn)
+		{
+			WriteSrc (rValOpUn.opcode.ToString () + " ");
+			ReconstRVal (rValOpUn.rVal);
+		}
+
+		private void ReconstRValParen (TokenRValParen rValParen)
+		{
+			WriteSrc ("(");
+			ReconstRVal (rValParen.rVal);
+			WriteSrc (")");
+		}
+
+		private void ReconstRValRot (TokenRValRot rValRot)
+		{
+			WriteSrc ("<");
+			ReconstRVal (rValRot.xRVal);
+			WriteSrc (", ");
+			ReconstRVal (rValRot.yRVal);
+			WriteSrc (", ");
+			ReconstRVal (rValRot.zRVal);
+			WriteSrc (", ");
+			ReconstRVal (rValRot.wRVal);
+			WriteSrc (">");
+		}
+
+		private void ReconstRValStr (TokenRValStr rValStr)
+		{
+			StringBuilder sb = new StringBuilder ();
+			WriteSrc ("\"");
+			String s = rValStr.strToken.val;
+			for (int i = 0; i < s.Length; i ++) {
+				char c = s[i];
+				if ((c == '"') || (c == '\\')) {
+					sb.Append ('\\');
+				}
+				if (c == '\n') {
+					sb.Append ('\\');
+					c = 'n';
+				}
+				sb.Append (c);
+			}
+			srcFileWriter.Write (sb.ToString ());
+			WriteSrc ("\"");
+		}
+
+		private void ReconstRValUndef (TokenRValUndef rValUndef)
+		{
+			WriteSrc ("undef");
+		}
+
+		private void ReconstRValVec (TokenRValVec rValVec)
+		{
+			WriteSrc ("<");
+			ReconstRVal (rValVec.xRVal);
+			WriteSrc (", ");
+			ReconstRVal (rValVec.yRVal);
+			WriteSrc (", ");
+			ReconstRVal (rValVec.zRVal);
+			WriteSrc (">");
+		}
+
+		private void ReconstLVal (TokenLVal lVal)
+		{
+			if (lVal is TokenLValArEle) ReconstLValArEle ((TokenLValArEle)lVal);
+			if (lVal is TokenLValField) ReconstLValField ((TokenLValField)lVal);
+			if (lVal is TokenLValName)  ReconstLValName  ((TokenLValName)lVal);
+		}
+
+		private void ReconstLValArEle (TokenLValArEle lValArEle)
+		{
+			ReconstLVal (lValArEle.baseLVal);
+			WriteSrc ("[");
+			ReconstRVal (lValArEle.subRVal);
+			WriteSrc ("]");
+		}
+
+		private void ReconstLValField (TokenLValField lValField)
+		{
+			ReconstLVal (lValField.baseLVal);
+			WriteSrc (".");
+			WriteSrc (lValField.field.val);
+		}
+
+		private void ReconstLValName (TokenLValName lValName)
+		{
+			WriteSrc (lValName.name.val);
+		}
+
+		private void ReconstTypeExp (TokenTypeExp typeExp)
+		{
+			if (typeExp is TokenTypeExpBinOp) ReconstTypeExpBinOp ((TokenTypeExpBinOp)typeExp);
+			if (typeExp is TokenTypeExpNot)   ReconstTypeExpNot   ((TokenTypeExpNot)  typeExp);
+			if (typeExp is TokenTypeExpPar)   ReconstTypeExpPar   ((TokenTypeExpPar)  typeExp);
+			if (typeExp is TokenTypeExpType)  ReconstTypeExpType  ((TokenTypeExpType) typeExp);
+			if (typeExp is TokenTypeExpUndef) ReconstTypeExpUndef ((TokenTypeExpUndef)typeExp);
+		}
+
+		private void ReconstTypeExpBinOp (TokenTypeExpBinOp typeExpBinOp)
+		{
+			ReconstTypeExp (typeExpBinOp.leftOp);
+			WriteSrc (" " + typeExpBinOp.binOp.ToString () + " ");
+			ReconstTypeExp (typeExpBinOp.rightOp);
+		}
+
+		private void ReconstTypeExpNot (TokenTypeExpNot typeExpNot)
+		{
+			WriteSrc (" ~ ");
+			ReconstTypeExp (typeExpNot.typeExp);
+		}
+
+		private void ReconstTypeExpPar (TokenTypeExpPar typeExpPar)
+		{
+			WriteSrc ("(");
+			ReconstTypeExp (typeExpPar.typeExp);
+			WriteSrc (")");
+		}
+
+		private void ReconstTypeExpType (TokenTypeExpType typeExpType)
+		{
+			WriteSrc (typeExpType.typeToken.ToString ());
+		}
+
+		private void ReconstTypeExpUndef (TokenTypeExpUndef typeExpUndef)
+		{
+			WriteSrc ("undef");
+		}
+
+		/**
+		 * @brief Write string to source file, indenting as needed.
+		 */
+		private const int INDENTBY = 4;
+		private bool atBegOfLine = true;
+		private int indent = 0;
+		private void WriteSrc (string s)
+		{
+			StringBuilder srcsb = new StringBuilder ();
+			for (int i = 0; i < s.Length; i ++) {
+				char c = s[i];
+				if (c == '}') {
+					indent -= INDENTBY;
+					if (!atBegOfLine) {
+						srcsb.Append ('\n');
+						atBegOfLine = true;
+					}
+				}
+				if (atBegOfLine) {
+					if (c == ' ') continue;
+					srcsb.Append ("".PadRight (indent));
+					atBegOfLine = false;
+				}
+				srcsb.Append (c);
+				if (c == '\n') atBegOfLine = true;
+				if ((c == ';') || (c == '}')) {
+					srcsb.Append ('\n');
+					atBegOfLine = true;
+				}
+				if (c == '{') {
+					srcsb.Append ('\n');
+					atBegOfLine = true;
+					indent += INDENTBY;
+				}
+			}
+			srcFileWriter.Write (srcsb.ToString ());
+		}
+	}
+}
