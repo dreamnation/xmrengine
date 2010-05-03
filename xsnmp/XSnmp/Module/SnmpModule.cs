@@ -48,6 +48,7 @@ namespace Careminster.Modules.Snmp
         private ObjectIdentifier ctrapLinkUpDown = new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4,1,1212,1,4 } );
         private ObjectIdentifier ctrapWatchDog = new ObjectIdentifier(new uint[] { 1, 3, 6, 1,4,1,1212,4}) ;
         private ObjectIdentifier ctrapDebug = new ObjectIdentifier(new uint[] { 1, 3, 6, 1,4,1,1212,5}) ;
+        private ObjectIdentifier ctrapXMRE = new ObjectIdentifier(new uint[] { 1, 3, 6, 1,4,1,1212,6}) ;
 
         // 
         // Snmp related stuf
@@ -405,6 +406,7 @@ Specific bootTrap events
         public void trapDebug(string Module, string Message, Scene scene)
         {
             
+m_log.Info("SNMP trapDebug sent");
             Variable vmes = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4, 1, 1212,2 }),
                                       new OctetString(Message));
             Variable vsim = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4, 1, 1212, 1 }),
@@ -432,6 +434,38 @@ Specific bootTrap events
             // m_log.DebugFormat("[XSnmp] Trap sent to {0}:{1} ", m_tempIp, m_tempPort);            
 
 	}
+public void trapXMRE(int data, string Message, Scene scene)
+        {
+
+m_log.Info("SNMP trapDebug sent");
+            Variable vmes = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4, 1, 1212,2 }),
+                                      new OctetString(Message));
+            Variable vsim = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4, 1, 1212, 1 }),
+                                      new OctetString(scene.RegionInfo.RegionName));
+
+
+            Variable vmodule = new Variable(new ObjectIdentifier(new uint[] { 1, 3, 6, 1, 4, 1, 1212, 3 }),
+                                      new OctetString("XMREngine"));
+
+            List<Variable> vList = new List<Variable>();
+            vList.Add(vmes);
+            vList.Add(vsim);
+            vList.Add(vmodule);
+            TrapV1Message m_trap = new TrapV1Message(VersionCode.V1, m_ipNode,
+                                            new OctetString("public"),
+                                            ctrapXMRE,
+                                            GenericCode.EnterpriseSpecific,
+                                            data,
+                                            0,
+                                            vList);
+            //
+            foreach (IPEndPoint ip in m_nms)
+                m_trap.Send(ip);
+
+            // m_log.DebugFormat("[XSnmp] Trap sent to {0}:{1} ", m_tempIp, m_tempPort);            
+
+        }
+
   }
 }
 

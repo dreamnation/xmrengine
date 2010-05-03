@@ -99,6 +99,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public  XMRInstQueue m_YieldQueue = new XMRInstQueue();
         public  XMRInstQueue m_SleepQueue = new XMRInstQueue();
         private string m_LockedDict = "nobody";
+	// Initialisation call for SNMP
+	// Trap sent using : s_snmp.trapDebug("ModuleName","test here ",scene);
+ 	private private ISnmpModule s_snmp=null;
 
         public XMREngine()
         {
@@ -184,6 +187,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_AssemblyResolver = new AssemblyResolver(m_ScriptBasePath);
 
             Directory.CreateDirectory(m_ScriptBasePath);
+		// Snmp Initialisation 
+		
+            s_snmp =m_Scene.RequestModuleInterface<ISnmpModule>();
+            if (s_snmp != null ) {
+		m_log.Info("[XMRE-SNMP] module initisalised");
+		s_snmp.trapDebug("XMRE","XMREngine initialised",scene);
+	    }
+
 
             m_Scene.EventManager.OnRezScript += OnRezScript;
         }
