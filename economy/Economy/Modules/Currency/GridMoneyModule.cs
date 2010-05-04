@@ -411,11 +411,9 @@ namespace Careminster.Modules.Currency
             if (account != null && ((account.UserFlags & 0xf00) >> 8) > UserLevelPaysFees)
                 return;
 
-            MoveMoney(agentID, EconomyBaseAccount, amount);
-
             LocalTransaction(agentID, -amount, String.Empty);
 
-            MakeLedgerEntry(agentID, EconomyBaseAccount, amount,
+            MoveMoney(agentID, EconomyBaseAccount, amount,
                     1101, text, scene);
 
         }
@@ -755,12 +753,11 @@ namespace Careminster.Modules.Currency
                 {
                 case 1101: // Asset upload
                     DeductUpload(sender, amount);
-                    MoveMoney(sender, EconomyBaseAccount, amount);
 
                     text=String.Format(m_UploadPaid, amount);
                     LocalTransaction(sender, -amount, text);
 
-                    MakeLedgerEntry(sender, EconomyBaseAccount, amount,
+                    MoveMoney(sender, EconomyBaseAccount, amount,
                             transactiontype, "Asset upload fee", scene);
 
                     break;
@@ -773,8 +770,6 @@ namespace Careminster.Modules.Currency
                     if(receiver_name == String.Empty)
                         receiver_name="(hippos)";
 
-                    MoveMoney(sender, receiver, amount);
-
                     text=String.Format(m_YouGotPaidFor, sender_name, amount,
                             description);
                     LocalTransaction(receiver, amount, text);
@@ -783,7 +778,7 @@ namespace Careminster.Modules.Currency
                             description);
                     LocalTransaction(sender, -amount, text);
 
-                    MakeLedgerEntry(sender, receiver, amount,
+                    MoveMoney(sender, receiver, amount,
                             transactiontype, "Object purchase", scene);
 
                     break;
@@ -796,15 +791,13 @@ namespace Careminster.Modules.Currency
                     if(receiver_name == String.Empty)
                         receiver_name="(hippos)";
 
-                    MoveMoney(sender, receiver, amount);
-
                     text=String.Format(m_YouGotPaid, sender_name, amount);
                     LocalTransaction(receiver, amount, text);
 
                     text=String.Format(m_YouPaid, receiver_name, amount);
                     LocalTransaction(sender, -amount, text);
 
-                    MakeLedgerEntry(sender, receiver, amount,
+                    MoveMoney(sender, receiver, amount,
                             transactiontype, "Gift", scene);
 
                     break;
@@ -817,8 +810,6 @@ namespace Careminster.Modules.Currency
                     if(receiver_name == String.Empty)
                         receiver_name="(hippos)";
 
-                    MoveMoney(sender, receiver, amount);
-
                     text=String.Format(m_YouPaidObject, receiver_name, amount,
                             description);
                     LocalTransaction(sender, -amount, text);
@@ -828,7 +819,7 @@ namespace Careminster.Modules.Currency
 
                     LocalTransaction(receiver, amount, text);
 
-                    MakeLedgerEntry(sender, receiver, amount,
+                    MoveMoney(sender, receiver, amount,
                             transactiontype, "Paid object", scene);
 
                     break;
@@ -841,8 +832,6 @@ namespace Careminster.Modules.Currency
                     if(receiver_name == String.Empty)
                         receiver_name="(hippos)";
 
-                    MoveMoney(sender, receiver, amount);
-
                     text=String.Format(m_YourObjectPaid, receiver_name, amount,
                             description);
                     LocalTransaction(sender, -amount, text);
@@ -852,7 +841,7 @@ namespace Careminster.Modules.Currency
 
                     LocalTransaction(receiver, amount, text);
 
-                    MakeLedgerEntry(sender, receiver, amount,
+                    MoveMoney(sender, receiver, amount,
                             transactiontype, "Object pays", scene);
 
                     break;
@@ -865,8 +854,6 @@ namespace Careminster.Modules.Currency
                     if(receiver_name == String.Empty)
                         receiver_name="(hippos)";
 
-                    MoveMoney(sender, receiver, amount);
-
                     text=String.Format(m_YouPaidForLand, receiver_name, amount);
                     LocalTransaction(sender, -amount, text);
 
@@ -874,7 +861,7 @@ namespace Careminster.Modules.Currency
                             description);
                     LocalTransaction(receiver, amount, text);
 
-                    MakeLedgerEntry(sender, receiver, amount,
+                    MoveMoney(sender, receiver, amount,
                             transactiontype, "Land purchase", scene);
 
                     break;
@@ -890,22 +877,19 @@ namespace Careminster.Modules.Currency
         private void MakeLedgerEntry(UUID sender, UUID receiver, int amount,
                 int transactiontype, string text, Scene scene)
         {
-            lock(m_Database)
-            {
-                MySqlCommand ledgerCmd=(MySqlCommand)m_Database.CreateCommand();
-                ledgerCmd.CommandText="insert into ledger (l_date, l_from, l_to, l_amount, l_type, l_region, l_description) values (now(), ?from, ?to, ?amount, ?type, ?region, ?description)";
-                ledgerCmd.Parameters.AddWithValue("?from", sender.ToString());
-                ledgerCmd.Parameters.AddWithValue("?to", receiver.ToString());
-                ledgerCmd.Parameters.AddWithValue("?amount", amount);
-                ledgerCmd.Parameters.AddWithValue("?type", transactiontype);
-                if(scene != null)
-                    ledgerCmd.Parameters.AddWithValue("?region", scene.RegionInfo.RegionName);
-                else
-                    ledgerCmd.Parameters.AddWithValue("?region", String.Empty);
-                ledgerCmd.Parameters.AddWithValue("?description", text);
+            MySqlCommand ledgerCmd=(MySqlCommand)m_Database.CreateCommand();
+            ledgerCmd.CommandText="insert into ledger (l_date, l_from, l_to, l_amount, l_type, l_region, l_description) values (now(), ?from, ?to, ?amount, ?type, ?region, ?description)";
+            ledgerCmd.Parameters.AddWithValue("?from", sender.ToString());
+            ledgerCmd.Parameters.AddWithValue("?to", receiver.ToString());
+            ledgerCmd.Parameters.AddWithValue("?amount", amount);
+            ledgerCmd.Parameters.AddWithValue("?type", transactiontype);
+            if(scene != null)
+                ledgerCmd.Parameters.AddWithValue("?region", scene.RegionInfo.RegionName);
+            else
+                ledgerCmd.Parameters.AddWithValue("?region", String.Empty);
+            ledgerCmd.Parameters.AddWithValue("?description", text);
 
-                ExecuteNonQuery(ledgerCmd);
-            }
+            ExecuteNonQuery(ledgerCmd);
         }
 
         //
@@ -942,7 +926,8 @@ namespace Careminster.Modules.Currency
         //
         // Update balance tables
         //
-        private void MoveMoney(UUID sender, UUID receiver, int amount)
+        private void MoveMoney(UUID sender, UUID receiver, int amount,
+                int transactiontype, string text, Scene scene)
         {
             lock (m_Database)
             {
@@ -951,36 +936,45 @@ namespace Careminster.Modules.Currency
 
                 ExecuteNonQuery(lockCmd);
 
-                int from_funds=GetAgentFunds(sender);
-                int to_funds=GetAgentFunds(receiver);
+                // These will create the record if it's not there already
+                // We're not using the returned values, because it's not
+                // safe.
+                //
+                GetAgentFunds(sender);
+                GetAgentFunds(receiver);
+
+                // We will do this in a transaction to avoid inconsistencies
+                //
+                MySqlCommand txnCmd = (MySqlCommand)m_Database.CreateCommand();
+                txnCmd.CommandText = "begin";
+                ExecuteNonQuery(txnCmd);
 
                 if(sender != receiver)
                 {
-                    from_funds-=amount;
-                    to_funds+=amount;
+                    MySqlCommand fromCmd=(MySqlCommand)m_Database.CreateCommand();
+                    fromCmd.CommandText = "update accounts set a_date=now(), "+
+                            "a_amount=a_amount-?amount where a_agent = ?agent";
+
+                    fromCmd.Parameters.AddWithValue("?agent", sender.ToString());
+                    fromCmd.Parameters.AddWithValue("?amount", amount);
+                
+                    ExecuteNonQuery(fromCmd);
+
+                    MySqlCommand toCmd=(MySqlCommand)m_Database.CreateCommand();
+                    toCmd.CommandText = "update accounts set a_date=now(), "+
+                            "a_amount=a_amount+?amount where a_agent = ?agent";
+
+                    toCmd.Parameters.AddWithValue("?agent", receiver.ToString());
+                    toCmd.Parameters.AddWithValue("?amount", amount);
+                        
+                    ExecuteNonQuery(toCmd);
                 }
 
-                MySqlCommand fromCmd=(MySqlCommand)m_Database.CreateCommand();
-                fromCmd.CommandText = "update accounts set a_date=now(), "+
-                        "a_amount = ?amount where a_agent = ?agent";
-//                fromCmd.CommandText="replace into accounts (a_date, a_agent, "+
-//                        "a_amount) values(now(), ?agent, ?amount)";
+                MakeLedgerEntry(sender, receiver, amount, transactiontype,
+                        text, scene);
 
-                fromCmd.Parameters.AddWithValue("?agent", sender.ToString());
-                fromCmd.Parameters.AddWithValue("?amount", from_funds);
-                
-                ExecuteNonQuery(fromCmd);
-
-                MySqlCommand toCmd=(MySqlCommand)m_Database.CreateCommand();
-                toCmd.CommandText = "update accounts set a_date=now(), "+
-                        "a_amount = ?amount where a_agent = ?agent";
-//                toCmd.CommandText="replace into accounts (a_date, a_agent, "+
-//                        "a_amount) values(now(), ?agent, ?amount)";
-
-                toCmd.Parameters.AddWithValue("?agent", receiver.ToString());
-                toCmd.Parameters.AddWithValue("?amount", to_funds);
-                
-                ExecuteNonQuery(toCmd);
+                txnCmd.CommandText = "commit";
+                ExecuteNonQuery(txnCmd);
 
                 MySqlCommand unlockCmd=(MySqlCommand)m_Database.CreateCommand();
                 unlockCmd.CommandText="select release_lock('movemoney')";
