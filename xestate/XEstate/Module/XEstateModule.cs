@@ -134,6 +134,11 @@ namespace Careminster.Modules.XEstate
 
         private void OnEstateInfoChange(UUID RegionID)
         {
+            Scene s = FindScene(RegionID);
+            if (s == null)
+                return;
+
+            m_EstateConnector.SendUpdateEstate(s.RegionInfo.EstateSettings.EstateID);
         }
     }
 }

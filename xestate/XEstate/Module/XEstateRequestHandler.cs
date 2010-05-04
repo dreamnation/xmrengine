@@ -78,6 +78,8 @@ namespace Careminster.Modules.XEstate
                 {
                     case "update_covenant":
                         return UpdateCovenant(request);
+                    case "update_estate":
+                        return UpdateEstate(request);
                 }
             }
             catch (Exception e)
@@ -106,6 +108,23 @@ namespace Careminster.Modules.XEstate
             {
                 if (s.RegionInfo.EstateSettings.EstateID == (uint)EstateID)
                     s.RegionInfo.RegionSettings.Covenant = CovenantID;
+            }
+            return SuccessResult();
+        }
+
+        byte[] UpdateEstate(Dictionary<string, object> request)
+        {
+            int EstateID = 0;
+
+            if (!request.ContainsKey("EstateID"))
+                return FailureResult();
+            if (!Int32.TryParse(request["EstateID"].ToString(), out EstateID))
+                return FailureResult();
+
+            foreach (Scene s in m_EstateModule.Scenes)
+            {
+                if (s.RegionInfo.EstateSettings.EstateID == (uint)EstateID)
+                    s.ReloadEstateData();
             }
             return SuccessResult();
         }
