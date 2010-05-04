@@ -33,6 +33,7 @@ using OpenSim.Services.Interfaces;
 using GridRegion = OpenSim.Services.Interfaces.GridRegion;
 using OpenSim.Server.Base;
 using OpenSim.Framework.Servers.HttpServer;
+using OpenSim.Region.Framework.Scenes;
 
 using OpenMetaverse;
 using log4net;
@@ -43,16 +44,82 @@ namespace Careminster.Modules.XEstate
     {
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
-//        public bool FriendshipTerminated(GridRegion region, UUID userID, UUID friendID)
-//        {
-//            Dictionary<string, object> sendData = new Dictionary<string, object>();
-//            sendData["METHOD"] = "friendship_terminated";
-//
-//            sendData["FromID"] = userID.ToString();
-//            sendData["ToID"] = friendID.ToString();
-//
-//            return Call(region, sendData);
-//        }
+        protected XEstateModule m_EstateModule;
+
+        public EstateConnector(XEstateModule module)
+        {
+            m_EstateModule = module;
+        }
+
+        public bool SendUpdateCovenant(uint EstateID, UUID CovenantID)
+        {
+            Dictionary<string, object> sendData = new Dictionary<string, object>();
+            sendData["METHOD"] = "update_covenant";
+
+            sendData["CovenantID"] = CovenantID.ToString();
+            sendData["EstateID"] = EstateID.ToString();
+
+            // Handle local regions locally
+            //
+            foreach (Scene s in m_EstateModule.Scenes)
+            {
+                if (s.RegionInfo.EstateSettings.EstateID == EstateID)
+                    s.RegionInfo.RegionSettings.Covenant = CovenantID;
+//                    s.ReloadEstateData();
+            }
+
+            SendToEstate(EstateID, sendData);
+
+            return true;
+        }
+
+        private void SendToEstate(uint EstateID, Dictionary<string, object> sendData)
+        {
+            List<UUID> regions = m_EstateModule.Scenes[0].GetEstateRegions((int)EstateID);
+
+            UUID ScopeID = UUID.Zero;
+
+            // Handle local regions locally
+            //
+            foreach (Scene s in m_EstateModule.Scenes)
+            {
+                if (regions.Contains(s.RegionInfo.RegionID))
+                {
+                    // All regions in one estate are in the same scope.
+                    // Use that scope.
+                    //
+                    ScopeID = s.RegionInfo.ScopeID;
+                    regions.Remove(s.RegionInfo.RegionID);
+                }
+            }
+
+            // Our own region should always be in the above list.
+            // In a standalone this would not be true. But then,
+            // Scope ID is not relevat there. Use first scope.
+            //
+            if (ScopeID == UUID.Zero)
+                ScopeID = m_EstateModule.Scenes[0].RegionInfo.ScopeID;
+
+            // Don't send to the same instance twice
+            //
+            List<string> done = new List<string>();
+
+            // Send to remote regions
+            //
+            foreach (UUID regionID in regions)
+            {
+                GridRegion region = m_EstateModule.Scenes[0].GridService.GetRegionByUUID(ScopeID, regionID);
+                if (region != null)
+                {
+                    string url = "http://" + region.ExternalHostName + ":" + region.HttpPort;
+                    if (done.Contains(url))
+                        continue;
+
+                    Call(region, sendData);
+                    done.Add(url);
+                }
+            }
+        }
 
         private bool Call(GridRegion region, Dictionary<string, object> sendData)
         {
@@ -62,7 +129,7 @@ namespace Careminster.Modules.XEstate
             {
                 string url = "http://" + region.ExternalHostName + ":" + region.HttpPort;
                 string reply = SynchronousRestFormsRequester.MakeRequest("POST",
-                        url + "/friends",
+                        url + "/estate",
                         reqString);
                 if (reply != string.Empty)
                 {

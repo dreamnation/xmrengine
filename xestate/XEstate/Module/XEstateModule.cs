@@ -48,11 +48,16 @@ using Mono.Addins;
 namespace Careminster.Modules.XEstate
 {
     [Extension(Path = "/OpenSim/RegionModules", NodeName = "RegionModule", Id = "XEstate")]
-    public class XEstateModule : INonSharedRegionModule
+    public class XEstateModule : ISharedRegionModule
     {
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
-        protected Scene m_Scene;
+        protected List<Scene> m_Scenes;
+
+        public List<Scene> Scenes
+        {
+            get { return m_Scenes; }
+        }
 
         protected EstateConnector m_EstateConnector;
 
@@ -63,13 +68,16 @@ namespace Careminster.Modules.XEstate
             {
                 int port = estateConfig.GetInt("Port", 0);
 
-                m_EstateConnector = new EstateConnector();
+                m_EstateConnector = new EstateConnector(this);
 
                 // Instantiate the request handler
                 IHttpServer server = MainServer.GetHttpServer((uint)port);
                 server.AddStreamHandler(new EstateRequestHandler(this));
-
             }
+        }
+
+        public void PostInitialise()
+        {
         }
 
         public void Close()
@@ -78,15 +86,20 @@ namespace Careminster.Modules.XEstate
 
         public void AddRegion(Scene scene)
         {
-            m_Scene = scene;
+            m_Scenes.Add(scene);
         }
 
         public void RegionLoaded(Scene scene)
         {
+            IEstateModule em = scene.RequestModuleInterface<IEstateModule>();
+
+            em.OnRegionInfoChange += OnRegionInfoChange;
+            em.OnEstateInfoChange += OnEstateInfoChange;
         }
 
         public void RemoveRegion(Scene scene)
         {
+            m_Scenes.Remove(scene);
         }
 
         public string Name
@@ -97,6 +110,30 @@ namespace Careminster.Modules.XEstate
         public Type ReplaceableInterface
         {
             get { return null; }
+        }
+
+        private Scene FindScene(UUID RegionID)
+        {
+            foreach (Scene s in Scenes)
+            {
+                if (s.RegionInfo.RegionID == RegionID)
+                    return s;
+            }
+
+            return null;
+        }
+
+        private void OnRegionInfoChange(UUID RegionID)
+        {
+            Scene s = FindScene(RegionID);
+            if (s == null)
+                return;
+
+            m_EstateConnector.SendUpdateCovenant(s.RegionInfo.EstateSettings.EstateID, s.RegionInfo.RegionSettings.Covenant);
+        }
+
+        private void OnEstateInfoChange(UUID RegionID)
+        {
         }
     }
 }

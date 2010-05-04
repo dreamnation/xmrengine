@@ -34,7 +34,7 @@ using System.Xml;
 using OpenSim.Framework;
 using OpenSim.Server.Base;
 using OpenSim.Framework.Servers.HttpServer;
-using FriendInfo = OpenSim.Services.Interfaces.FriendInfo;
+using OpenSim.Region.Framework.Scenes;
 
 using OpenMetaverse;
 using log4net;
@@ -48,7 +48,7 @@ namespace Careminster.Modules.XEstate
         protected XEstateModule m_EstateModule;
 
         public EstateRequestHandler(XEstateModule fmodule)
-                : base("POST", "/friends")
+                : base("POST", "/estate")
         {
             m_EstateModule = fmodule;
         }
@@ -76,8 +76,8 @@ namespace Careminster.Modules.XEstate
 
                 switch (method)
                 {
-//                    case "friendship_offered":
-//                        return EstatehipOffered(request);
+                    case "update_covenant":
+                        return UpdateCovenant(request);
                 }
             }
             catch (Exception e)
@@ -88,31 +88,27 @@ namespace Careminster.Modules.XEstate
             return FailureResult();
         }
 
-//        byte[] EstatehipOffered(Dictionary<string, object> request)
-//        {
-//            UUID fromID = UUID.Zero;
-//            UUID toID = UUID.Zero;
-//            string message = string.Empty;
-//
-//            if (!request.ContainsKey("FromID") || !request.ContainsKey("ToID"))
-//                return FailureResult();
-//
-//            message = request["Message"].ToString();
-//
-//            if (!UUID.TryParse(request["FromID"].ToString(), out fromID))
-//                return FailureResult();
-//
-//            if (!UUID.TryParse(request["ToID"].ToString(), out toID))
-//                return FailureResult();
-//
-//            GridInstantMessage im = new GridInstantMessage(m_EstateModule.Scene, fromID, "", toID, 
-//                (byte)InstantMessageDialog.EstatehipOffered, message, false, Vector3.Zero);
-//            
-//            if (m_EstateModule.LocalEstatehipOffered(toID, im))
-//                return SuccessResult();
-//
-//            return FailureResult();
-//        }
+        byte[] UpdateCovenant(Dictionary<string, object> request)
+        {
+            UUID CovenantID = UUID.Zero;
+            int EstateID = 0;
+
+            if (!request.ContainsKey("CovenantID") || !request.ContainsKey("EstateID"))
+                return FailureResult();
+
+            if (!UUID.TryParse(request["CovenantID"].ToString(), out CovenantID))
+                return FailureResult();
+
+            if (!Int32.TryParse(request["EstateID"].ToString(), out EstateID))
+                return FailureResult();
+
+            foreach (Scene s in m_EstateModule.Scenes)
+            {
+                if (s.RegionInfo.EstateSettings.EstateID == (uint)EstateID)
+                    s.RegionInfo.RegionSettings.Covenant = CovenantID;
+            }
+            return SuccessResult();
+        }
 
         private byte[] FailureResult()
         {
