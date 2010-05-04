@@ -93,6 +93,19 @@ namespace Careminster.Modules.XEstate
             return true;
         }
 
+        public void SendEstateMessage(uint EstateID, UUID FromID, string FromName, string Message)
+        {
+            Dictionary<string, object> sendData = new Dictionary<string, object>();
+            sendData["METHOD"] = "estate_message";
+
+            sendData["EstateID"] = EstateID.ToString();
+            sendData["FromID"] = FromID.ToString();
+            sendData["FromName"] = FromName;
+            sendData["Message"] = Message;
+
+            SendToEstate(EstateID, sendData);
+        }
+
         private void SendToEstate(uint EstateID, Dictionary<string, object> sendData)
         {
             List<UUID> regions = m_EstateModule.Scenes[0].GetEstateRegions((int)EstateID);

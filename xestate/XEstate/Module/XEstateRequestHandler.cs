@@ -35,6 +35,7 @@ using OpenSim.Framework;
 using OpenSim.Server.Base;
 using OpenSim.Framework.Servers.HttpServer;
 using OpenSim.Region.Framework.Scenes;
+using OpenSim.Region.Framework.Interfaces;
 
 using OpenMetaverse;
 using log4net;
@@ -80,6 +81,8 @@ namespace Careminster.Modules.XEstate
                         return UpdateCovenant(request);
                     case "update_estate":
                         return UpdateEstate(request);
+                    case "estate_message":
+                        return EstateMessage(request);
                 }
             }
             catch (Exception e)
@@ -88,6 +91,47 @@ namespace Careminster.Modules.XEstate
             }
 
             return FailureResult();
+        }
+
+        byte[] EstateMessage(Dictionary<string, object> request)
+        {
+            UUID FromID = UUID.Zero;
+            string FromName = String.Empty;
+            string Message = String.Empty;
+            int EstateID = 0;
+
+            if (!request.ContainsKey("FromID") ||
+                !request.ContainsKey("FromName") ||
+                !request.ContainsKey("Message") ||
+                !request.ContainsKey("EstateID"))
+            {
+                return FailureResult();
+            }
+
+            if (!UUID.TryParse(request["FromID"].ToString(), out FromID))
+                return FailureResult();
+
+            if (!Int32.TryParse(request["EstateID"].ToString(), out EstateID))
+                return FailureResult();
+
+            FromName = request["FromName"].ToString();
+            Message = request["Message"].ToString();
+
+            foreach (Scene s in m_EstateModule.Scenes)
+            {
+                if (s.RegionInfo.EstateSettings.EstateID == EstateID)
+                {
+                    IDialogModule dm = s.RequestModuleInterface<IDialogModule>();
+
+                    if (dm != null)
+                    {
+                        dm.SendNotificationToUsersInRegion(FromID, FromName,
+                                Message);
+                    }
+                }
+            }
+
+            return SuccessResult();
         }
 
         byte[] UpdateCovenant(Dictionary<string, object> request)
@@ -109,6 +153,7 @@ namespace Careminster.Modules.XEstate
                 if (s.RegionInfo.EstateSettings.EstateID == (uint)EstateID)
                     s.RegionInfo.RegionSettings.Covenant = CovenantID;
             }
+
             return SuccessResult();
         }
 

@@ -95,6 +95,7 @@ namespace Careminster.Modules.XEstate
 
             em.OnRegionInfoChange += OnRegionInfoChange;
             em.OnEstateInfoChange += OnEstateInfoChange;
+            em.OnEstateMessage += OnEstateMessage;
         }
 
         public void RemoveRegion(Scene scene)
@@ -139,6 +140,30 @@ namespace Careminster.Modules.XEstate
                 return;
 
             m_EstateConnector.SendUpdateEstate(s.RegionInfo.EstateSettings.EstateID);
+        }
+
+        private void OnEstateMessage(UUID RegionID, UUID FromID, string FromName, string Message)
+        {
+            Scene senderScenes = FindScene(RegionID);
+            if (senderScenes == null)
+                return;
+
+            uint estateID = senderScenes.RegionInfo.EstateSettings.EstateID;
+
+            foreach (Scene s in Scenes)
+            {
+                if (s.RegionInfo.EstateSettings.EstateID == estateID)
+                {
+                    IDialogModule dm = s.RequestModuleInterface<IDialogModule>();
+
+                    if (dm != null)
+                    {
+                        dm.SendNotificationToUsersInRegion(FromID, FromName,
+                                Message);
+                    }
+                }
+            }
+            m_EstateConnector.SendEstateMessage(estateID, FromID, FromName, Message);
         }
     }
 }
