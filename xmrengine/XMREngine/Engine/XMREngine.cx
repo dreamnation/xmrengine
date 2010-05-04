@@ -99,7 +99,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private string m_LockedDict = "nobody";
 	// Initialisation call for SNMP
 	// Trap sent using : s_snmp.trapDebug("ModuleName","test here ",scene);
- 	private private ISnmpModule s_snmp=null;
+ 	private ISnmpModule s_snmp=null;
 
         public XMREngine()
         {
