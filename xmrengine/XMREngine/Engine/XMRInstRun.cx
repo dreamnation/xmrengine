@@ -115,7 +115,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      * cause the script to self-suspend after running this
                      * event
                      */
-                    if (evt.Params[0] == UUID.Zero.ToString())
+                    if (evt.Params[0].ToString() == UUID.Zero.ToString())
                     {
                         m_DetachReady.Reset();
                         m_DetachQuantum = 100;
