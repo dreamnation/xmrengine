@@ -1,7 +1,7 @@
-/***************************************************\
- *  COPYRIGHT 2009, Mike Rieker, Beverly, MA, USA  *
- *  All rights reserved.                           *
-\***************************************************/
+/********************************************************\
+ *  COPYRIGHT 2009,2010, Mike Rieker, Beverly, MA, USA  *
+ *  All rights reserved.                                *
+\********************************************************/
 
 /**
  * @brief Main program for the script compiler.
@@ -9,12 +9,14 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Net;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
@@ -123,7 +125,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
             }
             TokenScript tokenScript = GenAbsSynTree (sourceBuilder.ToString(),
-                                                     StandAloneErrorMessage);
+                                                     StandAloneErrorMessage,
+                                                     null);
             if (tokenScript == null) {
                 Console.WriteLine ("Compilation detected errors.");
                 Environment.Exit (1);
@@ -419,7 +422,7 @@ version:
                 /*
                  * Create abstract syntax tree from raw tokens.
                  */
-                TokenScript tokenScript = GenAbsSynTree(source, errorMessage);
+                TokenScript tokenScript = GenAbsSynTree(source, errorMessage, fname);
                 if (tokenScript == null)
                 {
                     m_log.DebugFormat("[XMREngine]: compile error on {0}", assetID);
@@ -491,17 +494,19 @@ version:
          * @brief Generate abstract syntax tree from source code
          * @param source = entire source code in one string
          * @param errorMessage = where to write error messages to
+         * @param fname = null: for stand-alone compiler
+         *                else: where to save test .xmrbin file
          * @returns null: error
          *          else: abstract syntax tree
          */
         public static TokenScript GenAbsSynTree(string source, 
-                                                TokenErrorMessage errorMessage)
+                                                TokenErrorMessage errorMessage,
+                                                string fname)
         {
             /*
              * Parse source string into tokens.
              */
-            TokenBegin tokenBegin =
-                        TokenBegin.Construct(errorMessage, source);
+            TokenBegin tokenBegin = TokenBegin.Construct(errorMessage, source);
             if (tokenBegin == null)
             {
                 return null;
@@ -519,6 +524,19 @@ version:
 
                 return FetchBinary (tokenBegin.nextToken.nextToken.nextToken,
                                     errorMessage);
+            }
+            string envar = Environment.GetEnvironmentVariable ("MMRUseExternalCompiler");
+            if ((envar != null) && (envar != "")) {
+
+                /*
+                 * To test external compiler, run source through it
+                 * then load the temp .xmrbin file.
+                 */
+                RunSourceThroughExternalCompiler (envar, source, fname + ".xmrbin");
+                TokenStr tok  = new TokenStr (errorMessage, "", 0, 0, "file://" + fname + ".xmrbin");
+                tok.nextToken = new TokenKwSemi (errorMessage, "", 0, 0);
+                tok.nextToken.nextToken = new TokenEnd (errorMessage, "", 0, 0);
+                return FetchBinary (tok, errorMessage);
             }
 #endif
 
@@ -593,6 +611,81 @@ version:
             return stream;
         }
 #else
+        /**
+         * @brief This can be called by live script engine to run a script source through
+         *        the stand-alone compiler for testing.  It takes an entire script source
+         *        file and sends it to the compiler.  The compiler produces an abstract
+         *        syntax tree file which our caller can then read using FetchBinary().
+         * @param exefile = external compiler filename
+         * @param source  = source file from OpenSim
+         * @param fname   = filename to store intermediate .xmrbin file
+         */
+        private static void RunSourceThroughExternalCompiler (string exefile, string source, string fname)
+        {
+            ProcessStartInfo psi = new ProcessStartInfo ();
+            psi.FileName  = exefile;
+            psi.Arguments = "-out " + fname;
+            psi.RedirectStandardInput   = true;
+            psi.RedirectStandardOutput  = true;
+            psi.RedirectStandardError   = true;
+            psi.UseShellExecute         = false;
+            ExternalCompilerContext ecc = new ExternalCompilerContext ();
+            ecc.source = source;
+            ecc.proc   = Process.Start (psi);
+            ecc.RunIt ();
+            if (ecc.hasError) {
+                throw new Exception ("external compiler errors:\n" + ecc.errors.ToString ());
+            }
+        }
+        private class ExternalCompilerContext {
+            public Process proc;
+            public bool hasError = false;
+            public string source;
+            public StringBuilder errors;
+            private Thread tin;
+            private Thread tout;
+            private Thread terr;
+            public void RunIt ()
+            {
+                errors = new StringBuilder ();
+                tin    = new Thread (HandleIn);
+                tout   = new Thread (HandleOut);
+                terr   = new Thread (HandleErr);
+                tin.Start  ();
+                tout.Start ();
+                terr.Start ();
+                tout.Join  ();
+                terr.Join  ();
+                proc.WaitForExit ();
+                tin.Abort  ();
+                tin.Join   ();
+            }
+            public void HandleIn ()
+            {
+                proc.StandardInput.WriteLine (source);
+                proc.StandardInput.Close ();
+            }
+            public void HandleOut ()
+            {
+                String line;
+                while ((line = proc.StandardOutput.ReadLine ()) != null) {
+                    hasError = true;
+                    lock (errors) {
+                        errors.AppendLine (line);
+                    }
+                }
+            }
+            public void HandleErr ()
+            {
+                String line;
+                while ((line = proc.StandardError.ReadLine ()) != null) {
+                    hasError = true;
+                    lock (errors) {
+                        errors.AppendLine (line);
+                    }
+                }
+            }
+        }
 
         /**
          * @brief Read binary from a webserver somewhere out there and write to object file.
@@ -663,9 +756,13 @@ version:
                 /*
                  * Get stream to read from webserver.
                  */
-                request   = WebRequest.Create (url);
-                response  = request.GetResponse ();
-                webStream = response.GetResponseStream ();
+                if (url.StartsWith ("file://")) {
+                    webStream = File.OpenRead (url.Substring (7));
+                } else {
+                    request   = WebRequest.Create (url);
+                    response  = request.GetResponse ();
+                    webStream = response.GetResponseStream ();
+                }
 
                 /*
                  * Make sure we have "XMRBinary(COMPILED_VERSION)".

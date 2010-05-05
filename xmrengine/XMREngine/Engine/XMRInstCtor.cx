@@ -229,6 +229,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * is old version or corrupt), delete the object file which will 
              * make ScriptCompile.Compile() create a new one from the source.
              */
+            if (!forceCompile) {
+                string envar = Environment.GetEnvironmentVariable("XMRForceCompile");
+                if ((envar != null) && ((envar[0] & 1) != 0)) forceCompile = true;
+            }
             if (forceCompile) {
                 File.Delete(objName);
             }
@@ -499,7 +503,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             XmlElement permissionsN = (XmlElement)scriptStateN.SelectSingleNode("Permissions");
             m_Item.PermsGranter = new UUID(permissionsN.GetAttribute("granter"));
             m_Item.PermsMask = Convert.ToInt32(permissionsN.GetAttribute("mask"));
-            m_Part.Inventory.UpdateInventoryItem(m_Item, false);
+            m_Part.Inventory.UpdateInventoryItem(m_Item);
 
             // get values used by stuff like llDetectedGrab, etc.
             detParams = RestoreDetectParams(scriptStateN.SelectSingleNode("DetectArray"));
