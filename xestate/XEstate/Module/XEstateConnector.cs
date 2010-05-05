@@ -51,6 +51,27 @@ namespace Careminster.Modules.XEstate
             m_EstateModule = module;
         }
 
+        public void SendTeleportHomeOneUser(uint EstateID, UUID PreyID)
+        {
+            Dictionary<string, object> sendData = new Dictionary<string, object>();
+            sendData["METHOD"] = "teleport_home_one_user";
+
+            sendData["EstateID"] = EstateID.ToString();
+            sendData["PreyID"] = PreyID.ToString();
+
+            SendToEstate(EstateID, sendData);
+        }
+
+        public void SendTeleportHomeAllUsers(uint EstateID)
+        {
+            Dictionary<string, object> sendData = new Dictionary<string, object>();
+            sendData["METHOD"] = "teleport_home_all_users";
+
+            sendData["EstateID"] = EstateID.ToString();
+
+            SendToEstate(EstateID, sendData);
+        }
+
         public bool SendUpdateCovenant(uint EstateID, UUID CovenantID)
         {
             Dictionary<string, object> sendData = new Dictionary<string, object>();

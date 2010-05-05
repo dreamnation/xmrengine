@@ -83,6 +83,10 @@ namespace Careminster.Modules.XEstate
                         return UpdateEstate(request);
                     case "estate_message":
                         return EstateMessage(request);
+                    case "teleport_home_one_user":
+                        return TeleportHomeOneUser(request);
+                    case "teleport_home_all_users":
+                        return TeleportHomeAllUsers(request);
                 }
             }
             catch (Exception e)
@@ -91,6 +95,67 @@ namespace Careminster.Modules.XEstate
             }
 
             return FailureResult();
+        }
+
+        byte[] TeleportHomeAllUsers(Dictionary<string, object> request)
+        {
+            UUID PreyID = UUID.Zero;
+            int EstateID = 0;
+
+            if (!request.ContainsKey("EstateID"))
+                return FailureResult();
+
+            if (!Int32.TryParse(request["EstateID"].ToString(), out EstateID))
+                return FailureResult();
+
+            foreach (Scene s in m_EstateModule.Scenes)
+            {
+                if (s.RegionInfo.EstateSettings.EstateID == EstateID)
+                {
+                    s.ForEachScenePresence(delegate(ScenePresence p) {
+                        if (p != null && !p.IsChildAgent)
+                        {
+                            p.ControllingClient.SendTeleportLocationStart();
+                            s.TeleportClientHome(p.ControllingClient.AgentId, p.ControllingClient);
+                        }
+                    });
+                }
+            }
+
+            return SuccessResult();
+        }
+
+        byte[] TeleportHomeOneUser(Dictionary<string, object> request)
+        {
+            UUID PreyID = UUID.Zero;
+            int EstateID = 0;
+
+            if (!request.ContainsKey("PreyID") ||
+                !request.ContainsKey("EstateID"))
+            {
+                return FailureResult();
+            }
+
+            if (!UUID.TryParse(request["PreyID"].ToString(), out PreyID))
+                return FailureResult();
+
+            if (!Int32.TryParse(request["EstateID"].ToString(), out EstateID))
+                return FailureResult();
+
+            foreach (Scene s in m_EstateModule.Scenes)
+            {
+                if (s.RegionInfo.EstateSettings.EstateID == EstateID)
+                {
+                    ScenePresence p = s.GetScenePresence(PreyID);
+                    if (p != null && !p.IsChildAgent)
+                    {
+                        p.ControllingClient.SendTeleportLocationStart();
+                        s.TeleportClientHome(PreyID, p.ControllingClient);
+                    }
+                }
+            }
+
+            return SuccessResult();
         }
 
         byte[] EstateMessage(Dictionary<string, object> request)

@@ -87,6 +87,8 @@ namespace Careminster.Modules.XEstate
         public void AddRegion(Scene scene)
         {
             m_Scenes.Add(scene);
+
+            scene.EventManager.OnNewClient += OnNewClient;
         }
 
         public void RegionLoaded(Scene scene)
@@ -100,6 +102,8 @@ namespace Careminster.Modules.XEstate
 
         public void RemoveRegion(Scene scene)
         {
+            scene.EventManager.OnNewClient -= OnNewClient;
+
             m_Scenes.Remove(scene);
         }
 
@@ -164,6 +168,77 @@ namespace Careminster.Modules.XEstate
                 }
             }
             m_EstateConnector.SendEstateMessage(estateID, FromID, FromName, Message);
+        }
+
+        private void OnNewClient(IClientAPI client)
+        {
+            client.OnEstateTeleportOneUserHomeRequest += OnEstateTeleportOneUserHomeRequest;
+            client.OnEstateTeleportAllUsersHomeRequest += OnEstateTeleportAllUsersHomeRequest;
+
+        }
+
+        private void OnEstateTeleportOneUserHomeRequest(IClientAPI client, UUID invoice, UUID senderID, UUID prey)
+        {
+            if (prey == UUID.Zero)
+                return;
+
+            if (!(client.Scene is Scene))
+                return;
+
+            Scene scene = (Scene)client.Scene;
+
+            uint estateID = scene.RegionInfo.EstateSettings.EstateID;
+
+            if (!scene.Permissions.CanIssueEstateCommand(client.AgentId, false))
+                return;
+
+            foreach (Scene s in Scenes)
+            {
+                if (s == scene)
+                    continue; // Already handles by estate module
+                if (s.RegionInfo.EstateSettings.EstateID != estateID)
+                    continue;
+
+                ScenePresence p = scene.GetScenePresence(prey);
+                if (p != null && !p.IsChildAgent)
+                {
+                    p.ControllingClient.SendTeleportLocationStart();
+                    scene.TeleportClientHome(prey, p.ControllingClient);
+                }
+            }
+
+            m_EstateConnector.SendTeleportHomeOneUser(estateID, prey);
+        }
+
+        private void OnEstateTeleportAllUsersHomeRequest(IClientAPI client, UUID invoice, UUID senderID)
+        {
+            if (!(client.Scene is Scene))
+                return;
+
+            Scene scene = (Scene)client.Scene;
+
+            uint estateID = scene.RegionInfo.EstateSettings.EstateID;
+
+            if (!scene.Permissions.CanIssueEstateCommand(client.AgentId, false))
+                return;
+
+            foreach (Scene s in Scenes)
+            {
+                if (s == scene)
+                    continue; // Already handles by estate module
+                if (s.RegionInfo.EstateSettings.EstateID != estateID)
+                    continue;
+
+                scene.ForEachScenePresence(delegate(ScenePresence p) {
+                    if (p != null && !p.IsChildAgent)
+                    {
+                        p.ControllingClient.SendTeleportLocationStart();
+                        scene.TeleportClientHome(p.ControllingClient.AgentId, p.ControllingClient);
+                    }
+                });
+            }
+
+            m_EstateConnector.SendTeleportHomeAllUsers(estateID);
         }
     }
 }
