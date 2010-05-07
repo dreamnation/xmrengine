@@ -31,6 +31,7 @@ namespace Careminster.Modules.XEstate
 
         protected Scene m_Scene;
         protected bool m_Enabled = false;
+        protected bool m_LandStale = true; // Start out stale
 
         public void Initialise(IConfigSource config)
         {
@@ -72,6 +73,63 @@ namespace Careminster.Modules.XEstate
         }
 
         private void OnNewClient(IClientAPI client)
+        {
+            // Parcel changes will not only reset show in search,
+            // but also change parcel IDs. So we need to resend all
+            // parcel data.
+            //
+            client.OnParcelDivideRequest +=
+                    delegate(int west, int south, int east, int north,
+                    IClientAPI remote_client)
+                    {
+                        m_LandStale = true;
+                    };
+
+            client.OnParcelJoinRequest +=
+                    delegate(int west, int south, int east, int north,
+                    IClientAPI remote_client)
+                    {
+                        m_LandStale = true;
+                    };
+
+            // These don't change parcel data, they only change flags.
+            // Sale and reclaim simply reset it, while properties update
+            // Can do either.
+            //
+            client.OnParcelBuy +=
+                    OnParcelBuy;
+            client.OnParcelReclaim +=
+                    OnParcelReclaim;
+            client.OnParcelPropertiesUpdateRequest +=
+                    OnParcelPropertiesUpdateRequest;
+            client.OnParcelAbandonRequest +=
+                    OnParcelAbandonRequest;
+            client.OnParcelGodForceOwner +=
+                    OnParcelGodForceOwner;
+        }
+        private void OnParcelBuy(UUID agentId, UUID groupId, bool final,
+                    bool groupOwned, bool removeContribution,
+                    int parcelLocalID, int parcelArea, int parcelPrice,
+                    bool authenticated)
+        {
+        }
+
+        private void OnParcelReclaim(int local_id, IClientAPI remote_client)
+        {
+        }
+
+        private void OnParcelPropertiesUpdateRequest(LandUpdateArgs args,
+                int local_id, IClientAPI remote_client)
+        {
+        }
+
+        private void OnParcelAbandonRequest(int local_id, IClientAPI
+                remote_client)
+        {
+        }
+
+        private void OnParcelGodForceOwner(int local_id, UUID ownerID,
+                IClientAPI remote_client)
         {
         }
     }
