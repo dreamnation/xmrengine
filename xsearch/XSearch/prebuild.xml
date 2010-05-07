@@ -1,4 +1,4 @@
-   <Project name="XEstate.Module" path="addon-modules/XEstate/Module" type="Library">
+   <Project name="XSearch.Module" path="addon-modules/XSearch/Module" type="Library">
      <Configuration name="Debug">
        <Options>
          <OutputPath>../../../bin/</OutputPath>
