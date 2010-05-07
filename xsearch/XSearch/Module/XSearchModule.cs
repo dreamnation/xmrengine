@@ -70,5 +70,9 @@ namespace Careminster.Modules.XEstate
         {
             get { return null; }
         }
+
+        private void OnNewClient(IClientAPI client)
+        {
+        }
     }
 }
