@@ -113,7 +113,7 @@ namespace Careminster
 
             MySqlCommand cmd = new MySqlCommand();
 
-            cmd.CommandText = String.Format("select id, name, description, type, hash, create_time from {0} where id = ?id", m_Table);
+            cmd.CommandText = String.Format("select id, name, description, type, hash, create_time, asset_flags from {0} where id = ?id", m_Table);
             cmd.Parameters.AddWithValue("?id", id);
 
             IDataReader reader = ExecuteReader(cmd);
@@ -137,6 +137,7 @@ namespace Careminster
             meta.Type = (sbyte)Convert.ToInt32(reader["type"]);
             meta.ContentType = SLUtil.SLAssetTypeToContentType(meta.Type);
             meta.CreationDate = Util.ToDateTime(Convert.ToInt32(reader["create_time"]));
+            meta.Flags = (AssetFlags)Convert.ToInt32(reader["asset_flags"]);
 
             reader.Close();
 
@@ -169,10 +170,11 @@ namespace Careminster
             cmd.Parameters.AddWithValue("?description", meta.Description);
             cmd.Parameters.AddWithValue("?type", meta.Type.ToString());
             cmd.Parameters.AddWithValue("?hash", hash);
+            cmd.Parameters.AddWithValue("?asset_flags", meta.Flags);
 
             if (existingAsset == null)
             {
-                cmd.CommandText = String.Format("insert into {0} (id, name, description, type, hash, create_time, access_time) values ( ?id, ?name, ?description, ?type, ?hash, UNIX_TIMESTAMP(), UNIX_TIMESTAMP())", m_Table);
+                cmd.CommandText = String.Format("insert into {0} (id, name, description, type, hash, asset_flags, create_time, access_time) values ( ?id, ?name, ?description, ?type, ?hash, ?asset_flags, UNIX_TIMESTAMP(), UNIX_TIMESTAMP())", m_Table);
 
                 ExecuteNonQuery(cmd);
 

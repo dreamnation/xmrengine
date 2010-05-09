@@ -98,8 +98,6 @@ namespace Careminster
             m_Realm = assetConfig.GetString("Realm", "fsassets");
 
             m_DataConnector = new FSAssetConnectorData(m_ConnectionString, m_Realm);
-            m_FsckProgram = assetConfig.GetString("FsckProgram", string.Empty);
-
             string str = assetConfig.GetString("FallbackService", string.Empty);
             if (str != string.Empty)
             {
@@ -439,24 +437,6 @@ namespace Careminster
         {
             int num = m_DataConnector.Count();
             MainConsole.Instance.Output(string.Format("Total asset count: {0}", num));
-            if (m_FsckProgram != string.Empty)
-            {
-                Process process = new Process();
-                process.StartInfo.UseShellExecute = false;
-                process.StartInfo.RedirectStandardOutput = true;
-                process.StartInfo.FileName = "/bin/bash";
-                process.StartInfo.Arguments = string.Format("{0} fsck / -blocks", m_FsckProgram);
-                process.Start();
-                while (process.StandardOutput.Peek() >= 0)
-                {
-                    string str = process.StandardOutput.ReadLine();
-                    if (str.StartsWith(" ") && !str.Contains("Under replicated"))
-                    {
-                        MainConsole.Instance.Output(str.Trim());
-                    }
-                }
-                process.WaitForExit();
-            }
         }
 
         private void HandleShowDigest(string module, string[] args)
@@ -482,6 +462,7 @@ namespace Careminster
             MainConsole.Instance.Output(String.Format("Description: {0}", asset.Description));
             MainConsole.Instance.Output(String.Format("Type: {0}", asset.Type));
             MainConsole.Instance.Output(String.Format("Content-type: {0}", asset.Metadata.ContentType));
+            MainConsole.Instance.Output(String.Format("Flags: {0}", asset.Metadata.Flags.ToString()));
             MainConsole.Instance.Output(String.Format("FS file: {0}", HashToFile(hash)));
 
             for (i = 0 ; i < 5 ; i++)

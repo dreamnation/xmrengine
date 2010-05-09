@@ -52,7 +52,7 @@ namespace Careminster.Modules.XEstate
     {
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
-        protected List<Scene> m_Scenes;
+        protected List<Scene> m_Scenes = new List<Scene>();
 
         public List<Scene> Scenes
         {
