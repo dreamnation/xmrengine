@@ -77,6 +77,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public  DateTime m_LastRanAt = DateTime.MinValue;
         private Thread m_ScriptThread = null;
         public  int m_ScriptThreadTID = 0;
+        public  long m_ScriptExecTime = 0;
         private Thread m_SliceThread = null;
         private bool m_Exiting = false;
 
@@ -99,7 +100,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public  XMRInstQueue m_YieldQueue = new XMRInstQueue();
         public  XMRInstQueue m_SleepQueue = new XMRInstQueue();
         private string m_LockedDict = "nobody";
-	    // Initialisation call for SNMP
+        // Initialisation call for SNMP
         // Trap sent using : s_snmp.trapDebug("ModuleName","test here ",scene);
         private ISnmpModule s_snmp=null;
 
@@ -187,14 +188,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_AssemblyResolver = new AssemblyResolver(m_ScriptBasePath);
 
             Directory.CreateDirectory(m_ScriptBasePath);
-		// Snmp Initialisation 
-		
+
+            // Snmp Initialisation 
+        
             s_snmp =m_Scene.RequestModuleInterface<ISnmpModule>();
             if (s_snmp != null ) {
-		m_log.Info("[XMRE-SNMP] module initisalised");
-		s_snmp.trapDebug("XMRE","XMREngine initialised",scene);
-	    }
-
+                m_log.Info("[XMRE-SNMP] module initisalised");
+                s_snmp.trapDebug("XMRE","XMREngine initialised",scene);
+            }
 
             m_Scene.EventManager.OnRezScript += OnRezScript;
         }
@@ -1149,6 +1150,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             GetSetAffinity setAffinity = (GetSetAffinity) MMRDLOpen.GetDelegate ("./xmrhelpers.so", "SetAffinity", typeof (GetSetAffinity), null);
 
             m_ScriptThreadTID = getTid();
+            m_ScriptExecTime -= (long)(DateTime.UtcNow - DateTime.MinValue).TotalMilliseconds;
             m_log.DebugFormat("[XMREngine]: RunScriptThread tid: {0}", m_ScriptThreadTID);
             do {
                 int rc = getAffinity (m_ScriptThreadTID, null);
@@ -1289,13 +1291,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  */
                 lock (m_WakeUpLock) {
                     if (!m_WakeUpFlag) {
-                        TimeSpan deltaTS = sleepUntil - now;
-                        int deltaMS = Int32.MaxValue;
-                        if (deltaTS.TotalMilliseconds < Int32.MaxValue)
-                        {
-                            deltaMS = (int)deltaTS.TotalMilliseconds;
+                        now = DateTime.UtcNow;
+                        if (sleepUntil > now) {
+                            double deltaTS = (sleepUntil - now).TotalMilliseconds;
+                            int deltaMS = Int32.MaxValue;
+                            if (deltaTS < Int32.MaxValue)
+                            {
+                                deltaMS = (int)deltaTS;
+                            }
+                            m_ScriptExecTime += (long)(now - DateTime.MinValue).TotalMilliseconds;
+                            m_SleepUntil      = sleepUntil;
+                            System.Threading.Monitor.Wait(m_WakeUpLock, deltaMS);
+                            m_SleepUntil      = DateTime.MinValue;
+                            m_ScriptExecTime -= (long)(DateTime.UtcNow - DateTime.MinValue).TotalMilliseconds;
                         }
-                        System.Threading.Monitor.Wait(m_WakeUpLock, deltaMS);
                     }
                 }
             }

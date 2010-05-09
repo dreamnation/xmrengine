@@ -226,7 +226,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     {
                         m_Suspended = true;
                         m_DetachReady.Set();
-                        m_RunOnePhase = "nothing to do";
+                        m_RunOnePhase = "nothing to do #1";
                         CheckRunLockInvariants(true);
                         return XMRInstState.FINISHED;
                     }
@@ -258,7 +258,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                     if (m_Suspended)
                     {
-                        m_RunOnePhase = "nothing to do";
+                        m_RunOnePhase = "nothing to do #2";
                         CheckRunLockInvariants(true);
                         return XMRInstState.FINISHED;
                     }
@@ -283,7 +283,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                                     m_Suspended = true;
                                     m_DetachReady.Set();
                                     m_DetachQuantum = 0;
-                                    m_RunOnePhase = "nothing to do";
+                                    m_RunOnePhase = "nothing to do #3";
                                     CheckRunLockInvariants(true);
                                     return XMRInstState.FINISHED;
                                 }
@@ -312,7 +312,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                             m_DetachReady.Set();
                             m_DetachQuantum = 0;
                         }
-                        m_RunOnePhase = "nothing to do";
+                        m_RunOnePhase = "nothing to do #4";
                         CheckRunLockInvariants(true);
                         return XMRInstState.FINISHED;
                     }

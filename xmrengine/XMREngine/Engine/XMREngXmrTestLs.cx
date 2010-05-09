@@ -3,9 +3,12 @@
  *  All rights reserved.                           *
 \***************************************************/
 
+using log4net;
 using OpenSim.Region.ScriptEngine.XMREngine;
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Text;
 using System.Threading;
 
 namespace OpenSim.Region.ScriptEngine.XMREngine
@@ -19,6 +22,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             bool flagTopCPU = false;
             int maxScripts  = 0x7FFFFFFF;
             int numScripts  = 0;
+            string outName  = null;
             XMRInstance[] instances;
 
             /*
@@ -38,6 +42,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     }
                     continue;
                 }
+                if (args[i].StartsWith("-out=")) {
+                    outName = args[i].Substring(5);
+                    continue;
+                }
                 if (args[i] == "-queues") {
                     flagQueues = true;
                     continue;
@@ -48,79 +56,102 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
                 if (args[i][0] == '-') {
                     m_log.Error("[XMREngine]: unknown option " + args[i]);
-                    m_log.Info("[XMREngine]: options: -full -max=<number> -queues -topcpu");
+                    m_log.Info("[XMREngine]: options: -full -max=<number> -out=<filename> -queues -topcpu");
                     return;
                 }
             }
 
-            /*
-             * Scan instance list to find those that match selection criteria.
-             */
-            if (!Monitor.TryEnter(m_InstancesDict, 100)) {
-                m_log.Error("[XMREngine]: deadlock m_LockedDict=" + m_LockedDict);
-                XMRInstance ins = m_RunInstance;
-                if (ins != null) {
-                    m_log.Info("[XMREngine]: running...");
-                    ins.RunTestLs(true);
+            TextWriter outFile = null;
+            if (outName != null) {
+                try {
+                    outFile = File.CreateText(outName);
+                } catch (Exception e) {
+                    m_log.Error("[XMREngine]: error creating " + outName + ": " + e.Message);
+                    return;
                 }
-                ins = m_RemovingInstance;
-                if (ins != null) {
-                    m_log.Info("[XMREngine]: removing...");
-                    ins.RunTestLs(true);
-                }
-                return;
+            } else {
+                outFile = new LogInfoTextWriter(m_log);
             }
-            try
-            {
-                instances = new XMRInstance[m_InstancesDict.Count];
-                foreach (XMRInstance ins in m_InstancesDict.Values)
-                {
-                    if (InstanceMatchesArgs(ins, args)) {
-                        instances[numScripts++] = ins;
+
+            try {
+                outFile.WriteLine("Script thread ID: " + m_ScriptThreadTID);
+                long execTime = m_ScriptExecTime;
+                if (execTime < 0) {
+                    execTime += (long)(DateTime.UtcNow - DateTime.MinValue).TotalMilliseconds;
+                }
+                outFile.WriteLine("  execution time: " + execTime + " mS");
+
+                /*
+                 * Scan instance list to find those that match selection criteria.
+                 */
+                if (!Monitor.TryEnter(m_InstancesDict, 100)) {
+                    m_log.Error("[XMREngine]: deadlock m_LockedDict=" + m_LockedDict);
+                    XMRInstance ins = m_RunInstance;
+                    if (ins != null) {
+                        m_log.Info("[XMREngine]: running...");
+                        Console.WriteLine(ins.RunTestLs(true));
                     }
+                    ins = m_RemovingInstance;
+                    if (ins != null) {
+                        m_log.Info("[XMREngine]: removing...");
+                        Console.WriteLine(ins.RunTestLs(true));
+                    }
+                    return;
+                }
+                try
+                {
+                    instances = new XMRInstance[m_InstancesDict.Count];
+                    foreach (XMRInstance ins in m_InstancesDict.Values)
+                    {
+                        if (InstanceMatchesArgs(ins, args)) {
+                            instances[numScripts++] = ins;
+                        }
+                    }
+                } finally {
+                    Monitor.Exit(m_InstancesDict);
+                }
+    
+                /*
+                 * Maybe sort by descending CPU time.
+                 */
+                if (flagTopCPU) {
+                    Array.Sort<XMRInstance>(instances, CompareInstancesByCPUTime);
+                }
+    
+                /*
+                 * Print the entries.
+                 */
+                for (int i = 0; (i < numScripts) && (i < maxScripts); i ++) {
+                    outFile.WriteLine(instances[i].RunTestLs(flagFull));
+                }
+
+                /*
+                 * Print number of scripts that match selection criteria,
+                 * even if we were told to print fewer.
+                 */
+                outFile.WriteLine("total of {0} script(s)", numScripts);
+
+                /*
+                 * If -queues given, print out queue contents too.
+                 */
+                if (flagQueues) {
+                    XMRInstance rins = m_RunInstance;
+                    if (rins != null) {
+                        outFile.WriteLine("running {0} {1}",
+                                rins.m_ItemID.ToString(),
+                                rins.m_DescName);
+                    }
+                    DateTime suntil = m_SleepUntil;
+                    if (suntil > DateTime.MinValue) {
+                        outFile.WriteLine("sleeping until {0}", suntil.ToString());
+                    }
+                    outFile.WriteLine("last ran at {0}", m_LastRanAt.ToString());
+                    LsQueue(outFile, "start", m_StartQueue, args);
+                    LsQueue(outFile, "sleep", m_SleepQueue, args);
+                    LsQueue(outFile, "yield", m_YieldQueue, args);
                 }
             } finally {
-                Monitor.Exit(m_InstancesDict);
-            }
-
-            /*
-             * Maybe sort by descending CPU time.
-             */
-            if (flagTopCPU) {
-                Array.Sort<XMRInstance>(instances, CompareInstancesByCPUTime);
-            }
-
-            /*
-             * Print the entries.
-             */
-            for (int i = 0; (i < numScripts) && (i < maxScripts); i ++) {
-                instances[i].RunTestLs(flagFull);
-            }
-
-            /*
-             * Print number of scripts that match selection criteria,
-             * even if we were told to print fewer.
-             */
-            Console.WriteLine("total of {0} script(s)", numScripts);
-
-            /*
-             * If -queues given, print out queue contents too.
-             */
-            if (flagQueues) {
-                XMRInstance rins = m_RunInstance;
-                if (rins != null) {
-                    Console.WriteLine("running {0} {1}",
-                            rins.m_ItemID.ToString(),
-                            rins.m_DescName);
-                }
-                DateTime suntil = m_SleepUntil;
-                if (suntil > DateTime.MinValue) {
-                    Console.WriteLine("sleeping until {0}", suntil.ToString());
-                }
-                Console.WriteLine("last ran at {0}", m_LastRanAt.ToString());
-                LsQueue("start", m_StartQueue, args);
-                LsQueue("sleep", m_SleepQueue, args);
-                LsQueue("yield", m_YieldQueue, args);
+                outFile.Close();
             }
         }
 
@@ -135,9 +166,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return b.m_CPUTime - a.m_CPUTime;
         }
 
-        private void LsQueue(string name, XMRInstQueue queue, string[] args)
+        private void LsQueue(TextWriter outFile, string name, XMRInstQueue queue, string[] args)
         {
-            Console.WriteLine("Queue " + name + ":");
+            outFile.WriteLine("Queue " + name + ":");
             lock (queue) {
                 for (XMRInstance inst = queue.PeekHead(); inst != null; inst = inst.m_NextInst) {
                     try {
@@ -146,14 +177,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                          * Try to print instance name.
                          */
                         if (InstanceMatchesArgs(inst, args)) {
-                            Console.WriteLine("   " + inst.m_ItemID.ToString() + " " + inst.m_DescName);
+                            outFile.WriteLine("   " + inst.m_ItemID.ToString() + " " + inst.m_DescName);
                         }
                     } catch (Exception e) {
 
                         /*
                          * Sometimes there are instances in the queue that are disposed.
                          */
-                        Console.WriteLine("   " + inst.m_ItemID.ToString() + " " + inst.m_DescName + ": " + e.Message);
+                        outFile.WriteLine("   " + inst.m_ItemID.ToString() + " " + inst.m_DescName + ": " + e.Message);
                     }
                 }
             }
@@ -173,6 +204,33 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
             }
             return !hadSomethingToCompare;
+        }
+    }
+
+    /**
+     * @brief Make m_log.Info look like a text writer.
+     */
+    public class LogInfoTextWriter : TextWriter {
+        private StringBuilder sb = new StringBuilder();
+        private ILog m_log;
+        public LogInfoTextWriter (ILog m_log)
+        {
+            this.m_log = m_log;
+        }
+        public override void Write (char c)
+        {
+            if (c == '\n') {
+                m_log.Info("[XMREngine]: " + sb.ToString());
+                sb.Remove(0, sb.Length);
+            } else {
+                sb.Append(c);
+            }
+        }
+        public override void Close () { }
+        public override Encoding Encoding {
+            get {
+                return Encoding.UTF8;
+            }
         }
     }
 }
