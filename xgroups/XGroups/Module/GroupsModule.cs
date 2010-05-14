@@ -905,7 +905,7 @@ Console.WriteLine("==> Session ID {0} UUID {1}", imSessionID.ToString(), id.ToSt
                 if (RoleID == GroupID)
                     RoleID = UUID.Zero;
 
-                AddToGroup(client.AgentId, GroupID, RoleID);
+                AddToGroup(client.AgentId, GroupID, RoleID, true);
 
                 ActivateGroup(client, GroupID);
 
@@ -1203,7 +1203,7 @@ Console.WriteLine("==> Session ID {0} UUID {1}", imSessionID.ToString(), id.ToSt
                 cmd.Parameters.Clear();
                 cmd.Dispose();
 
-                AddToGroup(remoteClient.AgentId, groupID, ownerRoleID);
+                AddToGroup(remoteClient.AgentId, groupID, ownerRoleID, true);
 
                 if (money != null)
                     money.ApplyGroupCreationCharge(remoteClient.AgentId);
@@ -1220,9 +1220,17 @@ Console.WriteLine("==> Session ID {0} UUID {1}", imSessionID.ToString(), id.ToSt
                 return groupID;
             }
         }
-
-        public void AddToGroup(UUID agentID, UUID groupID, UUID roleID)
+	    public void AddToGroup(UUID agentID, UUID groupID, UUID roleID)
+	    {
+		    AddToGroup(agentID, groupID, roleID, false);
+	    }
+        public void AddToGroup(UUID agentID, UUID groupID, UUID roleID, bool OverrideOpenEnrollment)
         {
+	        if (!OverrideOpenEnrollment)
+	        {
+		        GroupRecord grp = GetGroupRecord(groupID);
+                if (grp.OpenEnrollment == false) return;
+ 	        }
             List<GroupRolesData> roles = GroupRoleDataRequest(null, groupID);
 
             bool roleGood = false;
@@ -1292,33 +1300,36 @@ Console.WriteLine("==> Session ID {0} UUID {1}", imSessionID.ToString(), id.ToSt
                 int membershipFee, bool openEnrollment, bool allowPublish,
                 bool maturePublish)
         {
-            lock(m_Connection)
+            if ((GetGroupPowers(remoteClient.AgentId, groupID) & (ulong)GroupPowers.ChangeOptions) != 0)
             {
-                MySqlCommand cmd = m_Connection.CreateCommand();
+                lock (m_Connection)
+                {
+                    MySqlCommand cmd = m_Connection.CreateCommand();
 
-                cmd.CommandText = "update groups set "+
-                        "Charter = ?Charter, "+
-                        "GroupPicture = ?GroupPicture, "+
-                        "MembershipFee = ?MembershipFee, "+
-                        "OpenEnrollment = ?OpenEnrollment, "+
-                        "AllowPublish = ?AllowPublish, "+
-                        "MaturePublish = ?MaturePublish, "+
-                        "ShowInList = ?ShowInList "+
-                        "where GroupID = ?GroupID";
+                    cmd.CommandText = "update groups set " +
+                            "Charter = ?Charter, " +
+                            "GroupPicture = ?GroupPicture, " +
+                            "MembershipFee = ?MembershipFee, " +
+                            "OpenEnrollment = ?OpenEnrollment, " +
+                            "AllowPublish = ?AllowPublish, " +
+                            "MaturePublish = ?MaturePublish, " +
+                            "ShowInList = ?ShowInList " +
+                            "where GroupID = ?GroupID";
 
-                cmd.Parameters.AddWithValue("Charter", charter);
-                cmd.Parameters.AddWithValue("GroupPicture", insigniaID.ToString());
-                cmd.Parameters.AddWithValue("MembershipFee", membershipFee);
-                cmd.Parameters.AddWithValue("OpenEnrollment", openEnrollment ? 1 : 0);
-                cmd.Parameters.AddWithValue("ShowInList", showInList ? 1 : 0);
-                cmd.Parameters.AddWithValue("AllowPublish", allowPublish ? 1 : 0);
-                cmd.Parameters.AddWithValue("MaturePublish", maturePublish ? 1 : 0);
-                cmd.Parameters.AddWithValue("GroupID", groupID.ToString());
+                    cmd.Parameters.AddWithValue("Charter", charter);
+                    cmd.Parameters.AddWithValue("GroupPicture", insigniaID.ToString());
+                    cmd.Parameters.AddWithValue("MembershipFee", membershipFee);
+                    cmd.Parameters.AddWithValue("OpenEnrollment", openEnrollment ? 1 : 0);
+                    cmd.Parameters.AddWithValue("ShowInList", showInList ? 1 : 0);
+                    cmd.Parameters.AddWithValue("AllowPublish", allowPublish ? 1 : 0);
+                    cmd.Parameters.AddWithValue("MaturePublish", maturePublish ? 1 : 0);
+                    cmd.Parameters.AddWithValue("GroupID", groupID.ToString());
 
-                ExecuteNonQuery(cmd);
-                cmd.Dispose();
+                    ExecuteNonQuery(cmd);
+                    cmd.Dispose();
 
-                SendGroupMembershipCaps(GetMembershipData(remoteClient.AgentId), remoteClient);
+                    SendGroupMembershipCaps(GetMembershipData(remoteClient.AgentId), remoteClient);
+                }
             }
         }
 
