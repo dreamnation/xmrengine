@@ -1300,7 +1300,7 @@ Console.WriteLine("==> Session ID {0} UUID {1}", imSessionID.ToString(), id.ToSt
                 int membershipFee, bool openEnrollment, bool allowPublish,
                 bool maturePublish)
         {
-            if ((GetGroupPowers(remoteClient.AgentId, groupID) & (ulong)GroupPowers.ChangeOptions) != 0)
+            if (((GetGroupPowers(remoteClient.AgentId, groupID) & (ulong)GroupPowers.ChangeOptions) != 0) || (FindPresence(remoteClient.AgentId).GodLevel >= 200))
             {
                 lock (m_Connection)
                 {
