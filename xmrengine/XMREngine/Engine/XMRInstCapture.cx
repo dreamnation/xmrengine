@@ -58,7 +58,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * When we're detaching an attachment, we need to wait here.
              */
 
-            m_DetachReady.WaitOne();
+            // Change this to a 5 second timeout. If things do mess up,
+            // we don't want to be stuck forever.
+            //
+            m_DetachReady.WaitOne(5000);
 
             XmlElement scriptStateN = doc.CreateElement("", "ScriptState", "");
             scriptStateN.SetAttribute("Asset", m_AssetID.ToString());
