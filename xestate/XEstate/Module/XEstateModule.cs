@@ -63,17 +63,19 @@ namespace Careminster.Modules.XEstate
 
         public void Initialise(IConfigSource config)
         {
+            int port = 0;
+
             IConfig estateConfig = config.Configs["Estate"];
             if (estateConfig != null)
             {
-                int port = estateConfig.GetInt("Port", 0);
-
-                m_EstateConnector = new EstateConnector(this);
-
-                // Instantiate the request handler
-                IHttpServer server = MainServer.GetHttpServer((uint)port);
-                server.AddStreamHandler(new EstateRequestHandler(this));
+                port = estateConfig.GetInt("Port", 0);
             }
+
+            m_EstateConnector = new EstateConnector(this);
+
+            // Instantiate the request handler
+            IHttpServer server = MainServer.GetHttpServer((uint)port);
+            server.AddStreamHandler(new EstateRequestHandler(this));
         }
 
         public void PostInitialise()
