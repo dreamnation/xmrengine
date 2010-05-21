@@ -336,6 +336,11 @@ namespace Careminster.Profile
                 if (picks.Length >= 12)
                     return;
 
+                // Don't store a pick we didn't create if it
+                // doesn't exist
+                if (creatorID != remoteClient.AgentId)
+                    return;
+
                 pick.Data = new Dictionary<string,string>();
                 pick.Data["CreatorID"] = creatorID.ToString();
                 pick.Data["RegionName"] = remoteClient.Scene.RegionInfo.RegionName;
