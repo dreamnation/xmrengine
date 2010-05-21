@@ -19,6 +19,7 @@ using Nini.Config;
 using log4net;
 using Mono.Addins;
 using OpenSim.Services.Interfaces;
+using PresenceInfo = OpenSim.Services.Interfaces.PresenceInfo;
 
 [assembly: Addin("XProfile", "0.1")]
 [assembly: AddinDependency("OpenSim", "0.5")]
@@ -216,9 +217,10 @@ namespace Careminster.Profile
             {
                 flags |= Convert.ToUInt32(data[0].Data["Flags"]);
 
-// TODO: Add when it becomes available:
-//                flags |= online ? 16 : 0;
-//
+                PresenceInfo[] presences = m_Scene.PresenceService.GetAgents(new string[] { avatarID.ToString() } );
+                if (presences.Length > 0)
+                    flags |= 16;
+
                 remoteClient.SendAvatarProperties(account.PrincipalID,
                         data[0].Data["ProfileText"],
                         Util.ToDateTime(account.Created).ToString("M/d/yyyy",
