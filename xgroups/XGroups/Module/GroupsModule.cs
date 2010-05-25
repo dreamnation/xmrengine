@@ -1387,7 +1387,20 @@ Console.WriteLine("==> Session ID {0} UUID {1}", imSessionID.ToString(), id.ToSt
 
         private void OnRequestAvatarProperties(IClientAPI remoteClient, UUID avatarID)
         {
-            remoteClient.SendAvatarGroupsReply(avatarID, GetMembershipData(avatarID));
+            GroupMembershipData[] data = GetMembershipData(avatarID);
+            if (remoteClient.AgentId == avatarID)
+            {
+                remoteClient.SendAvatarGroupsReply(avatarID, data);
+                return;
+            }
+
+            List<GroupMembershipData> outdata = new List<GroupMembershipData>();
+            foreach (GroupMembershipData g in data)
+            {
+                if (g.ShowInList)
+                    outdata.Add(g);
+            }
+            remoteClient.SendAvatarGroupsReply(avatarID, outdata.ToArray());
         }
 
         private void OnClientClosed(UUID agentID, Scene scene)
