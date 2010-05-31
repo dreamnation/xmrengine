@@ -904,33 +904,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 m_ScriptErrors[itemID] = noScriptErrors;
             }
 
-            /*
-             * Let other parts of OpenSim see the instance.
-             */
-            lock (m_InstancesDict)
-            {
-                m_LockedDict = "OnRezScript";
-                // Insert on known scripts list
-                m_InstancesDict[itemID] = instance;
-
-                List<UUID> l;
-
-                if (m_Objects.ContainsKey(part.UUID))
-                {
-                    l = m_Objects[part.UUID];
-                }
-                else
-                {
-                    l = new List<UUID>();
-                    m_Objects[part.UUID] = l;
-                }
-
-                if (!l.Contains(itemID))
-                    l.Add(itemID);
-
-                m_Partmap[itemID] = part.UUID;
-                m_LockedDict = "~OnRezScript";
-            }
 
             /*
              * Transition from CONSTRUCT->ONSTARTQ and give to RunScriptThread().
@@ -1549,6 +1522,37 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             instance.Resume();
+        }
+
+        public void RegisterInstance(SceneObjectPart part, UUID itemID, XMRInstance instance)
+        {
+            /*
+             * Let other parts of OpenSim see the instance.
+             */
+            lock (m_InstancesDict)
+            {
+                m_LockedDict = "RegisterInstance";
+                // Insert on known scripts list
+                m_InstancesDict[itemID] = instance;
+
+                List<UUID> l;
+
+                if (m_Objects.ContainsKey(part.UUID))
+                {
+                    l = m_Objects[part.UUID];
+                }
+                else
+                {
+                    l = new List<UUID>();
+                    m_Objects[part.UUID] = l;
+                }
+
+                if (!l.Contains(itemID))
+                    l.Add(itemID);
+
+                m_Partmap[itemID] = part.UUID;
+                m_LockedDict = "~OnRezScript";
+            }
         }
     }
 

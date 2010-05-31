@@ -105,6 +105,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (objCode.scriptEventHandlerTable == null) {
                 throw new ArgumentNullException ("objCode.scriptEventHandlerTable");
             }
+
+            engine.RegisterInstance(m_Part, m_ItemID, this);
             suspendOnCheckRunHold = false;
             suspendOnCheckRunTemp = false;
 
