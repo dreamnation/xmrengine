@@ -96,6 +96,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_IState   = XMRInstState.CONSTRUCT;
 
             /*
+             * Set up list of API calls it has available.
+             * This also gets the API modules ready to accept setup data, such as
+             * active listeners being restored.
+             */
+            beAPI = new ScriptBaseClass();
+            ApiManager am = new ApiManager();
+            foreach (string api in am.GetApis())
+            {
+                IScriptApi scriptApi;
+
+                if (api != "LSL")
+                    scriptApi = am.CreateApi(api);
+                else
+                    scriptApi = new XMRLSL_Api();
+
+                m_Apis[api] = scriptApi;
+                scriptApi.Initialize(m_Engine, m_Part, m_LocalID, m_ItemID);
+                beAPI.InitApi(api, scriptApi);
+            }
+
+            /*
              * Get object loaded, compiling script and reading .state file as
              * necessary.
              */
@@ -117,25 +138,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             string envar = Environment.GetEnvironmentVariable("XMRCheckRunStressTest");
             if ((envar != null) && ((envar[0] & 1) != 0)) {
                 m_CheckRunStressStream = new MemoryStream(4000);
-            }
-
-            /*
-             * Set up list of API calls it has available.
-             */
-            beAPI = new ScriptBaseClass();
-            ApiManager am = new ApiManager();
-            foreach (string api in am.GetApis())
-            {
-                IScriptApi scriptApi;
-
-                if (api != "LSL")
-                    scriptApi = am.CreateApi(api);
-                else
-                    scriptApi = new XMRLSL_Api();
-
-                m_Apis[api] = scriptApi;
-                scriptApi.Initialize(m_Engine, m_Part, m_LocalID, m_ItemID);
-                beAPI.InitApi(api, scriptApi);
             }
 
             /*
