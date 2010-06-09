@@ -1156,7 +1156,7 @@ Console.WriteLine("==> Session ID {0} UUID {1}", imSessionID.ToString(), id.ToSt
                 cmd.Parameters.AddWithValue("GroupPicture", insigniaID.ToString());
                 cmd.Parameters.AddWithValue("MembershipFee", membershipFee);
                 cmd.Parameters.AddWithValue("OpenEnrollment", openEnrollment ? 1 : 0);
-                cmd.Parameters.AddWithValue("ShowInList", openEnrollment ? 1 : 0);
+                cmd.Parameters.AddWithValue("ShowInList", ShowInList ? 1 : 0);
                 cmd.Parameters.AddWithValue("AllowPublish", allowPublish ? 1 : 0);
                 cmd.Parameters.AddWithValue("MaturePublish", maturePublish ? 1 : 0);
                 cmd.Parameters.AddWithValue("FounderID", remoteClient.AgentId.ToString());
@@ -1393,12 +1393,12 @@ Console.WriteLine("==> Session ID {0} UUID {1}", imSessionID.ToString(), id.ToSt
                 remoteClient.SendAvatarGroupsReply(avatarID, data);
                 return;
             }
-
             List<GroupMembershipData> outdata = new List<GroupMembershipData>();
             foreach (GroupMembershipData g in data)
             {
-                if (g.ShowInList)
+                if (g.ShowInList){
                     outdata.Add(g);
+		}
             }
             remoteClient.SendAvatarGroupsReply(avatarID, outdata.ToArray());
         }
