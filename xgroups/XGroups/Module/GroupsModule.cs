@@ -532,7 +532,6 @@ namespace Careminster.Modules.Groups
 
                 cmd.Parameters.AddWithValue("MemberID", UserID.ToString());
                 cmd.Parameters.AddWithValue("GroupID", GroupID.ToString());
-
                 IDataReader r = ExecuteReader(cmd);
 
                 if (r.Read())
@@ -630,7 +629,6 @@ namespace Careminster.Modules.Groups
                     g.GroupTitle = GetRoleTitle(g.GroupID, g.ActiveRole);
 
                     m_ActiveRoles[UserID] = g.ActiveRole;
-
                     m.Add(g);
                 }
                 r.Close();
@@ -1396,7 +1394,7 @@ Console.WriteLine("==> Session ID {0} UUID {1}", imSessionID.ToString(), id.ToSt
             List<GroupMembershipData> outdata = new List<GroupMembershipData>();
             foreach (GroupMembershipData g in data)
             {
-                if (g.ShowInList){
+                if (g.ListInProfile ){
                     outdata.Add(g);
 		}
             }
