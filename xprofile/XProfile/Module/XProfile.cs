@@ -551,6 +551,12 @@ namespace Careminster.Profile
 
             if (classifieds.Length == 0)
             {
+                // This will happen if people try for a free classified,
+                // or the profile is closed with "OK", rather then using
+                // publish.
+                if (classifiedPrice == 0)
+                    return;
+
                 if (m_MoneyModule != null)
                 {
                     if (!m_MoneyModule.AmountCovered(remoteClient,
