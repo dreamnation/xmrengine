@@ -275,7 +275,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                 /*
                  * Check for keywords/names.
                  */
-                if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c == '_')) {
+                if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c == '_') || (c == '$')) {
                     int j;
 
                     for (j = i; ++ j < source.Length;) {
@@ -283,6 +283,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                         if (c >= 'a' && c <= 'z') continue;
                         if (c >= 'A' && c <= 'Z') continue;
                         if (c >= '0' && c <= '9') continue;
+                        if (c == '$') continue;
                         if (c != '_') break;
                     }
                     if (j - i > MAX_NAME_LEN) {
