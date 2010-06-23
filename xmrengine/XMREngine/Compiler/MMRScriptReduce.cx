@@ -45,17 +45,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 			p.Add (typeof (TokenKwComma),   30);
 
-			p.Add (typeof (TokenKwAsnLSh),  50);
-			p.Add (typeof (TokenKwAsnRSh),  50);
-			p.Add (typeof (TokenKwAsnAdd),  50);
-			p.Add (typeof (TokenKwAsnAnd),  50);
-			p.Add (typeof (TokenKwAsnSub),  50);
-			p.Add (typeof (TokenKwAsnMul),  50);
-			p.Add (typeof (TokenKwAsnDiv),  50);
-			p.Add (typeof (TokenKwAsnMod),  50);
-			p.Add (typeof (TokenKwAsnOr),   50);
-			p.Add (typeof (TokenKwAsnXor),  50);
-			p.Add (typeof (TokenKwAssign),  50);
+#define ASNPR 50
+			p.Add (typeof (TokenKwAsnLSh), ASNPR);  // all assignment operators of equal precedence
+			p.Add (typeof (TokenKwAsnRSh), ASNPR);  // ... so they get processed strictly right-to-left
+			p.Add (typeof (TokenKwAsnAdd), ASNPR);
+			p.Add (typeof (TokenKwAsnAnd), ASNPR);
+			p.Add (typeof (TokenKwAsnSub), ASNPR);
+			p.Add (typeof (TokenKwAsnMul), ASNPR);
+			p.Add (typeof (TokenKwAsnDiv), ASNPR);
+			p.Add (typeof (TokenKwAsnMod), ASNPR);
+			p.Add (typeof (TokenKwAsnOr),  ASNPR);
+			p.Add (typeof (TokenKwAsnXor), ASNPR);
+			p.Add (typeof (TokenKwAssign), ASNPR);
 
 			p.Add (typeof (TokenKwOrOr),   100);
 
@@ -915,8 +916,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				 *
 				 *  higher precedence = right-to-left application of operators
 				 *                      eg, a - b - c becomes a - (b - c)
+				 *
+				 * Now of course, there is some ugliness necessary:
+				 *      we want:  a  - b - c  =>  (a - b) - c    so we do 'higher or same'
+				 *  but we want:  a += b = c  =>  a += (b = c)   so we do 'higher only'
+				 *
+				 * binOps is the first operator (or null if only one)
+				 * binOp is the second operator (or first if only one)
 				 */
-				while ((binOps != null) && (binOps.preced >= binOp.preced)) {
+				while (binOps != null) {
+					if (binOps.preced < binOp.preced) break;       // 1st operator lower than 2nd, so leave 1st on stack to do later
+					if (binOps.preced > binOp.preced) goto do1st;  // 1st op higher than 2nd, so we always do 1st op first
+					if (binOps.preced == ASNPR) break;             // equal preced, if assignment type, leave 1st on stack to do later
+					                                               //               if non-asn type, do 1st op first (ie left-to-right)
+				do1st:
 					TokenRValOpBin tokenRValOpBin = new TokenRValOpBin ((TokenRVal)operands.prevToken, binOps.token, operands);
 					tokenRValOpBin.prevToken = operands.prevToken.prevToken;
 					operands = tokenRValOpBin;
