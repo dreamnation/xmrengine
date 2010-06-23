@@ -317,12 +317,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                             new object[] { m_Part.AttachedAvatar.ToString() }, 
                             zeroDetectParams));
                 }
-                else if (m_StateSource == StateSource.NewRez)
-                {
-                    PostEvent(new EventParams("changed",
-                            new Object[] { ScriptBaseClass.CHANGED_REGION_START }, 
-                            zeroDetectParams));
-                }
                 else if (m_StateSource == StateSource.PrimCrossing)
                 {
                     PostEvent(new EventParams("changed",
@@ -347,6 +341,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 XmlDocument doc = new XmlDocument();
                 doc.LoadXml(xml);
                 LoadScriptState(doc);
+
+                if (m_StateSource == StateSource.PrimCrossing)
+                {
+                    PostEvent(new EventParams("changed",
+                            new Object[] { ScriptBaseClass.CHANGED_REGION }, 
+                            zeroDetectParams));
+                }
                 return true;
             }
             catch (Exception e)

@@ -532,7 +532,6 @@ namespace Careminster.Modules.Groups
 
                 cmd.Parameters.AddWithValue("MemberID", UserID.ToString());
                 cmd.Parameters.AddWithValue("GroupID", GroupID.ToString());
-
                 IDataReader r = ExecuteReader(cmd);
 
                 if (r.Read())
@@ -630,7 +629,6 @@ namespace Careminster.Modules.Groups
                     g.GroupTitle = GetRoleTitle(g.GroupID, g.ActiveRole);
 
                     m_ActiveRoles[UserID] = g.ActiveRole;
-
                     m.Add(g);
                 }
                 r.Close();
@@ -1156,7 +1154,7 @@ Console.WriteLine("==> Session ID {0} UUID {1}", imSessionID.ToString(), id.ToSt
                 cmd.Parameters.AddWithValue("GroupPicture", insigniaID.ToString());
                 cmd.Parameters.AddWithValue("MembershipFee", membershipFee);
                 cmd.Parameters.AddWithValue("OpenEnrollment", openEnrollment ? 1 : 0);
-                cmd.Parameters.AddWithValue("ShowInList", openEnrollment ? 1 : 0);
+                cmd.Parameters.AddWithValue("ShowInList", showInList ? 1 : 0);
                 cmd.Parameters.AddWithValue("AllowPublish", allowPublish ? 1 : 0);
                 cmd.Parameters.AddWithValue("MaturePublish", maturePublish ? 1 : 0);
                 cmd.Parameters.AddWithValue("FounderID", remoteClient.AgentId.ToString());
@@ -1393,12 +1391,12 @@ Console.WriteLine("==> Session ID {0} UUID {1}", imSessionID.ToString(), id.ToSt
                 remoteClient.SendAvatarGroupsReply(avatarID, data);
                 return;
             }
-
             List<GroupMembershipData> outdata = new List<GroupMembershipData>();
             foreach (GroupMembershipData g in data)
             {
-                if (g.ShowInList)
+                if (g.ListInProfile ){
                     outdata.Add(g);
+		}
             }
             remoteClient.SendAvatarGroupsReply(avatarID, outdata.ToArray());
         }

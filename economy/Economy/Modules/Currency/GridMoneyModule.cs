@@ -749,6 +749,7 @@ namespace Careminster.Modules.Currency
                 if(funds < amount)
                     return false;
 
+//m_log.DebugFormat("value : {0}",description);
                 switch(transactiontype)
                 {
                 case 1101: // Asset upload
@@ -779,7 +780,7 @@ namespace Careminster.Modules.Currency
                     LocalTransaction(sender, -amount, text);
 
                     MoveMoney(sender, receiver, amount,
-                            transactiontype, "Object purchase", scene);
+                            transactiontype, "Object purchase "+description, scene);
 
                     break;
                 case 5001: // User pays user
@@ -820,7 +821,7 @@ namespace Careminster.Modules.Currency
                     LocalTransaction(receiver, amount, text);
 
                     MoveMoney(sender, receiver, amount,
-                            transactiontype, "Paid object", scene);
+                            transactiontype, "Paid object "+description, scene);
 
                     break;
                 case 5009: // Object pays user
@@ -842,7 +843,7 @@ namespace Careminster.Modules.Currency
                     LocalTransaction(receiver, amount, text);
 
                     MoveMoney(sender, receiver, amount,
-                            transactiontype, "Object pays", scene);
+                            transactiontype, "Object "+description+" payes" , scene);
 
                     break;
                 case 5002: // Land transaction
