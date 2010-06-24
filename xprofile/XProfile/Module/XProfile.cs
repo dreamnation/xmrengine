@@ -642,7 +642,7 @@ namespace Careminster.Profile
 
             if (prefs.Length == 0)
             {
-                remoteClient.SendUserInfoReply(true, false, String.Empty);
+                remoteClient.SendUserInfoReply(true, true, String.Empty);
                 return;
             }
 
