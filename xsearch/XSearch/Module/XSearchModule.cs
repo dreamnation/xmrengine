@@ -362,26 +362,65 @@ namespace Careminster.Modules.XSearch
                 uint queryFlags, uint searchType, int price, int area,
                 int queryStart)
         {
-            Hashtable ReqHash = new Hashtable();
-            ReqHash["flags"] = queryFlags.ToString();
-            ReqHash["type"] = searchType.ToString();
-            ReqHash["price"] = price.ToString();
-            ReqHash["area"] = area.ToString();
-            ReqHash["query_start"] = queryStart.ToString();
+            List<string> terms = new List<string>();
+            string order = String.Empty;
 
-            Hashtable result = GenericXMLRPCRequest(ReqHash,
-                    "dir_land_query");
+            if ((queryFlags & 0x80000) != 0)
+                order = " order by Name";
+            if ((queryFlags & 0x10000) != 0)
+                order = " order by SalePrice";
+            if ((queryFlags & 0x40000) != 0)
+                order = " order by Area";
+            if ((queryFlags & 0x8000) != 0 && order != String.Empty)
+                order += " desc";
 
-            if (!Convert.ToBoolean(result["success"]))
+            terms.Add("ForSale <> 0");
+
+            if ((queryFlags & 0x100000) != 0)
+                terms.Add("SalePrice <= " + price.ToString());
+            if ((queryFlags & 0x200000) != 0)
+                terms.Add("Area >= " + area.ToString());
+
+            if ((searchType & 26) == 2)
             {
-                remoteClient.SendAgentAlertMessage(
-                        result["errorMessage"].ToString(), false);
+                remoteClient.SendAgentAlertMessage("No auctions listed", false);
+                DirLandReplyData[] nodata = new DirLandReplyData[0];
+                remoteClient.SendDirLandReply(queryID, nodata);
                 return;
             }
 
-            ArrayList dataArray = (ArrayList)result["data"];
+            if ((searchType & 24) == 8)
+                terms.Add("ParentEstate = 1");
+            if ((searchType & 24) == 16)
+                terms.Add("ParentEstate <> 1");
 
-            int count = dataArray.Count;
+            // <= 1.22
+            if ((queryFlags & 0x4800) == 0x800)
+                terms.Add("AccessLevel < 21");
+            if ((queryFlags & 0x4800) == 0x4000)
+                terms.Add("AccessLevel > 20 and AccessLevel < 42");
+
+            // >= 1.23
+            if ((queryFlags & 0x1000000) != 0)
+                terms.Add("AccessLevel = 13");
+            if ((queryFlags & 0x2000000) != 0)
+                terms.Add("AccessLevel = 21");
+            if ((queryFlags & 0x4000000) != 0)
+                terms.Add("AccessLevel = 42");
+
+            string where = String.Join(" and ", terms.ToArray()) + order;
+            XSearchParcel[] parcels = m_ParcelsTable.Get(where);
+ 
+            int count = parcels.Length;
+            if (count < queryStart)
+            {
+                DirLandReplyData[] nodata = new DirLandReplyData[0];
+                remoteClient.SendDirLandReply(queryID, nodata);
+                return;
+            }
+
+            count -= queryStart;
+
             if (count > 100)
                 count = 101;
 
@@ -389,23 +428,18 @@ namespace Careminster.Modules.XSearch
 
             int i = 0;
 
-            foreach (Object o in dataArray)
+            for (int idx = queryStart ; idx < queryStart + count ; idx++)
             {
-                Hashtable d = (Hashtable)o;
-
-                if (d["name"] == null)
-                    continue;
+                XSearchParcel p = parcels[idx];
 
                 data[i] = new DirLandReplyData();
-                data[i].parcelID = new UUID(d["parcel_id"].ToString());
-                data[i].name = d["name"].ToString();
-                data[i].auction = Convert.ToBoolean(d["auction"]);
-                data[i].forSale = Convert.ToBoolean(d["for_sale"]);
-                data[i].salePrice = Convert.ToInt32(d["sale_price"]);
-                data[i].actualArea = Convert.ToInt32(d["area"]);
+                data[i].parcelID = p.FakeID;
+                data[i].name = p.Data["Name"];
+                data[i].auction = false;
+                data[i].forSale = true;
+                data[i].salePrice = Convert.ToInt32(p.Data["SalePrice"]);
+                data[i].actualArea = Convert.ToInt32(p.Data["Area"]);
                 i++;
-                if (i >= count)
-                    break;
             }
 
             remoteClient.SendDirLandReply(queryID, data);
@@ -777,6 +811,8 @@ namespace Careminster.Modules.XSearch
                 parcel.Data["ScopeID"] = m_Scene.RegionInfo.ScopeID.ToString();
                 parcel.Data["RegionHandle"] = m_Scene.RegionInfo.RegionHandle.ToString();
                 parcel.Data["Area"] = land.LandData.Area.ToString();
+                parcel.Data["ParentEstate"] = m_Scene.RegionInfo.EstateSettings.EstateID.ToString();
+                parcel.Data["AccessLevel"] = m_Scene.RegionInfo.AccessLevel.ToString();
 
                 m_ParcelsTable.Store(parcel);
             }
