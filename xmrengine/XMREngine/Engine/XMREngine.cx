@@ -394,7 +394,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
                 // Deep-copy, since TryGetValue only gives us a ref
                 // which can be modified once we release the lock
-                List<UUID> l2 = null;
+                List<UUID> l2 = new List<UUID>();
                 foreach (UUID id in list)
                     l2.Add(id);
                 list = l2;

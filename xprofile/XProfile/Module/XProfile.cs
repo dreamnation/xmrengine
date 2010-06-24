@@ -642,7 +642,8 @@ namespace Careminster.Profile
 
             if (prefs.Length == 0)
             {
-                remoteClient.SendUserInfoReply(false, true, String.Empty);
+                remoteClient.SendUserInfoReply(true, false, String.Empty);
+                return;
             }
 
             bool visible = false;
@@ -665,6 +666,7 @@ namespace Careminster.Profile
             if (prefs.Length == 0)
             {
                 p = new XProfileData();
+                p.Data = new Dictionary<string, string>();
                 p.UserID = remoteClient.AgentId;
             }
             else
