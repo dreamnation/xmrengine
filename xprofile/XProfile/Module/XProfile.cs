@@ -496,7 +496,7 @@ namespace Careminster.Profile
                     new Dictionary<UUID,string>();
 
             foreach (XProfileClassified c in classifieds)
-                ret[classifieds[0].ClassifiedID] = classifieds[0].Data["Name"];
+                ret[c.ClassifiedID] = c.Data["Name"];
 
             remoteClient.SendAvatarClassifiedReply(targetID,
                     ret);
@@ -603,6 +603,8 @@ namespace Careminster.Profile
 
                 cl.Data["ParcelID"] = p.currentParcelUUID.ToString();
             }
+
+            cl.Data["ScopeID"] = m_Scene.RegionInfo.ScopeID.ToString();
 
             if(m_ClassifiedsTable.Store(cl))
                 OnClassifiedInfoRequest(classifiedID, remoteClient);
