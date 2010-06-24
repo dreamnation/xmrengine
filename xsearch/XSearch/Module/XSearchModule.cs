@@ -712,8 +712,25 @@ namespace Careminster.Modules.XSearch
             m_LandTimer.Start();
         }
 
+        private void CreateTextElem(XmlDocument doc, XmlNode parent, string name, string content)
+        {
+            XmlElement elem = doc.CreateElement("", name, "");
+            parent.AppendChild(elem);
+
+            XmlNode tn = doc.CreateTextNode(content);
+            elem.AppendChild(tn);
+        }
+
         private void SendParcelData()
         {
+            XmlDocument doc = new XmlDocument();
+            XmlNode xmlnode = doc.CreateNode(XmlNodeType.XmlDeclaration,
+                    "", "");
+            doc.AppendChild(xmlnode);
+
+            XmlElement root = doc.CreateElement("", "Parcels", "");
+            doc.AppendChild(root);
+
             m_log.Debug("[XSEARCH]: Refreshing server parcels list");
 
             m_ParcelsTable.Delete("RegionID", m_Scene.RegionInfo.RegionID.ToString());
@@ -773,7 +790,48 @@ namespace Careminster.Modules.XSearch
                 parcel.Data["AccessLevel"] = m_Scene.RegionInfo.AccessLevel.ToString();
 
                 m_ParcelsTable.Store(parcel);
+
+                CreateTextElem(doc, root, "RegionID", m_Scene.RegionInfo.RegionID.ToString());
+
+                if ((land.LandData.Flags & (uint)ParcelFlags.ShowDirectory) != 0)
+                {
+                    XmlElement parcelElem = doc.CreateElement("", "Parcel", "");
+                    root.AppendChild(parcelElem);
+
+                    CreateTextElem(doc, parcelElem, "FakeID", Util.BuildFakeParcelID(
+                            m_Scene.RegionInfo.RegionHandle, x, y).ToString());
+
+                    CreateTextElem(doc, parcelElem, "RegionID", m_Scene.RegionInfo.RegionID.ToString());
+                    CreateTextElem(doc, parcelElem, "ParcelID", land.LandData.GlobalID.ToString());
+                    CreateTextElem(doc, parcelElem, "OwnerID", land.LandData.OwnerID.ToString());
+
+                    CreateTextElem(doc, parcelElem, "LandingPoint", userLocation.ToString());
+                    CreateTextElem(doc, parcelElem, "ImageID", land.LandData.SnapshotID.ToString());
+                    CreateTextElem(doc, parcelElem, "GroupID", land.LandData.GroupID.ToString());
+                    CreateTextElem(doc, parcelElem, "Name", land.LandData.Name);
+                    CreateTextElem(doc, parcelElem, "Description", land.LandData.Description);
+
+                    string forsale = "0";
+                    if ((land.LandData.Flags & (uint)ParcelFlags.ForSale) != 0)
+                        forsale = "1";
+                    CreateTextElem(doc, parcelElem, "ForSale", forsale);
+
+                    CreateTextElem(doc, parcelElem, "Flags", land.LandData.Flags.ToString());
+                    CreateTextElem(doc, parcelElem, "SalePrice", land.LandData.SalePrice.ToString());
+                    CreateTextElem(doc, parcelElem, "AuthBuyerID", land.LandData.AuthBuyerID.ToString());
+                    CreateTextElem(doc, parcelElem, "ScopeID", m_Scene.RegionInfo.ScopeID.ToString());
+                    CreateTextElem(doc, parcelElem, "RegionHandle", m_Scene.RegionInfo.RegionHandle.ToString());
+                    CreateTextElem(doc, parcelElem, "Area", land.LandData.Area.ToString());
+                    CreateTextElem(doc, parcelElem, "ParentEstate", m_Scene.RegionInfo.EstateSettings.EstateID.ToString());
+                    CreateTextElem(doc, parcelElem, "AccessLevel", m_Scene.RegionInfo.AccessLevel.ToString());
+                    CreateTextElem(doc, parcelElem, "Category", ((sbyte)land.LandData.Category).ToString());
+                }
             }
+            
+            Hashtable args = new Hashtable();
+            args["Regions"] = doc.InnerXml;
+
+            GenericXMLRPCRequest(args, "set_parcels");
         }
 
         private void findPointInParcel(ILandObject land, ref uint refX, ref uint refY)
