@@ -196,7 +196,6 @@ namespace Careminster.Modules.XSearch
             // Grab search requests
             client.OnDirPlacesQuery += DirPlacesQuery;
             client.OnDirFindQuery += DirFindQuery;
-            client.OnDirPopularQuery += DirPopularQuery;
             client.OnDirLandQuery += DirLandQuery;
             client.OnDirClassifiedQuery += DirClassifiedQuery;
             // Response after Directory Queries
@@ -315,47 +314,6 @@ namespace Careminster.Modules.XSearch
             }
 
             remoteClient.SendDirPlacesReply(queryID, data);
-        }
-
-        public void DirPopularQuery(IClientAPI remoteClient, UUID queryID, uint queryFlags)
-        {
-            Hashtable ReqHash = new Hashtable();
-            ReqHash["flags"] = queryFlags.ToString();
-
-            Hashtable result = GenericXMLRPCRequest(ReqHash,
-                    "dir_popular_query");
-
-            if (!Convert.ToBoolean(result["success"]))
-            {
-                remoteClient.SendAgentAlertMessage(
-                        result["errorMessage"].ToString(), false);
-                return;
-            }
-
-            ArrayList dataArray = (ArrayList)result["data"];
-
-            int count = dataArray.Count;
-            if (count > 100)
-                count = 101;
-
-            DirPopularReplyData[] data = new DirPopularReplyData[count];
-
-            int i = 0;
-
-            foreach (Object o in dataArray)
-            {
-                Hashtable d = (Hashtable)o;
-
-                data[i] = new DirPopularReplyData();
-                data[i].parcelID = new UUID(d["parcel_id"].ToString());
-                data[i].name = d["name"].ToString();
-                data[i].dwell = Convert.ToSingle(d["dwell"]);
-                i++;
-                if (i >= count)
-                    break;
-            }
-
-            remoteClient.SendDirPopularReply(queryID, data);
         }
 
         public void DirLandQuery(IClientAPI remoteClient, UUID queryID,
