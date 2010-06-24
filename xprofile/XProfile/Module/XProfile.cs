@@ -67,6 +67,7 @@ namespace Careminster.Profile
         private MySQLGenericTableHandler<XProfileData> m_InterestsTable;
         private MySQLGenericTableHandler<XProfileNote> m_NotesTable;
         private MySQLGenericTableHandler<XProfileClassified> m_ClassifiedsTable;
+        private MySQLGenericTableHandler<XProfileData> m_PrefsTable;
         private Scene m_Scene;
         private IMoneyModule m_MoneyModule = null;
 
@@ -98,6 +99,8 @@ namespace Careminster.Profile
                     m_ConnectionString, "XProfileNotes", String.Empty);
             m_ClassifiedsTable = new MySQLGenericTableHandler<XProfileClassified>(
                     m_ConnectionString, "XProfileClassifieds", String.Empty);
+            m_PrefsTable = new MySQLGenericTableHandler<XProfileData>(
+                    m_ConnectionString, "XProfilePrefs", String.Empty);
 
             m_Enabled = true;
 
@@ -159,6 +162,8 @@ namespace Careminster.Profile
             client.OnClassifiedInfoRequest += OnClassifiedInfoRequest;
             client.OnClassifiedInfoUpdate += OnClassifiedInfoUpdate;
             client.OnClassifiedDelete += OnClassifiedDelete;
+            client.OnUserInfoRequest += UserPreferencesRequest;
+            client.OnUpdateUserInfo += UpdateUserPreferences;
 
             client.OnLogout += OnClientClosed;
         }
@@ -628,6 +633,54 @@ namespace Careminster.Profile
 
             m_ClassifiedsTable.Delete("ClassifiedID",
                     queryClassifiedID.ToString());
+        }
+        
+        public void UserPreferencesRequest(IClientAPI remoteClient)
+        {
+            XProfileData[] prefs = m_PrefsTable.Get("UserID",
+                    remoteClient.AgentId.ToString());
+
+            if (prefs.Length == 0)
+            {
+                remoteClient.SendUserInfoReply(false, true, String.Empty);
+            }
+
+            bool visible = false;
+            if (Convert.ToInt32(prefs[0].Data["Visible"]) > 0)
+                visible = true;
+
+            bool imtoemail = false;
+            if (Convert.ToInt32(prefs[0].Data["IMToEmail"]) > 0)
+                imtoemail = true;
+
+            remoteClient.SendUserInfoReply(imtoemail, visible, String.Empty);
+        }
+
+        public void UpdateUserPreferences(bool imViaEmail, bool visible, IClientAPI remoteClient)
+        {
+            XProfileData[] prefs = m_PrefsTable.Get("UserID",
+                    remoteClient.AgentId.ToString());
+
+            XProfileData p;
+            if (prefs.Length == 0)
+            {
+                p = new XProfileData();
+                p.UserID = remoteClient.AgentId;
+            }
+            else
+            {
+                p = prefs[0];
+            }
+
+            p.Data["Visible"] = "0";
+            if (visible)
+                p.Data["Visible"] = "1";
+
+            p.Data["IMToEmail"] = "0";
+            if (imViaEmail)
+                p.Data["IMToEmail"] = "1";
+
+            m_PrefsTable.Store(p);
         }
     }
 }
