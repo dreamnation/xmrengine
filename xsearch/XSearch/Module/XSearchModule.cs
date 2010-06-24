@@ -643,12 +643,15 @@ namespace Careminster.Modules.XSearch
         }
 
         public void HandleMapItemRequest(IClientAPI remoteClient, uint flags,
-                                                 uint EstateID, bool godlike, uint itemtype, ulong regionhandle)
+                 uint EstateID, bool godlike, uint itemtype, ulong regionhandle)
         {
             // This lets the map show the yellow "sale" overlays
             if (itemtype == 7) //(land sales)
             {
                 List<string> terms = new List<string>();
+
+                // This is 0 from the viewer. Override it
+                regionhandle = m_Scene.RegionInfo.RegionHandle;
 
                 terms.Add("RegionHandle=" + regionhandle.ToString());
                 terms.Add("ForSale <> 0");
