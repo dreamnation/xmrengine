@@ -16,6 +16,8 @@
      <Reference name="GitSharp.dll" />
      <Reference name="log4net.dll" />
      <Reference name="Nini.dll" />
+     <Reference name="OpenMetaverse.dll" />
+     <Reference name="OpenMetaverseTypes.dll" />
      <Reference name="OpenSim.Framework" />
      <Reference name="OpenSim.Framework.Console" />
      <Reference name="OpenSim.Region.Framework" />
