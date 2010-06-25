@@ -385,6 +385,7 @@ namespace Careminster.Modules.XSearch
             if ((queryFlags & 0x4000000) != 0)
                 terms.Add("AccessLevel = 42");
 
+            terms.Add("ScopeID='" + m_Scene.RegionInfo.ScopeID.ToString() + "'");
             string where = String.Join(" and ", terms.ToArray()) + order;
             XSearchParcel[] parcels = m_ParcelsTable.Get(where);
  
@@ -489,6 +490,7 @@ namespace Careminster.Modules.XSearch
 
             if (args[2] != String.Empty)
                 terms.Add("match(Name, Description) against ('" + args[2] + "')");
+            terms.Add("ScopeID='" + m_Scene.RegionInfo.ScopeID.ToString() + "'");
             string where = String.Join(" and ", terms.ToArray());
 
             XSearchEvent[] events = m_EventsTable.Get(where);
