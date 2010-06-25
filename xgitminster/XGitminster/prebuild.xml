@@ -1,0 +1,20 @@
+   <Project name="XGitminster.Module" path="addon-modules/XGitminster/Module" type="Library">
+     <Configuration name="Debug">
+       <Options>
+         <OutputPath>../../../bin/</OutputPath>
+       </Options>
+     </Configuration>
+     <Configuration name="Release">
+       <Options>
+         <OutputPath>../../../bin/</OutputPath>
+       </Options>
+     </Configuration>
+
+     <ReferencePath>../../../bin/</ReferencePath>
+     <Reference name="System" localCopy="false"/>
+     <Reference name="System.Xml"/>
+     <Files>
+       <Match pattern="*.cs" recurse="true"/>
+       <Match pattern="*.addin.xml" buildAction="EmbeddedResource" recurse="true"/>
+     </Files>
+   </Project>
