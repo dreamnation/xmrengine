@@ -48,6 +48,12 @@ namespace Careminster.Modules.XSearch
         public Dictionary<string, string> Data;
     }
 
+    public class XSearchEvent
+    {
+        public int EventID;
+        public Dictionary<string,string> Data;
+    }
+
     [Flags]
     public enum ClassifiedFlags
     {
@@ -80,7 +86,9 @@ namespace Careminster.Modules.XSearch
         private string m_ConnectionString;
         private MySQLGenericTableHandler<XProfileClassified> m_ClassifiedsTable;
         private MySQLGenericTableHandler<XSearchParcel> m_ParcelsTable;
+        private MySQLGenericTableHandler<XSearchEvent> m_EventsTable;
         private bool m_FreshStart = true;
+        private IDwellModule m_DwellModule = null;
 
         public void Initialise(IConfigSource config)
         {
@@ -118,6 +126,8 @@ namespace Careminster.Modules.XSearch
                     m_ConnectionString, "XProfileClassifieds", String.Empty);
             m_ParcelsTable = new MySQLGenericTableHandler<XSearchParcel>(
                     m_ConnectionString, "XSearchParcels", String.Empty);
+            m_EventsTable = new MySQLGenericTableHandler<XSearchEvent>(
+                    m_ConnectionString, "XSearchEvents", String.Empty);
 
             m_Enabled = true;
             m_log.Info("[XSEARCH]: XSearch enabled");
@@ -139,6 +149,7 @@ namespace Careminster.Modules.XSearch
 
         public void RegionLoaded(Scene scene)
         {
+            m_DwellModule = scene.RequestModuleInterface<IDwellModule>();
         }
 
         public void RemoveRegion(Scene scene)
@@ -272,14 +283,14 @@ namespace Careminster.Modules.XSearch
                 int queryStart)
         {
             Hashtable ReqHash = new Hashtable();
-            ReqHash["text"] = queryText;
-            ReqHash["flags"] = queryFlags.ToString();
-            ReqHash["category"] = category.ToString();
-            ReqHash["sim_name"] = simName;
-            ReqHash["query_start"] = queryStart.ToString();
+            ReqHash["Term"] = queryText;
+            ReqHash["Flags"] = queryFlags.ToString();
+            ReqHash["Category"] = category.ToString();
+            ReqHash["ScopeID"] = m_Scene.RegionInfo.ScopeID.ToString();
+            ReqHash["Skip"] = queryStart.ToString();
 
             Hashtable result = GenericXMLRPCRequest(ReqHash,
-                    "dir_places_query");
+                    "query");
 
             if (!Convert.ToBoolean(result["success"]))
             {
@@ -288,11 +299,9 @@ namespace Careminster.Modules.XSearch
                 return;
             }
 
-            ArrayList dataArray = (ArrayList)result["data"];
+            ArrayList dataArray = (ArrayList)result["result"];
 
             int count = dataArray.Count;
-            if (count > 100)
-                count = 101;
 
             DirPlacesReplyData[] data = new DirPlacesReplyData[count];
 
@@ -300,17 +309,27 @@ namespace Careminster.Modules.XSearch
 
             foreach (Object o in dataArray)
             {
-                Hashtable d = (Hashtable)o;
+                XSearchParcel[] parcels = m_ParcelsTable.Get("ParcelID", o.ToString());
+                if (parcels.Length == 0)
+                    return;
+
+                XSearchParcel p = parcels[0];
+
+                bool forSale = false;
+                if (Convert.ToInt32(p.Data["ForSale"]) > 0)
+                    forSale = true;
 
                 data[i] = new DirPlacesReplyData();
-                data[i].parcelID = new UUID(d["parcel_id"].ToString());
-                data[i].name = d["name"].ToString();
-                data[i].forSale = Convert.ToBoolean(d["for_sale"]);
-                data[i].auction = Convert.ToBoolean(d["auction"]);
-                data[i].dwell = Convert.ToSingle(d["dwell"]);
+                data[i].parcelID = p.FakeID;
+                data[i].name = p.Data["Name"];
+                data[i].forSale = forSale;
+                data[i].auction = false;
+                if (m_DwellModule != null)
+                    data[i].dwell = m_DwellModule.GetDwell(p.ParcelID);
+                else
+                    data[i].dwell = 0;
+
                 i++;
-                if (i >= count)
-                    break;
             }
 
             remoteClient.SendDirPlacesReply(queryID, data);
@@ -448,45 +467,57 @@ namespace Careminster.Modules.XSearch
         public void DirEventsQuery(IClientAPI remoteClient, UUID queryID,
                 string queryText, uint queryFlags, int queryStart)
         {
-            Hashtable ReqHash = new Hashtable();
-            ReqHash["text"] = queryText;
-            ReqHash["flags"] = queryFlags.ToString();
-            ReqHash["query_start"] = queryStart.ToString();
+            List<string> terms = new List<string>();
+            
+            if ((queryFlags & 0x1000000) == 0)
+                terms.Add("Maturity <> 13");
+            if ((queryFlags & 0x2000000) == 0)
+                terms.Add("Maturity <> 21");
+            if ((queryFlags & 0x4000000) == 0)
+                terms.Add("Maturity <> 42");
 
-            Hashtable result = GenericXMLRPCRequest(ReqHash,
-                    "dir_events_query");
+            string[] args = queryText.Split(new char[] {'|'});
+            // TODO: Factor in duration
+            if (args[0] == "u")
+                terms.Add("date_add(from_unixtime(StartTime), interval Duration minute) >= utc_timestamp()");
+            else
+                terms.Add(String.Format("date(from_unixtime(StartTime)) = date(date_add(now(), interval {0} day))", args[0]));
 
-            if (!Convert.ToBoolean(result["success"]))
+            int category = Convert.ToInt32(args[1]);
+            if (category > 0)
+                terms.Add("Category="+category.ToString());
+
+            if (args[2] != String.Empty)
+                terms.Add("match(Name, Description) against ('" + args[2] + "')");
+            string where = String.Join(" and ", terms.ToArray());
+
+            XSearchEvent[] events = m_EventsTable.Get(where);
+
+            if (events.Length < queryStart)
             {
-                remoteClient.SendAgentAlertMessage(
-                        result["errorMessage"].ToString(), false);
+                DirEventsReplyData[] nodata = new DirEventsReplyData[0];
+                remoteClient.SendDirEventsReply(queryID, nodata);
                 return;
             }
 
-            ArrayList dataArray = (ArrayList)result["data"];
-
-            int count = dataArray.Count;
+            int count = events.Length;
+            count -= queryStart;
             if (count > 100)
                 count = 101;
 
-            DirEventsReplyData[] data = new DirEventsReplyData[count];
-
             int i = 0;
 
-            foreach (Object o in dataArray)
+            DirEventsReplyData[] data = new DirEventsReplyData[count];
+            for (int idx = queryStart ; idx < queryStart + count ; idx++)
             {
-                Hashtable d = (Hashtable)o;
-
                 data[i] = new DirEventsReplyData();
-                data[i].ownerID = new UUID(d["owner_id"].ToString());
-                data[i].name = d["name"].ToString();
-                data[i].eventID = Convert.ToUInt32(d["event_id"]);
-                data[i].date = d["date"].ToString();
-                data[i].unixTime = Convert.ToUInt32(d["unix_time"]);
-                data[i].eventFlags = Convert.ToUInt32(d["event_flags"]);
+                data[i].ownerID = new UUID(events[idx].Data["CreatorID"].ToString());
+                data[i].name = events[idx].Data["Name"];
+                data[i].eventID = (uint)events[idx].EventID;
+                data[i].date = events[idx].Data["EventDate"];
+                data[i].unixTime = Convert.ToUInt32(events[idx].Data["StartTime"]);
+                data[i].eventFlags = Convert.ToUInt32(events[idx].Data["Flags"]);
                 i++;
-                if (i >= count)
-                    break;
             }
 
             remoteClient.SendDirEventsReply(queryID, data);
@@ -500,9 +531,9 @@ namespace Careminster.Modules.XSearch
 
             List<string> terms = new List<string>();
 
-            terms.Add("(match(description) against ('" + queryText + "') or " +
-                      "match(name) against ('" + queryText + "'))");
-            if (category != 0)
+            terms.Add("match(Name,Description) against ('" + queryText + "')");
+
+            if (category != -1)
                 terms.Add("category = '" + category.ToString() + "'");
             queryFlags &= (uint)(ClassifiedQueryFlags.IncludePG |
                                  ClassifiedQueryFlags.IncludeMature |
@@ -556,46 +587,28 @@ namespace Careminster.Modules.XSearch
 
         public void EventInfoRequest(IClientAPI remoteClient, uint queryEventID)
         {
-            Hashtable ReqHash = new Hashtable();
-            ReqHash["eventID"] = queryEventID.ToString();
-
-            Hashtable result = GenericXMLRPCRequest(ReqHash,
-                    "event_info_query");
-
-            if (!Convert.ToBoolean(result["success"]))
+            XSearchEvent[] events = m_EventsTable.Get("EventID", queryEventID.ToString());
+            if (events.Length != 1)
             {
-                remoteClient.SendAgentAlertMessage(
-                        result["errorMessage"].ToString(), false);
                 return;
             }
 
-            ArrayList dataArray = (ArrayList)result["data"];
-            if (dataArray.Count == 0)
-            {
-                // something bad happened here, if we could return an
-                // event after the search,
-                // we should be able to find it here
-                // TODO do some (more) sensible error-handling here
-                remoteClient.SendAgentAlertMessage("Couldn't find event.",
-                        false);
-                return;
-            }
+            XSearchEvent e = events[0];
 
-            Hashtable d = (Hashtable)dataArray[0];
             EventData data = new EventData();
-            data.eventID = Convert.ToUInt32(d["event_id"]);
-            data.creator = d["creator"].ToString();
-            data.name = d["name"].ToString();
-            data.category = d["category"].ToString();
-            data.description = d["description"].ToString();
-            data.date = d["date"].ToString();
-            data.dateUTC = Convert.ToUInt32(d["dateUTC"]);
-            data.duration = Convert.ToUInt32(d["duration"]);
-            data.cover = Convert.ToUInt32(d["covercharge"]);
-            data.amount = Convert.ToUInt32(d["coveramount"]);
-            data.simName = d["simname"].ToString();
-            Vector3.TryParse(d["globalposition"].ToString(), out data.globalPos);
-            data.eventFlags = Convert.ToUInt32(d["eventflags"]);
+            data.eventID = (uint)e.EventID;
+            data.creator = e.Data["CreatorID"];
+            data.name = e.Data["Name"];
+            data.category = e.Data["CategoryText"];
+            data.description = e.Data["Description"];
+            data.date = e.Data["EventDate"];
+            data.dateUTC = Convert.ToUInt32(e.Data["StartTime"]);
+            data.duration = Convert.ToUInt32(e.Data["Duration"]);
+            data.cover = Convert.ToUInt32(e.Data["Cover"]);
+            data.amount = Convert.ToUInt32(e.Data["CoverAmount"]);
+            data.simName = e.Data["RegionName"];
+            Vector3.TryParse(e.Data["GlobalPosition"].ToString(), out data.globalPos);
+            data.eventFlags = Convert.ToUInt32(e.Data["Flags"]);
 
             remoteClient.SendEventInfoReply(data);
         }
