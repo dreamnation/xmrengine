@@ -534,7 +534,8 @@ namespace Careminster.Modules.XSearch
 
             List<string> terms = new List<string>();
 
-            terms.Add("match(Name,Description) against ('" + queryText + "')");
+            if (queryText != String.Empty)
+                terms.Add("match(Name,Description) against ('" + queryText + "')");
 
             if (category != 0)
                 terms.Add("category = '" + category.ToString() + "'");
