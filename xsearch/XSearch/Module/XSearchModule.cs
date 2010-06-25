@@ -378,15 +378,16 @@ namespace Careminster.Modules.XSearch
                 terms.Add("AccessLevel > 20 and AccessLevel < 42");
 
             // >= 1.23
-            if ((queryFlags & 0x1000000) != 0)
-                terms.Add("AccessLevel = 13");
-            if ((queryFlags & 0x2000000) != 0)
-                terms.Add("AccessLevel = 21");
-            if ((queryFlags & 0x4000000) != 0)
-                terms.Add("AccessLevel = 42");
+            if ((queryFlags & 0x1000000) == 0)
+                terms.Add("AccessLevel <> 13");
+            if ((queryFlags & 0x2000000) == 0)
+                terms.Add("AccessLevel <> 21");
+            if ((queryFlags & 0x4000000) == 0)
+                terms.Add("AccessLevel <> 42");
 
             terms.Add("ScopeID='" + m_Scene.RegionInfo.ScopeID.ToString() + "'");
             string where = String.Join(" and ", terms.ToArray()) + order;
+            m_log.Debug(where);
             XSearchParcel[] parcels = m_ParcelsTable.Get(where);
  
             int count = parcels.Length;
@@ -480,7 +481,7 @@ namespace Careminster.Modules.XSearch
             string[] args = queryText.Split(new char[] {'|'});
             // TODO: Factor in duration
             if (args[0] == "u")
-                terms.Add("date_add(from_unixtime(StartTime), interval Duration minute) >= utc_timestamp()");
+                terms.Add("date_add(from_unixtime(StartTime), interval Duration minute) >= now()");
             else
                 terms.Add(String.Format("date(from_unixtime(StartTime)) = date(date_add(now(), interval {0} day))", args[0]));
 
@@ -535,7 +536,7 @@ namespace Careminster.Modules.XSearch
 
             terms.Add("match(Name,Description) against ('" + queryText + "')");
 
-            if (category != -1)
+            if (category != 0)
                 terms.Add("category = '" + category.ToString() + "'");
             queryFlags &= (uint)(ClassifiedQueryFlags.IncludePG |
                                  ClassifiedQueryFlags.IncludeMature |
@@ -548,6 +549,7 @@ namespace Careminster.Modules.XSearch
                     "' or ScopeID='00000000-0000-0000-0000-000000000000')");
 
             string where = String.Join(" and ", terms.ToArray());
+            m_log.Debug(where);
 
             XProfileClassified[] classifieds = 
                     m_ClassifiedsTable.Get(where); 
