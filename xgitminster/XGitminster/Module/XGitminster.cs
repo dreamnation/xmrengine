@@ -1,688 +1,772 @@
 //////////////////////////////////////////////////////////////////////////////
 //
-// (c) 2009, 2001 Careminster Linited and Melanie Thielker
+// (c) 2010, Careminster Limited, Magne Metaverse Research and Thomas Grimshaw
 //
 // All Rights Reserved.
 //
 
 using System;
-using System.Globalization;
-using System.Collections.Generic;
+using System.Linq;
+using System.IO;
 using System.Reflection;
-using OpenSim.Framework;
-using OpenSim.Region.Framework.Interfaces;
-using OpenSim.Region.Framework.Scenes;
-using OpenSim.Data;
-using OpenSim.Data.MySQL;
-using OpenMetaverse;
+using System.Xml;
+using System.Xml.Linq;
+using System.Collections.Generic;
+using System.Collections.Specialized;
+
 using Nini.Config;
 using log4net;
-using Mono.Addins;
-using OpenSim.Services.Interfaces;
-using PresenceInfo = OpenSim.Services.Interfaces.PresenceInfo;
+using OpenMetaverse;
+using OpenSim.Framework;
+using OpenSim.Framework.Console;
+using OpenSim.Region.Framework.Interfaces;
+using OpenSim.Region.CoreModules.Framework.InterfaceCommander;
+using OpenSim.Region.Framework.Scenes.Serialization;
+using OpenSim.Region.Framework.Scenes;
+using GitSharp;
+using GitSharp.Commands;
 
-[assembly: Addin("XProfile", "0.1")]
-[assembly: AddinDependency("OpenSim", "0.5")]
-
-namespace Careminster.Profile
+namespace Careminster.Git
 {
-    public class XProfileData
+    public class Gitminster : IRegionModule, ICommandableModule
     {
-        public UUID UserID;
-        public Dictionary<string, string> Data;
-    }
-
-    public class XProfilePick
-    {
-        public UUID UserID;
-        public UUID PickID;
-        public Dictionary<string, string> Data;
-    }
-
-    public class XProfileNote
-    {
-        public UUID UserID;
-        public UUID AvatarID;
-        public Dictionary<string, string> Data;
-    }
-
-    public class XProfileClassified
-    {
-        public UUID UserID;
-        public UUID ClassifiedID;
-        public Dictionary<string, string> Data;
-    }
-
-    [Extension(Path = "/OpenSim/RegionModules", NodeName = "RegionModule", Id = "XProfile")]
-    public class XProfile : INonSharedRegionModule
-    {
-        private static readonly ILog m_log = LogManager.GetLogger(
-                MethodBase.GetCurrentMethod().DeclaringType);
-
-        private IConfig m_Config;
-        private bool m_Enabled = false;
-        private string m_ConnectionString;
-        private MySQLGenericTableHandler<XProfileData> m_ProfileTable;
-        private MySQLGenericTableHandler<XProfilePick> m_PicksTable;
-        private MySQLGenericTableHandler<XProfileData> m_InterestsTable;
-        private MySQLGenericTableHandler<XProfileNote> m_NotesTable;
-        private MySQLGenericTableHandler<XProfileClassified> m_ClassifiedsTable;
-        private MySQLGenericTableHandler<XProfileData> m_PrefsTable;
-        private Scene m_Scene;
-        private IMoneyModule m_MoneyModule = null;
-
-        public void Initialise(IConfigSource config)
+        private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private bool m_Enabled; //Git connector enabled
+        private string m_repoPath = "git";
+        private IConfigSource m_Config;
+        private Scene m_scene;
+        private readonly Commander m_commander = new Commander("git");
+        public ICommander CommandInterface
         {
-            m_Config = config.Configs["Profile"];
-            if (m_Config == null)
-                return;
-
-            if (m_Config.GetString("Module", String.Empty) != Name)
-                return;
-
-
-            m_ConnectionString = m_Config.GetString("DatabaseConnect",
-                    String.Empty);
-            if (m_ConnectionString == String.Empty)
-            {
-                m_log.Error("[XProfile]: XProfile module enabled but no DatabaseConnect in [Profile]");
-                return;
-            }
-
-            m_ProfileTable = new MySQLGenericTableHandler<XProfileData>(
-                    m_ConnectionString, "XProfile", String.Empty);
-            m_PicksTable = new MySQLGenericTableHandler<XProfilePick>(
-                    m_ConnectionString, "XProfilePicks", String.Empty);
-            m_InterestsTable = new MySQLGenericTableHandler<XProfileData>(
-                    m_ConnectionString, "XProfileInterests", String.Empty);
-            m_NotesTable = new MySQLGenericTableHandler<XProfileNote>(
-                    m_ConnectionString, "XProfileNotes", String.Empty);
-            m_ClassifiedsTable = new MySQLGenericTableHandler<XProfileClassified>(
-                    m_ConnectionString, "XProfileClassifieds", String.Empty);
-            m_PrefsTable = new MySQLGenericTableHandler<XProfileData>(
-                    m_ConnectionString, "XProfilePrefs", String.Empty);
-
-            m_Enabled = true;
-
-            m_log.Info("[XProfile]: Module enabled");
+            get { return m_commander; }
         }
-
-        public void AddRegion(Scene scene)
-        {
-            m_Scene = scene;
-
-            m_Scene.EventManager.OnNewClient += OnNewClient;
-        }
-
-        public void RemoveRegion(Scene scene)
-        {
-            m_Scene.EventManager.OnNewClient -= OnNewClient;
-            m_Scene = null;
-        }
-
-        public void RegionLoaded(Scene scene)
-        {
-            m_MoneyModule = m_Scene.RequestModuleInterface<IMoneyModule>();
-        }
+        private Repository m_repo;
+        private OrderedDictionary m_ToUpdate = new OrderedDictionary();
+        private HashSet<string> m_Added = new HashSet<string>();
+        private OrderedDictionary m_ToDelete = new OrderedDictionary();
+        private int frame = 0;
+        private bool m_NeedsCommit = false;
+        private int m_changes = 0;
 
         public string Name
         {
-            get { return "XProfile"; }
+            get
+            {
+                return "Gitminster";
+            }
+        }
+        public bool IsSharedModule
+        {
+            get
+            {
+                return false;
+            }
         }
 
-        public Type ReplaceableInterface
+        public void Initialise(Scene scene, IConfigSource config)
         {
-            get { return null; }
+            IConfig gitConfig = config.Configs["Git"];
+
+            if (gitConfig == null)
+            {
+                m_log.Info("[Git] Gitminster module disabled");
+                return;
+            }
+            else
+            {
+                m_Enabled = gitConfig.GetBoolean("Enabled", false);
+                if (!m_Enabled)
+                {
+                    m_log.Info("[Git] Gitminster module disabled");
+                    return;
+                }
+                m_scene = scene;
+                m_scene.RegisterModuleInterface<IRegionModule>(this);
+                m_scene.EventManager.OnPluginConsole += onPluginConsole;
+
+                m_repoPath = gitConfig.GetString("RepoPath", "git");
+
+                if (!(m_repoPath.Substring(m_repoPath.Length - 1) == "/" || m_repoPath.Substring(m_repoPath.Length - 1) == "\\"))
+                {
+                    m_repoPath += "\\";
+                }
+                m_repoPath += scene.RegionInfo.RegionID.ToString()+"\\";
+
+                if (!Directory.Exists(m_repoPath))
+                {
+                    m_log.Debug("[Git] Creating path "+m_repoPath);
+                    try
+                    {
+                        Directory.CreateDirectory(m_repoPath);
+                    }
+                    catch
+                    {
+                        m_log.Error("[Git] Couldn't create repo directory. Module disabled.");
+                        m_Enabled = false;
+                        return;
+                    }
+                }
+                
+            }
+
+            m_Enabled = true;
+
+            m_Config = config;
+
+            m_repo = new Repository(m_repoPath);
+            if (Repository.IsValid(m_repoPath, false))
+            {
+                //Use existing repo
+                m_log.Debug("[Git] Found existing repository for region " + m_scene.RegionInfo.RegionName);
+                m_repo = new Repository(m_repoPath);
+            }
+            else
+            {
+                //Initialise a new repo
+                m_log.Debug("[Git] Creating a new repository for region " + m_scene.RegionInfo.RegionName);
+                Repository.Init(m_repoPath, false);
+                m_repo = new Repository(m_repoPath);
+            }
+
+            if (m_repo.Status.Added.Count > 0 || m_repo.Status.Removed.Count > 0)
+            {
+                Commit commit = m_repo.Commit("Uncommitted local changes - region crash", new Author(m_scene.RegionInfo.RegionName, m_scene.RegionInfo.RegionID.ToString() + "@meta7.com"));
+                m_log.Debug("[Git] Committing changes which were queued before the region crashed");
+            }
+
+            InstallCommands();
+
+            m_scene.SceneGraph.OnAttachToBackup += onAttachToBackup;
+            m_scene.SceneGraph.OnDetachFromBackup += onDetachFromBackup;
+            m_scene.SceneGraph.OnChangeBackup += onChangedBackup;
+            m_scene.EventManager.OnFrame += tick;
+            m_scene.EventManager.OnBackup += backup;
+
+        }
+        private void HandleCommit(Object[] args)
+        {
+            backup(null, true);
+            Commit("Requested by console", true);
+        }
+        private void DoClear(object o)
+        {
+            //Commit any uncommitted committy committs.
+            backup(null, true);
+            Commit("Preparing for clear", true);
+            
+
+            //Now, delete all scene objects.
+            m_log.Info("[Git] Clearing the scene..");
+            m_scene.DeleteAllSceneObjects();
+
+            //And delete all files from our git repo
+            Directory.SetCurrentDirectory(m_repoPath);
+            string[] fileEntries = Directory.GetFiles("objects\\");
+             lock (m_repo)
+            {                
+                foreach (string fileName in fileEntries)
+                {
+                    try
+                    {
+                        m_repo.Index.Delete(fileName);
+                        m_changes++;
+                        m_NeedsCommit = true;
+                    }
+                    catch
+                    {
+                        //Do nothing
+                    }
+                }
+            }
+
+            //Now commit
+            Commit("Clear command issued from the console", true);
+            m_log.Info("[Git] All done.");
+
+            m_scene.SceneGraph.OnAttachToBackup += onAttachToBackup;
+            m_scene.SceneGraph.OnDetachFromBackup += onDetachFromBackup;
+            m_scene.SceneGraph.OnChangeBackup += onChangedBackup;
+            m_scene.EventManager.OnFrame += tick;
+            m_scene.EventManager.OnBackup += backup;
+        }
+        private void DoRestore(object o)
+        {
+            try
+            {
+                bool safe = (bool)o;
+
+                //Now, delete all scene objects.
+                m_log.Info("[Git] Clearing the scene..");
+                m_scene.DeleteAllSceneObjects();
+
+                //Yay.
+                m_log.Info("[Git] Beginning object restore..");
+                string[] fileEntries = Directory.GetFiles(m_repoPath + "objects\\");
+                int files = 0;
+                foreach (string fileName in fileEntries)
+                {
+                    try
+                    {
+                        lock (m_repo) //Locking this here because we don't want to be doing this at the same time as something else.
+                        {
+                            files++;
+                            if ((files % 200) == 0)
+                            {
+                                m_log.Info("[Git] Restored " + files.ToString() + " objects");
+                            }
+                            StreamReader streamReader = new StreamReader(fileName);
+                            string data = streamReader.ReadToEnd();
+                            data = data.Substring(39);
+                            streamReader.Close();
+                            SceneObjectGroup sog = SceneXmlLoader.DeserializeGroupFromXml2(data);
+                            if (!safe || ((sog.GetEffectivePermissions() & (uint)PermissionMask.Copy) != 0)) // PERM_COPY
+                            {
+                                m_scene.AddSceneObject(sog);
+                                sog.HasGroupChanged = true;
+                                sog.SendGroupFullUpdate();
+                            }
+                            else
+                            {
+                                m_log.Info("[Git] Skipped '" + sog.Name + "' - No Copy");
+                            }
+                        }
+                    }
+                    catch(Exception e)
+                    {
+                        m_log.Error("[Git] Error restoring group, "+e.Message);
+                    }
+                }
+                m_log.Info("[Git] Restored " + files.ToString() + " prims. All done!");
+            }
+            finally
+            {
+                //Gimmeh mai events back
+                m_scene.SceneGraph.OnAttachToBackup += onAttachToBackup;
+                m_scene.SceneGraph.OnDetachFromBackup += onDetachFromBackup;
+                m_scene.SceneGraph.OnChangeBackup += onChangedBackup;
+                m_scene.EventManager.OnFrame += tick;
+                m_scene.EventManager.OnBackup += backup;
+            }
+        }
+        private void HandleClear(Object[] args)
+        {
+            //First, unhook from all events.
+            m_scene.SceneGraph.OnAttachToBackup -= onAttachToBackup;
+            m_scene.SceneGraph.OnDetachFromBackup -= onDetachFromBackup;
+            m_scene.SceneGraph.OnChangeBackup -= onChangedBackup;
+            m_scene.EventManager.OnFrame -= tick;
+            m_scene.EventManager.OnBackup -= backup;
+
+            Util.FireAndForget(DoClear, false);
+
+        }
+        private void HandleRestore(Object[] args)
+        {
+            //First, unhook from all events.
+            m_scene.SceneGraph.OnAttachToBackup -= onAttachToBackup;
+            m_scene.SceneGraph.OnDetachFromBackup -= onDetachFromBackup;
+            m_scene.SceneGraph.OnChangeBackup -= onChangedBackup;
+            m_scene.EventManager.OnFrame -= tick;
+            m_scene.EventManager.OnBackup -= backup;
+
+            //Commit any uncommitted committy committs.
+            backup(null, true);
+            Commit("Preparing for restore", true);
+
+            if (args.Length > 0)
+            {
+                //Roll back to commit specified
+                m_log.Info("[Git] Rolling back to commit " + (string)args[0]);
+                m_repo.CurrentBranch.Reset((string)args[0],ResetBehavior.Hard);
+            }
+
+            Util.FireAndForget(DoRestore, false);
+        }
+        private void HandleCheckoutSafe(Object[] args)
+        {
+            string branchname = (string)args[0];
+
+
+            //Now, unhook from all events.
+            m_scene.SceneGraph.OnAttachToBackup -= onAttachToBackup;
+            m_scene.SceneGraph.OnDetachFromBackup -= onDetachFromBackup;
+            m_scene.SceneGraph.OnChangeBackup -= onChangedBackup;
+            m_scene.EventManager.OnFrame -= tick;
+            m_scene.EventManager.OnBackup -= backup;
+
+            //Commit any uncommitted committy committs.
+            backup(null, true);
+            Commit("Preparing for checkout", true);
+
+            m_log.Info("[Git] Now checking out branch " + branchname + "..");
+            try
+            {
+                lock (m_repo)
+                {
+                    Branch b = new Branch(m_repo, branchname);
+                    b.Checkout();
+                    Util.FireAndForget(DoRestore, true);
+                }
+            }
+            finally
+            {
+                m_scene.SceneGraph.OnAttachToBackup += onAttachToBackup;
+                m_scene.SceneGraph.OnDetachFromBackup += onDetachFromBackup;
+                m_scene.SceneGraph.OnChangeBackup += onChangedBackup;
+                m_scene.EventManager.OnFrame += tick;
+                m_scene.EventManager.OnBackup += backup;
+            }
+
+            
+        }
+        private void HandleCheckout(Object[] args)
+        {
+            string branchname = (string)args[0];
+
+            //Now, unhook from all events.
+            m_scene.SceneGraph.OnAttachToBackup -= onAttachToBackup;
+            m_scene.SceneGraph.OnDetachFromBackup -= onDetachFromBackup;
+            m_scene.SceneGraph.OnChangeBackup -= onChangedBackup;
+            m_scene.EventManager.OnFrame -= tick;
+            m_scene.EventManager.OnBackup -= backup;
+
+            //Commit any uncommitted committy committs.
+            backup(null, true);
+            Commit("Preparing for checkout", true);           
+
+            m_log.Info("[Git] Now checking out branch " + branchname + "..");
+            try
+            {
+                lock (m_repo)
+                {
+                    Branch b = new Branch(m_repo, branchname);
+                    b.Checkout();
+                    Util.FireAndForget(DoRestore, false);
+                }
+            }
+            finally
+            {
+                m_scene.SceneGraph.OnAttachToBackup += onAttachToBackup;
+                m_scene.SceneGraph.OnDetachFromBackup += onDetachFromBackup;
+                m_scene.SceneGraph.OnChangeBackup += onChangedBackup;
+                m_scene.EventManager.OnFrame += tick;
+                m_scene.EventManager.OnBackup += backup;
+            }
+
+        }
+        private void HandleBranchDelete(Object[] args)
+        {
+            string branchname = (string)args[0];
+
+            //Commit any uncommitted committy committs.
+            backup(null, true);
+            Commit("Preparing for branch delete", true);
+
+            //Perform branch delete
+            try
+            {
+                lock (m_repo)
+                {
+
+                    Branch d = new Branch(m_repo, branchname);
+                    d.Delete();
+                    m_log.Info("[Git] Branch " + branchname + " deleted.");
+                }
+            }
+            catch(Exception e)
+            {
+                m_log.Error("[Git] Couldn't Delete the branch. "+e.Message);
+            }
+        }
+        private void HandleBranch(Object[] args)
+        {
+            string branchname = (string)args[0];
+
+            //Commit any uncommitted committy committs.
+            backup(null, true);
+            Commit("Preparing for branch", true);
+
+            //Create branch.
+            try
+            {
+                lock (m_repo)
+                {
+                    Branch b = GitSharp.Branch.Create(m_repo, branchname);
+                    m_log.Info("[Git] Branch " + branchname + " created.");
+                }
+            }
+            catch
+            {
+                m_log.Error("[Git] Couldn't create the branch.");
+            }
+            
+        }
+        private void HandleReload(Object[] args)
+        {
+
+            //Now, unhook from all events.
+            m_scene.SceneGraph.OnAttachToBackup -= onAttachToBackup;
+            m_scene.SceneGraph.OnDetachFromBackup -= onDetachFromBackup;
+            m_scene.SceneGraph.OnChangeBackup -= onChangedBackup;
+            m_scene.EventManager.OnFrame -= tick;
+            m_scene.EventManager.OnBackup -= backup;
+
+            //Commit any uncommitted committy committs.
+            backup(null, true);
+            Commit("Preparing for reload",true);
+
+            Util.FireAndForget(DoRestore, false);
+        }
+        private void HandleRestoreSafe(Object[] args)
+        {
+            //First, unhook from all events.
+            m_scene.SceneGraph.OnAttachToBackup -= onAttachToBackup;
+            m_scene.SceneGraph.OnDetachFromBackup -= onDetachFromBackup;
+            m_scene.SceneGraph.OnChangeBackup -= onChangedBackup;
+            m_scene.EventManager.OnFrame -= tick;
+            m_scene.EventManager.OnBackup -= backup;
+
+            //Commit any uncommitted committy committs.
+            backup(null, true);
+            Commit("Preparing for restore", true);
+
+            if (args.Length > 0)
+            {
+                //Roll back to commit specified
+                m_log.Debug("[Git] Rolling back to commit " + (string)args[0]);
+                m_repo.CurrentBranch.Reset((string)args[0], ResetBehavior.Hard);
+            }
+
+            Util.FireAndForget(DoRestore, true);
+        }
+        private void InstallCommands()
+        {
+            Command gitcommit = new Command("commit", CommandIntentions.COMMAND_NON_HAZARDOUS, HandleCommit, "Commit all unsaved changes to th git repo");
+            Command gitrestore = new Command("restore", CommandIntentions.COMMAND_HAZARDOUS, HandleRestore, "Restore a specific commit from the git repo to the current scene");
+            Command gitrestoresafe = new Command("restoresafe", CommandIntentions.COMMAND_HAZARDOUS, HandleRestoreSafe, "Restore a specific commit from the git repo to the current scene, skipping NoCopy objects");
+            Command gitreload = new Command("reload", CommandIntentions.COMMAND_HAZARDOUS, HandleReload, "Reloads the current scene from the git repo");
+            Command gitclear = new Command("clear", CommandIntentions.COMMAND_HAZARDOUS, HandleClear, "Wipes all objects from the scene and commits.");
+            Command gitbranch = new Command("branch", CommandIntentions.COMMAND_HAZARDOUS, HandleBranch, "Creates a new branch bases on the current one");
+            Command gitcheckout = new Command("checkout", CommandIntentions.COMMAND_HAZARDOUS, HandleCheckout, "Switches to another branch.");
+            Command gitcheckoutsafe = new Command("checkoutsafe", CommandIntentions.COMMAND_HAZARDOUS, HandleCheckoutSafe, "Switches to another branch, but skips NoCopy objects.");
+            Command gitdeletebranch = new Command("deletebranch", CommandIntentions.COMMAND_HAZARDOUS, HandleBranchDelete, "Deletes a branch which is not currently active");
+            
+            
+            gitrestore.AddArgument("hash", "The commit hash you wish to restore", "String");
+            gitrestoresafe.AddArgument("hash", "The commit hash you wish to restore", "String");
+            gitbranch.AddArgument("branchname", "The name of the branch you wish to create", "String");
+            gitcheckout.AddArgument("branchname", "The name of the branch you wish to switch to", "String");
+            gitcheckoutsafe.AddArgument("branchname", "The name of the branch you wish to switch to", "String");
+            gitdeletebranch.AddArgument("branchname", "The name of the branch you wish to delete", "String");
+
+
+            m_commander.RegisterCommand("commit", gitcommit);
+            m_commander.RegisterCommand("restore", gitrestore);
+            m_commander.RegisterCommand("restoresafe", gitrestoresafe);
+            m_commander.RegisterCommand("reload", gitreload);
+            m_commander.RegisterCommand("clear", gitclear);
+            m_commander.RegisterCommand("branch", gitbranch);
+            m_commander.RegisterCommand("checkout", gitcheckout);
+            m_commander.RegisterCommand("checkoutsafe", gitcheckoutsafe);
+            m_commander.RegisterCommand("deletebranch", gitdeletebranch);
+
+            m_scene.RegisterModuleCommander(m_commander);
+
+        }
+        private void DoCommitAsync(object o)
+        {
+            try
+            {
+                if (m_changes == 0)
+                {
+                    m_log.Debug("[Git] Skipping commit, no changes?");
+                    return;
+                }
+                string message = (string)o;
+                m_log.Debug("[Git] Scanning " + m_changes.ToString() + " files for changes..");
+                m_changes = 0;
+                m_Added.Clear();
+                m_NeedsCommit = false;
+                lock (m_repo)
+                {
+                    Commit commit = m_repo.Commit(message, new Author(m_scene.RegionInfo.RegionName, m_scene.RegionInfo.RegionID.ToString() + "@meta7.com"));
+                }
+                m_log.Debug("[Git] Done");
+            }
+            finally
+            {
+                m_scene.EventManager.OnFrame += tick;
+                m_scene.EventManager.OnBackup += backup;
+            }
+        }
+        private void Commit(string message, bool synchronous)
+        {
+            //Committing can take some time, so spawn off to a seperate thread,
+            //and remove our events so we don't have a lock situation.
+            m_scene.EventManager.OnFrame -= tick;
+            m_scene.EventManager.OnBackup -= backup;
+            if (!synchronous)
+            {
+                Util.FireAndForget(DoCommitAsync, message);
+            }
+            else
+            {
+                DoCommitAsync((object)message);
+            }
+            
+        }
+        private void backup(IRegionDataStore datastore, bool m_forced)
+        {
+            if (m_forced)
+            {
+                try
+                {
+                    m_scene.EventManager.OnFrame -= tick;
+                    m_scene.EventManager.OnBackup -= backup;
+
+                    m_log.Debug("[Git] Adding all " + m_ToUpdate.Count.ToString() + " remaining objects..");
+                    lock (m_repo)
+                    {
+                        int n = m_ToUpdate.Count;
+                        for (int x = 0; x < n; x++)
+                        {
+                            SceneObjectGroup candidate = (SceneObjectGroup)m_ToUpdate[m_ToUpdate.Count - 1];
+                            m_ToUpdate.RemoveAt(m_ToUpdate.Count - 1);
+                            m_changes++;
+                            m_NeedsCommit = true;
+                            AddGroup(candidate);
+                        }
+                        //m_ToUpdate.Clear();
+                    }
+                    m_log.Debug("[Git] Done");
+                }
+                catch
+                {
+                    m_log.Error("[Git] Failed to backup all queued prims");
+                }
+                finally
+                {
+                    m_scene.EventManager.OnFrame += tick;
+                    m_scene.EventManager.OnBackup += backup;
+                }
+            }
+        }
+        private void tick()
+        {
+            frame++;
+            int speed = 50;
+            int dspeed = 50;
+            //If we've got a large queue, clear it quickly, otherwise, don't lag up our heartbeat thread too much!
+            if (m_ToUpdate.Count > 10) speed = 2;
+            if (m_ToDelete.Count > 10) dspeed = 2; 
+
+            if ((frame % speed) == 0)
+            {
+                //Add one object per tick
+                if (m_ToUpdate.Count > 0)
+                {
+                    SceneObjectGroup candidate = (SceneObjectGroup)m_ToUpdate[0];
+                    m_ToUpdate.RemoveAt(0);
+                    m_NeedsCommit = true;
+                    m_changes++;
+                    AddGroup(candidate);
+                }
+            }
+
+            if ((frame % dspeed) == 0)
+            {
+                //Delete one object per tick (Deleting is a lot less intensive)
+                if (m_ToDelete.Count > 0)
+                {
+                    SceneObjectGroup candidate = (SceneObjectGroup)m_ToDelete[0];
+                    m_ToDelete.RemoveAt(0);
+                    m_NeedsCommit = true;
+                    m_changes++;
+                    DeleteGroup(candidate);
+                }
+            }
+
+            if (frame > 360000) //Roughly six hours. We don't want to fill up with commits.
+            {
+                if (m_NeedsCommit)
+                {
+                    Commit("Changes so far",false);
+                }
+                frame = 0;
+            }
+        }
+        private void AddGroup(SceneObjectGroup sog)
+        {
+            string primsdir = m_repoPath + "objects";
+            try
+            {
+                if (!Directory.Exists(primsdir))
+                {
+                    try
+                    {
+                        Directory.CreateDirectory(primsdir);
+                    }
+                    catch
+                    {
+                        m_log.Error("[Git] Couldn't create directory: " + primsdir);
+                        return;
+                    }
+                }
+                string primfile = "objects\\"+ sog.UUID.ToString();
+                //XmlTextWriter tw = new XmlTextWriter(m_repoPath + primfile,System.Text.Encoding.UTF8);
+                XElement code = XElement.Parse(sog.ToXml2());
+                foreach (XElement e in code.Descendants("LocalId"))
+                {
+                    e.Value = "0";
+                }
+                foreach (XElement e in code.Descendants("ParentID"))
+                {
+                    e.Value = "0";
+                }
+                code.Save(m_repoPath + primfile);
+                m_Added.Add(sog.UUID.ToString());
+                lock (m_repo)
+                {
+                    m_repo.Index.Add(primfile);
+                }
+            }
+            catch(Exception e)
+            { 
+                m_log.Error("[Git] Exception while adding object: "+e.Message);
+            }
+        }
+
+        private void DeleteGroup(SceneObjectGroup sog)
+        {
+            try
+            {
+                if (m_Added.Contains(sog.UUID.ToString()))
+                {
+                    //This sog has been added but not committed, so, commit now
+                    Commit("Persisting object " + sog.UUID.ToString(), true);
+                }
+                
+                lock (m_repo)
+                {
+                    m_repo.Index.Delete("objects\\" + sog.UUID.ToString());
+                }
+
+                
+                m_NeedsCommit = true;
+                m_changes++;
+            }
+            catch
+            {
+                //This happens a lot with our delayed persistance stuff, so, don't spam
+                //m_log.Error("[Git] Failed to delete group "+sog.UUID.ToString());
+                return;
+            }
+        }
+
+        private void Queue(SceneObjectGroup sog)
+        {
+            if (m_ToDelete.Contains(sog.UUID.ToString()))
+            {
+                m_ToDelete.Remove(sog.UUID.ToString());
+            }
+
+            if (!m_ToUpdate.Contains(sog.UUID.ToString()))
+            {
+                m_ToUpdate.Insert(m_ToUpdate.Count, sog.UUID.ToString(), sog);
+            }
+            else
+            {
+                //Bump to the back of the queue
+                m_ToUpdate.Remove(sog.UUID.ToString());
+                m_ToUpdate.Insert(m_ToUpdate.Count,sog.UUID.ToString(), sog);
+            }
+        }
+
+        private void onAttachToBackup(SceneObjectGroup sog)
+        {
+            try
+            {
+                if (sog.IsAttachment) return;
+                Queue(sog);
+            }
+            catch
+            {
+                return;
+            }
+        }
+
+        private void onDetachFromBackup(SceneObjectGroup sog)
+        {
+            try
+            {
+                if (sog.IsAttachment) return;
+                if (m_ToUpdate.Contains(sog.UUID.ToString()))
+                {
+                    m_ToUpdate.Remove(sog.UUID.ToString());
+                }
+                if (!m_ToDelete.Contains(sog.UUID.ToString()))
+                {
+                    m_ToDelete.Insert(m_ToDelete.Count, sog.UUID.ToString(), sog);
+                }
+            }
+            catch
+            {
+                return;
+            }
+        }
+
+        private void onPluginConsole(string[] args)
+        {
+            if (args[0] == "git")
+            {
+                string[] tmpArgs = new string[args.Length - 2];
+                int i;
+                for (i = 2; i < args.Length; i++)
+                {
+                    tmpArgs[i - 2] = args[i];
+                }
+
+                m_commander.ProcessConsoleCommand(args[1], tmpArgs);
+            }
+        }
+        private void onChangedBackup(SceneObjectGroup sog)
+        {
+            if (sog.IsAttachment) return;
+            try
+            {
+                Queue(sog);
+            }
+            catch
+            {
+                return;
+            }
+        }
+
+        public void PostInitialise()
+        {
+            if (!m_Enabled) return;
+            try
+            {
+                //Add RegionOnline as a commit. This will also commit any changes that occurred before
+                //the region crashed.. which is nice.
+                StreamWriter tw = new StreamWriter(m_repoPath + "RegionOnline.txt");
+                tw.WriteLine("Region " + m_scene.RegionInfo.RegionName + " Online: " + DateTime.Now.ToString());
+                tw.Close();
+                m_repo.Index.Add("RegionOnline.txt");
+                Commit commit = m_repo.Commit("Region online at " + DateTime.Now.ToString(), new Author(m_scene.RegionInfo.RegionName, m_scene.RegionInfo.RegionID.ToString() + "@meta7.com"));
+                m_log.Debug("[Git] Committing startup time");
+            }
+            catch(Exception e)
+            {
+                m_log.Error("[Git] Failed to make RegionOnline commit: " + e.Message);
+            }
         }
 
         public void Close()
         {
-        }
-
-        private void OnNewClient(IClientAPI client)
-        {
-            client.OnRequestAvatarProperties += OnRequestAvatarProperties;
-            client.OnUpdateAvatarProperties += OnUpdateAvatarProperties;
-
-            client.AddGenericPacketHandler("avatarpicksrequest",
-                    OnAvatarPicksRequest);
-            client.AddGenericPacketHandler("pickinforequest",
-                    OnPickInfoRequest);
-            client.OnPickInfoUpdate += OnPickInfoUpdate;
-            client.OnPickDelete += OnPickDelete;
-
-            client.OnAvatarInterestUpdate += OnAvatarInterestsUpdate;
-
-            client.AddGenericPacketHandler("avatarnotesrequest",
-                    OnAvatarNotesRequest);
-            client.OnAvatarNotesUpdate += OnAvatarNotesUpdate;
-
-            client.AddGenericPacketHandler("avatarclassifiedsrequest",
-                    OnAvatarClassifiedsRequest);
-            client.OnClassifiedInfoRequest += OnClassifiedInfoRequest;
-            client.OnClassifiedInfoUpdate += OnClassifiedInfoUpdate;
-            client.OnClassifiedDelete += OnClassifiedDelete;
-            client.OnUserInfoRequest += UserPreferencesRequest;
-            client.OnUpdateUserInfo += UpdateUserPreferences;
-
-            client.OnLogout += OnClientClosed;
-        }
-
-        private void OnClientClosed(IClientAPI client)
-        {
-            client.OnRequestAvatarProperties -= OnRequestAvatarProperties;
-            client.OnUpdateAvatarProperties -= OnUpdateAvatarProperties;
-
-            client.OnPickInfoUpdate -= OnPickInfoUpdate;
-            client.OnPickDelete -= OnPickDelete;
-
-            client.OnAvatarInterestUpdate -= OnAvatarInterestsUpdate;
-
-            client.OnClassifiedInfoRequest -= OnClassifiedInfoRequest;
-            client.OnClassifiedInfoUpdate -= OnClassifiedInfoUpdate;
-            client.OnClassifiedDelete -= OnClassifiedDelete;
-
-            client.OnLogout -= OnClientClosed;
-        }
-
-        private void OnRequestAvatarProperties(IClientAPI remoteClient,
-                UUID avatarID)
-        {
-            UserAccount account = m_Scene.UserAccountService.GetUserAccount(
-                    m_Scene.RegionInfo.ScopeID, avatarID);
-
-            if (account == null)
-                return;
-
-            Byte[] charterMember;
-            if (account.UserTitle == "")
-            {
-                charterMember = new Byte[1];
-                charterMember[0] = (Byte)((account.UserFlags & 0xf00) >> 8);
-            }
-            else
-            {
-                charterMember = Utils.StringToBytes(account.UserTitle);
-            }
-
-            XProfileData[] data = m_ProfileTable.Get("UserID", avatarID.ToString());
-            uint flags = (uint)account.UserFlags & 0x0c;
-
-            if (data.Length == 0)
-            {
-                remoteClient.SendAvatarProperties(account.PrincipalID,
-                        String.Empty,
-                        Util.ToDateTime(account.Created).ToString("M/d/yyyy",
-                                CultureInfo.InvariantCulture),
-                        charterMember, String.Empty,
-                        flags,
-                        UUID.Zero, UUID.Zero, String.Empty, UUID.Zero);
-            }
-            else
-            {
-                flags |= Convert.ToUInt32(data[0].Data["Flags"]);
-
-                PresenceInfo[] presences = m_Scene.PresenceService.GetAgents(new string[] { avatarID.ToString() } );
-                if (presences.Length > 0)
-                    flags |= 16;
-
-                remoteClient.SendAvatarProperties(account.PrincipalID,
-                        data[0].Data["ProfileText"],
-                        Util.ToDateTime(account.Created).ToString("M/d/yyyy",
-                                CultureInfo.InvariantCulture),
-                        charterMember, data[0].Data["FirstLifeText"],
-                        flags,
-                        new UUID(data[0].Data["FirstLifeImageID"]),
-                        new UUID(data[0].Data["ImageID"]),
-                        data[0].Data["ProfileUrl"],
-                        new UUID(data[0].Data["PartnerID"]));
-
-            }
-
-            XProfileData[] interests = m_InterestsTable.Get("UserID",
-                    avatarID.ToString());
-
-            if (interests.Length > 0)
-            {
-                remoteClient.SendAvatarInterestsReply(avatarID,
-                        Convert.ToUInt32(interests[0].Data["WantMask"]),
-                        interests[0].Data["WantText"],
-                        Convert.ToUInt32(interests[0].Data["SkillsMask"]),
-                        interests[0].Data["SkillsText"],
-                        interests[0].Data["Languages"]);
-            }
-            else
-            {
-                remoteClient.SendAvatarInterestsReply(avatarID, 0, String.Empty,
-                        0, String.Empty, String.Empty);
-            }
-        }
-
-        private void OnUpdateAvatarProperties(IClientAPI remoteClient,
-                UserProfileData newProfile)
-        {
-            if (newProfile.ID != remoteClient.AgentId)
-                return;
-
-            XProfileData profileData;
-
-            XProfileData[] data = m_ProfileTable.Get("UserID", remoteClient.AgentId.ToString());
-            if (data.Length > 0)
-            {
-                profileData = data[0];
-            }
-            else
-            {
-                profileData = new XProfileData();
-                profileData.Data = new Dictionary<string, string>();
-                profileData.UserID = remoteClient.AgentId;
-            }
-
-            profileData.Data["ImageID"] = newProfile.Image.ToString();
-            profileData.Data["ProfileText"] = newProfile.AboutText;
-            profileData.Data["FirstLifeText"] = newProfile.FirstLifeAboutText;
-            profileData.Data["FirstLifeImageID"] = newProfile.FirstLifeImage.ToString();
-            profileData.Data["ProfileUrl"] = newProfile.ProfileUrl;
-
-            if (m_ProfileTable.Store(profileData))
-                OnRequestAvatarProperties(remoteClient, newProfile.ID);
-        }
-
-        private void OnAvatarPicksRequest(Object sender, string method,
-                List<String> args)
-        {
-            if (!(sender is IClientAPI))
-                return;
-
-            IClientAPI remoteClient = (IClientAPI)sender;
-
-            XProfilePick[] picks = m_PicksTable.Get("UserID", args[0]);
-
-            Dictionary<UUID,string> picklist =
-                    new Dictionary<UUID,string>();
-
-            foreach (XProfilePick p in picks)
-                picklist[p.PickID] = p.Data["Name"];
-
-            remoteClient.SendAvatarPicksReply(new UUID(args[0]),
-                    picklist);
-        }
-
-        private void OnPickInfoUpdate(IClientAPI remoteClient, UUID pickID,
-                UUID creatorID, bool topPick, string name, string desc,
-                UUID snapshotID, int sortOrder, bool enabled)
-        {
-            XProfilePick[] picks = m_PicksTable.Get(
-                    new string[] { "PickID" },
-                    new string[] { pickID.ToString() });
-
-            ScenePresence p = m_Scene.GetScenePresence(remoteClient.AgentId);
-
-            if (p == null)
-                return;
-
-            XProfilePick pick = new XProfilePick();
-
-            pick.UserID = remoteClient.AgentId;
-            pick.PickID = pickID;
-            
-            if (picks.Length > 0)
-            {
-                if (picks[0].UserID != remoteClient.AgentId)
-                    return;
-
-                pick.Data = picks[0].Data;
-            }
-            else
-            {
-                picks = m_PicksTable.Get(
-                        new string[] { "UserID" },
-                        new string[] { remoteClient.AgentId.ToString() } );
-
-                // Store no more than 12 picks
-                if (picks.Length >= 12)
-                    return;
-
-                // Don't store a pick we didn't create if it
-                // doesn't exist
-                if (creatorID != remoteClient.AgentId)
-                    return;
-
-                pick.Data = new Dictionary<string,string>();
-                pick.Data["CreatorID"] = creatorID.ToString();
-                pick.Data["RegionName"] = remoteClient.Scene.RegionInfo.RegionName;
-                pick.Data["UserName"] = remoteClient.Name;
-
-                ILandObject parcel = m_Scene.LandChannel.GetLandObject(
-                        p.AbsolutePosition.X, p.AbsolutePosition.Y);
-
-                pick.Data["OriginalName"] = parcel.LandData.Name;
-
-                Vector3 agentPosition = p.AbsolutePosition;
-
-                pick.Data["ParcelID"] = p.currentParcelUUID.ToString();
-
-                Vector3 posGlobal =
-                         new Vector3(remoteClient.Scene.RegionInfo.RegionLocX *
-                         Constants.RegionSize + agentPosition.X,
-                         remoteClient.Scene.RegionInfo.RegionLocY *
-                         Constants.RegionSize + agentPosition.Y,
-                         agentPosition.Z);
-
-                pick.Data["GlobalPosition"] = posGlobal.ToString();
-
-            }
-
-            pick.Data["TopPick"] = topPick.ToString();
-            pick.Data["Name"] = name;
-            pick.Data["Description"] = desc;
-            pick.Data["SnapshotID"] = snapshotID.ToString();
-            pick.Data["SortOrder"] = sortOrder.ToString();
-            pick.Data["Enabled"] = enabled.ToString();
-
-            m_PicksTable.Store(pick);
-        }
-
-        private void OnPickDelete(IClientAPI remoteClient, UUID queryPickID)
-        {
-            XProfilePick[] picks = m_PicksTable.Get(
-                    new string[] { "PickID" },
-                    new string[] { queryPickID.ToString() });
-
-            if (picks.Length == 0 || picks[0].UserID != remoteClient.AgentId)
-                return;
-
-            m_PicksTable.Delete("PickID", queryPickID.ToString());
-        }
-
-        private void OnPickInfoRequest(Object sender, string method,
-                List<String> args)
-        {
-            if (!(sender is IClientAPI))
-                return;
-
-            IClientAPI remoteClient = (IClientAPI)sender;
-
-            XProfilePick[] picks = m_PicksTable.Get(
-                    new string[] { "UserID", "PickID" },
-                    new string[] { args[0], args[1] });
-
-            if (picks.Length == 0)
-                return;
-
-            remoteClient.SendPickInfoReply(
-                new UUID(picks[0].PickID),
-                new UUID(picks[0].Data["CreatorID"]),
-                Convert.ToBoolean(picks[0].Data["TopPick"]),
-                new UUID(picks[0].Data["ParcelID"]),
-                picks[0].Data["Name"],
-                picks[0].Data["Description"],
-                new UUID(picks[0].Data["SnapshotID"]),
-                picks[0].Data["UserName"],
-                picks[0].Data["OriginalName"],
-                picks[0].Data["RegionName"],
-                Vector3.Parse(picks[0].Data["GlobalPosition"]),
-                Convert.ToInt32(picks[0].Data["SortOrder"]),
-                Convert.ToBoolean(picks[0].Data["Enabled"]));
-        }
-
-        private void OnAvatarInterestsUpdate(IClientAPI remoteClient,
-                uint wantMask, string wantText, uint skillsMask,
-                string skillsText, string languages)
-        {
-            XProfileData data = new XProfileData();
-
-            data.UserID = remoteClient.AgentId;
-            data.Data = new Dictionary<string,string>();
-
-            data.Data["WantMask"] = wantMask.ToString();
-            data.Data["WantText"] = wantText;
-            data.Data["SkillsMask"] = skillsMask.ToString();
-            data.Data["SkillsText"] = skillsText;
-            data.Data["Languages"] = languages;
-
-            m_InterestsTable.Store(data);
-        }
-
-        private void OnAvatarNotesRequest(Object sender, string method,
-                List<String> args)
-        {
-            if (!(sender is IClientAPI))
-                return;
-
-            IClientAPI remoteClient = (IClientAPI)sender;
-
-            XProfileNote[] notes = m_NotesTable.Get(
-                    new string[] { "UserID", "AvatarID" },
-                    new string[] { remoteClient.AgentId.ToString(),
-                                   args[0] });
-
-            if (notes.Length == 0)
-            {
-                remoteClient.SendAvatarNotesReply(new UUID(args[0]),
-                        String.Empty);
-                return;
-            }
-            remoteClient.SendAvatarNotesReply(new UUID(args[0]),
-                    notes[0].Data["Note"]);
-        }
-
-        private void OnAvatarNotesUpdate(IClientAPI remoteClient,
-                UUID queryTargetID, string queryNotes)
-        {
-            XProfileNote note = new XProfileNote();
-
-            note.UserID = remoteClient.AgentId;
-            note.AvatarID = queryTargetID;
-
-            note.Data = new Dictionary<string,string>();
-
-            note.Data["Note"] = queryNotes;
-
-            m_NotesTable.Store(note);
-        }
-
-        public void OnAvatarClassifiedsRequest(Object sender, string method,
-                List<String> args)
-        {
-            if (!(sender is IClientAPI))
-                return;
-
-            IClientAPI remoteClient = (IClientAPI)sender;
-
-            UUID targetID = remoteClient.AgentId;
-            if (args.Count > 0 && args[0] != null)
-                targetID = new UUID(args[0]);
-
-            XProfileClassified[] classifieds = m_ClassifiedsTable.Get( "UserID",
-                    targetID.ToString());
-
-            Dictionary<UUID,string> ret =
-                    new Dictionary<UUID,string>();
-
-            foreach (XProfileClassified c in classifieds)
-                ret[c.ClassifiedID] = c.Data["Name"];
-
-            remoteClient.SendAvatarClassifiedReply(targetID,
-                    ret);
-        }
-
-        void OnClassifiedInfoRequest(UUID classifiedID, IClientAPI remoteClient)
-        {
-            XProfileClassified[] classifieds = m_ClassifiedsTable.Get(
-                    "ClassifiedID", classifiedID.ToString());
-
-            if (classifieds.Length == 0)
-                return;
-
-            remoteClient.SendClassifiedInfoReply(classifiedID,
-                    new UUID(classifieds[0].Data["CreatorID"]),
-                    Convert.ToUInt32(classifieds[0].Data["CreationDate"]),
-                    Convert.ToUInt32(classifieds[0].Data["ExpirationDate"]),
-                    Convert.ToUInt32(classifieds[0].Data["Category"]),
-                    classifieds[0].Data["Name"],
-                    classifieds[0].Data["Description"],
-                    new UUID(classifieds[0].Data["ParcelID"]),
-                    Convert.ToUInt32(classifieds[0].Data["ParentEstate"]),
-                    new UUID(classifieds[0].Data["SnapshotID"]),
-                    classifieds[0].Data["RegionName"],
-                    Vector3.Parse(classifieds[0].Data["GlobalPosition"]),
-                    classifieds[0].Data["ParcelName"],
-                    (byte)Convert.ToUInt32(classifieds[0].Data["ClassifiedFlags"]),
-                    Convert.ToInt32(classifieds[0].Data["Price"]));
-        }
-
-        public void OnClassifiedInfoUpdate(UUID classifiedID,
-                uint category, string name, string description,
-                UUID parcelID, uint parentEstate,
-                UUID snapshotID, Vector3 globalPos,
-                byte classifiedFlags, int classifiedPrice,
-                IClientAPI remoteClient)
-        {
-        try
-        {
-            XProfileClassified[] classifieds = m_ClassifiedsTable.Get(
-                    new string[] { "ClassifiedID" },
-                    new string[] { classifiedID.ToString() });
-
-            ScenePresence p = m_Scene.GetScenePresence(remoteClient.AgentId);
-
-            if (p == null)
-                return;
-
-            XProfileClassified cl = new XProfileClassified();
-            cl.UserID = remoteClient.AgentId;
-            cl.ClassifiedID = classifiedID;
-
-            if (classifieds.Length == 0)
-            {
-                // This will happen if people try for a free classified,
-                // or the profile is closed with "OK", rather then using
-                // publish.
-                if (classifiedPrice == 0)
-                    return;
-
-                if (m_MoneyModule != null)
-                {
-                    if (!m_MoneyModule.AmountCovered(remoteClient,
-                            classifiedPrice))
-                    {
-                        remoteClient.SendAgentAlertMessage("You don't have sufficient funds to place this advert", false);
-                        return;
-                    }
-
-                    m_MoneyModule.ApplyCharge(remoteClient.AgentId,
-                            classifiedPrice, "Classified charge");
-                }
-
-                cl.Data = new Dictionary<string,string>();
-                cl.Data["CreatorID"] = remoteClient.AgentId.ToString();
-                cl.Data["CreationDate"] = Util.UnixTimeSinceEpoch().ToString();
-                cl.Data["ExpirationDate"] = (Util.UnixTimeSinceEpoch() + 86400 * 7).ToString();
-                cl.Data["Price"] = classifiedPrice.ToString();
-                cl.Data["GlobalPosition"] = String.Empty;
-            }
-            else
-            {
-                if (classifieds[0].UserID != remoteClient.AgentId)
-                    return;
-                cl.Data = classifieds[0].Data;
-            }
-
-            cl.Data["Category"] = category.ToString();
-            cl.Data["Name"] = name;
-            cl.Data["Description"] = description;
-            cl.Data["SnapshotID"] = snapshotID.ToString();
-            cl.Data["ClassifiedFlags"] = classifiedFlags.ToString();
-            if (cl.Data["GlobalPosition"] != globalPos.ToString())
-            {
-                cl.Data["GlobalPosition"] = globalPos.ToString();
-                cl.Data["RegionName"] = remoteClient.Scene.RegionInfo.RegionName;
-                cl.Data["ParentEstate"] = remoteClient.Scene.RegionInfo.EstateSettings.ParentEstateID.ToString();
-                ILandObject parcel = m_Scene.LandChannel.GetLandObject(
-                        p.AbsolutePosition.X, p.AbsolutePosition.Y);
-
-                cl.Data["ParcelName"] = parcel.LandData.Name;
-
-                Vector3 agentPosition = p.AbsolutePosition;
-
-                cl.Data["ParcelID"] = p.currentParcelUUID.ToString();
-            }
-
-            cl.Data["ScopeID"] = m_Scene.RegionInfo.ScopeID.ToString();
-
-            if(m_ClassifiedsTable.Store(cl))
-                OnClassifiedInfoRequest(classifiedID, remoteClient);
-        }
-        catch(Exception e)
-        {
-            System.Console.WriteLine(e.ToString());
-        }
-        }
-
-        public void OnClassifiedDelete (UUID queryClassifiedID,
-                IClientAPI remoteClient)
-        {
-            XProfileClassified[] classifieds = m_ClassifiedsTable.Get(
-                    new string[] { "UserID", "ClassifiedID" },
-                    new string[] { remoteClient.AgentId.ToString(),
-                                   queryClassifiedID.ToString() });
-
-            if (classifieds.Length < 1)
-                return;
-
-            m_ClassifiedsTable.Delete("ClassifiedID",
-                    queryClassifiedID.ToString());
-        }
-        
-        public void UserPreferencesRequest(IClientAPI remoteClient)
-        {
-            XProfileData[] prefs = m_PrefsTable.Get("UserID",
-                    remoteClient.AgentId.ToString());
-
-            if (prefs.Length == 0)
-            {
-                remoteClient.SendUserInfoReply(true, true, String.Empty);
-                return;
-            }
-
-            bool visible = false;
-            if (Convert.ToInt32(prefs[0].Data["Visible"]) > 0)
-                visible = true;
-
-            bool imtoemail = false;
-            if (Convert.ToInt32(prefs[0].Data["IMToEmail"]) > 0)
-                imtoemail = true;
-
-            remoteClient.SendUserInfoReply(imtoemail, visible, String.Empty);
-        }
-
-        public void UpdateUserPreferences(bool imViaEmail, bool visible, IClientAPI remoteClient)
-        {
-            XProfileData[] prefs = m_PrefsTable.Get("UserID",
-                    remoteClient.AgentId.ToString());
-
-            XProfileData p;
-            if (prefs.Length == 0)
-            {
-                p = new XProfileData();
-                p.Data = new Dictionary<string, string>();
-                p.UserID = remoteClient.AgentId;
-            }
-            else
-            {
-                p = prefs[0];
-            }
-
-            p.Data["Visible"] = "0";
-            if (visible)
-                p.Data["Visible"] = "1";
-
-            p.Data["IMToEmail"] = "0";
-            if (imViaEmail)
-                p.Data["IMToEmail"] = "1";
-
-            m_PrefsTable.Store(p);
+            if (!m_Enabled) return;
+            backup(null, true);
+            Commit("Final commit; region shutdown", true);
         }
     }
 }

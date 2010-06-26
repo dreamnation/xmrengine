@@ -1,4 +1,4 @@
-   <Project name="XGitminster.Module" path="addon-modules/XGitminster/Module" type="Library">
+   <Project frameworkVersion="v3_5" name="XGitminster.Module" path="addon-modules/XGitminster/Module" type="Library">
      <Configuration name="Debug">
        <Options>
          <OutputPath>../../../bin/</OutputPath>
@@ -12,8 +12,11 @@
 
      <ReferencePath>../../../bin/</ReferencePath>
      <Reference name="System"/>
+     <Reference name="System.Core"/>
      <Reference name="System.Xml"/>
+     <Reference name="System.Xml.Linq"/>
      <Reference name="GitSharp.dll" />
+     <Reference name="GitSharp.Core.dll" />
      <Reference name="log4net.dll" />
      <Reference name="Nini.dll" />
      <Reference name="OpenMetaverse.dll" />
@@ -21,7 +24,8 @@
      <Reference name="OpenSim.Framework" />
      <Reference name="OpenSim.Framework.Console" />
      <Reference name="OpenSim.Region.Framework" />
-
+     <Reference name="OpenSim.Region.CoreModules" />
+     
      <Files>
        <Match pattern="*.cs" recurse="true"/>
        <Match pattern="*.addin.xml" buildAction="EmbeddedResource" recurse="true"/>
