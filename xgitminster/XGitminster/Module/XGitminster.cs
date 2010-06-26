@@ -47,6 +47,7 @@ namespace Careminster.Git
         private int frame = 0;
         private bool m_NeedsCommit = false;
         private int m_changes = 0;
+        private int m_commitFrameInterval = 360000;
 
         public string Name
         {
@@ -105,7 +106,7 @@ namespace Careminster.Git
               
 
             m_repoPath = m_Config.GetString("RepoPath", "git");
-
+            m_commitFrameInterval = m_Config.GetInt("CommitFrameInterval", 360000);
             if (!(m_repoPath.Substring(m_repoPath.Length - 1) == "/" || m_repoPath.Substring(m_repoPath.Length - 1) == "\\"))
             {
                 m_repoPath += "\\";
@@ -657,7 +658,7 @@ namespace Careminster.Git
                 }
             }
 
-            if (frame > 360000) //Roughly six hours. We don't want to fill up with commits.
+            if (frame > m_commitFrameInterval)
             {
                 if (m_NeedsCommit)
                 {
