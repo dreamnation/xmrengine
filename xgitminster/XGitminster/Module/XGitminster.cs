@@ -159,6 +159,10 @@ namespace Careminster.Git
                             lock (m_repo)
                             {
                                 Commit commit = m_repo.Commit("Uncommitted local changes - region crash", new Author(m_scene.RegionInfo.RegionName, m_scene.RegionInfo.RegionID.ToString() + "@meta7.com"));
+                                if (commit != null && commit.IsCommit && commit.IsValid)
+                                {
+                                    m_log.Info("Commit made: " + commit.Hash.ToString());
+                                }
                                 m_log.Debug("[Git] Committing changes which were queued before the region crashed");
                             }
                         }
@@ -575,6 +579,10 @@ namespace Careminster.Git
                 lock (m_repo)
                 {
                     Commit commit = m_repo.Commit(message, new Author(m_scene.RegionInfo.RegionName, m_scene.RegionInfo.RegionID.ToString() + "@meta7.com"));
+                    if (commit != null && commit.IsCommit && commit.IsValid)
+                    {
+                        m_log.Info("Commit made: " + commit.Hash.ToString());
+                    }
                 }
                 m_log.Debug("[Git] Done");
             }
@@ -875,6 +883,10 @@ namespace Careminster.Git
                                 m_log.Debug("[Git] Committing startup time");
                                 m_repo.Index.Add("RegionOnline.txt");
                                 Commit commit = m_repo.Commit("Region online at " + DateTime.Now.ToString(), new Author(m_scene.RegionInfo.RegionName, m_scene.RegionInfo.RegionID.ToString() + "@meta7.com"));
+                                if (commit != null && commit.IsCommit && commit.IsValid)
+                                {
+                                    m_log.Info("Commit made: " + commit.Hash.ToString());
+                                }
                             }
                         }
                         catch (Exception e)
