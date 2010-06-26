@@ -538,8 +538,8 @@ namespace Careminster.Git
             m_commander.RegisterCommand("checkout", gitcheckout);
             m_commander.RegisterCommand("checkoutsafe", gitcheckoutsafe);
             m_commander.RegisterCommand("deletebranch", gitdeletebranch);
-            m_commander.RegisterCommand("enable", gitdeletebranch);
-            m_commander.RegisterCommand("disable", gitdeletebranch);
+            m_commander.RegisterCommand("enable", gitenable);
+            m_commander.RegisterCommand("disable", gitdisable);
 
             m_scene.RegisterModuleCommander(m_commander);
 
