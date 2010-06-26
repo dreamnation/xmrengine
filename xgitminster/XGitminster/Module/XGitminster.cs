@@ -243,7 +243,7 @@ namespace Careminster.Git
 
                 //Now, delete all scene objects.
                 m_log.Info("[Git] Clearing the scene..");
-                m_scene.DeleteAllSceneObjects();
+                m_scene.DeleteAllSceneObjects(safe);
 
                 //Yay.
                 m_log.Info("[Git] Beginning object restore..");
