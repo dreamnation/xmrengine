@@ -22,10 +22,12 @@
      <Reference name="OpenMetaverse.dll" />
      <Reference name="OpenMetaverseTypes.dll" />
      <Reference name="OpenSim.Framework" />
+
      <Reference name="OpenSim.Framework.Console" />
      <Reference name="OpenSim.Region.Framework" />
      <Reference name="OpenSim.Region.CoreModules" />
-     
+     <Reference name="OpenSim.Region.Serialization" />
+    
      <Files>
        <Match pattern="*.cs" recurse="true"/>
        <Match pattern="*.addin.xml" buildAction="EmbeddedResource" recurse="true"/>

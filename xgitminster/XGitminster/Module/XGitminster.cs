@@ -23,6 +23,8 @@ using OpenSim.Region.Framework.Interfaces;
 using OpenSim.Region.CoreModules.Framework.InterfaceCommander;
 using OpenSim.Region.Framework.Scenes.Serialization;
 using OpenSim.Region.Framework.Scenes;
+using OpenSim.Framework.Serialization;
+using OpenSim.Framework.Serialization.External;
 using GitSharp;
 using GitSharp.Commands;
 
@@ -175,14 +177,101 @@ namespace Careminster.Git
                     }
                 );
             }
-
-            m_scene.SceneGraph.OnAttachToBackup += onAttachToBackup;
-            m_scene.SceneGraph.OnDetachFromBackup += onDetachFromBackup;
-            m_scene.SceneGraph.OnChangeBackup += onChangedBackup;
-            m_scene.EventManager.OnFrame += tick;
-            m_scene.EventManager.OnBackup += backup;
+            WriteWindlight();
+            WriteRegionSettings();
+            SubscribeToEvents();
             m_log.Info("[Git] Gitminster online.");
 
+        }
+        private void WriteWindlight()
+        {
+            m_log.Info("[Git] Writing windlight settings");
+        }
+        private void WriteRegionSettings()
+        {
+            m_log.Info("[Git] Writing region settings");
+
+            XElement code = XElement.Parse(RegionSettingsSerializer.Serialize(m_scene.RegionInfo.RegionSettings));
+            code.Save(m_repoPath + "regionsettings.xml");
+
+        }
+        private void ReadRegionSettings()
+        {
+            StreamReader streamReader = new StreamReader(m_repoPath+"regionsettings.xml");
+            string data = streamReader.ReadToEnd();
+            data = data.Substring(39);
+            streamReader.Close();
+            RegionSettings loadedRegionSettings;
+            try
+            {
+                loadedRegionSettings = RegionSettingsSerializer.Deserialize(data);
+            }
+            catch (Exception e)
+            {
+                m_log.ErrorFormat(
+                    "[Git]: Could not parse region settings file {0}.  Ignoring.  Exception was {1}",
+                    m_repoPath + "regionsettings.xml", e);
+                return;
+            }
+
+            RegionSettings currentRegionSettings = m_scene.RegionInfo.RegionSettings;
+
+            currentRegionSettings.AgentLimit = loadedRegionSettings.AgentLimit;
+            currentRegionSettings.AllowDamage = loadedRegionSettings.AllowDamage;
+            currentRegionSettings.AllowLandJoinDivide = loadedRegionSettings.AllowLandJoinDivide;
+            currentRegionSettings.AllowLandResell = loadedRegionSettings.AllowLandResell;
+            currentRegionSettings.BlockFly = loadedRegionSettings.BlockFly;
+            currentRegionSettings.BlockShowInSearch = loadedRegionSettings.BlockShowInSearch;
+            currentRegionSettings.BlockTerraform = loadedRegionSettings.BlockTerraform;
+            currentRegionSettings.DisableCollisions = loadedRegionSettings.DisableCollisions;
+            currentRegionSettings.DisablePhysics = loadedRegionSettings.DisablePhysics;
+            currentRegionSettings.DisableScripts = loadedRegionSettings.DisableScripts;
+            currentRegionSettings.Elevation1NE = loadedRegionSettings.Elevation1NE;
+            currentRegionSettings.Elevation1NW = loadedRegionSettings.Elevation1NW;
+            currentRegionSettings.Elevation1SE = loadedRegionSettings.Elevation1SE;
+            currentRegionSettings.Elevation1SW = loadedRegionSettings.Elevation1SW;
+            currentRegionSettings.Elevation2NE = loadedRegionSettings.Elevation2NE;
+            currentRegionSettings.Elevation2NW = loadedRegionSettings.Elevation2NW;
+            currentRegionSettings.Elevation2SE = loadedRegionSettings.Elevation2SE;
+            currentRegionSettings.Elevation2SW = loadedRegionSettings.Elevation2SW;
+            currentRegionSettings.FixedSun = loadedRegionSettings.FixedSun;
+            currentRegionSettings.ObjectBonus = loadedRegionSettings.ObjectBonus;
+            currentRegionSettings.RestrictPushing = loadedRegionSettings.RestrictPushing;
+            currentRegionSettings.TerrainLowerLimit = loadedRegionSettings.TerrainLowerLimit;
+            currentRegionSettings.TerrainRaiseLimit = loadedRegionSettings.TerrainRaiseLimit;
+            currentRegionSettings.TerrainTexture1 = loadedRegionSettings.TerrainTexture1;
+            currentRegionSettings.TerrainTexture2 = loadedRegionSettings.TerrainTexture2;
+            currentRegionSettings.TerrainTexture3 = loadedRegionSettings.TerrainTexture3;
+            currentRegionSettings.TerrainTexture4 = loadedRegionSettings.TerrainTexture4;
+            currentRegionSettings.UseEstateSun = loadedRegionSettings.UseEstateSun;
+            currentRegionSettings.WaterHeight = loadedRegionSettings.WaterHeight;
+
+            currentRegionSettings.Save();
+
+        }
+        private void onWindlightSettingsChanged(RegionLightShareData wl)
+        {
+            RemoveFromEvents();
+            try
+            {
+                WriteWindlight();
+            }
+            finally
+            {
+                SubscribeToEvents();
+            }
+        }
+        private void onRegionSettingsChanged(RegionSettings rs)
+        {
+            RemoveFromEvents();
+            try
+            {
+                WriteRegionSettings();
+            }
+            finally
+            {
+                SubscribeToEvents();
+            }
         }
         private void HandleCommit(Object[] args)
         {
@@ -229,17 +318,35 @@ namespace Careminster.Git
             Commit("Clear command issued from the console", true);
             m_log.Info("[Git] All done.");
 
+            SubscribeToEvents();
+        }
+        private void SubscribeToEvents()
+        {
+            m_scene.RegionInfo.WindlightSettings.OnSave += onWindlightSettingsChanged;
+            m_scene.RegionInfo.RegionSettings.OnSave += onRegionSettingsChanged;
             m_scene.SceneGraph.OnAttachToBackup += onAttachToBackup;
             m_scene.SceneGraph.OnDetachFromBackup += onDetachFromBackup;
             m_scene.SceneGraph.OnChangeBackup += onChangedBackup;
             m_scene.EventManager.OnFrame += tick;
             m_scene.EventManager.OnBackup += backup;
         }
+        private void RemoveFromEvents()
+        {
+            m_scene.RegionInfo.WindlightSettings.OnSave -= onWindlightSettingsChanged;
+            m_scene.RegionInfo.RegionSettings.OnSave -= onRegionSettingsChanged;
+            m_scene.SceneGraph.OnAttachToBackup -= onAttachToBackup;
+            m_scene.SceneGraph.OnDetachFromBackup -= onDetachFromBackup;
+            m_scene.SceneGraph.OnChangeBackup -= onChangedBackup;
+            m_scene.EventManager.OnFrame -= tick;
+            m_scene.EventManager.OnBackup -= backup;
+        }
         private void DoRestore(object o)
         {
             try
             {
                 bool safe = (bool)o;
+                //Restore the region settings
+                ReadRegionSettings();
 
                 //Now, delete all scene objects.
                 m_log.Info("[Git] Clearing the scene..");
@@ -287,11 +394,7 @@ namespace Careminster.Git
             finally
             {
                 //Gimmeh mai events back
-                m_scene.SceneGraph.OnAttachToBackup += onAttachToBackup;
-                m_scene.SceneGraph.OnDetachFromBackup += onDetachFromBackup;
-                m_scene.SceneGraph.OnChangeBackup += onChangedBackup;
-                m_scene.EventManager.OnFrame += tick;
-                m_scene.EventManager.OnBackup += backup;
+                SubscribeToEvents();
             }
         }
         private void HandleClear(Object[] args)
@@ -371,11 +474,7 @@ namespace Careminster.Git
             }
             catch
             {
-                m_scene.SceneGraph.OnAttachToBackup += onAttachToBackup;
-                m_scene.SceneGraph.OnDetachFromBackup += onDetachFromBackup;
-                m_scene.SceneGraph.OnChangeBackup += onChangedBackup;
-                m_scene.EventManager.OnFrame += tick;
-                m_scene.EventManager.OnBackup += backup;
+                SubscribeToEvents();
             }
 
             
@@ -412,11 +511,7 @@ namespace Careminster.Git
             }
             catch
             {
-                m_scene.SceneGraph.OnAttachToBackup += onAttachToBackup;
-                m_scene.SceneGraph.OnDetachFromBackup += onDetachFromBackup;
-                m_scene.SceneGraph.OnChangeBackup += onChangedBackup;
-                m_scene.EventManager.OnFrame += tick;
-                m_scene.EventManager.OnBackup += backup;
+                SubscribeToEvents();
             }
 
         }
