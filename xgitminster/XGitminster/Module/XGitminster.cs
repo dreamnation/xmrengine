@@ -47,6 +47,7 @@ namespace Careminster.Git
         private int frame = 0;
         private bool m_NeedsCommit = false;
         private int m_changes = 0;
+        private int m_commitFrameInterval = 360000;
 
         public string Name
         {
@@ -105,7 +106,7 @@ namespace Careminster.Git
               
 
             m_repoPath = m_Config.GetString("RepoPath", "git");
-
+            m_commitFrameInterval = m_Config.GetInt("CommitFrameInterval", 360000);
             if (!(m_repoPath.Substring(m_repoPath.Length - 1) == "/" || m_repoPath.Substring(m_repoPath.Length - 1) == "\\"))
             {
                 m_repoPath += "\\";
@@ -538,8 +539,8 @@ namespace Careminster.Git
             m_commander.RegisterCommand("checkout", gitcheckout);
             m_commander.RegisterCommand("checkoutsafe", gitcheckoutsafe);
             m_commander.RegisterCommand("deletebranch", gitdeletebranch);
-            m_commander.RegisterCommand("enable", gitdeletebranch);
-            m_commander.RegisterCommand("disable", gitdeletebranch);
+            m_commander.RegisterCommand("enable", gitenable);
+            m_commander.RegisterCommand("disable", gitdisable);
 
             m_scene.RegisterModuleCommander(m_commander);
 
@@ -657,7 +658,7 @@ namespace Careminster.Git
                 }
             }
 
-            if (frame > 360000) //Roughly six hours. We don't want to fill up with commits.
+            if (frame > m_commitFrameInterval)
             {
                 if (m_NeedsCommit)
                 {
@@ -736,6 +737,8 @@ namespace Careminster.Git
 
         private void Queue(SceneObjectGroup sog)
         {
+            if (sog == null) return;
+            
             if (m_ToDelete.Contains(sog.UUID.ToString()))
             {
                 m_ToDelete.Remove(sog.UUID.ToString());
@@ -755,6 +758,7 @@ namespace Careminster.Git
 
         private void onAttachToBackup(SceneObjectGroup sog)
         {
+            if (sog == null) return;
             try
             {
                 if (sog.IsAttachment) return;
@@ -768,6 +772,7 @@ namespace Careminster.Git
 
         private void onDetachFromBackup(SceneObjectGroup sog)
         {
+            if (sog == null) return;
             try
             {
                 if (sog.IsAttachment) return;
@@ -802,6 +807,7 @@ namespace Careminster.Git
         }
         private void onChangedBackup(SceneObjectGroup sog)
         {
+            if (sog == null) return;
             if (sog.IsAttachment) return;
             try
             {
