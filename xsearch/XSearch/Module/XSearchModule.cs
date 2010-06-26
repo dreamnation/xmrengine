@@ -754,6 +754,8 @@ namespace Careminster.Modules.XSearch
             m_ParcelsTable.Delete("RegionID", m_Scene.RegionInfo.RegionID.ToString());
             ILandChannel landChannel = m_Scene.LandChannel;
             List<ILandObject> parcels = landChannel.AllParcels();
+            if (parcels == null)
+                return;
             m_log.DebugFormat("[XSEARCH]: Updating {0} parcels", parcels.Count);
 
             foreach (ILandObject land in parcels)
