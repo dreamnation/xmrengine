@@ -201,6 +201,49 @@ namespace Careminster.Git
                 lock (m_repo)
                 {
                     m_repo.Index.Add("windlightsettings.xml");
+                    m_NeedsCommit = true;
+                    m_changes++;
+                }
+            }
+            catch
+            {
+                //nothing
+            }
+        }
+        private void WriteParcelData(UUID globalID)
+        {
+            // Write out land data (aka parcel) settings
+            try
+            {
+                string landdir = m_repoPath + "land/";
+                if (!Directory.Exists(landdir))
+                {
+                    try
+                    {
+                        Directory.CreateDirectory(landdir);
+                    }
+                    catch
+                    {
+                        m_log.Error("[Git] Couldn't create directory: " + landdir);
+                        return;
+                    }
+                }
+
+                List<ILandObject> landObjects = m_scene.LandChannel.AllParcels();
+                foreach (ILandObject lo in landObjects)
+                {
+                    if (lo.LandData.GlobalID.ToString() == globalID.ToString())
+                    {
+                        LandData landData = lo.LandData;
+                        string landDataPath = String.Format("{0}.xml", landData.GlobalID.ToString());
+
+                        XElement code = XElement.Parse(LandDataSerializer.Serialize(landData));
+                        code.Save(m_repoPath + "land/" + landDataPath);
+                        lock (m_repo)
+                        {
+                            m_repo.Index.Add(m_repoPath + "land/" + landDataPath);
+                        }
+                    }
                 }
             }
             catch
@@ -219,12 +262,36 @@ namespace Careminster.Git
                 lock (m_repo)
                 {
                     m_repo.Index.Add("regionsettings.xml");
+                    m_NeedsCommit = true;
+                    m_changes++;
                 }
             }
             catch
             {
                 //nothing
             }
+        }
+        private void ReadParcelData()
+        {
+            string[] fileEntries = Directory.GetFiles(m_repoPath + "land/");
+            List<LandData> landData = new List<LandData>();
+            foreach (string fileName in fileEntries)
+            {
+                try
+                {
+                    StreamReader streamReader = new StreamReader(fileName);
+                    string data = streamReader.ReadToEnd();
+                    streamReader.Close();
+
+                    LandData parcel = LandDataSerializer.Deserialize(data);
+                    landData.Add(parcel);
+                }
+                catch
+                {
+                    //Narf
+                }
+            }
+            m_scene.EventManager.TriggerIncomingLandDataFromStorage(landData);
         }
         private void ReadWindlight()
         {
@@ -370,6 +437,8 @@ namespace Careminster.Git
             m_scene.SceneGraph.OnChangeBackup += onChangedBackup;
             m_scene.EventManager.OnFrame += tick;
             m_scene.EventManager.OnBackup += backup;
+            m_scene.EventManager.OnLandObjectAdded += onNewLand;
+            m_scene.EventManager.OnLandObjectRemoved += onLandDelete;
         }
         private void RemoveFromEvents()
         {
@@ -380,6 +449,29 @@ namespace Careminster.Git
             m_scene.SceneGraph.OnChangeBackup -= onChangedBackup;
             m_scene.EventManager.OnFrame -= tick;
             m_scene.EventManager.OnBackup -= backup;
+            m_scene.EventManager.OnLandObjectAdded -= onNewLand;
+            m_scene.EventManager.OnLandObjectRemoved -= onLandDelete;
+        }
+        private void onNewLand(ILandObject globalID)
+        {
+            WriteParcelData(globalID.LandData.GlobalID);
+        }
+        private void onLandDelete(UUID globalID)
+        {
+            try
+            {
+                lock (m_repo)
+                {
+                    m_repo.Index.Delete("land/"+globalID.ToString()+"xml");
+                    m_NeedsCommit = true;
+                    m_changes++;
+                }
+            }
+            catch
+            {
+                m_log.Error("Couldn't delete land object "+globalID.ToString());
+                return;
+            }
         }
         private void DoRestore(object o)
         {
@@ -392,6 +484,9 @@ namespace Careminster.Git
 
                 m_log.Info("[Git] Loading LightShare profile..");
                 ReadWindlight();
+
+                m_log.Info("[Git] Loading Parcel Data..");
+                ReadParcelData();
 
                 //Now, delete all scene objects.
                 m_log.Info("[Git] Clearing the scene..");
@@ -703,6 +798,10 @@ namespace Careminster.Git
                     }
                 }
                 m_log.Debug("[Git] Done");
+            }
+            catch
+            {
+                //Don't do anything
             }
             finally
             {
