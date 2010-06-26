@@ -33,7 +33,7 @@ namespace Careminster.Git
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
         private bool m_Enabled; //Git connector enabled
         private string m_repoPath = "git";
-        private IConfigSource m_Config;
+        private IConfig m_Config;
         private Scene m_scene;
         private readonly Commander m_commander = new Commander("git");
         public ICommander CommandInterface
@@ -65,53 +65,72 @@ namespace Careminster.Git
 
         public void Initialise(Scene scene, IConfigSource config)
         {
-            IConfig gitConfig = config.Configs["Git"];
-
-            if (gitConfig == null)
+            IConfig m_Config = config.Configs["Git"];
+            InstallCommands();
+            m_scene = scene;
+            m_scene.RegisterModuleInterface<IRegionModule>(this);
+            m_scene.EventManager.OnPluginConsole += onPluginConsole;
+            if (m_Config == null)
             {
                 m_log.Info("[Git] Gitminster module disabled");
                 return;
             }
             else
             {
-                m_Enabled = gitConfig.GetBoolean("Enabled", false);
+                m_Enabled = m_Config.GetBoolean("Enabled", false);
                 if (!m_Enabled)
                 {
                     m_log.Info("[Git] Gitminster module disabled");
                     return;
                 }
-                m_scene = scene;
-                m_scene.RegisterModuleInterface<IRegionModule>(this);
-                m_scene.EventManager.OnPluginConsole += onPluginConsole;
-
-                m_repoPath = gitConfig.GetString("RepoPath", "git");
-
-                if (!(m_repoPath.Substring(m_repoPath.Length - 1) == "/" || m_repoPath.Substring(m_repoPath.Length - 1) == "\\"))
-                {
-                    m_repoPath += "\\";
-                }
-                m_repoPath += scene.RegionInfo.RegionID.ToString()+"\\";
-
-                if (!Directory.Exists(m_repoPath))
-                {
-                    m_log.Debug("[Git] Creating path "+m_repoPath);
-                    try
-                    {
-                        Directory.CreateDirectory(m_repoPath);
-                    }
-                    catch
-                    {
-                        m_log.Error("[Git] Couldn't create repo directory. Module disabled.");
-                        m_Enabled = false;
-                        return;
-                    }
-                }
-                
+                Enable(null);
             }
+
+        }
+        private void Disable(object o)
+        {
+            backup(null, true);
+            Commit("Final commit; Gitminster going offline", true);
+            m_Enabled = false;
+            m_scene.SceneGraph.OnAttachToBackup -= onAttachToBackup;
+            m_scene.SceneGraph.OnDetachFromBackup -= onDetachFromBackup;
+            m_scene.SceneGraph.OnChangeBackup -= onChangedBackup;
+            m_scene.EventManager.OnFrame -= tick;
+            m_scene.EventManager.OnBackup -= backup;
+            m_log.Info("[Git] Gitminster disabled.");
+        }
+        private void Enable(object o)
+        {
+              
+
+            m_repoPath = m_Config.GetString("RepoPath", "git");
+
+            if (!(m_repoPath.Substring(m_repoPath.Length - 1) == "/" || m_repoPath.Substring(m_repoPath.Length - 1) == "\\"))
+            {
+                m_repoPath += "\\";
+            }
+            m_repoPath += m_scene.RegionInfo.RegionID.ToString()+"\\";
+
+            if (!Directory.Exists(m_repoPath))
+            {
+                m_log.Debug("[Git] Creating path "+m_repoPath);
+                try
+                {
+                    Directory.CreateDirectory(m_repoPath);
+                }
+                catch
+                {
+                    m_log.Error("[Git] Couldn't create repo directory. Module disabled.");
+                    m_Enabled = false;
+                    return;
+                }
+            }
+                
+            
 
             m_Enabled = true;
 
-            m_Config = config;
+            
 
             m_repo = new Repository(m_repoPath);
             if (Repository.IsValid(m_repoPath, false))
@@ -134,7 +153,7 @@ namespace Careminster.Git
                 m_log.Debug("[Git] Committing changes which were queued before the region crashed");
             }
 
-            InstallCommands();
+            
 
             m_scene.SceneGraph.OnAttachToBackup += onAttachToBackup;
             m_scene.SceneGraph.OnDetachFromBackup += onDetachFromBackup;
@@ -142,9 +161,15 @@ namespace Careminster.Git
             m_scene.EventManager.OnFrame += tick;
             m_scene.EventManager.OnBackup += backup;
 
+            m_log.Info("[Git] Gitminster online.");
         }
         private void HandleCommit(Object[] args)
         {
+            if (!m_Enabled)
+            {
+                m_log.Error("[Git] Gitminster is not enabled");
+                return;
+            }
             backup(null, true);
             Commit("Requested by console", true);
         }
@@ -250,6 +275,11 @@ namespace Careminster.Git
         }
         private void HandleClear(Object[] args)
         {
+            if (!m_Enabled)
+            {
+                m_log.Error("[Git] Gitminster is not enabled");
+                return;
+            }
             //First, unhook from all events.
             m_scene.SceneGraph.OnAttachToBackup -= onAttachToBackup;
             m_scene.SceneGraph.OnDetachFromBackup -= onDetachFromBackup;
@@ -261,7 +291,12 @@ namespace Careminster.Git
 
         }
         private void HandleRestore(Object[] args)
-        {
+        {   if (!m_Enabled)
+            {
+                m_log.Error("[Git] Gitminster is not enabled");
+                return;
+            }
+
             //First, unhook from all events.
             m_scene.SceneGraph.OnAttachToBackup -= onAttachToBackup;
             m_scene.SceneGraph.OnDetachFromBackup -= onDetachFromBackup;
@@ -284,6 +319,11 @@ namespace Careminster.Git
         }
         private void HandleCheckoutSafe(Object[] args)
         {
+            if (!m_Enabled)
+            {
+                m_log.Error("[Git] Gitminster is not enabled");
+                return;
+            }
             string branchname = (string)args[0];
 
 
@@ -321,6 +361,11 @@ namespace Careminster.Git
         }
         private void HandleCheckout(Object[] args)
         {
+            if (!m_Enabled)
+            {
+                m_log.Error("[Git] Gitminster is not enabled");
+                return;
+            }
             string branchname = (string)args[0];
 
             //Now, unhook from all events.
@@ -356,6 +401,11 @@ namespace Careminster.Git
         }
         private void HandleBranchDelete(Object[] args)
         {
+            if (!m_Enabled)
+            {
+                m_log.Error("[Git] Gitminster is not enabled");
+                return;
+            }
             string branchname = (string)args[0];
 
             //Commit any uncommitted committy committs.
@@ -380,6 +430,11 @@ namespace Careminster.Git
         }
         private void HandleBranch(Object[] args)
         {
+            if (!m_Enabled)
+            {
+                m_log.Error("[Git] Gitminster is not enabled");
+                return;
+            }
             string branchname = (string)args[0];
 
             //Commit any uncommitted committy committs.
@@ -403,7 +458,11 @@ namespace Careminster.Git
         }
         private void HandleReload(Object[] args)
         {
-
+            if (!m_Enabled)
+            {
+                m_log.Error("[Git] Gitminster is not enabled");
+                return;
+            }
             //Now, unhook from all events.
             m_scene.SceneGraph.OnAttachToBackup -= onAttachToBackup;
             m_scene.SceneGraph.OnDetachFromBackup -= onDetachFromBackup;
@@ -419,6 +478,13 @@ namespace Careminster.Git
         }
         private void HandleRestoreSafe(Object[] args)
         {
+
+            if (!m_Enabled)
+            {
+                m_log.Error("[Git] Gitminster is not enabled");
+                return;
+            }
+
             //First, unhook from all events.
             m_scene.SceneGraph.OnAttachToBackup -= onAttachToBackup;
             m_scene.SceneGraph.OnDetachFromBackup -= onDetachFromBackup;
@@ -450,6 +516,8 @@ namespace Careminster.Git
             Command gitcheckout = new Command("checkout", CommandIntentions.COMMAND_HAZARDOUS, HandleCheckout, "Switches to another branch.");
             Command gitcheckoutsafe = new Command("checkoutsafe", CommandIntentions.COMMAND_HAZARDOUS, HandleCheckoutSafe, "Switches to another branch, but skips NoCopy objects.");
             Command gitdeletebranch = new Command("deletebranch", CommandIntentions.COMMAND_HAZARDOUS, HandleBranchDelete, "Deletes a branch which is not currently active");
+            Command gitenable = new Command("enable", CommandIntentions.COMMAND_HAZARDOUS, Enable, "Enables the Gitminster plugin");
+            Command gitdisable = new Command("disable", CommandIntentions.COMMAND_HAZARDOUS, Disable, "Disables the Gitminster plugin");
             
             
             gitrestore.AddArgument("hash", "The commit hash you wish to restore", "String");
@@ -469,6 +537,8 @@ namespace Careminster.Git
             m_commander.RegisterCommand("checkout", gitcheckout);
             m_commander.RegisterCommand("checkoutsafe", gitcheckoutsafe);
             m_commander.RegisterCommand("deletebranch", gitdeletebranch);
+            m_commander.RegisterCommand("enable", gitdeletebranch);
+            m_commander.RegisterCommand("disable", gitdeletebranch);
 
             m_scene.RegisterModuleCommander(m_commander);
 
