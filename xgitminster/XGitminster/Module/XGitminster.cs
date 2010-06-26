@@ -65,7 +65,7 @@ namespace Careminster.Git
 
         public void Initialise(Scene scene, IConfigSource config)
         {
-            IConfig m_Config = config.Configs["Git"];
+            m_Config = config.Configs["Git"];
             m_scene = scene;
             m_scene.RegisterModuleInterface<IRegionModule>(this);
             m_scene.EventManager.OnPluginConsole += onPluginConsole;
