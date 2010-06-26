@@ -151,19 +151,32 @@ namespace Careminster.Git
 
             if (m_repo.Status.Added.Count > 0 || m_repo.Status.Removed.Count > 0)
             {
-                Commit commit = m_repo.Commit("Uncommitted local changes - region crash", new Author(m_scene.RegionInfo.RegionName, m_scene.RegionInfo.RegionID.ToString() + "@meta7.com"));
-                m_log.Debug("[Git] Committing changes which were queued before the region crashed");
+                Util.FireAndForget(
+                    delegate
+                    {
+                        try
+                        {
+                            lock (m_repo)
+                            {
+                                Commit commit = m_repo.Commit("Uncommitted local changes - region crash", new Author(m_scene.RegionInfo.RegionName, m_scene.RegionInfo.RegionID.ToString() + "@meta7.com"));
+                                m_log.Debug("[Git] Committing changes which were queued before the region crashed");
+                            }
+                        }
+                        catch
+                        {
+                            //error..
+                        }
+                    }
+                );
             }
-
-            
 
             m_scene.SceneGraph.OnAttachToBackup += onAttachToBackup;
             m_scene.SceneGraph.OnDetachFromBackup += onDetachFromBackup;
             m_scene.SceneGraph.OnChangeBackup += onChangedBackup;
             m_scene.EventManager.OnFrame += tick;
             m_scene.EventManager.OnBackup += backup;
-
             m_log.Info("[Git] Gitminster online.");
+
         }
         private void HandleCommit(Object[] args)
         {
@@ -662,7 +675,12 @@ namespace Careminster.Git
             {
                 if (m_NeedsCommit)
                 {
-                    Commit("Changes so far",false);
+                    Util.FireAndForget(
+                        delegate
+                        {
+                            Commit("Changes so far", false);
+                        }
+                    );
                 }
                 frame = 0;
             }
@@ -707,7 +725,22 @@ namespace Careminster.Git
                 m_log.Error("[Git] Exception while adding object: "+e.Message);
             }
         }
-
+        private void DoDelete(string name)
+        {
+            try
+            {
+                lock (m_repo)
+                {
+                    m_repo.Index.Delete(name);
+                }
+                m_NeedsCommit = true;
+                m_changes++;
+            }
+            catch
+            {
+                //Ignore
+            }
+        }
         private void DeleteGroup(SceneObjectGroup sog)
         {
             try
@@ -715,17 +748,19 @@ namespace Careminster.Git
                 if (m_Added.Contains(sog.UUID.ToString()))
                 {
                     //This sog has been added but not committed, so, commit now
-                    Commit("Persisting object " + sog.UUID.ToString(), true);
-                }
-                
-                lock (m_repo)
-                {
-                    m_repo.Index.Delete("objects/" + sog.UUID.ToString());
+                    Util.FireAndForget(
+                        delegate
+                        {
+                            Commit("Persisting object " + sog.UUID.ToString(), true);
+                            DoDelete("objects/" + sog.UUID.ToString());
+                        }
+                    );
+                    return;
                 }
 
+
+                DoDelete("objects/" + sog.UUID.ToString());
                 
-                m_NeedsCommit = true;
-                m_changes++;
             }
             catch
             {
@@ -829,9 +864,25 @@ namespace Careminster.Git
                 StreamWriter tw = new StreamWriter(m_repoPath + "RegionOnline.txt");
                 tw.WriteLine("Region " + m_scene.RegionInfo.RegionName + " Online: " + DateTime.Now.ToString());
                 tw.Close();
-                m_repo.Index.Add("RegionOnline.txt");
-                Commit commit = m_repo.Commit("Region online at " + DateTime.Now.ToString(), new Author(m_scene.RegionInfo.RegionName, m_scene.RegionInfo.RegionID.ToString() + "@meta7.com"));
-                m_log.Debug("[Git] Committing startup time");
+
+                Util.FireAndForget(
+                    delegate
+                    {
+                        try
+                        {
+                            lock (m_repo)
+                            {
+                                m_log.Debug("[Git] Committing startup time");
+                                m_repo.Index.Add("RegionOnline.txt");
+                                Commit commit = m_repo.Commit("Region online at " + DateTime.Now.ToString(), new Author(m_scene.RegionInfo.RegionName, m_scene.RegionInfo.RegionID.ToString() + "@meta7.com"));
+                            }
+                        }
+                        catch (Exception e)
+                        {
+                            m_log.Error("[Git] Failed to make RegionOnline commit: " + e.Message);
+                        }
+                    }
+                );
             }
             catch(Exception e)
             {
