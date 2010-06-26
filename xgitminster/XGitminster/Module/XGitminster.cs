@@ -308,7 +308,7 @@ namespace Careminster.Git
                     Util.FireAndForget(DoRestore, true);
                 }
             }
-            finally
+            catch
             {
                 m_scene.SceneGraph.OnAttachToBackup += onAttachToBackup;
                 m_scene.SceneGraph.OnDetachFromBackup += onDetachFromBackup;
@@ -344,7 +344,7 @@ namespace Careminster.Git
                     Util.FireAndForget(DoRestore, false);
                 }
             }
-            finally
+            catch
             {
                 m_scene.SceneGraph.OnAttachToBackup += onAttachToBackup;
                 m_scene.SceneGraph.OnDetachFromBackup += onDetachFromBackup;
