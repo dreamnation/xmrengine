@@ -236,7 +236,7 @@ namespace Careminster.Git
                         m_log.Error("[Git] Error restoring group, "+e.Message);
                     }
                 }
-                m_log.Info("[Git] Restored " + files.ToString() + " prims. All done!");
+                m_log.Info("[Git] Restored " + files.ToString() + " objects. All done!");
             }
             finally
             {
@@ -542,7 +542,7 @@ namespace Careminster.Git
                 }
                 catch
                 {
-                    m_log.Error("[Git] Failed to backup all queued prims");
+                    m_log.Error("[Git] Failed to backup all queued objects");
                 }
                 finally
                 {
