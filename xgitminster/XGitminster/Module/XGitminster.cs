@@ -46,6 +46,7 @@ namespace Careminster.Git
         private OrderedDictionary m_ToDelete = new OrderedDictionary();
         private int frame = 0;
         private bool m_NeedsCommit = false;
+        private bool m_useSafetyCommit = true;
         private int m_changes = 0;
         private int m_commitFrameInterval = 360000;
 
@@ -107,6 +108,7 @@ namespace Careminster.Git
 
             m_repoPath = m_Config.GetString("RepoPath", "git");
             m_commitFrameInterval = m_Config.GetInt("CommitFrameInterval", 360000);
+            m_useSafetyCommit = m_Config.GetBoolean("UseSafetyCommit", true);
             if (!(m_repoPath.Substring(m_repoPath.Length - 1) == "/" || m_repoPath.Substring(m_repoPath.Length - 1) == "\\"))
             {
                 m_repoPath += "/";
@@ -753,7 +755,7 @@ namespace Careminster.Git
         {
             try
             {
-                if (m_Added.Contains(sog.UUID.ToString()))
+                if (m_useSafetyCommit && m_Added.Contains(sog.UUID.ToString()))
                 {
                     //This sog has been added but not committed, so, commit now
                     Util.FireAndForget(
