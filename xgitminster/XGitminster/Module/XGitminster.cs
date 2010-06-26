@@ -66,10 +66,11 @@ namespace Careminster.Git
         public void Initialise(Scene scene, IConfigSource config)
         {
             IConfig m_Config = config.Configs["Git"];
-            InstallCommands();
             m_scene = scene;
             m_scene.RegisterModuleInterface<IRegionModule>(this);
             m_scene.EventManager.OnPluginConsole += onPluginConsole;
+            
+            InstallCommands();
             if (m_Config == null)
             {
                 m_log.Info("[Git] Gitminster module disabled");
