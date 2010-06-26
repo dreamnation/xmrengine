@@ -736,6 +736,8 @@ namespace Careminster.Git
 
         private void Queue(SceneObjectGroup sog)
         {
+            if (sog == null) return;
+            
             if (m_ToDelete.Contains(sog.UUID.ToString()))
             {
                 m_ToDelete.Remove(sog.UUID.ToString());
@@ -755,6 +757,7 @@ namespace Careminster.Git
 
         private void onAttachToBackup(SceneObjectGroup sog)
         {
+            if (sog == null) return;
             try
             {
                 if (sog.IsAttachment) return;
@@ -768,6 +771,7 @@ namespace Careminster.Git
 
         private void onDetachFromBackup(SceneObjectGroup sog)
         {
+            if (sog == null) return;
             try
             {
                 if (sog.IsAttachment) return;
@@ -802,6 +806,7 @@ namespace Careminster.Git
         }
         private void onChangedBackup(SceneObjectGroup sog)
         {
+            if (sog == null) return;
             if (sog.IsAttachment) return;
             try
             {
