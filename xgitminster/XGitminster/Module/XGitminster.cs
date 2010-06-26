@@ -109,9 +109,9 @@ namespace Careminster.Git
             m_commitFrameInterval = m_Config.GetInt("CommitFrameInterval", 360000);
             if (!(m_repoPath.Substring(m_repoPath.Length - 1) == "/" || m_repoPath.Substring(m_repoPath.Length - 1) == "\\"))
             {
-                m_repoPath += "\\";
+                m_repoPath += "/";
             }
-            m_repoPath += m_scene.RegionInfo.RegionID.ToString()+"\\";
+            m_repoPath += m_scene.RegionInfo.RegionID.ToString()+"/";
 
             if (!Directory.Exists(m_repoPath))
             {
@@ -188,7 +188,7 @@ namespace Careminster.Git
 
             //And delete all files from our git repo
             Directory.SetCurrentDirectory(m_repoPath);
-            string[] fileEntries = Directory.GetFiles("objects\\");
+            string[] fileEntries = Directory.GetFiles("objects/");
              lock (m_repo)
             {                
                 foreach (string fileName in fileEntries)
@@ -228,7 +228,7 @@ namespace Careminster.Git
 
                 //Yay.
                 m_log.Info("[Git] Beginning object restore..");
-                string[] fileEntries = Directory.GetFiles(m_repoPath + "objects\\");
+                string[] fileEntries = Directory.GetFiles(m_repoPath + "objects/");
                 int files = 0;
                 foreach (string fileName in fileEntries)
                 {
@@ -684,7 +684,7 @@ namespace Careminster.Git
                         return;
                     }
                 }
-                string primfile = "objects\\"+ sog.UUID.ToString();
+                string primfile = "objects/"+ sog.UUID.ToString();
                 //XmlTextWriter tw = new XmlTextWriter(m_repoPath + primfile,System.Text.Encoding.UTF8);
                 XElement code = XElement.Parse(sog.ToXml2());
                 foreach (XElement e in code.Descendants("LocalId"))
@@ -720,7 +720,7 @@ namespace Careminster.Git
                 
                 lock (m_repo)
                 {
-                    m_repo.Index.Delete("objects\\" + sog.UUID.ToString());
+                    m_repo.Index.Delete("objects/" + sog.UUID.ToString());
                 }
 
                 
