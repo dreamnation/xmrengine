@@ -97,11 +97,7 @@ namespace Careminster.Git
             backup(null, true);
             Commit("Final commit; Gitminster going offline", true);
             m_Enabled = false;
-            m_scene.SceneGraph.OnAttachToBackup -= onAttachToBackup;
-            m_scene.SceneGraph.OnDetachFromBackup -= onDetachFromBackup;
-            m_scene.SceneGraph.OnChangeBackup -= onChangedBackup;
-            m_scene.EventManager.OnFrame -= tick;
-            m_scene.EventManager.OnBackup -= backup;
+            RemoveFromEvents();
             m_log.Info("[Git] Gitminster disabled.");
         }
         private void Enable(object o)
@@ -185,15 +181,60 @@ namespace Careminster.Git
         }
         private void WriteWindlight()
         {
-            m_log.Info("[Git] Writing windlight settings");
+            try
+            {
+                string wlfile = m_repoPath + "windlightsettings.xml";
+                m_log.Info("[Git] Writing windlight settings");
+                RegionLightShareData wl = m_scene.RegionInfo.WindlightSettings;
+
+                XmlWriterSettings settings = new XmlWriterSettings();
+                settings.Indent = true;
+                settings.Encoding = System.Text.Encoding.UTF8;
+
+                using (XmlWriter writer = XmlWriter.Create(wlfile, settings))
+                {
+                    System.Xml.Serialization.XmlSerializer serializer = new System.Xml.Serialization.XmlSerializer(wl.GetType());
+                    serializer.Serialize(writer, wl);
+                    writer.Flush();
+                }
+
+                lock (m_repo)
+                {
+                    m_repo.Index.Add("windlightsettings.xml");
+                }
+            }
+            catch
+            {
+                //nothing
+            }
         }
         private void WriteRegionSettings()
         {
-            m_log.Info("[Git] Writing region settings");
+            try
+            {
+                m_log.Info("[Git] Writing region settings");
 
-            XElement code = XElement.Parse(RegionSettingsSerializer.Serialize(m_scene.RegionInfo.RegionSettings));
-            code.Save(m_repoPath + "regionsettings.xml");
-
+                XElement code = XElement.Parse(RegionSettingsSerializer.Serialize(m_scene.RegionInfo.RegionSettings));
+                code.Save(m_repoPath + "regionsettings.xml");
+                lock (m_repo)
+                {
+                    m_repo.Index.Add("regionsettings.xml");
+                }
+            }
+            catch
+            {
+                //nothing
+            }
+        }
+        private void ReadWindlight()
+        {
+            using (XmlReader reader = XmlReader.Create(m_repoPath + "windlightsettings.xml"))
+            {
+                System.Xml.Serialization.XmlSerializer serializer = new System.Xml.Serialization.XmlSerializer(m_scene.RegionInfo.WindlightSettings.GetType());
+                RegionLightShareData wl = (RegionLightShareData)serializer.Deserialize(reader);
+                m_scene.StoreWindlightProfile(wl);
+            }
+            
         }
         private void ReadRegionSettings()
         {
@@ -346,7 +387,11 @@ namespace Careminster.Git
             {
                 bool safe = (bool)o;
                 //Restore the region settings
+                m_log.Info("[Git] Loading Region settings..");
                 ReadRegionSettings();
+
+                m_log.Info("[Git] Loading LightShare profile..");
+                ReadWindlight();
 
                 //Now, delete all scene objects.
                 m_log.Info("[Git] Clearing the scene..");
@@ -405,11 +450,7 @@ namespace Careminster.Git
                 return;
             }
             //First, unhook from all events.
-            m_scene.SceneGraph.OnAttachToBackup -= onAttachToBackup;
-            m_scene.SceneGraph.OnDetachFromBackup -= onDetachFromBackup;
-            m_scene.SceneGraph.OnChangeBackup -= onChangedBackup;
-            m_scene.EventManager.OnFrame -= tick;
-            m_scene.EventManager.OnBackup -= backup;
+            RemoveFromEvents();
 
             Util.FireAndForget(DoClear, false);
 
@@ -422,11 +463,7 @@ namespace Careminster.Git
             }
 
             //First, unhook from all events.
-            m_scene.SceneGraph.OnAttachToBackup -= onAttachToBackup;
-            m_scene.SceneGraph.OnDetachFromBackup -= onDetachFromBackup;
-            m_scene.SceneGraph.OnChangeBackup -= onChangedBackup;
-            m_scene.EventManager.OnFrame -= tick;
-            m_scene.EventManager.OnBackup -= backup;
+            RemoveFromEvents();
 
             //Commit any uncommitted committy committs.
             backup(null, true);
@@ -452,11 +489,7 @@ namespace Careminster.Git
 
 
             //Now, unhook from all events.
-            m_scene.SceneGraph.OnAttachToBackup -= onAttachToBackup;
-            m_scene.SceneGraph.OnDetachFromBackup -= onDetachFromBackup;
-            m_scene.SceneGraph.OnChangeBackup -= onChangedBackup;
-            m_scene.EventManager.OnFrame -= tick;
-            m_scene.EventManager.OnBackup -= backup;
+            RemoveFromEvents();
 
             //Commit any uncommitted committy committs.
             backup(null, true);
@@ -489,11 +522,7 @@ namespace Careminster.Git
             string branchname = (string)args[0];
 
             //Now, unhook from all events.
-            m_scene.SceneGraph.OnAttachToBackup -= onAttachToBackup;
-            m_scene.SceneGraph.OnDetachFromBackup -= onDetachFromBackup;
-            m_scene.SceneGraph.OnChangeBackup -= onChangedBackup;
-            m_scene.EventManager.OnFrame -= tick;
-            m_scene.EventManager.OnBackup -= backup;
+            RemoveFromEvents();
 
             //Commit any uncommitted committy committs.
             backup(null, true);
@@ -580,11 +609,7 @@ namespace Careminster.Git
                 return;
             }
             //Now, unhook from all events.
-            m_scene.SceneGraph.OnAttachToBackup -= onAttachToBackup;
-            m_scene.SceneGraph.OnDetachFromBackup -= onDetachFromBackup;
-            m_scene.SceneGraph.OnChangeBackup -= onChangedBackup;
-            m_scene.EventManager.OnFrame -= tick;
-            m_scene.EventManager.OnBackup -= backup;
+            RemoveFromEvents();
 
             //Commit any uncommitted committy committs.
             backup(null, true);
@@ -602,11 +627,7 @@ namespace Careminster.Git
             }
 
             //First, unhook from all events.
-            m_scene.SceneGraph.OnAttachToBackup -= onAttachToBackup;
-            m_scene.SceneGraph.OnDetachFromBackup -= onDetachFromBackup;
-            m_scene.SceneGraph.OnChangeBackup -= onChangedBackup;
-            m_scene.EventManager.OnFrame -= tick;
-            m_scene.EventManager.OnBackup -= backup;
+            RemoveFromEvents();
 
             //Commit any uncommitted committy committs.
             backup(null, true);
