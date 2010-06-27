@@ -75,7 +75,7 @@ namespace Careminster.Modules.Snmp
 
             if (snmpConfig == null)
             {
-                m_log.Info("[XSnmp] module not found");
+                m_log.Info("[XSnmp] module not configured");
                 return;
             }
             else
