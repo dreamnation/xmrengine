@@ -134,7 +134,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * to do the same thing right now.
                  * Dont' flag it if it's still suspended!
                  */
-                if (m_IState == XMRInstState.IDLE && (!m_Suspended)) {
+                if ((m_IState == XMRInstState.IDLE) && !m_Suspended) {
                     m_IState = XMRInstState.ONSTARTQ;
                     startIt = true;
                 }
