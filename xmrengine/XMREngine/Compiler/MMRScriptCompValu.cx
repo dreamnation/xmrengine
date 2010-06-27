@@ -77,11 +77,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		CompValu idx;
 		TokenTypeObject tto;
 
-		static MethodInfo getByKeyMethodInfo = typeof (XMR_Array).GetMethod ("GetByKey", 
-		                                                                     new Type[] { typeof (object) });
-		static MethodInfo setByKeyMethodInfo = typeof (XMR_Array).GetMethod ("SetByKey", 
-		                                                                     new Type[] { typeof (object),
-		                                                                                  typeof (object) });
+		private static readonly MethodInfo getByKeyMethodInfo = typeof (XMR_Array).GetMethod ("GetByKey", 
+		                                                                                      new Type[] { typeof (object) });
+		private static readonly MethodInfo setByKeyMethodInfo = typeof (XMR_Array).GetMethod ("SetByKey", 
+		                                                                                      new Type[] { typeof (object),
+		                                                                                                   typeof (object) });
 
 		// type = TokenTypeObject always, as our array elements are always of type 'object'
 		// arr  = where the array object itself is stored
@@ -214,14 +214,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public FieldInfo field;
 		public int index;
 
-		private static FieldInfo gblArraysFieldInfo    = typeof (XMRInstAbstract).GetField ("gblArrays");
-		private static FieldInfo gblFloatsFieldInfo    = typeof (XMRInstAbstract).GetField ("gblFloats");
-		private static FieldInfo gblIntegersFieldInfo  = typeof (XMRInstAbstract).GetField ("gblIntegers");
-		private static FieldInfo gblListsFieldInfo     = typeof (XMRInstAbstract).GetField ("gblLists");
-		private static FieldInfo gblObjectsFieldInfo   = typeof (XMRInstAbstract).GetField ("gblObjects");
-		private static FieldInfo gblRotationsFieldInfo = typeof (XMRInstAbstract).GetField ("gblRotations");
-		private static FieldInfo gblStringsFieldInfo   = typeof (XMRInstAbstract).GetField ("gblStrings");
-		private static FieldInfo gblVectorsFieldInfo   = typeof (XMRInstAbstract).GetField ("gblVectors");
+		private static readonly FieldInfo gblArraysFieldInfo    = typeof (XMRInstAbstract).GetField ("gblArrays");
+		private static readonly FieldInfo gblFloatsFieldInfo    = typeof (XMRInstAbstract).GetField ("gblFloats");
+		private static readonly FieldInfo gblIntegersFieldInfo  = typeof (XMRInstAbstract).GetField ("gblIntegers");
+		private static readonly FieldInfo gblListsFieldInfo     = typeof (XMRInstAbstract).GetField ("gblLists");
+		private static readonly FieldInfo gblObjectsFieldInfo   = typeof (XMRInstAbstract).GetField ("gblObjects");
+		private static readonly FieldInfo gblRotationsFieldInfo = typeof (XMRInstAbstract).GetField ("gblRotations");
+		private static readonly FieldInfo gblStringsFieldInfo   = typeof (XMRInstAbstract).GetField ("gblStrings");
+		private static readonly FieldInfo gblVectorsFieldInfo   = typeof (XMRInstAbstract).GetField ("gblVectors");
 
 		public CompValuGlobal (TokenDeclVar declVar, ScriptObjCode scriptObjCode) : base (declVar.type)
 		{
@@ -360,7 +360,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public CompValu z;
 		public CompValu w;
 
-		private static ConstructorInfo lslRotConstructorInfo = 
+		private static readonly ConstructorInfo lslRotConstructorInfo = 
 				typeof (LSL_Rotation).GetConstructor (new Type[] { typeof (SCRIPTFLOAT), 
 				                                                   typeof (SCRIPTFLOAT), 
 				                                                   typeof (SCRIPTFLOAT), 
@@ -481,12 +481,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	public class CompValuTemp : CompValu {
 		private ScriptMyLocal localBuilder;
 
-		private static ulong num = 0;
-
 		public CompValuTemp (TokenType type, string name, ScriptCodeGen scg) : base (type)
 		{
 			if (name == null) {
-				name = "__tmp_" + (++ num);
+				name = "__tmp_" + (++ scg.tempCompValuNum);
 			}
 			this.localBuilder = scg.ilGen.DeclareLocal (SysType(), name);
 		}
@@ -510,7 +508,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public CompValu y;
 		public CompValu z;
 
-		private static ConstructorInfo lslVecConstructorInfo = 
+		private static readonly ConstructorInfo lslVecConstructorInfo = 
 				typeof (LSL_Vector).GetConstructor (new Type[] { typeof (SCRIPTFLOAT), 
 				                                                 typeof (SCRIPTFLOAT), 
 				                                                 typeof (SCRIPTFLOAT) });

@@ -106,6 +106,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private TokenStmtBlock curStmtBlock = null;
 		private BinaryWriter objFileWriter = null;
 		private TokenScript tokenScript = null;
+		public  int tempCompValuNum = 0;
 
 		private Dictionary<string, TokenDeclFunc> scriptFunctions = null;
 		private Dictionary<string, int> stateIndices = null;
