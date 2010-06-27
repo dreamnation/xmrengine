@@ -546,6 +546,8 @@ namespace Careminster.Modules.Permissions
 
                 if (rootPart.OwnerID == user)
                     return rootPart.OwnerMask;
+                if (IsFriendWithPerms(user, rootPart.OwnerID))
+                    return rootPart.OwnerMask;
 
                 if (rootPart.OwnerID == rootPart.GroupID &&
                         CheckGroupPowers(user, rootPart.GroupID,
@@ -574,6 +576,9 @@ namespace Careminster.Modules.Permissions
                 if(!CanRezObject(objectCount, owner, objectPosition, scene))
                     return false;
 
+                // If it's not the owner making the copy, it has to be trans
+                if((perms & PERM_TRANS) == 0 && group.OwnerID != owner)
+                    return false;
                 if((perms & PERM_COPY) == 0)
                     return false;
 
