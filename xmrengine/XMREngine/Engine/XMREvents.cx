@@ -26,6 +26,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     {
         public static readonly DetectParams[] zeroDetectParams = new DetectParams[0];
         public static readonly object[] zeroObjectArray = new object[0];
+        public static readonly object[] oneObjectArrayOne = new object[1] { 1 };
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
         private XMREngine myScriptEngine;
@@ -120,7 +121,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             myScriptEngine.PostObjectEvent(localID, new EventParams(
-                    "touch_start", new Object[] { 1 },
+                    "touch_start", oneObjectArrayOne,
                     det));
         }
 
@@ -151,7 +152,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             myScriptEngine.PostObjectEvent(localID, new EventParams(
-                    "touch", new Object[] { 1 },
+                    "touch", oneObjectArrayOne,
                     det));
         }
 
@@ -184,7 +185,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             myScriptEngine.PostObjectEvent(localID, new EventParams(
-                    "touch_end", new Object[] { 1 },
+                    "touch_end", oneObjectArrayOne,
                     det));
         }
 
@@ -222,10 +223,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 det.Add(d);
             }
 
-            if (det.Count > 0)
+            int dc = det.Count;
+            if (dc > 0)
                 myScriptEngine.PostObjectEvent(localID, new EventParams(
                         "collision_start",
-                        new Object[] { det.Count },
+                        new Object[] { dc },
                         det.ToArray()));
         }
 
@@ -242,9 +244,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 det.Add(d);
             }
 
-            if (det.Count > 0)
+            int dc = det.Count;
+            if (dc > 0)
                 myScriptEngine.PostObjectEvent(localID, new EventParams(
-                        "collision", new Object[] { det.Count },
+                        "collision", new Object[] { dc },
                         det.ToArray()));
         }
 
@@ -261,10 +264,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 det.Add(d);
             }
 
-            if (det.Count > 0)
+            int dc = det.Count;
+            if (dc > 0)
                 myScriptEngine.PostObjectEvent(localID, new EventParams(
                         "collision_end",
-                        new Object[] { det.Count },
+                        new Object[] { dc },
                         det.ToArray()));
         }
 
@@ -323,7 +327,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             myScriptEngine.PostObjectEvent(localID, new EventParams(
                     "at_target", new object[] {
-                    handle,
+                    (int)handle,
                     new LSL_Types.Vector3(targetpos.X,targetpos.Y,targetpos.Z),
                     new LSL_Types.Vector3(atpos.X,atpos.Y,atpos.Z) },
                     zeroDetectParams));
