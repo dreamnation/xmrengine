@@ -23,6 +23,8 @@ using OpenSim.Region.Framework.Interfaces;
 using OpenSim.Region.CoreModules.Framework.InterfaceCommander;
 using OpenSim.Region.Framework.Scenes.Serialization;
 using OpenSim.Region.Framework.Scenes;
+using OpenSim.Framework.Serialization;
+using OpenSim.Framework.Serialization.External;
 using GitSharp;
 using GitSharp.Commands;
 
@@ -33,7 +35,7 @@ namespace Careminster.Git
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
         private bool m_Enabled; //Git connector enabled
         private string m_repoPath = "git";
-        private IConfigSource m_Config;
+        private IConfig m_Config;
         private Scene m_scene;
         private readonly Commander m_commander = new Commander("git");
         public ICommander CommandInterface
@@ -46,7 +48,9 @@ namespace Careminster.Git
         private OrderedDictionary m_ToDelete = new OrderedDictionary();
         private int frame = 0;
         private bool m_NeedsCommit = false;
+        private bool m_useSafetyCommit = true;
         private int m_changes = 0;
+        private int m_commitFrameInterval = 360000;
 
         public string Name
         {
@@ -65,53 +69,70 @@ namespace Careminster.Git
 
         public void Initialise(Scene scene, IConfigSource config)
         {
-            IConfig gitConfig = config.Configs["Git"];
-
-            if (gitConfig == null)
+            m_Config = config.Configs["Git"];
+            m_scene = scene;
+            m_scene.RegisterModuleInterface<IRegionModule>(this);
+            m_scene.EventManager.OnPluginConsole += onPluginConsole;
+            
+            InstallCommands();
+            if (m_Config == null)
             {
                 m_log.Info("[Git] Gitminster module disabled");
                 return;
             }
             else
             {
-                m_Enabled = gitConfig.GetBoolean("Enabled", false);
+                m_Enabled = m_Config.GetBoolean("Enabled", false);
                 if (!m_Enabled)
                 {
                     m_log.Info("[Git] Gitminster module disabled");
                     return;
                 }
-                m_scene = scene;
-                m_scene.RegisterModuleInterface<IRegionModule>(this);
-                m_scene.EventManager.OnPluginConsole += onPluginConsole;
-
-                m_repoPath = gitConfig.GetString("RepoPath", "git");
-
-                if (!(m_repoPath.Substring(m_repoPath.Length - 1) == "/" || m_repoPath.Substring(m_repoPath.Length - 1) == "\\"))
-                {
-                    m_repoPath += "\\";
-                }
-                m_repoPath += scene.RegionInfo.RegionID.ToString()+"\\";
-
-                if (!Directory.Exists(m_repoPath))
-                {
-                    m_log.Debug("[Git] Creating path "+m_repoPath);
-                    try
-                    {
-                        Directory.CreateDirectory(m_repoPath);
-                    }
-                    catch
-                    {
-                        m_log.Error("[Git] Couldn't create repo directory. Module disabled.");
-                        m_Enabled = false;
-                        return;
-                    }
-                }
-                
+                Enable(null);
             }
+
+        }
+        private void Disable(object o)
+        {
+            backup(null, true);
+            Commit("Final commit; Gitminster going offline", true);
+            m_Enabled = false;
+            RemoveFromEvents();
+            m_log.Info("[Git] Gitminster disabled.");
+        }
+        private void Enable(object o)
+        {
+              
+
+            m_repoPath = m_Config.GetString("RepoPath", "git");
+            m_commitFrameInterval = m_Config.GetInt("CommitFrameInterval", 360000);
+            m_useSafetyCommit = m_Config.GetBoolean("UseSafetyCommit", true);
+            if (!(m_repoPath.Substring(m_repoPath.Length - 1) == "/" || m_repoPath.Substring(m_repoPath.Length - 1) == "\\"))
+            {
+                m_repoPath += "/";
+            }
+            m_repoPath += m_scene.RegionInfo.RegionID.ToString()+"/";
+
+            if (!Directory.Exists(m_repoPath))
+            {
+                m_log.Debug("[Git] Creating path "+m_repoPath);
+                try
+                {
+                    Directory.CreateDirectory(m_repoPath);
+                }
+                catch
+                {
+                    m_log.Error("[Git] Couldn't create repo directory. Module disabled.");
+                    m_Enabled = false;
+                    return;
+                }
+            }
+                
+            
 
             m_Enabled = true;
 
-            m_Config = config;
+            
 
             m_repo = new Repository(m_repoPath);
             if (Repository.IsValid(m_repoPath, false))
@@ -130,21 +151,243 @@ namespace Careminster.Git
 
             if (m_repo.Status.Added.Count > 0 || m_repo.Status.Removed.Count > 0)
             {
-                Commit commit = m_repo.Commit("Uncommitted local changes - region crash", new Author(m_scene.RegionInfo.RegionName, m_scene.RegionInfo.RegionID.ToString() + "@meta7.com"));
-                m_log.Debug("[Git] Committing changes which were queued before the region crashed");
+                Util.FireAndForget(
+                    delegate
+                    {
+                        try
+                        {
+                            lock (m_repo)
+                            {
+                                Commit commit = m_repo.Commit("Uncommitted local changes - region crash", new Author(m_scene.RegionInfo.RegionName, m_scene.RegionInfo.RegionID.ToString() + "@meta7.com"));
+                                if (commit != null && commit.IsCommit && commit.IsValid)
+                                {
+                                    m_log.Info("[Git] Commit made: " + commit.Hash.ToString());
+                                }
+                                m_log.Debug("[Git] Committing changes which were queued before the region crashed");
+                            }
+                        }
+                        catch
+                        {
+                            //error..
+                        }
+                    }
+                );
+            }
+            WriteWindlight();
+            WriteRegionSettings();
+            SubscribeToEvents();
+            m_log.Info("[Git] Gitminster online.");
+
+        }
+        private void WriteWindlight()
+        {
+            try
+            {
+                string wlfile = m_repoPath + "windlightsettings.xml";
+                m_log.Info("[Git] Writing windlight settings");
+                RegionLightShareData wl = m_scene.RegionInfo.WindlightSettings;
+
+                XmlWriterSettings settings = new XmlWriterSettings();
+                settings.Indent = true;
+                settings.Encoding = System.Text.Encoding.UTF8;
+
+                using (XmlWriter writer = XmlWriter.Create(wlfile, settings))
+                {
+                    System.Xml.Serialization.XmlSerializer serializer = new System.Xml.Serialization.XmlSerializer(wl.GetType());
+                    serializer.Serialize(writer, wl);
+                    writer.Flush();
+                }
+
+                lock (m_repo)
+                {
+                    m_repo.Index.Add("windlightsettings.xml");
+                    m_NeedsCommit = true;
+                    m_changes++;
+                }
+            }
+            catch
+            {
+                //nothing
+            }
+        }
+        private void WriteParcelData(UUID globalID)
+        {
+            // Write out land data (aka parcel) settings
+            try
+            {
+                string landdir = m_repoPath + "land/";
+                if (!Directory.Exists(landdir))
+                {
+                    try
+                    {
+                        Directory.CreateDirectory(landdir);
+                    }
+                    catch
+                    {
+                        m_log.Error("[Git] Couldn't create directory: " + landdir);
+                        return;
+                    }
+                }
+
+                List<ILandObject> landObjects = m_scene.LandChannel.AllParcels();
+                foreach (ILandObject lo in landObjects)
+                {
+                    if (lo.LandData.GlobalID.ToString() == globalID.ToString())
+                    {
+                        LandData landData = lo.LandData;
+                        string landDataPath = String.Format("{0}.xml", landData.GlobalID.ToString());
+
+                        XElement code = XElement.Parse(LandDataSerializer.Serialize(landData));
+                        code.Save(m_repoPath + "land/" + landDataPath);
+                        lock (m_repo)
+                        {
+                            m_repo.Index.Add(m_repoPath + "land/" + landDataPath);
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                //nothing
+            }
+        }
+        private void WriteRegionSettings()
+        {
+            try
+            {
+                m_log.Info("[Git] Writing region settings");
+
+                XElement code = XElement.Parse(RegionSettingsSerializer.Serialize(m_scene.RegionInfo.RegionSettings));
+                code.Save(m_repoPath + "regionsettings.xml");
+                lock (m_repo)
+                {
+                    m_repo.Index.Add("regionsettings.xml");
+                    m_NeedsCommit = true;
+                    m_changes++;
+                }
+            }
+            catch
+            {
+                //nothing
+            }
+        }
+        private void ReadParcelData()
+        {
+            string[] fileEntries = Directory.GetFiles(m_repoPath + "land/");
+            List<LandData> landData = new List<LandData>();
+            foreach (string fileName in fileEntries)
+            {
+                try
+                {
+                    StreamReader streamReader = new StreamReader(fileName);
+                    string data = streamReader.ReadToEnd();
+                    streamReader.Close();
+
+                    LandData parcel = LandDataSerializer.Deserialize(data);
+                    landData.Add(parcel);
+                }
+                catch
+                {
+                    //Narf
+                }
+            }
+            m_scene.EventManager.TriggerIncomingLandDataFromStorage(landData);
+        }
+        private void ReadWindlight()
+        {
+            using (XmlReader reader = XmlReader.Create(m_repoPath + "windlightsettings.xml"))
+            {
+                System.Xml.Serialization.XmlSerializer serializer = new System.Xml.Serialization.XmlSerializer(m_scene.RegionInfo.WindlightSettings.GetType());
+                RegionLightShareData wl = (RegionLightShareData)serializer.Deserialize(reader);
+                m_scene.StoreWindlightProfile(wl);
+            }
+            
+        }
+        private void ReadRegionSettings()
+        {
+            StreamReader streamReader = new StreamReader(m_repoPath+"regionsettings.xml");
+            string data = streamReader.ReadToEnd();
+            data = data.Substring(39);
+            streamReader.Close();
+            RegionSettings loadedRegionSettings;
+            try
+            {
+                loadedRegionSettings = RegionSettingsSerializer.Deserialize(data);
+            }
+            catch (Exception e)
+            {
+                m_log.ErrorFormat(
+                    "[Git]: Could not parse region settings file {0}.  Ignoring.  Exception was {1}",
+                    m_repoPath + "regionsettings.xml", e);
+                return;
             }
 
-            InstallCommands();
+            RegionSettings currentRegionSettings = m_scene.RegionInfo.RegionSettings;
 
-            m_scene.SceneGraph.OnAttachToBackup += onAttachToBackup;
-            m_scene.SceneGraph.OnDetachFromBackup += onDetachFromBackup;
-            m_scene.SceneGraph.OnChangeBackup += onChangedBackup;
-            m_scene.EventManager.OnFrame += tick;
-            m_scene.EventManager.OnBackup += backup;
+            currentRegionSettings.AgentLimit = loadedRegionSettings.AgentLimit;
+            currentRegionSettings.AllowDamage = loadedRegionSettings.AllowDamage;
+            currentRegionSettings.AllowLandJoinDivide = loadedRegionSettings.AllowLandJoinDivide;
+            currentRegionSettings.AllowLandResell = loadedRegionSettings.AllowLandResell;
+            currentRegionSettings.BlockFly = loadedRegionSettings.BlockFly;
+            currentRegionSettings.BlockShowInSearch = loadedRegionSettings.BlockShowInSearch;
+            currentRegionSettings.BlockTerraform = loadedRegionSettings.BlockTerraform;
+            currentRegionSettings.DisableCollisions = loadedRegionSettings.DisableCollisions;
+            currentRegionSettings.DisablePhysics = loadedRegionSettings.DisablePhysics;
+            currentRegionSettings.DisableScripts = loadedRegionSettings.DisableScripts;
+            currentRegionSettings.Elevation1NE = loadedRegionSettings.Elevation1NE;
+            currentRegionSettings.Elevation1NW = loadedRegionSettings.Elevation1NW;
+            currentRegionSettings.Elevation1SE = loadedRegionSettings.Elevation1SE;
+            currentRegionSettings.Elevation1SW = loadedRegionSettings.Elevation1SW;
+            currentRegionSettings.Elevation2NE = loadedRegionSettings.Elevation2NE;
+            currentRegionSettings.Elevation2NW = loadedRegionSettings.Elevation2NW;
+            currentRegionSettings.Elevation2SE = loadedRegionSettings.Elevation2SE;
+            currentRegionSettings.Elevation2SW = loadedRegionSettings.Elevation2SW;
+            currentRegionSettings.FixedSun = loadedRegionSettings.FixedSun;
+            currentRegionSettings.ObjectBonus = loadedRegionSettings.ObjectBonus;
+            currentRegionSettings.RestrictPushing = loadedRegionSettings.RestrictPushing;
+            currentRegionSettings.TerrainLowerLimit = loadedRegionSettings.TerrainLowerLimit;
+            currentRegionSettings.TerrainRaiseLimit = loadedRegionSettings.TerrainRaiseLimit;
+            currentRegionSettings.TerrainTexture1 = loadedRegionSettings.TerrainTexture1;
+            currentRegionSettings.TerrainTexture2 = loadedRegionSettings.TerrainTexture2;
+            currentRegionSettings.TerrainTexture3 = loadedRegionSettings.TerrainTexture3;
+            currentRegionSettings.TerrainTexture4 = loadedRegionSettings.TerrainTexture4;
+            currentRegionSettings.UseEstateSun = loadedRegionSettings.UseEstateSun;
+            currentRegionSettings.WaterHeight = loadedRegionSettings.WaterHeight;
 
+            currentRegionSettings.Save();
+
+        }
+        private void onWindlightSettingsChanged(RegionLightShareData wl)
+        {
+            RemoveFromEvents();
+            try
+            {
+                WriteWindlight();
+            }
+            finally
+            {
+                SubscribeToEvents();
+            }
+        }
+        private void onRegionSettingsChanged(RegionSettings rs)
+        {
+            RemoveFromEvents();
+            try
+            {
+                WriteRegionSettings();
+            }
+            finally
+            {
+                SubscribeToEvents();
+            }
         }
         private void HandleCommit(Object[] args)
         {
+            if (!m_Enabled)
+            {
+                m_log.Error("[Git] Gitminster is not enabled");
+                return;
+            }
             backup(null, true);
             Commit("Requested by console", true);
         }
@@ -161,7 +404,7 @@ namespace Careminster.Git
 
             //And delete all files from our git repo
             Directory.SetCurrentDirectory(m_repoPath);
-            string[] fileEntries = Directory.GetFiles("objects\\");
+            string[] fileEntries = Directory.GetFiles("objects/");
              lock (m_repo)
             {                
                 foreach (string fileName in fileEntries)
@@ -183,25 +426,75 @@ namespace Careminster.Git
             Commit("Clear command issued from the console", true);
             m_log.Info("[Git] All done.");
 
+            SubscribeToEvents();
+        }
+        private void SubscribeToEvents()
+        {
+            m_scene.RegionInfo.WindlightSettings.OnSave += onWindlightSettingsChanged;
+            m_scene.RegionInfo.RegionSettings.OnSave += onRegionSettingsChanged;
             m_scene.SceneGraph.OnAttachToBackup += onAttachToBackup;
             m_scene.SceneGraph.OnDetachFromBackup += onDetachFromBackup;
             m_scene.SceneGraph.OnChangeBackup += onChangedBackup;
             m_scene.EventManager.OnFrame += tick;
             m_scene.EventManager.OnBackup += backup;
+            m_scene.EventManager.OnLandObjectAdded += onNewLand;
+            m_scene.EventManager.OnLandObjectRemoved += onLandDelete;
+        }
+        private void RemoveFromEvents()
+        {
+            m_scene.RegionInfo.WindlightSettings.OnSave -= onWindlightSettingsChanged;
+            m_scene.RegionInfo.RegionSettings.OnSave -= onRegionSettingsChanged;
+            m_scene.SceneGraph.OnAttachToBackup -= onAttachToBackup;
+            m_scene.SceneGraph.OnDetachFromBackup -= onDetachFromBackup;
+            m_scene.SceneGraph.OnChangeBackup -= onChangedBackup;
+            m_scene.EventManager.OnFrame -= tick;
+            m_scene.EventManager.OnBackup -= backup;
+            m_scene.EventManager.OnLandObjectAdded -= onNewLand;
+            m_scene.EventManager.OnLandObjectRemoved -= onLandDelete;
+        }
+        private void onNewLand(ILandObject globalID)
+        {
+            WriteParcelData(globalID.LandData.GlobalID);
+        }
+        private void onLandDelete(UUID globalID)
+        {
+            try
+            {
+                lock (m_repo)
+                {
+                    m_repo.Index.Delete("land/"+globalID.ToString()+"xml");
+                    m_NeedsCommit = true;
+                    m_changes++;
+                }
+            }
+            catch
+            {
+                m_log.Error("Couldn't delete land object "+globalID.ToString());
+                return;
+            }
         }
         private void DoRestore(object o)
         {
             try
             {
                 bool safe = (bool)o;
+                //Restore the region settings
+                m_log.Info("[Git] Loading Region settings..");
+                ReadRegionSettings();
+
+                m_log.Info("[Git] Loading LightShare profile..");
+                ReadWindlight();
+
+                m_log.Info("[Git] Loading Parcel Data..");
+                ReadParcelData();
 
                 //Now, delete all scene objects.
                 m_log.Info("[Git] Clearing the scene..");
-                m_scene.DeleteAllSceneObjects();
+                m_scene.DeleteAllSceneObjects(safe);
 
                 //Yay.
                 m_log.Info("[Git] Beginning object restore..");
-                string[] fileEntries = Directory.GetFiles(m_repoPath + "objects\\");
+                string[] fileEntries = Directory.GetFiles(m_repoPath + "objects/");
                 int files = 0;
                 foreach (string fileName in fileEntries)
                 {
@@ -236,38 +529,36 @@ namespace Careminster.Git
                         m_log.Error("[Git] Error restoring group, "+e.Message);
                     }
                 }
-                m_log.Info("[Git] Restored " + files.ToString() + " prims. All done!");
+                m_log.Info("[Git] Restored " + files.ToString() + " objects. All done!");
             }
             finally
             {
                 //Gimmeh mai events back
-                m_scene.SceneGraph.OnAttachToBackup += onAttachToBackup;
-                m_scene.SceneGraph.OnDetachFromBackup += onDetachFromBackup;
-                m_scene.SceneGraph.OnChangeBackup += onChangedBackup;
-                m_scene.EventManager.OnFrame += tick;
-                m_scene.EventManager.OnBackup += backup;
+                SubscribeToEvents();
             }
         }
         private void HandleClear(Object[] args)
         {
+            if (!m_Enabled)
+            {
+                m_log.Error("[Git] Gitminster is not enabled");
+                return;
+            }
             //First, unhook from all events.
-            m_scene.SceneGraph.OnAttachToBackup -= onAttachToBackup;
-            m_scene.SceneGraph.OnDetachFromBackup -= onDetachFromBackup;
-            m_scene.SceneGraph.OnChangeBackup -= onChangedBackup;
-            m_scene.EventManager.OnFrame -= tick;
-            m_scene.EventManager.OnBackup -= backup;
+            RemoveFromEvents();
 
             Util.FireAndForget(DoClear, false);
 
         }
         private void HandleRestore(Object[] args)
-        {
+        {   if (!m_Enabled)
+            {
+                m_log.Error("[Git] Gitminster is not enabled");
+                return;
+            }
+
             //First, unhook from all events.
-            m_scene.SceneGraph.OnAttachToBackup -= onAttachToBackup;
-            m_scene.SceneGraph.OnDetachFromBackup -= onDetachFromBackup;
-            m_scene.SceneGraph.OnChangeBackup -= onChangedBackup;
-            m_scene.EventManager.OnFrame -= tick;
-            m_scene.EventManager.OnBackup -= backup;
+            RemoveFromEvents();
 
             //Commit any uncommitted committy committs.
             backup(null, true);
@@ -284,15 +575,16 @@ namespace Careminster.Git
         }
         private void HandleCheckoutSafe(Object[] args)
         {
+            if (!m_Enabled)
+            {
+                m_log.Error("[Git] Gitminster is not enabled");
+                return;
+            }
             string branchname = (string)args[0];
 
 
             //Now, unhook from all events.
-            m_scene.SceneGraph.OnAttachToBackup -= onAttachToBackup;
-            m_scene.SceneGraph.OnDetachFromBackup -= onDetachFromBackup;
-            m_scene.SceneGraph.OnChangeBackup -= onChangedBackup;
-            m_scene.EventManager.OnFrame -= tick;
-            m_scene.EventManager.OnBackup -= backup;
+            RemoveFromEvents();
 
             //Commit any uncommitted committy committs.
             backup(null, true);
@@ -310,25 +602,22 @@ namespace Careminster.Git
             }
             catch
             {
-                m_scene.SceneGraph.OnAttachToBackup += onAttachToBackup;
-                m_scene.SceneGraph.OnDetachFromBackup += onDetachFromBackup;
-                m_scene.SceneGraph.OnChangeBackup += onChangedBackup;
-                m_scene.EventManager.OnFrame += tick;
-                m_scene.EventManager.OnBackup += backup;
+                SubscribeToEvents();
             }
 
             
         }
         private void HandleCheckout(Object[] args)
         {
+            if (!m_Enabled)
+            {
+                m_log.Error("[Git] Gitminster is not enabled");
+                return;
+            }
             string branchname = (string)args[0];
 
             //Now, unhook from all events.
-            m_scene.SceneGraph.OnAttachToBackup -= onAttachToBackup;
-            m_scene.SceneGraph.OnDetachFromBackup -= onDetachFromBackup;
-            m_scene.SceneGraph.OnChangeBackup -= onChangedBackup;
-            m_scene.EventManager.OnFrame -= tick;
-            m_scene.EventManager.OnBackup -= backup;
+            RemoveFromEvents();
 
             //Commit any uncommitted committy committs.
             backup(null, true);
@@ -346,16 +635,17 @@ namespace Careminster.Git
             }
             catch
             {
-                m_scene.SceneGraph.OnAttachToBackup += onAttachToBackup;
-                m_scene.SceneGraph.OnDetachFromBackup += onDetachFromBackup;
-                m_scene.SceneGraph.OnChangeBackup += onChangedBackup;
-                m_scene.EventManager.OnFrame += tick;
-                m_scene.EventManager.OnBackup += backup;
+                SubscribeToEvents();
             }
 
         }
         private void HandleBranchDelete(Object[] args)
         {
+            if (!m_Enabled)
+            {
+                m_log.Error("[Git] Gitminster is not enabled");
+                return;
+            }
             string branchname = (string)args[0];
 
             //Commit any uncommitted committy committs.
@@ -380,6 +670,11 @@ namespace Careminster.Git
         }
         private void HandleBranch(Object[] args)
         {
+            if (!m_Enabled)
+            {
+                m_log.Error("[Git] Gitminster is not enabled");
+                return;
+            }
             string branchname = (string)args[0];
 
             //Commit any uncommitted committy committs.
@@ -403,13 +698,13 @@ namespace Careminster.Git
         }
         private void HandleReload(Object[] args)
         {
-
+            if (!m_Enabled)
+            {
+                m_log.Error("[Git] Gitminster is not enabled");
+                return;
+            }
             //Now, unhook from all events.
-            m_scene.SceneGraph.OnAttachToBackup -= onAttachToBackup;
-            m_scene.SceneGraph.OnDetachFromBackup -= onDetachFromBackup;
-            m_scene.SceneGraph.OnChangeBackup -= onChangedBackup;
-            m_scene.EventManager.OnFrame -= tick;
-            m_scene.EventManager.OnBackup -= backup;
+            RemoveFromEvents();
 
             //Commit any uncommitted committy committs.
             backup(null, true);
@@ -419,12 +714,15 @@ namespace Careminster.Git
         }
         private void HandleRestoreSafe(Object[] args)
         {
+
+            if (!m_Enabled)
+            {
+                m_log.Error("[Git] Gitminster is not enabled");
+                return;
+            }
+
             //First, unhook from all events.
-            m_scene.SceneGraph.OnAttachToBackup -= onAttachToBackup;
-            m_scene.SceneGraph.OnDetachFromBackup -= onDetachFromBackup;
-            m_scene.SceneGraph.OnChangeBackup -= onChangedBackup;
-            m_scene.EventManager.OnFrame -= tick;
-            m_scene.EventManager.OnBackup -= backup;
+            RemoveFromEvents();
 
             //Commit any uncommitted committy committs.
             backup(null, true);
@@ -450,6 +748,8 @@ namespace Careminster.Git
             Command gitcheckout = new Command("checkout", CommandIntentions.COMMAND_HAZARDOUS, HandleCheckout, "Switches to another branch.");
             Command gitcheckoutsafe = new Command("checkoutsafe", CommandIntentions.COMMAND_HAZARDOUS, HandleCheckoutSafe, "Switches to another branch, but skips NoCopy objects.");
             Command gitdeletebranch = new Command("deletebranch", CommandIntentions.COMMAND_HAZARDOUS, HandleBranchDelete, "Deletes a branch which is not currently active");
+            Command gitenable = new Command("enable", CommandIntentions.COMMAND_HAZARDOUS, Enable, "Enables the Gitminster plugin");
+            Command gitdisable = new Command("disable", CommandIntentions.COMMAND_HAZARDOUS, Disable, "Disables the Gitminster plugin");
             
             
             gitrestore.AddArgument("hash", "The commit hash you wish to restore", "String");
@@ -469,6 +769,8 @@ namespace Careminster.Git
             m_commander.RegisterCommand("checkout", gitcheckout);
             m_commander.RegisterCommand("checkoutsafe", gitcheckoutsafe);
             m_commander.RegisterCommand("deletebranch", gitdeletebranch);
+            m_commander.RegisterCommand("enable", gitenable);
+            m_commander.RegisterCommand("disable", gitdisable);
 
             m_scene.RegisterModuleCommander(m_commander);
 
@@ -490,8 +792,16 @@ namespace Careminster.Git
                 lock (m_repo)
                 {
                     Commit commit = m_repo.Commit(message, new Author(m_scene.RegionInfo.RegionName, m_scene.RegionInfo.RegionID.ToString() + "@meta7.com"));
+                    if (commit != null && commit.IsCommit && commit.IsValid)
+                    {
+                        m_log.Info("[Git] Commit made: " + commit.Hash.ToString());
+                    }
                 }
                 m_log.Debug("[Git] Done");
+            }
+            catch
+            {
+                //Don't do anything
             }
             finally
             {
@@ -542,7 +852,7 @@ namespace Careminster.Git
                 }
                 catch
                 {
-                    m_log.Error("[Git] Failed to backup all queued prims");
+                    m_log.Error("[Git] Failed to backup all queued objects");
                 }
                 finally
                 {
@@ -586,11 +896,16 @@ namespace Careminster.Git
                 }
             }
 
-            if (frame > 360000) //Roughly six hours. We don't want to fill up with commits.
+            if (frame > m_commitFrameInterval)
             {
                 if (m_NeedsCommit)
                 {
-                    Commit("Changes so far",false);
+                    Util.FireAndForget(
+                        delegate
+                        {
+                            Commit("Changes so far", false);
+                        }
+                    );
                 }
                 frame = 0;
             }
@@ -612,7 +927,7 @@ namespace Careminster.Git
                         return;
                     }
                 }
-                string primfile = "objects\\"+ sog.UUID.ToString();
+                string primfile = "objects/"+ sog.UUID.ToString();
                 //XmlTextWriter tw = new XmlTextWriter(m_repoPath + primfile,System.Text.Encoding.UTF8);
                 XElement code = XElement.Parse(sog.ToXml2());
                 foreach (XElement e in code.Descendants("LocalId"))
@@ -635,25 +950,42 @@ namespace Careminster.Git
                 m_log.Error("[Git] Exception while adding object: "+e.Message);
             }
         }
-
+        private void DoDelete(string name)
+        {
+            try
+            {
+                lock (m_repo)
+                {
+                    m_repo.Index.Delete(name);
+                }
+                m_NeedsCommit = true;
+                m_changes++;
+            }
+            catch
+            {
+                //Ignore
+            }
+        }
         private void DeleteGroup(SceneObjectGroup sog)
         {
             try
             {
-                if (m_Added.Contains(sog.UUID.ToString()))
+                if (m_useSafetyCommit && m_Added.Contains(sog.UUID.ToString()))
                 {
                     //This sog has been added but not committed, so, commit now
-                    Commit("Persisting object " + sog.UUID.ToString(), true);
-                }
-                
-                lock (m_repo)
-                {
-                    m_repo.Index.Delete("objects\\" + sog.UUID.ToString());
+                    Util.FireAndForget(
+                        delegate
+                        {
+                            Commit("Persisting object " + sog.UUID.ToString(), true);
+                            DoDelete("objects/" + sog.UUID.ToString());
+                        }
+                    );
+                    return;
                 }
 
+
+                DoDelete("objects/" + sog.UUID.ToString());
                 
-                m_NeedsCommit = true;
-                m_changes++;
             }
             catch
             {
@@ -665,6 +997,8 @@ namespace Careminster.Git
 
         private void Queue(SceneObjectGroup sog)
         {
+            if (sog == null) return;
+            
             if (m_ToDelete.Contains(sog.UUID.ToString()))
             {
                 m_ToDelete.Remove(sog.UUID.ToString());
@@ -684,6 +1018,7 @@ namespace Careminster.Git
 
         private void onAttachToBackup(SceneObjectGroup sog)
         {
+            if (sog == null) return;
             try
             {
                 if (sog.IsAttachment) return;
@@ -697,6 +1032,7 @@ namespace Careminster.Git
 
         private void onDetachFromBackup(SceneObjectGroup sog)
         {
+            if (sog == null) return;
             try
             {
                 if (sog.IsAttachment) return;
@@ -731,6 +1067,7 @@ namespace Careminster.Git
         }
         private void onChangedBackup(SceneObjectGroup sog)
         {
+            if (sog == null) return;
             if (sog.IsAttachment) return;
             try
             {
@@ -752,9 +1089,29 @@ namespace Careminster.Git
                 StreamWriter tw = new StreamWriter(m_repoPath + "RegionOnline.txt");
                 tw.WriteLine("Region " + m_scene.RegionInfo.RegionName + " Online: " + DateTime.Now.ToString());
                 tw.Close();
-                m_repo.Index.Add("RegionOnline.txt");
-                Commit commit = m_repo.Commit("Region online at " + DateTime.Now.ToString(), new Author(m_scene.RegionInfo.RegionName, m_scene.RegionInfo.RegionID.ToString() + "@meta7.com"));
-                m_log.Debug("[Git] Committing startup time");
+
+                Util.FireAndForget(
+                    delegate
+                    {
+                        try
+                        {
+                            lock (m_repo)
+                            {
+                                m_log.Debug("[Git] Committing startup time");
+                                m_repo.Index.Add("RegionOnline.txt");
+                                Commit commit = m_repo.Commit("Region online at " + DateTime.Now.ToString(), new Author(m_scene.RegionInfo.RegionName, m_scene.RegionInfo.RegionID.ToString() + "@meta7.com"));
+                                if (commit != null && commit.IsCommit && commit.IsValid)
+                                {
+                                    m_log.Info("[Git] Commit made: " + commit.Hash.ToString());
+                                }
+                            }
+                        }
+                        catch (Exception e)
+                        {
+                            m_log.Error("[Git] Failed to make RegionOnline commit: " + e.Message);
+                        }
+                    }
+                );
             }
             catch(Exception e)
             {
