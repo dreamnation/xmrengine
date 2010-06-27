@@ -42,6 +42,7 @@ namespace Careminster.Git
         {
             get { return m_commander; }
         }
+        private ITerrainModule m_terrainModule;
         private Repository m_repo;
         private OrderedDictionary m_ToUpdate = new OrderedDictionary();
         private HashSet<string> m_Added = new HashSet<string>();
@@ -102,8 +103,8 @@ namespace Careminster.Git
         }
         private void Enable(object o)
         {
-              
 
+            m_terrainModule = m_scene.RequestModuleInterface<ITerrainModule>();
             m_repoPath = m_Config.GetString("RepoPath", "git");
             m_commitFrameInterval = m_Config.GetInt("CommitFrameInterval", 360000);
             m_useSafetyCommit = m_Config.GetBoolean("UseSafetyCommit", true);
@@ -174,10 +175,49 @@ namespace Careminster.Git
                 );
             }
             WriteWindlight();
+            WriteTerrain();
             WriteRegionSettings();
             SubscribeToEvents();
             m_log.Info("[Git] Gitminster online.");
 
+        }
+        private void LoadTerrain()
+        {
+            try
+            {
+                ITerrainModule m_terrainModule = m_scene.RequestModuleInterface<ITerrainModule>();
+                m_terrainModule.LoadFromFile(m_repoPath + "terrain.r32");
+            }
+            catch
+            {
+                //nothing
+            }
+        }
+        private void WriteTerrain()
+        {
+            m_log.Debug("[Git] Writing Terrain..");
+            try
+            {
+                if (m_terrainModule == null)
+                {
+                    m_terrainModule = m_scene.RequestModuleInterface<ITerrainModule>();
+                }
+                if (m_terrainModule == null) //failed.
+                {
+                    return;
+                }
+                m_terrainModule.SaveToFile(m_repoPath + "terrain.r32");
+                lock (m_repo)
+                {
+                    m_repo.Index.Add("terrain.r32");
+                    m_NeedsCommit = true;
+                    m_changes++;
+                }
+            }
+            catch(Exception e)
+            {
+                m_log.Error("Couldn't write terrain: " + e.Message);
+            }
         }
         private void WriteWindlight()
         {
@@ -241,7 +281,9 @@ namespace Careminster.Git
                         code.Save(m_repoPath + "land/" + landDataPath);
                         lock (m_repo)
                         {
-                            m_repo.Index.Add(m_repoPath + "land/" + landDataPath);
+                            m_repo.Index.Add("land/" + landDataPath);
+                            m_NeedsCommit = true;
+                            m_changes++;
                         }
                     }
                 }
@@ -273,25 +315,33 @@ namespace Careminster.Git
         }
         private void ReadParcelData()
         {
-            string[] fileEntries = Directory.GetFiles(m_repoPath + "land/");
-            List<LandData> landData = new List<LandData>();
-            foreach (string fileName in fileEntries)
+            try
             {
-                try
+                string[] fileEntries = Directory.GetFiles(m_repoPath + "land/");
+                List<LandData> landData = new List<LandData>();
+                foreach (string fileName in fileEntries)
                 {
-                    StreamReader streamReader = new StreamReader(fileName);
-                    string data = streamReader.ReadToEnd();
-                    streamReader.Close();
+                    try
+                    {
+                        StreamReader streamReader = new StreamReader(fileName);
+                        string data = streamReader.ReadToEnd();
+                        streamReader.Close();
 
-                    LandData parcel = LandDataSerializer.Deserialize(data);
-                    landData.Add(parcel);
+                        LandData parcel = LandDataSerializer.Deserialize(data);
+                        landData.Add(parcel);
+                    }
+                    catch
+                    {
+                        //Narf
+                    }
                 }
-                catch
-                {
-                    //Narf
-                }
+                m_scene.EventManager.TriggerIncomingLandDataFromStorage(landData);
             }
-            m_scene.EventManager.TriggerIncomingLandDataFromStorage(landData);
+            catch
+            {
+                //narf
+            }
+            
         }
         private void ReadWindlight()
         {
@@ -353,9 +403,12 @@ namespace Careminster.Git
             currentRegionSettings.TerrainTexture4 = loadedRegionSettings.TerrainTexture4;
             currentRegionSettings.UseEstateSun = loadedRegionSettings.UseEstateSun;
             currentRegionSettings.WaterHeight = loadedRegionSettings.WaterHeight;
-
             currentRegionSettings.Save();
 
+            IEstateModule estateModule = m_scene.RequestModuleInterface<IEstateModule>();
+
+            if (estateModule != null)
+                estateModule.sendRegionHandshakeToAll();
         }
         private void onWindlightSettingsChanged(RegionLightShareData wl)
         {
@@ -367,6 +420,17 @@ namespace Careminster.Git
             finally
             {
                 SubscribeToEvents();
+            }
+        }
+        private void onTerrainUpdate()
+        {
+            try
+            {
+                WriteTerrain();
+            }
+            catch(Exception e)
+            {
+                m_log.Error("TerrainTick failed in onTerrainTick: " + e.Message);
             }
         }
         private void onRegionSettingsChanged(RegionSettings rs)
@@ -389,7 +453,7 @@ namespace Careminster.Git
                 return;
             }
             backup(null, true);
-            Commit("Requested by console", true);
+            Commit("Requested by console", false);
         }
         private void DoClear(object o)
         {
@@ -439,6 +503,7 @@ namespace Careminster.Git
             m_scene.EventManager.OnBackup += backup;
             m_scene.EventManager.OnLandObjectAdded += onNewLand;
             m_scene.EventManager.OnLandObjectRemoved += onLandDelete;
+            m_scene.EventManager.OnTerrainUpdate += onTerrainUpdate;
         }
         private void RemoveFromEvents()
         {
@@ -451,6 +516,7 @@ namespace Careminster.Git
             m_scene.EventManager.OnBackup -= backup;
             m_scene.EventManager.OnLandObjectAdded -= onNewLand;
             m_scene.EventManager.OnLandObjectRemoved -= onLandDelete;
+            m_scene.EventManager.OnTerrainUpdate -= onTerrainUpdate;
         }
         private void onNewLand(ILandObject globalID)
         {
@@ -462,7 +528,7 @@ namespace Careminster.Git
             {
                 lock (m_repo)
                 {
-                    m_repo.Index.Delete("land/"+globalID.ToString()+"xml");
+                    m_repo.Index.Delete("land/"+globalID.ToString()+".xml");
                     m_NeedsCommit = true;
                     m_changes++;
                 }
@@ -492,44 +558,56 @@ namespace Careminster.Git
                 m_log.Info("[Git] Clearing the scene..");
                 m_scene.DeleteAllSceneObjects(safe);
 
+                m_log.Info("[Git] Loading Terrain..");
+                LoadTerrain();
+
                 //Yay.
                 m_log.Info("[Git] Beginning object restore..");
                 string[] fileEntries = Directory.GetFiles(m_repoPath + "objects/");
+                
                 int files = 0;
-                foreach (string fileName in fileEntries)
+                if (fileEntries != null && fileEntries.Length > 0)
                 {
-                    try
+                    foreach (string fileName in fileEntries)
                     {
-                        lock (m_repo) //Locking this here because we don't want to be doing this at the same time as something else.
+                        try
                         {
-                            files++;
-                            if ((files % 200) == 0)
+                            lock (m_repo) //Locking this here because we don't want to be doing this at the same time as something else.
                             {
-                                m_log.Info("[Git] Restored " + files.ToString() + " objects");
-                            }
-                            StreamReader streamReader = new StreamReader(fileName);
-                            string data = streamReader.ReadToEnd();
-                            data = data.Substring(39);
-                            streamReader.Close();
-                            SceneObjectGroup sog = SceneXmlLoader.DeserializeGroupFromXml2(data);
-                            if (!safe || ((sog.GetEffectivePermissions() & (uint)PermissionMask.Copy) != 0)) // PERM_COPY
-                            {
-                                m_scene.AddSceneObject(sog);
-                                sog.HasGroupChanged = true;
-                                sog.SendGroupFullUpdate();
-                            }
-                            else
-                            {
-                                m_log.Info("[Git] Skipped '" + sog.Name + "' - No Copy");
+                                files++;
+                                if ((files % 200) == 0)
+                                {
+                                    m_log.Info("[Git] Restored " + files.ToString() + " objects");
+                                }
+                                StreamReader streamReader = new StreamReader(fileName);
+                                string data = streamReader.ReadToEnd();
+                                data = data.Substring(39);
+                                streamReader.Close();
+                                SceneObjectGroup sog = SceneXmlLoader.DeserializeGroupFromXml2(data);
+                                if (!safe || ((sog.GetEffectivePermissions() & (uint)PermissionMask.Copy) != 0)) // PERM_COPY
+                                {
+                                    m_scene.AddSceneObject(sog);
+                                    sog.HasGroupChanged = true;
+                                    sog.SendGroupFullUpdate();
+                                }
+                                else
+                                {
+                                    m_log.Info("[Git] Skipped '" + sog.Name + "' - No Copy");
+                                }
                             }
                         }
-                    }
-                    catch(Exception e)
-                    {
-                        m_log.Error("[Git] Error restoring group, "+e.Message);
+                        catch (Exception e)
+                        {
+                            m_log.Error("[Git] Error restoring group, " + e.Message);
+                        }
                     }
                 }
+                //Do these two restores again, because they fail to reach the client more often than not
                 m_log.Info("[Git] Restored " + files.ToString() + " objects. All done!");
+                ReadParcelData();
+                LoadTerrain();
+
+                
             }
             finally
             {
@@ -813,6 +891,7 @@ namespace Careminster.Git
         {
             //Committing can take some time, so spawn off to a seperate thread,
             //and remove our events so we don't have a lock situation.
+            WriteTerrain();
             m_scene.EventManager.OnFrame -= tick;
             m_scene.EventManager.OnBackup -= backup;
             if (!synchronous)
@@ -935,6 +1014,10 @@ namespace Careminster.Git
                     e.Value = "0";
                 }
                 foreach (XElement e in code.Descendants("ParentID"))
+                {
+                    e.Value = "0";
+                }
+                foreach (XElement e in code.Descendants("InventorySerial"))
                 {
                     e.Value = "0";
                 }
