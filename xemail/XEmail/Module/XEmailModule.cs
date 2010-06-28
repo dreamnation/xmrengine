@@ -38,11 +38,33 @@ using OpenSim.Framework;
 using OpenSim.Region.Framework.Interfaces;
 using OpenSim.Region.Framework.Scenes;
 using Mono.Addins;
+using OpenSim.Data;
+using OpenSim.Data.MySQL;
+using OpenSim.Services.Interfaces;
 
 [assembly: Addin("XEmail.Module", "1.0")]
 [assembly: AddinDependency("OpenSim", "0.5")]
-namespace OpenSim.Region.CoreModules.Scripting.EmailModules
+namespace Careminster.Modules.XEmail
 {
+    public class XEmailMessage
+    {
+        public UUID ObjectID;
+        public Dictionary<string,string> Data;
+    }
+
+    public class XEmailObject
+    {
+        public UUID ObjectID;
+        public UUID RegionID;
+        public Dictionary<string,string> Data;
+    }
+    
+    public class XEmailWhitelist
+    {
+        public string Email;
+        public Dictionary<string,string> Data;
+    }
+
     [Extension(Path = "/OpenSim/RegionModules", NodeName = "RegionModule", Id = "XEmail")]
     public class XEmailModule : ISharedRegionModule, IEmailModule
     {
@@ -60,6 +82,9 @@ namespace OpenSim.Region.CoreModules.Scripting.EmailModules
         private int m_SmtpPort = 25;
         private string m_SmtpUser = string.Empty;
         private string m_SmtpPassword = string.Empty;
+        private string m_DatabaseConnect = string.Empty;
+        private bool m_AllowAnyAddress = false;
+        private bool m_AllowExternal = true;
 
         private int m_MaxQueueSize = 50; // Max size of local queue
         private Dictionary<UUID, List<Email>> m_MailQueues = new Dictionary<UUID, List<Email>>();
@@ -67,10 +92,13 @@ namespace OpenSim.Region.CoreModules.Scripting.EmailModules
         private Dictionary<UUID, DateTime> m_LastPoll = new Dictionary<UUID, DateTime>();
         private TimeSpan m_QueueTimeout = new TimeSpan(2, 0, 0); // 2 hours without llGetNextEmail drops the queue
         private TimeSpan m_PollDelay = new TimeSpan(0, 0, 10); // 10 seconds poll delay
+        private MySQLGenericTableHandler<XEmailObject> m_ObjectsTable;
+        private MySQLGenericTableHandler<XEmailMessage> m_MessagesTable;
+        private MySQLGenericTableHandler<XEmailWhitelist> m_WhitelistTable;
 
         // Scenes by Region Handle
-        private Dictionary<ulong, Scene> m_Scenes =
-            new Dictionary<ulong, Scene>();
+        private Dictionary<UUID, Scene> m_Scenes =
+            new Dictionary<UUID, Scene>();
 
         private bool m_Enabled = false;
 
@@ -106,13 +134,15 @@ namespace OpenSim.Region.CoreModules.Scripting.EmailModules
             IConfig startupConfig = m_Config.Configs["Startup"];
 
             m_Enabled = (startupConfig.GetString("emailmodule", "DefaultEmailModule") == "XEmail");
+            if (!m_Enabled)
+                return;
 
             //Load SMTP SERVER config
             try
             {
-                if ((SMTPConfig = m_Config.Configs["XEmail"]) == null)
+                if ((SMTPConfig = m_Config.Configs["SMTP"]) == null)
                 {
-                    m_log.InfoFormat("[XEmail] SMTP server not configured");
+                    m_log.InfoFormat("[XEmail] SMTP section not configured");
                     m_Enabled = false;
                     return;
                 }
@@ -125,19 +155,29 @@ namespace OpenSim.Region.CoreModules.Scripting.EmailModules
                 }
 
                 m_HostName = SMTPConfig.GetString("EmailAddressSuffix", m_HostName);
-                m_SmtpServer = SMTPConfig.GetString("m_SmtpServer", m_SmtpServer);
-                m_SmtpPort = SMTPConfig.GetInt("m_SmtpPort", m_SmtpPort);
-                m_SmtpUser = SMTPConfig.GetString("m_SmtpUser", m_SmtpUser);
-                m_SmtpPassword = SMTPConfig.GetString("m_SmtpPassword", m_SmtpPassword);
+                m_SmtpServer = SMTPConfig.GetString("SmtpServer", m_SmtpServer);
+                m_SmtpPort = SMTPConfig.GetInt("SmtpPort", m_SmtpPort);
+                m_SmtpUser = SMTPConfig.GetString("SmtpUser", m_SmtpUser);
+                m_SmtpPassword = SMTPConfig.GetString("SmtpPassword", m_SmtpPassword);
+                m_AllowAnyAddress = SMTPConfig.GetBoolean("AllowAnyAddress", m_AllowAnyAddress);
+                m_AllowExternal = SMTPConfig.GetBoolean("AllowExternal", m_AllowExternal);
+                m_DatabaseConnect = SMTPConfig.GetString("DatabaseConnect", m_SmtpPassword);
             }
             catch (Exception e)
             {
-                m_log.Error("[EMAIL] XEmail not configured: "+ e.Message);
+                m_log.Error("[XEmail] XEmail not configured: "+ e.Message);
                 m_Enabled = false;
                 return;
             }
 
-            m_log.Info("[EMAIL] Activated XEmail");
+            m_ObjectsTable = new MySQLGenericTableHandler<XEmailObject>(
+                    m_DatabaseConnect, "XEmailObjects", String.Empty);
+            m_MessagesTable = new MySQLGenericTableHandler<XEmailMessage>(
+                    m_DatabaseConnect, "XEmailMessages", String.Empty);
+            m_WhitelistTable = new MySQLGenericTableHandler<XEmailWhitelist>(
+                    m_DatabaseConnect, "XEmailWhitelist", String.Empty);
+
+            m_log.Info("[XEmail] Activated XEmail");
         }
 
         public void AddRegion(Scene scene)
@@ -149,8 +189,9 @@ namespace OpenSim.Region.CoreModules.Scripting.EmailModules
                 {
                     // Claim the interface slot
                     scene.RegisterModuleInterface<IEmailModule>(this);
+                    m_log.InfoFormat("[XEmail]: Adding module to region {0}", scene.RegionInfo.RegionName);
 
-                    m_Scenes[scene.RegionInfo.RegionHandle] = scene;
+                    m_Scenes[scene.RegionInfo.RegionID] = scene;
                 }
             }
         }
@@ -184,25 +225,14 @@ namespace OpenSim.Region.CoreModules.Scripting.EmailModules
             }
         }
 
-        /// <summary>
-        /// Delay function using thread in seconds
-        /// </summary>
-        /// <param name="seconds"></param>
-        private void DelayInSeconds(int delay)
-        {
-            delay = (int)((float)delay * 1000);
-            if (delay == 0)
-                return;
-            System.Threading.Thread.Sleep(delay);
-        }
-
         private bool IsLocal(UUID objectID)
         {
             string unused;
-            return (null != findPrim(objectID, out unused));
+            UUID regionID;
+            return (findPrim(objectID, out unused, out regionID) != null);
         }
 
-        private SceneObjectPart findPrim(UUID objectID, out string ObjectRegionName)
+        private SceneObjectPart findPrim(UUID objectID, out string ObjectRegionName, out UUID regionID)
         {
             lock (m_Scenes)
             {
@@ -215,21 +245,24 @@ namespace OpenSim.Region.CoreModules.Scripting.EmailModules
                         uint localX = (s.RegionInfo.RegionLocX * (int)Constants.RegionSize);
                         uint localY = (s.RegionInfo.RegionLocY * (int)Constants.RegionSize);
                         ObjectRegionName = ObjectRegionName + " (" + localX + ", " + localY + ")";
+                        regionID = s.RegionInfo.RegionID;
                         return part;
                     }
                 }
             }
             ObjectRegionName = string.Empty;
+            regionID = UUID.Zero;
             return null;
         }
 
         private void resolveNamePositionRegionName(UUID objectID, out string ObjectName, out string ObjectAbsolutePosition, out string ObjectRegionName)
         {
             string m_ObjectRegionName;
+            UUID regionID;
             int objectLocX;
             int objectLocY;
             int objectLocZ;
-            SceneObjectPart part = findPrim(objectID, out m_ObjectRegionName);
+            SceneObjectPart part = findPrim(objectID, out m_ObjectRegionName, out regionID);
             if (part != null)
             {
                 objectLocX = (int)part.AbsolutePosition.X;
@@ -272,13 +305,13 @@ namespace OpenSim.Region.CoreModules.Scripting.EmailModules
             bool isEMailStrictMatch = EMailreStrict.IsMatch(address);
             if (!isEMailStrictMatch)
             {
-                m_log.Error("[EMAIL] REGEX Problem in EMail Address: "+address);
+                //m_log.Error("[XEmail] REGEX Problem in EMail Address: "+address);
                 return;
             }
             //FIXME:Check if subject + body = 4096 Byte
             if ((subject.Length + body.Length) > 1024)
             {
-                m_log.Error("[EMAIL] subject + body > 1024 Byte");
+                //m_log.Error("[XEmail] subject + body > 1024 Byte");
                 return;
             }
 
@@ -291,10 +324,68 @@ namespace OpenSim.Region.CoreModules.Scripting.EmailModules
             string guid = address.Substring(0, address.IndexOf("@"));
             if (guid.Length > 36)
                 guid = guid.Substring(0, 36);
-            UUID toID = new UUID(guid);
+            UUID toID = UUID.Zero;
 
-            if (!address.EndsWith(m_HostName) || !IsLocal(toID))
+            if (!UUID.TryParse(guid, out toID) || !address.EndsWith(m_HostName) || !IsLocal(toID))
             {
+                if (toID != UUID.Zero && address.EndsWith(m_HostName)) // Prim
+                {
+                    XEmailObject[] prims = m_ObjectsTable.Get("ObjectID", toID.ToString());
+                    if (prims.Length == 0)
+                    {
+                        return;
+                    }
+                    else
+                    {
+                        string message = "From: " + objectID.ToString() + m_HostName + "\n";
+                        message += "Subject: " + subject + "\n";
+                        message += "Date: " + ((int)((DateTime.UtcNow - new DateTime(1970,1,1,0,0,0)).TotalSeconds)).ToString() + "\n\n";
+                        message += "Object-Name: " + LastObjectName +
+                              "\nRegion: " + LastObjectRegionName + "\nLocal-Position: " +
+                              LastObjectPosition + "\n\n" + body;
+
+                        XEmailMessage m = new XEmailMessage();
+                        m.Data = new Dictionary<string, string>();
+                        m.ObjectID = objectID;
+                        m.Data["Message"] = message;
+                        m_MessagesTable.Store(m);
+
+                        return;
+                    }
+                }
+
+                bool addressOK = m_AllowAnyAddress && m_AllowExternal;
+
+                if (!addressOK && m_AllowExternal)
+                {
+                    string dummy1;
+                    UUID regionID;
+
+                    SceneObjectPart part = findPrim(objectID, out dummy1, out regionID);
+                    Scene s;
+
+                    if (part != null && m_Scenes.TryGetValue(regionID, out s))
+                    {
+                        UserAccount account = s.UserAccountService.GetUserAccount(s.RegionInfo.ScopeID, part.OwnerID);
+
+                        if (address == account.Email)
+                            addressOK = true;
+                    }
+                }
+
+                if (!addressOK && m_AllowExternal)
+                {
+                    XEmailWhitelist[] wl = m_WhitelistTable.Get("Email", address);
+                    if (wl.Length > 0)
+                        addressOK = true;
+                }
+
+                if (!addressOK)
+                {
+                    m_log.InfoFormat("[XEmail]: message from prim {0} to {1} rejected", objectID, address);
+                    return;
+                }
+
                 // regular email, send it out
                 try
                 {
@@ -312,6 +403,8 @@ namespace OpenSim.Region.CoreModules.Scripting.EmailModules
                               "\nRegion: " + LastObjectRegionName + "\nLocal-Position: " +
                               LastObjectPosition + "\n\n" + body;
 
+                    if (emailMessage.BodyText.Length > 2048)
+                        emailMessage.BodyText = emailMessage.BodyText.Substring(0, 2048);
                     //Config SMTP Server
                     //Set SMTP SERVER config
                     SmtpServer smtpServer=new SmtpServer(m_SmtpServer,m_SmtpPort);
@@ -326,11 +419,11 @@ namespace OpenSim.Region.CoreModules.Scripting.EmailModules
                     emailMessage.Send(smtpServer);
 
                     //Log
-                    m_log.Info("[EMAIL] EMail sent to: " + address + " from object: " + objectID.ToString() + "@" + m_HostName);
+                    //m_log.Info("[XEmail] EMail sent to: " + address + " from object: " + objectID.ToString() + m_HostName);
                 }
                 catch (Exception e)
                 {
-                    m_log.Error("[EMAIL] DefaultEmailModule Exception: " + e.Message);
+                    m_log.Error("[XEmail] SMTP Exception: " + e.Message);
                 }
             }
             else
@@ -347,7 +440,6 @@ namespace OpenSim.Region.CoreModules.Scripting.EmailModules
                 InsertEmail(toID, email);
             }
 
-            DelayInSeconds(20);
         }
 
         /// <summary>
@@ -393,6 +485,11 @@ namespace OpenSim.Region.CoreModules.Scripting.EmailModules
                 {
                     queue = m_MailQueues[objectID];
                 }
+                else
+                {
+                    queue = new List<Email>();
+                    m_MailQueues.Add(objectID, queue);
+                }
             }
 
             if (queue != null)
@@ -400,7 +497,71 @@ namespace OpenSim.Region.CoreModules.Scripting.EmailModules
                 if ((m_LastPoll.ContainsKey(objectID) && (DateTime.Now - m_LastPoll[objectID]) >= m_PollDelay) || queue.Count == 0)
                 {
                     m_LastPoll[objectID] = DateTime.Now;
-                    // TODO: Poll queue
+
+                    string regionName;
+                    UUID regionID;
+                    if (findPrim(objectID, out regionName, out regionID) != null)
+                    {
+                        XEmailObject obj = new XEmailObject();
+                        obj.Data = new Dictionary<string,string>();
+                        obj.ObjectID = objectID;
+                        obj.RegionID = regionID;
+                        m_ObjectsTable.Store(obj);
+                    }
+
+                    if (queue.Count < 2) // Never let it become 0 before poll
+                    {
+                        string where = String.Format("ObjectID='{0}' order by Stamp asc limit 10", objectID);
+
+                        XEmailMessage[] messages = m_MessagesTable.Get(where);
+
+                        foreach (XEmailMessage message in messages)
+                        {
+                            m_MessagesTable.Delete("id", message.Data["id"]);
+
+                            // As the PHP script writes this, line endings
+                            // are sane (LF), not RFC 2822
+                            string[] lines = message.Data["Message"].Split(new char[] {'\n'});
+                            if (lines.Length == 0)
+                                continue;
+
+                            Email msg = new Email();
+
+                            if (lines[0].StartsWith("From "))
+                                msg.sender = lines[0].Substring(5);
+                            bool inMessage = false;
+                            string body = String.Empty;
+                            foreach (string line in lines)
+                            {
+                                if (line.StartsWith("Date: "))
+                                {
+                                    string timestr = line.Substring(6);
+                                    DateTime tx = DateTime.Now;
+                                    try
+                                    {
+                                        tx = Convert.ToDateTime(timestr);
+                                    }
+                                    catch { }
+
+                                    msg.time = ((int)((tx - new DateTime(1970,1,1,0,0,0)).TotalSeconds)).ToString();
+                                }
+                                if (line.StartsWith("From: "))
+                                    msg.sender = line.Substring(6);
+                                if (line.StartsWith("Subject: "))
+                                    msg.subject = line.Substring(9);
+                                if (line == String.Empty && inMessage == false)
+                                {
+                                    inMessage = true;
+                                    continue;
+                                }
+                                if (inMessage)
+                                    body += line + "\r\n";
+                            }
+
+                            msg.message = body;
+                            queue.Add(msg);
+                        }
+                    }
                 }
 
                 lock (queue)
@@ -426,13 +587,6 @@ namespace OpenSim.Region.CoreModules.Scripting.EmailModules
                             return ret;
                         }
                     }
-                }
-            }
-            else
-            {
-                lock (m_MailQueues)
-                {
-                    m_MailQueues.Add(objectID, new List<Email>());
                 }
             }
 
