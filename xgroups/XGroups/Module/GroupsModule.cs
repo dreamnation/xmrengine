@@ -648,6 +648,8 @@ namespace Careminster.Modules.Groups
             client.OnUUIDGroupNameRequest += HandleUUIDGroupNameRequest;
             client.OnRequestAvatarProperties += OnRequestAvatarProperties;
             client.OnDirFindQuery += OnDirFindQuery;
+            client.OnGroupAccountSummaryRequest += OnGroupAccountSummaryRequest;
+            client.OnGroupAccountTransactionsRequest += OnGroupAccountTransactionsRequest;
 
             SendGroupMembershipCaps(GetMembershipData(client.AgentId), client);
         }
@@ -2061,6 +2063,21 @@ Console.WriteLine("==> Session ID {0} UUID {1}", imSessionID.ToString(), id.ToSt
                         client.RefreshGroupMembership();
                 });
             }
+        }
+
+        public void OnGroupAccountSummaryRequest(IClientAPI client, UUID agentID, UUID groupID)
+        {
+            //SendGroupAccountingSummary(client, groupID, amount, tierTotal, tierUsed);
+        }
+
+        public void OnGroupAccountDetailsRequest(IClientAPI client, UUID agentID, UUID groupID, UUID requestID, UUID sessionID)
+        {
+            //SendGroupAccountingDetails(client, groupID, transactionID, sessionID, amount);
+        }
+
+        public void OnGroupAccountTransactionsRequest(IClientAPI client, UUID agentID, UUID groupID, UUID requestID, UUID sessionID)
+        {
+            //SendGroupTransactionsSummaryDetails(client, groupID, transactionID, sessionID, amount);
         }
     }
 }
