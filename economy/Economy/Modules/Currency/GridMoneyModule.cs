@@ -1121,6 +1121,15 @@ namespace Careminster.Modules.Currency
             if (account != null)
                 return account.FirstName + " " + account.LastName;
 
+            // Maybe it's not an agent
+            IGroupsModule groups = scene.RequestModuleInterface<IGroupsModule>();
+            if (groups != null)
+            {
+                GroupRecord g = groups.GetGroupRecord(agentID);
+                if (g != null)
+                    return g.GroupName;
+            }
+
             return String.Empty;
         }
 
