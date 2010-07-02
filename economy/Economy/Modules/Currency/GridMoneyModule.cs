@@ -1,12 +1,8 @@
-// ******************************************************************
-// Copyright (c) 2008, 2009 Melanie Thielker
+// *************************************************************************
+// Copyright (c) 2008, 2009, 2010 Careminster Limited and  Melanie Thielker
 //
 // All rights reserved
 //
-
-//#define SECURE
-//#define VEC
-#define ENGLISH
 
 using System;
 using System.Collections;
@@ -28,129 +24,76 @@ using OpenSim.Region.Framework.Scenes;
 using System.Data;
 using MySql.Data.MySqlClient;
 using Mono.Addins;
+using OpenSim.Data;
+using OpenSim.Data.MySQL;
 
 [assembly: Addin("Economy.Modules", "1.8")]
 [assembly: AddinDependency("OpenSim", "0.5")]
 
 namespace Careminster.Modules.Currency
 {
-    [Extension(Path = "/OpenSim/RegionModules", NodeName = "RegionModule")]
+    public class AccountData
+    {
+        public UUID a_agent;
+        public Dictionary<string,string> Data;
+    }
+
+    public class LedgerData
+    {
+        public Dictionary<string,string> Data;
+    }
+
+    [Extension(Path = "/OpenSim/RegionModules", NodeName = "RegionModule", Id = "GridMoneyModule")]
     public class GridMoneyModule : ISharedRegionModule, IMoneyModule
     {
+        private const string currency = "L$";
         //
         // Log module
         //
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
 
-#if (!VEC)
-#if (ENGLISH)
-        private const string m_UploadPaid = "You paid L$ {0} for an upload";
+        private const string m_YouGotPaidFor = "{0} paid you "+currency+" {1} for {2}";
+        private const string m_YouPaidFor = "You paid {0} "+currency+" {1} for {2}";
 
-        private const string m_YouGotPaidFor = "{0} paid you L$ {1} for {2}";
-        private const string m_YouPaidFor = "You paid {0} L$ {1} for {2}";
+        private const string m_YouGotPaid = "{0} paid you "+currency+" {1}";
+        private const string m_YouPaid = "You paid {0} "+currency+" {1}";
 
-        private const string m_YouGotPaid = "{0} paid you L$ {1}";
-        private const string m_YouPaid = "You paid {0} L$ {1}";
-
-        private const string m_YouPaidObject = "You paid {0} L$ {1} through "+
+        private const string m_YouPaidObject = "You paid {0} "+currency+" {1} through "+
                 "object {2}";
 
-        private const string m_YouGotPaidObject = "{0} paid you L$ {1} "+
+        private const string m_YouGotPaidObject = "{0} paid you "+currency+" {1} "+
                 "through your object {2}";
 
-        private const string m_YourObjectPaid = "Your object {2} paid {0} L$ "+
+        private const string m_YourObjectPaid = "Your object {2} paid {0} "+currency+" "+
                 "{1}";
-        private const string m_YourObjectGotPaid = "{0} paid you L$ {1} via "+
+        private const string m_YourObjectGotPaid = "{0} paid you "+currency+" {1} via "+
                 "object {2}";
 
-        private const string m_YouPaidForLand = "You paid {0} L$ {1} for a "+
+        private const string m_YouPaidForLand = "You paid {0} "+currency+" {1} for a "+
                 "parcel of land";
 
-        private const string m_YouGotPaidForLand = "{0} paid you L$ {1} for "+
+        private const string m_YouGotPaidForLand = "{0} paid you "+currency+" {1} for "+
                 "a parcel of {2} sq m";
-#else
-        private const string m_UploadPaid = "Fuer diesen Upload wurden L$ {0} "
-                + "berechnet";
-
-        private const string m_YouGotPaidFor = "{0} hat dir {1} L$ fuer {2} "+
-                "gezahlt";
-        private const string m_YouPaidFor = "Du hast {0} {1} L$ fuer {2} "+
-                "gezahlt";
-
-        private const string m_YouGotPaid = "{0} hat dir {1} L$ gezahlt";
-        private const string m_YouPaid = "Du hast {0} {1} L$ gezahlt";
-
-        private const string m_YouPaidObject = "Du hast {0} {1} L$ ueber "+
-                "Objekt {2} gezahlt";
-
-        private const string m_YouGotPaidObject = "{0} hat dir {1} L$ ueber "+
-                "dein Objekt {2} gezahlt";
-
-        private const string m_YourObjectPaid = "Dein Objekt {2} hat {0} {1} "+
-                "L$ gezahlt";
-        private const string m_YourObjectGotPaid = "{0} hat dir {1} L$ ueber "+
-                "das Objekt {2} gezahlt";
-
-        private const string m_YouPaidForLand = "Du hast {0} {1} L$ fuer ein "+
-                "Stueck land gezahlt";
-
-        private const string m_YouGotPaidForLand = "{0} hat dir {1} L$ fuer "+
-                "ein Stueck Land von {2} qm gezahlt";
-#endif
-#else
-        private const string m_UploadPaid = "You paid VEC {0} for an upload";
-
-        private const string m_YouGotPaidFor = "{0} paid you VEC {1} for {2}";
-        private const string m_YouPaidFor = "You paid {0} VEC {1} for {2}";
-
-        private const string m_YouGotPaid = "{0} paid you VEC {1}";
-        private const string m_YouPaid = "You paid {0} VEC {1}";
-
-        private const string m_YouPaidObject = "You paid {0} VEC {1} through "+
-                "object {2}";
-
-        private const string m_YouGotPaidObject = "{0} paid you VEC {1} "+
-                "through your object {2}";
-
-        private const string m_YourObjectPaid = "Your object {2} paid {0} VEC "+
-                "{1}";
-        private const string m_YourObjectGotPaid = "{0} paid you VEC {1} via "+
-                "object {2}";
-
-        private const string m_YouPaidForLand = "You paid {0} VEC {1} for a "+
-                "parcel of land";
-
-        private const string m_YouGotPaidForLand = "{0} paid you VEC {1} for "+
-                "a parcel of {2} sq m";
-#endif
 
         //
         // Module vars
         //
-        private IConfigSource m_gConfig;
-
-        // Funds
-        private Dictionary<UUID, int> m_KnownClientFunds =
-                new Dictionary<UUID, int>();
-
-        // Region UUIDS indexed by AgentID
-        private Dictionary<UUID, UUID> m_rootAgents =
-                new Dictionary<UUID, UUID>();
+        private IConfigSource m_Config;
 
         // Scenes by Region Handle
-        private Dictionary<ulong, Scene> m_scenel =
-                new Dictionary<ulong, Scene>();
+        private Dictionary<UUID, Scene> m_Scenes =
+                new Dictionary<UUID, Scene>();
 
         //
         // Economy config params
         //
         private UUID EconomyBaseAccount = UUID.Zero;
-        private float EnergyEfficiency = 0f;
-        private bool m_enabled = true;
+        private bool m_Enabled = true;
         private string m_DatabaseConnect = String.Empty;
         private string m_MoneyAddress = String.Empty;
-        private int ObjectCapacity = 45000;
+
+        private float EnergyEfficiency = 0f;
         private int ObjectCount = 0;
         private int PriceEnergyUnit = 0;
         private int PriceGroupCreate = 0;
@@ -167,230 +110,111 @@ namespace Careminster.Modules.Currency
         private int TeleportMinPrice = 0;
         private float TeleportPriceExponent = 0f;
         private int UserLevelPaysFees = 2;
-        private long m_WaitTimeout = 0;
-        private long m_WaitTimeoutLeeway = 60 * TimeSpan.TicksPerSecond;
-        private long m_LastUsed = 0;
 
         //
         // Database
         //
-        private MySqlConnection m_Database;
+        private MySQLAccountsTableHandler m_AccountsTable;
+        private MySQLLedgerTableHandler m_LedgerTable;
 
         //
         // Event handler
         //
         public event ObjectPaid OnObjectPaid;
 
+        public int UploadCharge
+        {
+            get { return PriceUpload; }
+        }
+
+        public int GroupCreationCharge
+        {
+            get { return PriceGroupCreate; }
+        }
+
         public void Initialise(IConfigSource config)
         {
-            m_gConfig = config;
+            m_Config = config;
 
-            IConfig startupConfig = m_gConfig.Configs["Startup"];
-            IConfig economyConfig = m_gConfig.Configs["Economy"];
+            IConfig startupConfig = m_Config.Configs["Startup"];
+            IConfig economyConfig = m_Config.Configs["Economy"];
 
-            ReadConfigAndPopulate(startupConfig, "Startup");
-            ReadConfigAndPopulate(economyConfig, "Economy");
+            m_Enabled = (startupConfig.GetString("economymodule",
+                    "BetaGridLikeMoneyModule") == "GridMoneyModule");
 
-#if SECURE
-            string licenseData = String.Empty;
-
-            if (economyConfig != null)
-                licenseData = economyConfig.GetString("license_data", "");
-
-            Protect p = new Protect();
-
-            Byte[] hash = p.GetHash();
-            hash = p.Revolve(hash, "CentralGrid");
-            hash = p.Revolve(hash, "CentralGrid");
-
-            ulong left = System.BitConverter.ToUInt64(hash, 0);
-            ulong right = System.BitConverter.ToUInt64(hash, 8);
-
-            string s1 = left.ToString();
-            string s2 = right.ToString();
-
-            string code = s1 + "M" + s2;
-
-            List<string> parts = new List<string>();
-
-            while (code != String.Empty)
-            {
-                if (code.Length < 5)
-                {
-                    parts.Add(code);
-                    break;
-                }
-                parts.Add(code.Substring(0, 5));
-                code = code.Substring(5);
-            }
-
-            string serial = String.Join("-", parts.ToArray());
-
-            Byte[] raw = Convert.FromBase64String(licenseData);
-            if (raw.Length != 24)
-            {
-                m_log.ErrorFormat("[MONEY] Bad license key. License code: {0}", serial);
-                m_log.Error("[MONEY] module disabled");
-                throw new Exception("Bad License");
+            if (!m_Enabled)
                 return;
-            }
 
-            long ticks = System.BitConverter.ToInt64(raw, 16);
+            PriceEnergyUnit =
+                    economyConfig.GetInt("PriceEnergyUnit", 100);
+            PriceObjectClaim =
+                    economyConfig.GetInt("PriceObjectClaim", 10);
+            PricePublicObjectDecay =
+                    economyConfig.GetInt("PricePublicObjectDecay", 4);
+            PricePublicObjectDelete =
+                    economyConfig.GetInt("PricePublicObjectDelete", 4);
+            PriceParcelClaim =
+                    economyConfig.GetInt("PriceParcelClaim", 1);
+            PriceParcelClaimFactor =
+                    economyConfig.GetFloat("PriceParcelClaimFactor", 1f);
+            PriceUpload =
+                    economyConfig.GetInt("PriceUpload", 0);
+            PriceRentLight =
+                    economyConfig.GetInt("PriceRentLight", 5);
+            TeleportMinPrice =
+                    economyConfig.GetInt("TeleportMinPrice", 2);
+            TeleportPriceExponent =
+                    economyConfig.GetFloat("TeleportPriceExponent", 2f);
+            EnergyEfficiency =
+                    economyConfig.GetFloat("EnergyEfficiency", 1);
+            PriceObjectRent =
+                    economyConfig.GetFloat("PriceObjectRent", 1);
+            PriceObjectScaleFactor =
+                    economyConfig.GetFloat("PriceObjectScaleFactor", 10);
+            PriceParcelRent =
+                    economyConfig.GetInt("PriceParcelRent", 1);
+            PriceGroupCreate =
+                    economyConfig.GetInt("PriceGroupCreate", -1);
+            string EBA =
+                    economyConfig.GetString("EconomyBaseAccount",
+                    UUID.Zero.ToString());
+            UUID.TryParse(EBA, out EconomyBaseAccount);
+            UserLevelPaysFees =
+                    economyConfig.GetInt("UserLevelPaysFees", -1);
+            m_DatabaseConnect =
+                    economyConfig.GetString("DatabaseConnect",String.Empty);
+            m_MoneyAddress =
+                    economyConfig.GetString("CurrencyServer", String.Empty);
 
-            Byte[] lic = new Byte[16];
-            Array.Copy(raw, 0, lic, 0,16);
+            m_AccountsTable = new MySQLAccountsTableHandler(m_DatabaseConnect, "accounts", String.Empty);
+            m_LedgerTable = new MySQLLedgerTableHandler(m_DatabaseConnect, "ledger", String.Empty);
 
-            licenseData = System.Convert.ToBase64String(lic);
-
-            string b64 = System.Convert.ToBase64String(p.GetHash());
-
-            if (b64 != licenseData)
-            {
-                m_log.ErrorFormat("[MONEY] Bad license key. License code: {0}", serial);
-                m_log.Error("[MONEY] module disabled");
-                throw new Exception("Bad License");
-                return;
-            }
-
-            DateTime cutoff = new DateTime(ticks);
-            if(DateTime.Now > cutoff)
-            {
-                m_log.ErrorFormat("[MONEY] License expired on {0}", cutoff.ToString());
-                m_log.Error("[MONEY] module disabled");
-                throw new Exception("Bad License");
-                return;
-            }
-
-            m_log.InfoFormat("[MONEY] Licensed until {0}", cutoff.ToString());
-#endif
-            if (m_enabled)
-            {
-                try
-                {
-                    m_Database = new MySqlConnection(m_DatabaseConnect);
-                    m_Database.Open();
-                    m_log.Info("[MONEY]: Connected to database");
-                }
-                catch (Exception e)
-                {
-                    m_log.Error("[MONEY] Database connection error\n"+e.ToString());
-                    m_enabled=false;
-                    return;
-                }
-            }
-        }
-
-        private IDataReader ExecuteReader(MySqlCommand c)
-        {
-            IDataReader r = null;
-            bool errorSeen = false;
-
-            while (true)
-            {
-                try
-                {
-                    r = c.ExecuteReader();
-                }
-                catch (MySqlException)
-                {
-                    System.Threading.Thread.Sleep(500);
-
-                    m_Database.Close();
-                    m_Database = (MySqlConnection) ((ICloneable)m_Database).Clone();
-                    m_Database.Open();
-                    c.Connection = m_Database;
-
-                    if (!errorSeen)
-                    {
-                        errorSeen = true;
-                        continue;
-                    }
-                    throw;
-                }
-
-                break;
-            }
-
-            return r;
-        }
-
-        private void ExecuteNonQuery(MySqlCommand c)
-        {
-            bool errorSeen = false;
-
-            while (true)
-            {
-                try
-                {
-                    c.ExecuteNonQuery();
-                }
-                catch (MySqlException e)
-                {
-                    System.Threading.Thread.Sleep(500);
-
-                    m_Database.Close();
-                    m_Database = (MySqlConnection) ((ICloneable)m_Database).Clone();
-                    m_Database.Open();
-                    c.Connection = m_Database;
-
-                    if (!errorSeen)
-                    {
-                        errorSeen = true;
-                        continue;
-                    }
-                    m_log.ErrorFormat("[MONEY] MySQL command: {0}", c.CommandText);
-                    m_log.Error(e.ToString());
-
-                    throw;
-                }
-
-                break;
-            }
+            IHttpServer httpServer = MainServer.Instance;
+            httpServer.AddXmlRPCHandler("balanceUpdateRequest",
+                    GridMoneyUpdate);
+            httpServer.AddXmlRPCHandler("userAlert", UserAlert);
         }
 
         public void AddRegion(Scene scene)
         {
-            if (m_enabled)
+            if (!m_Enabled)
+                return;
+
+            lock (m_Scenes)
             {
-                lock (m_scenel)
-                {
-                    // Claim the interface slot
-                    scene.RegisterModuleInterface<IMoneyModule>(this);
+                // Claim the interface slot
+                scene.RegisterModuleInterface<IMoneyModule>(this);
 
-                    // First scene registration
-                    if (m_scenel.Count == 0)
-                    {
-                        IHttpServer httpServer = MainServer.Instance;
-                        httpServer.AddXmlRPCHandler("balanceUpdateRequest",
-                                GridMoneyUpdate);
-                        httpServer.AddXmlRPCHandler("userAlert", UserAlert);
-                    }
-
-                    // Add to scene list
-                    if (m_scenel.ContainsKey(scene.RegionInfo.RegionHandle))
-                    {
-                        m_scenel[scene.RegionInfo.RegionHandle] = scene;
-                    }
-                    else
-                    {
-                        m_scenel.Add(scene.RegionInfo.RegionHandle, scene);
-                    }
-                }
-
-                m_log.Info("[MONEY] Activated GridMoneyModule");
-
-                // Hook up events
-                scene.EventManager.OnNewClient += OnNewClient;
-                scene.EventManager.OnMoneyTransfer += MoneyTransferAction;
-                scene.EventManager.OnClientClosed += ClientClosed;
-                scene.EventManager.OnAvatarEnteringNewParcel +=
-                        AvatarEnteringParcel;
-                scene.EventManager.OnMakeChildAgent += MakeChildAgent;
-                scene.EventManager.OnValidateLandBuy += ValidateLandBuy;
-                scene.EventManager.OnLandBuy += ProcessLandBuy;
-
-                scene.SetObjectCapacity(ObjectCapacity);
+                m_Scenes[scene.RegionInfo.RegionID] = scene;
             }
+
+            m_log.Info("[MONEY] Activated GridMoneyModule");
+
+            // Hook up events
+            scene.EventManager.OnNewClient += OnNewClient;
+            scene.EventManager.OnMoneyTransfer += MoneyTransferAction;
+            scene.EventManager.OnValidateLandBuy += ValidateLandBuy;
+            scene.EventManager.OnLandBuy += ProcessLandBuy;
         }
 
         public void RegionLoaded(Scene scene)
@@ -399,39 +223,40 @@ namespace Careminster.Modules.Currency
 
         public void RemoveRegion(Scene scene)
         {
-            m_scenel.Remove(scene.RegionInfo.RegionHandle);
+            m_Scenes.Remove(scene.RegionInfo.RegionID);
         }
 
-        public void ApplyCharge(UUID agentID, int amount, string text)
+        public void ApplyUploadCharge(UUID agentID, int amount, string text)
         {
-            Scene scene=LocateSceneClientIn(agentID);
+            Scene scene=GetClientScene(agentID);
 
             UserAccount account = scene.UserAccountService.GetUserAccount(scene.RegionInfo.ScopeID, agentID);
 
             if (account != null && ((account.UserFlags & 0xf00) >> 8) > UserLevelPaysFees)
                 return;
 
-            LocalTransaction(agentID, -amount, String.Empty);
-
-            MoveMoney(agentID, EconomyBaseAccount, amount,
+            DoMoneyTransfer(agentID, EconomyBaseAccount, amount,
                     1101, text, scene);
 
         }
 
-        public void ApplyUploadCharge(UUID agentID)
+        public void ApplyCharge(UUID agentID, int amount, string text)
         {
-            ApplyCharge(agentID, PriceUpload, "Asset upload fee");
-            DeductUpload(agentID, PriceUpload);
-        }
+            Scene scene=GetClientScene(agentID);
 
-        public void ApplyGroupCreationCharge(UUID agentID)
-        {
-            ApplyCharge(agentID, PriceGroupCreate, "Group creation fee");
+            UserAccount account = scene.UserAccountService.GetUserAccount(scene.RegionInfo.ScopeID, agentID);
+
+            if (account != null && ((account.UserFlags & 0xf00) >> 8) > UserLevelPaysFees)
+                return;
+
+            DoMoneyTransfer(agentID, EconomyBaseAccount, amount,
+                    1102, text, scene);
+
         }
 
         public bool ObjectGiveMoney(UUID objectID, UUID fromID, UUID toID, int amount)
         {
-            Scene scene=FindPrimScene(objectID);
+            Scene scene=GetPrimScene(objectID);
 
             if(ResolveAgentName(toID) == String.Empty)
             {
@@ -475,68 +300,15 @@ namespace Careminster.Modules.Currency
             get { return null; }
         }
 
-        /// Parse Configuration
-        private void ReadConfigAndPopulate(IConfig startupConfig,
-                string config)
-        {
-            if (config == "Startup" && startupConfig != null)
-            {
-                m_enabled = (startupConfig.GetString("economymodule",
-                        "BetaGridLikeMoneyModule") == "GridMoneyModule");
-            }
-
-            if (config == "Economy" && startupConfig != null)
-            {
-                ObjectCapacity =
-                        startupConfig.GetInt("ObjectCapacity", 45000);
-                PriceEnergyUnit =
-                        startupConfig.GetInt("PriceEnergyUnit", 100);
-                PriceObjectClaim =
-                        startupConfig.GetInt("PriceObjectClaim", 10);
-                PricePublicObjectDecay =
-                        startupConfig.GetInt("PricePublicObjectDecay", 4);
-                PricePublicObjectDelete =
-                        startupConfig.GetInt("PricePublicObjectDelete", 4);
-                PriceParcelClaim =
-                        startupConfig.GetInt("PriceParcelClaim", 1);
-                PriceParcelClaimFactor =
-                        startupConfig.GetFloat("PriceParcelClaimFactor", 1f);
-                PriceUpload =
-                        startupConfig.GetInt("PriceUpload", 0);
-                PriceRentLight =
-                        startupConfig.GetInt("PriceRentLight", 5);
-                TeleportMinPrice =
-                        startupConfig.GetInt("TeleportMinPrice", 2);
-                TeleportPriceExponent =
-                        startupConfig.GetFloat("TeleportPriceExponent", 2f);
-                EnergyEfficiency =
-                        startupConfig.GetFloat("EnergyEfficiency", 1);
-                PriceObjectRent =
-                        startupConfig.GetFloat("PriceObjectRent", 1);
-                PriceObjectScaleFactor =
-                        startupConfig.GetFloat("PriceObjectScaleFactor", 10);
-                PriceParcelRent =
-                        startupConfig.GetInt("PriceParcelRent", 1);
-                PriceGroupCreate =
-                        startupConfig.GetInt("PriceGroupCreate", -1);
-                string EBA =
-                        startupConfig.GetString("EconomyBaseAccount",
-                        UUID.Zero.ToString());
-                UUID.TryParse(EBA, out EconomyBaseAccount);
-                UserLevelPaysFees =
-                        startupConfig.GetInt("UserLevelPaysFees", -1);
-                m_DatabaseConnect =
-                        startupConfig.GetString("DatabaseConnect",String.Empty);
-                m_MoneyAddress =
-                        startupConfig.GetString("CurrencyServer", String.Empty);
-            }
-
-        }
-
         /// New Client Event Handler
         private void OnNewClient(IClientAPI client)
         {
-            bool childYN = true;
+            // Subscribe to Money messages
+            client.OnEconomyDataRequest += EconomyDataRequestHandler;
+            client.OnMoneyBalanceRequest += SendMoneyBalance;
+            client.OnRequestPayPrice += RequestPayPrice;
+            client.OnObjectBuy += ObjectBuy;
+
             ScenePresence agent = null;
 
             // Get the scene
@@ -548,26 +320,10 @@ namespace Careminster.Modules.Currency
 
             if (s != null)
             {
-                // Try to find out agent status
                 agent = s.GetScenePresence(client.AgentId);
-                if (agent != null)
-                {
-                    childYN = agent.IsChildAgent;
-                    if (childYN == false)
-                    {
-                        int funds=GetAgentFunds(client.AgentId);
-                        m_KnownClientFunds[client.AgentId] = funds;
-                        SendMoneyBalance(client, UUID.Zero);
-                    }
-                }
+                if (!agent.IsChildAgent)
+                    SendMoneyBalance(client);
             }
-
-            // Subscribe to Money messages
-            client.OnEconomyDataRequest += EconomyDataRequestHandler;
-            client.OnMoneyBalanceRequest += SendMoneyBalance;
-            client.OnRequestPayPrice += RequestPayPrice;
-            client.OnObjectBuy += ObjectBuy;
-            client.OnLogout += ClientClosed;
         }
 
         //
@@ -658,38 +414,26 @@ namespace Careminster.Modules.Currency
         //
         private int GetAgentFunds(UUID agentID)
         {
-            int funds=0;
-
-            lock(m_Database)
+            AccountData[] acc;
+            lock (m_AccountsTable)
             {
-                MySqlCommand fundsCommand=(MySqlCommand)m_Database.CreateCommand();
-                fundsCommand.CommandText="select a_amount from accounts where a_agent = ?agent";
-                fundsCommand.Parameters.AddWithValue("?agent", agentID.ToString());
+                acc = m_AccountsTable.Get("a_agent", agentID.ToString());
 
-                IDataReader r = ExecuteReader(fundsCommand);
-                try
+                if (acc.Length < 1)
                 {
-                    if(r.Read())
-                    {
-                        funds=Convert.ToInt32(r["a_amount"]);
-                        r.Close();
-                    }
-                    else
-                    {
-                        r.Close();
-                        fundsCommand.CommandText = "insert into accounts (a_agent, a_date, a_amount) values ( ?agent, now(), 0)";
-                        ExecuteNonQuery(fundsCommand);
-                    }
-                }
-                catch (Exception e)
-                {
-                    r.Close();
+                    AccountData a = new AccountData();
+                    a.Data = new Dictionary<string,string>();
+                    a.a_agent = agentID;
+                    a.Data["a_amount"] = "0";
+                    a.Data["a_upload"] = "0";
+
+                    m_AccountsTable.Store(a);
+
+                    return 0;
                 }
             }
 
-            m_KnownClientFunds[agentID]=funds;
-
-            return funds;
+            return Convert.ToInt32(acc[0].Data["a_amount"]);
         }
 
         //
@@ -697,38 +441,28 @@ namespace Careminster.Modules.Currency
         //
         private int GetAvailableAgentFunds(UUID agentID)
         {
-            int funds=0;
-
-            lock(m_Database)
+            AccountData[] acc;
+            lock (m_AccountsTable)
             {
-                MySqlCommand fundsCommand=(MySqlCommand)m_Database.CreateCommand();
-                fundsCommand.CommandText="select a_amount - a_upload as a_amount from accounts where a_agent = ?agent";
-                fundsCommand.Parameters.AddWithValue("?agent", agentID.ToString());
+                acc = m_AccountsTable.Get("a_agent", agentID.ToString());
+                if (acc.Length < 1)
+                {
+                    AccountData a = new AccountData();
+                    a.Data = new Dictionary<string,string>();
+                    a.a_agent = agentID;
+                    a.Data["a_amount"] = "0";
+                    a.Data["a_upload"] = "0";
 
-                IDataReader r = ExecuteReader(fundsCommand);
-                try
-                {
-                    if(r.Read())
-                    {
-                        funds=Convert.ToInt32(r["a_amount"]);
-                        r.Close();
-                    }
-                    else
-                    {
-                        r.Close();
-                        fundsCommand.CommandText = "insert into accounts (a_agent, a_date, a_amount) values ( ?agent, now(), 0)";
-                        ExecuteNonQuery(fundsCommand);
-                    }
-                }
-                catch (Exception)
-                {
-                    r.Close();
+                    m_AccountsTable.Store(a);
+
+                    return 0;
                 }
             }
 
-            m_KnownClientFunds[agentID]=funds;
-
-            return funds;
+            int upload = Convert.ToInt32(acc[0].Data["a_upload"]);
+            if (upload < 0)
+                upload = 0;
+            return Convert.ToInt32(acc[0].Data["a_amount"]) - upload;
         }
 
         //
@@ -737,7 +471,9 @@ namespace Careminster.Modules.Currency
         private bool DoMoneyTransfer(UUID sender, UUID receiver, int amount,
                 int transactiontype, string description, Scene scene)
         {
-            string text;
+m_log.DebugFormat("[MONEY]: DoMoneyTransfer called for {0} from {1} to {2}", amount, sender, receiver);
+            string senderText;
+            string receiverText;
             string sender_name;
             string receiver_name;
 
@@ -746,20 +482,17 @@ namespace Careminster.Modules.Currency
                 int funds = GetAvailableAgentFunds(sender);
                 if (transactiontype == 1101)
                     funds = GetAgentFunds(sender);
+m_log.DebugFormat("[MONEY]: DoMoneyTransfer amount={0} funds={1}", amount, funds);
                 if(funds < amount)
                     return false;
 
-//m_log.DebugFormat("value : {0}",description);
                 switch(transactiontype)
                 {
                 case 1101: // Asset upload
-                    DeductUpload(sender, amount);
-
-                    text=String.Format(m_UploadPaid, amount);
-                    LocalTransaction(sender, -amount, text);
-
+                    // No need to send a text, as the viewer generates one
                     MoveMoney(sender, EconomyBaseAccount, amount,
-                            transactiontype, "Asset upload fee", scene);
+                            transactiontype, "Asset upload fee", String.Empty,
+                            String.Empty, scene);
 
                     break;
                 case 5000: // Object bought
@@ -771,16 +504,15 @@ namespace Careminster.Modules.Currency
                     if(receiver_name == String.Empty)
                         receiver_name="(hippos)";
 
-                    text=String.Format(m_YouGotPaidFor, sender_name, amount,
+                    receiverText=String.Format(m_YouGotPaidFor, sender_name, amount,
                             description);
-                    LocalTransaction(receiver, amount, text);
 
-                    text=String.Format(m_YouPaidFor, receiver_name, amount,
+                    senderText=String.Format(m_YouPaidFor, receiver_name, amount,
                             description);
-                    LocalTransaction(sender, -amount, text);
 
                     MoveMoney(sender, receiver, amount,
-                            transactiontype, "Object purchase "+description, scene);
+                            transactiontype, "Object purchase "+description,
+                            senderText, receiverText, scene);
 
                     break;
                 case 5001: // User pays user
@@ -792,14 +524,13 @@ namespace Careminster.Modules.Currency
                     if(receiver_name == String.Empty)
                         receiver_name="(hippos)";
 
-                    text=String.Format(m_YouGotPaid, sender_name, amount);
-                    LocalTransaction(receiver, amount, text);
+                    receiverText=String.Format(m_YouGotPaid, sender_name, amount);
 
-                    text=String.Format(m_YouPaid, receiver_name, amount);
-                    LocalTransaction(sender, -amount, text);
+                    senderText=String.Format(m_YouPaid, receiver_name, amount);
 
                     MoveMoney(sender, receiver, amount,
-                            transactiontype, "Gift", scene);
+                            transactiontype, "Gift", senderText, receiverText,
+                            scene);
 
                     break;
                 case 5008: // User pays object
@@ -811,17 +542,16 @@ namespace Careminster.Modules.Currency
                     if(receiver_name == String.Empty)
                         receiver_name="(hippos)";
 
-                    text=String.Format(m_YouPaidObject, receiver_name, amount,
-                            description);
-                    LocalTransaction(sender, -amount, text);
-
-                    text=String.Format(m_YouGotPaidObject, sender_name, amount,
+                    senderText=String.Format(m_YouPaidObject, receiver_name, amount,
                             description);
 
-                    LocalTransaction(receiver, amount, text);
+                    receiverText=String.Format(m_YouGotPaidObject, sender_name, amount,
+                            description);
+
 
                     MoveMoney(sender, receiver, amount,
-                            transactiontype, "Paid object "+description, scene);
+                            transactiontype, "Paid object "+description,
+                            senderText, receiverText, scene);
 
                     break;
                 case 5009: // Object pays user
@@ -833,17 +563,16 @@ namespace Careminster.Modules.Currency
                     if(receiver_name == String.Empty)
                         receiver_name="(hippos)";
 
-                    text=String.Format(m_YourObjectPaid, receiver_name, amount,
-                            description);
-                    LocalTransaction(sender, -amount, text);
-
-                    text=String.Format(m_YourObjectGotPaid, sender_name, amount,
+                    senderText=String.Format(m_YourObjectPaid, receiver_name, amount,
                             description);
 
-                    LocalTransaction(receiver, amount, text);
+                    receiverText=String.Format(m_YourObjectGotPaid, sender_name, amount,
+                            description);
+
 
                     MoveMoney(sender, receiver, amount,
-                            transactiontype, "Object "+description+" payes" , scene);
+                            transactiontype, "Object "+description+" pays" ,
+                            senderText, receiverText, scene);
 
                     break;
                 case 5002: // Land transaction
@@ -855,15 +584,14 @@ namespace Careminster.Modules.Currency
                     if(receiver_name == String.Empty)
                         receiver_name="(hippos)";
 
-                    text=String.Format(m_YouPaidForLand, receiver_name, amount);
-                    LocalTransaction(sender, -amount, text);
+                    senderText=String.Format(m_YouPaidForLand, receiver_name, amount);
 
-                    text=String.Format(m_YouGotPaidForLand, sender_name, amount,
+                    receiverText=String.Format(m_YouGotPaidForLand, sender_name, amount,
                             description);
-                    LocalTransaction(receiver, amount, text);
 
                     MoveMoney(sender, receiver, amount,
-                            transactiontype, "Land purchase", scene);
+                            transactiontype, "Land purchase",
+                            senderText, receiverText, scene);
 
                     break;
                 }
@@ -878,120 +606,61 @@ namespace Careminster.Modules.Currency
         private void MakeLedgerEntry(UUID sender, UUID receiver, int amount,
                 int transactiontype, string text, Scene scene)
         {
-            MySqlCommand ledgerCmd=(MySqlCommand)m_Database.CreateCommand();
-            ledgerCmd.CommandText="insert into ledger (l_date, l_from, l_to, l_amount, l_type, l_region, l_description) values (now(), ?from, ?to, ?amount, ?type, ?region, ?description)";
-            ledgerCmd.Parameters.AddWithValue("?from", sender.ToString());
-            ledgerCmd.Parameters.AddWithValue("?to", receiver.ToString());
-            ledgerCmd.Parameters.AddWithValue("?amount", amount);
-            ledgerCmd.Parameters.AddWithValue("?type", transactiontype);
-            if(scene != null)
-                ledgerCmd.Parameters.AddWithValue("?region", scene.RegionInfo.RegionName);
-            else
-                ledgerCmd.Parameters.AddWithValue("?region", String.Empty);
-            ledgerCmd.Parameters.AddWithValue("?description", text);
+            LedgerData l = new LedgerData();
+            l.Data = new Dictionary<string,string>();
+            l.Data["l_from"] = sender.ToString();
+            l.Data["l_to"] = receiver.ToString();
+            l.Data["l_amount"] = amount.ToString();
+            l.Data["l_type"] = transactiontype.ToString();
+            l.Data["l_description"] = text;
+            l.Data["l_region"] = scene.RegionInfo.RegionName;
 
-            ExecuteNonQuery(ledgerCmd);
-        }
-
-        //
-        // Perform the local part of the transaction and send notifies
-        //
-        private void LocalTransaction(UUID agentID, int amount, string text)
-        {
-            lock(m_KnownClientFunds)
-            {
-                if (m_KnownClientFunds.ContainsKey(agentID))
-                {
-                    m_KnownClientFunds[agentID]+=amount;
-
-                    IClientAPI client=LocateClientObject(agentID);
-                    if(client != null)
-                    {
-                        SendMoneyBalance(client, UUID.Zero);
-                        if(text != String.Empty)
-                            client.SendBlueBoxMessage(UUID.Zero,
-                                    "", text);
-                    }
-                    else
-                    {
-                        NotifyAgent(agentID, text);
-                    }
-                }
-                else
-                {
-                    NotifyAgent(agentID, text);
-                }
-            }
+            m_LedgerTable.Store(l);
         }
 
         //
         // Update balance tables
         //
         private void MoveMoney(UUID sender, UUID receiver, int amount,
-                int transactiontype, string text, Scene scene)
+                int transactiontype, string text, string senderMessage,
+                string receiverMessage, Scene scene)
         {
-            lock (m_Database)
+            // This creates the records if they're not there yet
+            GetAgentFunds(sender);
+            GetAgentFunds(receiver);
+
+            lock (m_AccountsTable)
             {
-                MySqlCommand lockCmd=(MySqlCommand)m_Database.CreateCommand();
-                lockCmd.CommandText="select get_lock('movemoney', 10)";
-
-                ExecuteNonQuery(lockCmd);
-
-                // These will create the record if it's not there already
-                // We're not using the returned values, because it's not
-                // safe.
-                //
-                GetAgentFunds(sender);
-                GetAgentFunds(receiver);
-
-                // We will do this in a transaction to avoid inconsistencies
-                //
-                MySqlCommand txnCmd = (MySqlCommand)m_Database.CreateCommand();
-                txnCmd.CommandText = "begin";
-                ExecuteNonQuery(txnCmd);
-
-                if(sender != receiver)
-                {
-                    MySqlCommand fromCmd=(MySqlCommand)m_Database.CreateCommand();
-                    fromCmd.CommandText = "update accounts set a_date=now(), "+
-                            "a_amount=a_amount-?amount where a_agent = ?agent";
-
-                    fromCmd.Parameters.AddWithValue("?agent", sender.ToString());
-                    fromCmd.Parameters.AddWithValue("?amount", amount);
-                
-                    ExecuteNonQuery(fromCmd);
-
-                    MySqlCommand toCmd=(MySqlCommand)m_Database.CreateCommand();
-                    toCmd.CommandText = "update accounts set a_date=now(), "+
-                            "a_amount=a_amount+?amount where a_agent = ?agent";
-
-                    toCmd.Parameters.AddWithValue("?agent", receiver.ToString());
-                    toCmd.Parameters.AddWithValue("?amount", amount);
-                        
-                    ExecuteNonQuery(toCmd);
-                }
-
-                MakeLedgerEntry(sender, receiver, amount, transactiontype,
-                        text, scene);
-
-                txnCmd.CommandText = "commit";
-                ExecuteNonQuery(txnCmd);
-
-                MySqlCommand unlockCmd=(MySqlCommand)m_Database.CreateCommand();
-                unlockCmd.CommandText="select release_lock('movemoney')";
-
-                ExecuteNonQuery(unlockCmd);
+                m_AccountsTable.Add(sender, -amount);
+                if (transactiontype == 1101) // Upload
+                    m_AccountsTable.AddUpload(sender, -amount);
+                m_AccountsTable.Add(receiver, amount);
+                MakeLedgerEntry(sender, receiver, amount,
+                        transactiontype, text, scene);
             }
+
+            // If the amount is 0, suppress annoying popups
+            if (amount == 0)
+            {
+                // I believe in SL the payer still sees L$0 messages
+                // senderMessage = String.Empty;
+                receiverMessage = String.Empty;
+            }
+
+            // TODO: Check user prefs regarding payment notifications
+
+            SendMoneyBalance(sender, senderMessage);
+            SendMoneyBalance(receiver, receiverMessage);
         }
 
         //
         // Find the scene for an agent
         //
-        private Scene LocateSceneClientIn(UUID agentId)
+        private Scene GetClientScene(UUID agentId)
         {
-            lock (m_scenel)
+            lock (m_Scenes)
             {
-                foreach (Scene scene in m_scenel.Values)
+                foreach (Scene scene in m_Scenes.Values)
                 {
                     ScenePresence presence = scene.GetScenePresence(agentId);
                     if (presence != null)
@@ -1005,11 +674,11 @@ namespace Careminster.Modules.Currency
         }
 
         //
-        // Find the client for a ID
+        // Get the client for an agent
         //
-        private IClientAPI LocateClientObject(UUID agentID)
+        private IClientAPI FindClient(UUID agentID)
         {
-            Scene scene=LocateSceneClientIn(agentID);
+            Scene scene=GetClientScene(agentID);
             if(scene == null)
                 return null;
 
@@ -1026,32 +695,34 @@ namespace Careminster.Modules.Currency
         private void SendMoneyBalance(IClientAPI client, UUID agentID,
                 UUID sessionID, UUID transactionID)
         {
-            SendMoneyBalance(client, transactionID);
-        }
-
-        private void SendMoneyBalance(IClientAPI client, UUID transactionID)
-        {
-            if(client == null)
-                return;
-            if(client.AgentId == UUID.Zero)
-                return;
-
-            if(!m_KnownClientFunds.ContainsKey(client.AgentId))
-                return;
-
-            int returnfunds=m_KnownClientFunds[client.AgentId];
-
+            int amount = GetAgentFunds(client.AgentId);
             client.SendMoneyBalance(transactionID, true,
-                    new byte[0], returnfunds);
+                    new byte[0], amount);
         }
 
-        private void SendMoneyBalance(UUID agentID, UUID transactionID)
+        private void SendMoneyBalance(IClientAPI client)
         {
-            IClientAPI client=LocateClientObject(agentID);
-            if(client == null)
-                return;
+            SendMoneyBalance(client, UUID.Zero, UUID.Zero, UUID.Zero);
+        }
 
-            SendMoneyBalance(client, transactionID);
+        public int GetBalance(UUID agentID)
+        {
+            return GetAgentFunds(agentID);
+        }
+
+        private void SendMoneyBalance(UUID agentID, string text)
+        {
+            IClientAPI client=FindClient(agentID);
+            if(client == null)
+            {
+                NotifyAgent(agentID, text);
+                return;
+            }
+
+            SendMoneyBalance(client);
+
+            if (text.Trim() != String.Empty)
+                client.SendBlueBoxMessage(UUID.Zero, "", text);
         }
 
         //
@@ -1059,9 +730,9 @@ namespace Careminster.Modules.Currency
         //
         private SceneObjectPart FindPrim(UUID objectID)
         {
-            lock (m_scenel)
+            lock (m_Scenes)
             {
-                foreach (Scene scene in m_scenel.Values)
+                foreach (Scene scene in m_Scenes.Values)
                 {
                     SceneObjectPart part = scene.GetSceneObjectPart(objectID);
                     if (part != null)
@@ -1074,11 +745,11 @@ namespace Careminster.Modules.Currency
         //
         // Find scene a prim is in
         //
-        private Scene FindPrimScene(UUID objectID)
+        private Scene GetPrimScene(UUID objectID)
         {
-            lock (m_scenel)
+            lock (m_Scenes)
             {
-                foreach (Scene scene in m_scenel.Values)
+                foreach (Scene scene in m_Scenes.Values)
                 {
                     SceneObjectPart part = scene.GetSceneObjectPart(objectID);
                     if (part != null)
@@ -1107,7 +778,7 @@ namespace Careminster.Modules.Currency
         private string ResolveAgentName(UUID agentID)
         {
             // Fast way first
-            Scene scene=LocateSceneClientIn(agentID);
+            Scene scene=GetClientScene(agentID);
             if(scene != null)
             {
                 ScenePresence presence=scene.GetScenePresence(agentID);
@@ -1137,11 +808,6 @@ namespace Careminster.Modules.Currency
         // XmlRPC handler for balance updates from outside
         // This will not actually update the database
         //
-        public XmlRpcResponse GridMoneyUpdate(XmlRpcRequest request)
-        {
-            return GridMoneyUpdate(request, null);
-        }
-
         public XmlRpcResponse GridMoneyUpdate(XmlRpcRequest request,
                 IPEndPoint endpoint)
         {
@@ -1154,31 +820,15 @@ namespace Careminster.Modules.Currency
                 UUID agentID;
                 UUID.TryParse((string) requestData["agentId"], out agentID);
 
-                if(requestData.ContainsKey("amount"))
-                {
-                    int amount=0;
-                    try
-                    {
-                        amount=int.Parse((string)requestData["amount"]);
-                    }
-                    catch(System.Exception)
-                    {
-                    }
+                string message = String.Empty;
 
-                    lock (m_KnownClientFunds)
-                    {
-                        m_KnownClientFunds[agentID]=amount;
-                        SendMoneyBalance(agentID, UUID.Zero);
-                    }
-                    success=true;
-                }
                 if(requestData.ContainsKey("message"))
                 {
-                    IClientAPI client=LocateClientObject(agentID);
-                    if(client != null)
-                        client.SendBlueBoxMessage(UUID.Zero,
-                                "", (string)requestData["message"]);
+                    message = (string)requestData["message"];
                 }
+
+                SendMoneyBalance(agentID, message);
+                success=true;
             }
 
             XmlRpcResponse r = new XmlRpcResponse();
@@ -1190,11 +840,6 @@ namespace Careminster.Modules.Currency
         }
 
         // XMLRPC handler to send alert message and sound to client
-        public XmlRpcResponse UserAlert(XmlRpcRequest request)
-        {
-            return UserAlert(request, null);
-        }
-
         public XmlRpcResponse UserAlert(XmlRpcRequest request,
                 IPEndPoint endpoint)
         {
@@ -1213,7 +858,7 @@ namespace Careminster.Modules.Currency
             if (requestData["type"] != null)
                 mode = (string) requestData["type"];
 
-            IClientAPI client = LocateClientObject(agentId);
+            IClientAPI client = FindClient(agentId);
 
             if (client != null)
             {
@@ -1241,26 +886,10 @@ namespace Careminster.Modules.Currency
         //
         public Scene GetRandomScene()
         {
-            lock (m_scenel)
+            lock (m_Scenes)
             {
-                foreach (Scene rs in m_scenel.Values)
+                foreach (Scene rs in m_Scenes.Values)
                     return rs;
-            }
-            return null;
-        }
-
-        //
-        // Get a acene by region ID
-        //
-        public Scene GetSceneByUUID(UUID RegionID)
-        {
-            lock (m_scenel)
-            {
-                foreach (Scene rs in m_scenel.Values)
-                {
-                    if (rs.RegionInfo.originRegionID == RegionID)
-                        return rs;
-                }
             }
             return null;
         }
@@ -1270,7 +899,7 @@ namespace Careminster.Modules.Currency
         //
         public void RequestPayPrice(IClientAPI client, UUID objectID)
         {
-            Scene scene = LocateSceneClientIn(client.AgentId);
+            Scene scene = GetClientScene(client.AgentId);
             if (scene == null)
                 return;
 
@@ -1284,34 +913,15 @@ namespace Careminster.Modules.Currency
         }
 
         //
-        // Handle logout
-        //
-        public void ClientClosed(UUID AgentID, Scene scene)
-        {
-            lock (m_rootAgents)
-            {
-                if (m_rootAgents.ContainsKey(AgentID))
-                {
-                    m_rootAgents.Remove(AgentID);
-                }
-            }
-
-            lock (m_KnownClientFunds)
-            {
-                m_KnownClientFunds.Remove(AgentID);
-            }
-        }
-
-        //
         // Send economy data to client
         //
         public void EconomyDataRequestHandler(UUID agentId)
         {
-            IClientAPI user = LocateClientObject(agentId);
+            IClientAPI user = FindClient(agentId);
 
             if (user != null)
             {
-                user.SendEconomyData(EnergyEfficiency, ObjectCapacity,
+                user.SendEconomyData(EnergyEfficiency, 45000,
                         ObjectCount, PriceEnergyUnit, PriceGroupCreate,
                         PriceObjectClaim, PriceObjectRent,
                         PriceObjectScaleFactor, PriceParcelClaim,
@@ -1343,7 +953,7 @@ namespace Careminster.Modules.Currency
         {
             lock (e)
             {
-                Scene scene=LocateSceneClientIn(e.agentId);
+                Scene scene=GetClientScene(e.agentId);
                 if(scene == null)
                     return;
 
@@ -1372,10 +982,10 @@ namespace Careminster.Modules.Currency
 
             if (e.transactiontype == 5008) // Object gets paid
             {
-                sender = LocateClientObject(e.sender);
+                sender = FindClient(e.sender);
                 if (sender != null)
                 {
-                    scene=LocateSceneClientIn(e.sender);
+                    scene=GetClientScene(e.sender);
 
                     SceneObjectPart part = FindPrim(e.receiver);
                     if (part == null)
@@ -1397,10 +1007,10 @@ namespace Careminster.Modules.Currency
                 return;
             }
 
-            sender = LocateClientObject(e.sender);
+            sender = FindClient(e.sender);
             if (sender != null)
             {
-                scene=LocateSceneClientIn(e.sender);
+                scene=GetClientScene(e.sender);
 
                 DoMoneyTransfer(e.sender, e.receiver,
                         e.amount, e.transactiontype, e.description, scene);
@@ -1416,74 +1026,23 @@ namespace Careminster.Modules.Currency
             }
         }
 
-        //
-        // Agent becomes child
-        //
-        private void MakeChildAgent(ScenePresence avatar)
+        public bool UploadCovered(IClientAPI client, int amount)
         {
-            lock (m_rootAgents)
-            {
-                if (m_rootAgents.ContainsKey(avatar.UUID))
-                {
-                    if (m_rootAgents[avatar.UUID] ==
-                            avatar.Scene.RegionInfo.originRegionID)
-                        m_rootAgents.Remove(avatar.UUID);
-                }
-            }
-        }
+            Scene scene=GetClientScene(client.AgentId);
 
-        //
-        // Call this when the client disconnects.
-        //
-        public void ClientClosed(IClientAPI client)
-        {
-            Scene s = null;
-            if (client.Scene is Scene)
-                s = (Scene)client.Scene;
+            UserAccount account = scene.UserAccountService.GetUserAccount(scene.RegionInfo.ScopeID, client.AgentId);
 
-            ClientClosed(client.AgentId, s);
-        }
+            if (account != null && ((account.UserFlags & 0xf00) >> 8) > UserLevelPaysFees)
+                return true;
 
-        //
-        // Event Handler for when an Avatar enters one of the parcels
-        // in the simulator.
-        //
-        private void AvatarEnteringParcel(ScenePresence avatar,
-                int localLandID, UUID regionID)
-        {
-            GetAgentFunds(avatar.ControllingClient.AgentId); // For side effects
-            SendMoneyBalance(avatar.ControllingClient.AgentId, UUID.Zero);
-
-            lock (m_rootAgents)
-            {
-                if (m_rootAgents.ContainsKey(avatar.UUID))
-                {
-                    if (avatar.Scene.RegionInfo.originRegionID !=
-                            m_rootAgents[avatar.UUID])
-                    {
-                        m_rootAgents[avatar.UUID]=
-                                avatar.Scene.RegionInfo.originRegionID;
-                    }
-                }
-                else
-                {
-                    lock (m_rootAgents)
-                    {
-                        m_rootAgents.Add(avatar.UUID,
-                                avatar.Scene.RegionInfo.originRegionID);
-                    }
-                }
-            }
-        }
-
-        public int GetBalance(IClientAPI client)
-        {
-            return GetAgentFunds(client.AgentId);
+            if(GetAgentFunds(client.AgentId) < amount)
+                return false;
+            return true;
         }
 
         public bool AmountCovered(IClientAPI client, int amount)
         {
-            Scene scene=LocateSceneClientIn(client.AgentId);
+            Scene scene=GetClientScene(client.AgentId);
 
             UserAccount account = scene.UserAccountService.GetUserAccount(scene.RegionInfo.ScopeID, client.AgentId);
 
@@ -1493,26 +1052,6 @@ namespace Careminster.Modules.Currency
             if(GetAvailableAgentFunds(client.AgentId) < amount)
                 return false;
             return true;
-        }
-
-        public bool UploadCovered(IClientAPI client)
-        {
-            Scene scene=LocateSceneClientIn(client.AgentId);
-
-            UserAccount account = scene.UserAccountService.GetUserAccount(scene.RegionInfo.ScopeID, client.AgentId);
-
-            if (account != null && ((account.UserFlags & 0xf00) >> 8) > UserLevelPaysFees)
-                return true;
-
-            if(GetAgentFunds(client.AgentId) < PriceUpload)
-                return false;
-
-            return true;
-        }
-
-        public bool GroupCreationCovered(IClientAPI client)
-        {
-            return AmountCovered(client, PriceGroupCreate);
         }
 
         public void ObjectBuy(IClientAPI remoteClient, UUID agentID,
@@ -1527,7 +1066,7 @@ namespace Careminster.Modules.Currency
                 return;
             }
 
-            Scene s = LocateSceneClientIn(remoteClient.AgentId);
+            Scene s = GetClientScene(remoteClient.AgentId);
 
             SceneObjectPart part = s.GetSceneObjectPart(localID);
             if (part == null)
@@ -1547,42 +1086,123 @@ namespace Careminster.Modules.Currency
                 }
             }
         }
+    }
 
-        private void DeductUpload(UUID sender, int amount)
+    public class MySQLAccountsTableHandler : MySQLGenericTableHandler<AccountData>
+    {
+        public MySQLAccountsTableHandler(string conn, string realm, string store)
+            : base(conn, realm, store)
         {
-            lock (m_Database)
+        }
+
+        public virtual bool Store(AccountData row)
+        {
+            using (MySqlCommand cmd = new MySqlCommand())
             {
-                MySqlCommand upd = (MySqlCommand)m_Database.CreateCommand();
-                upd.CommandText = "update accounts set " +
-                        "a_upload = case when a_upload > 0 then " +
-                        "a_upload - ?amount else 0 end where a_agent = ?agent";
 
-                upd.Parameters.AddWithValue("agent", sender.ToString());
-                upd.Parameters.AddWithValue("amount", amount);
+                string query = "";
+                List<String> names = new List<String>();
+                List<String> values = new List<String>();
 
-                ExecuteNonQuery(upd);
+                foreach (FieldInfo fi in m_Fields.Values)
+                {
+                    names.Add(fi.Name);
+                    values.Add("?" + fi.Name);
+                    cmd.Parameters.AddWithValue(fi.Name, fi.GetValue(row).ToString());
+                }
+
+                if (m_DataField != null)
+                {
+                    Dictionary<string, string> data =
+                        (Dictionary<string, string>)m_DataField.GetValue(row);
+
+                    foreach (KeyValuePair<string, string> kvp in data)
+                    {
+                        names.Add(kvp.Key);
+                        values.Add("?" + kvp.Key);
+                        cmd.Parameters.AddWithValue("?" + kvp.Key, kvp.Value);
+                    }
+                }
+
+                query = String.Format("replace into {0} (`", m_Realm) + String.Join("`,`", names.ToArray()) + "`, `a_date`) values (" + String.Join(",", values.ToArray()) + ", now())";
+
+                cmd.CommandText = query;
+
+                if (ExecuteNonQuery(cmd) > 0)
+                    return true;
+
+                return false;
             }
         }
 
-        public EconomyData GetEconomyData()
+        public void Add(UUID agentID, int amount)
         {
-            EconomyData edata = new EconomyData();
-            edata.ObjectCapacity = ObjectCapacity;
-            edata.ObjectCount = ObjectCount;
-            edata.PriceEnergyUnit = PriceEnergyUnit;
-            edata.PriceGroupCreate = PriceGroupCreate;
-            edata.PriceObjectClaim = PriceObjectClaim;
-            edata.PriceObjectRent = PriceObjectRent;
-            edata.PriceObjectScaleFactor = PriceObjectScaleFactor;
-            edata.PriceParcelClaim = PriceParcelClaim;
-            edata.PriceParcelClaimFactor = PriceParcelClaimFactor;
-            edata.PriceParcelRent = PriceParcelRent;
-            edata.PricePublicObjectDecay = PricePublicObjectDecay;
-            edata.PricePublicObjectDelete = PricePublicObjectDelete;
-            edata.PriceRentLight = PriceRentLight;
-            edata.PriceUpload = PriceUpload;
-            edata.TeleportMinPrice = TeleportMinPrice;
-            return edata;
+            MySqlCommand cmd = new MySqlCommand();
+
+            cmd.CommandText = String.Format("update {0} set a_amount=a_amount+?a_amount where a_agent=?a_agent", m_Realm);
+            cmd.Parameters.AddWithValue("?a_agent", agentID.ToString());
+            cmd.Parameters.AddWithValue("?a_amount", amount.ToString());
+
+            ExecuteNonQuery(cmd);
+        }
+
+        public void AddUpload(UUID agentID, int amount)
+        {
+            MySqlCommand cmd = new MySqlCommand();
+
+            cmd.CommandText = String.Format("update {0} set a_upload=a_upload+?a_upload where a_agent=?a_agent and a_upload > 0", m_Realm);
+            cmd.Parameters.AddWithValue("?a_agent", agentID.ToString());
+            cmd.Parameters.AddWithValue("?a_upload", amount.ToString());
+
+            ExecuteNonQuery(cmd);
+        }
+    }
+
+    public class MySQLLedgerTableHandler : MySQLGenericTableHandler<LedgerData>
+    {
+        public MySQLLedgerTableHandler(string conn, string realm, string store)
+            : base(conn, realm, store)
+        {
+        }
+
+        public virtual bool Store(LedgerData row)
+        {
+            using (MySqlCommand cmd = new MySqlCommand())
+            {
+
+                string query = "";
+                List<String> names = new List<String>();
+                List<String> values = new List<String>();
+
+                foreach (FieldInfo fi in m_Fields.Values)
+                {
+                    names.Add(fi.Name);
+                    values.Add("?" + fi.Name);
+                    cmd.Parameters.AddWithValue(fi.Name, fi.GetValue(row).ToString());
+                }
+
+                if (m_DataField != null)
+                {
+                    Dictionary<string, string> data =
+                        (Dictionary<string, string>)m_DataField.GetValue(row);
+
+                    foreach (KeyValuePair<string, string> kvp in data)
+                    {
+                        names.Add(kvp.Key);
+                        values.Add("?" + kvp.Key);
+                        cmd.Parameters.AddWithValue("?" + kvp.Key, kvp.Value);
+                    }
+                }
+
+                query = String.Format("insert into {0} (`", m_Realm) + String.Join("`,`", names.ToArray()) + "`, `l_date`) values (" + String.Join(",", values.ToArray()) + ", now())";
+
+                cmd.CommandText = query;
+
+                if (ExecuteNonQuery(cmd) > 0)
+                    return true;
+
+                return false;
+            }
         }
     }
 }

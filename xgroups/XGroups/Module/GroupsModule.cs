@@ -1120,7 +1120,7 @@ Console.WriteLine("==> Session ID {0} UUID {1}", imSessionID.ToString(), id.ToSt
             IMoneyModule money = remoteClient.Scene.RequestModuleInterface<IMoneyModule>();
             if (money != null)
             {
-                if (!money.GroupCreationCovered(remoteClient))
+                if (!money.AmountCovered(remoteClient, money.GroupCreationCharge))
                 {
                     remoteClient.SendCreateGroupReply(UUID.Zero, false, "You do not have sufficient funds to create a group");
                     return UUID.Zero;
@@ -1206,7 +1206,7 @@ Console.WriteLine("==> Session ID {0} UUID {1}", imSessionID.ToString(), id.ToSt
                 AddToGroup(remoteClient.AgentId, groupID, ownerRoleID, true);
 
                 if (money != null)
-                    money.ApplyGroupCreationCharge(remoteClient.AgentId);
+                    money.ApplyCharge(remoteClient.AgentId, money.GroupCreationCharge, "Group creation");
 
                 ActivateGroup(remoteClient, groupID);
 
