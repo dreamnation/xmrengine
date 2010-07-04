@@ -402,9 +402,14 @@ namespace Careminster
                     asset.FullID = UUID.Random();
                 }
             }
-            m_DataConnector.Store(asset.Metadata, hash);
-
-            return asset.ID;
+            if (!m_DataConnector.Store(asset.Metadata, hash))
+            {
+                return UUID.Zero.ToString();
+            }
+            else
+            {
+                return asset.ID;
+            }
         }
 
         public bool UpdateContent(string id, byte[] data)

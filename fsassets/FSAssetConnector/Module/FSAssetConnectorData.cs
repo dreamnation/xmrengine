@@ -158,36 +158,45 @@ namespace Careminster
             c.Dispose();
         }
 
-        public void Store(AssetMetadata meta, string hash)
+        public bool Store(AssetMetadata meta, string hash)
         {
-            string oldhash;
-            AssetMetadata existingAsset = Get(meta.ID, out oldhash);
-
-            MySqlCommand cmd = m_Connection.CreateCommand();
-
-            cmd.Parameters.AddWithValue("?id", meta.ID);
-            cmd.Parameters.AddWithValue("?name", meta.Name);
-            cmd.Parameters.AddWithValue("?description", meta.Description);
-            cmd.Parameters.AddWithValue("?type", meta.Type.ToString());
-            cmd.Parameters.AddWithValue("?hash", hash);
-            cmd.Parameters.AddWithValue("?asset_flags", meta.Flags);
-
-            if (existingAsset == null)
+            try
             {
-                cmd.CommandText = String.Format("insert into {0} (id, name, description, type, hash, asset_flags, create_time, access_time) values ( ?id, ?name, ?description, ?type, ?hash, ?asset_flags, UNIX_TIMESTAMP(), UNIX_TIMESTAMP())", m_Table);
+                string oldhash;
+                AssetMetadata existingAsset = Get(meta.ID, out oldhash);
+
+                MySqlCommand cmd = m_Connection.CreateCommand();
+
+                cmd.Parameters.AddWithValue("?id", meta.ID);
+                cmd.Parameters.AddWithValue("?name", meta.Name);
+                cmd.Parameters.AddWithValue("?description", meta.Description);
+                cmd.Parameters.AddWithValue("?type", meta.Type.ToString());
+                cmd.Parameters.AddWithValue("?hash", hash);
+                cmd.Parameters.AddWithValue("?asset_flags", meta.Flags);
+
+                if (existingAsset == null)
+                {
+                    cmd.CommandText = String.Format("insert into {0} (id, name, description, type, hash, asset_flags, create_time, access_time) values ( ?id, ?name, ?description, ?type, ?hash, ?asset_flags, UNIX_TIMESTAMP(), UNIX_TIMESTAMP())", m_Table);
+
+                    ExecuteNonQuery(cmd);
+
+                    cmd.Dispose();
+
+                    return true;
+                }
+
+                cmd.CommandText = String.Format("update {0} set hash = ?hash, access_time = UNIX_TIMESTAMP() where id = ?id", m_Table);
 
                 ExecuteNonQuery(cmd);
 
                 cmd.Dispose();
-
-                return;
+                return true;
             }
-
-            cmd.CommandText = String.Format("update {0} set hash = ?hash, access_time = UNIX_TIMESTAMP() where id = ?id", m_Table);
-
-            ExecuteNonQuery(cmd);
-
-            cmd.Dispose();
+            catch
+            {
+                m_log.Error("[FSAssets] Failed to store asset with ID " + meta.ID);
+                return false;
+            }
         }
 
         public int Count()
