@@ -138,6 +138,35 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (!m_Enabled)
                 return;
 
+            /*
+             * Verify that our ScriptEventCode's match OpenSim's scriptEvent's.
+             */
+            bool err = false;
+            for (int i = 0; i < 32; i ++) {
+                string mycode = "undefined";
+                string oscode = "undefined";
+                try {
+                    mycode = ((ScriptEventCode)i).ToString();
+                    Convert.ToInt32(mycode);
+                    mycode = "undefined";
+                } catch {
+                }
+                try {
+                    oscode = ((OpenSim.Region.Framework.Scenes.scriptEvents)(1 << i)).ToString();
+                    Convert.ToInt32(oscode);
+                    oscode = "undefined";
+                } catch {
+                }
+                if (mycode != oscode) {
+                    m_log.ErrorFormat("[XMREngine]: {0} mycode={1}, oscode={2}", i, mycode, oscode);
+                    err = true;
+                }
+            }
+            if (err) {
+                m_Enabled = false;
+                return;
+            }
+
             m_StackSize = (UIntPtr)m_Config.GetInt("ScriptStackSize", 
                                                    2*1024*1024);
 
