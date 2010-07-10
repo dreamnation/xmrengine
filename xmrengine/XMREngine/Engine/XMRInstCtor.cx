@@ -756,8 +756,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * started again and this event lost.
              */
             int mv = stream.ReadByte ();
+            int cv = stream.ReadByte ();
             if (mv != migrationVersion) {
                 throw new Exception ("incoming migration version " + mv + " but accept only " + migrationVersion);
+            }
+            if (cv != ScriptCodeGen.COMPILED_VERSION_VALUE) {
+                throw new Exception ("incoming compilation version " + cv + " but accept only " + ScriptCodeGen.COMPILED_VERSION_VALUE);
             }
             this.stateCode = (int)RecvObjValue (stream);
             this.eventCode = (ScriptEventCode)RecvObjValue (stream);

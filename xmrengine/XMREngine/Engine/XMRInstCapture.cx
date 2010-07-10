@@ -215,6 +215,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              *    state, event, eventhandler args, script's globals.
              */
             stream.WriteByte (migrationVersion);
+            stream.WriteByte ((byte)ScriptCodeGen.COMPILED_VERSION_VALUE);
             this.SendObjValue (stream, this.stateCode);
             this.SendObjValue (stream, this.eventCode);
             this.SendObjValue (stream, this.heapLimit - this.heapLeft);
