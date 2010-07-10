@@ -19,6 +19,7 @@
      <Reference name="GitSharp.Core.dll" />
      <Reference name="log4net.dll" />
      <Reference name="Nini.dll" />
+     <Reference name="Mono.Addins.dll" />
      <Reference name="OpenMetaverse.dll" />
      <Reference name="OpenMetaverseTypes.dll" />
      <Reference name="OpenSim.Framework" />
@@ -31,6 +32,5 @@
     
      <Files>
        <Match pattern="*.cs" recurse="true"/>
-       <Match pattern="*.addin.xml" buildAction="EmbeddedResource" recurse="true"/>
      </Files>
    </Project>

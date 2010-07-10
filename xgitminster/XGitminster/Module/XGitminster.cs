@@ -27,10 +27,14 @@ using OpenSim.Framework.Serialization;
 using OpenSim.Framework.Serialization.External;
 using GitSharp;
 using GitSharp.Commands;
+using Mono.Addins;
 
+[assembly: Addin("XEmail.Module", "1.0")]
+[assembly: AddinDependency("OpenSim", "0.5")]
 namespace Careminster.Git
 {
-    public class Gitminster : IRegionModule, ICommandableModule
+    [Extension(Path = "/OpenSim/RegionModules", NodeName = "RegionModule", Id = "XGitminster")]
+    public class Gitminster : INonSharedRegionModule, ICommandableModule
     {
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
         private bool m_Enabled; //Git connector enabled
@@ -60,19 +64,20 @@ namespace Careminster.Git
                 return "Gitminster";
             }
         }
-        public bool IsSharedModule
+        
+        public Type ReplaceableInterface
         {
-            get
-            {
-                return false;
-            }
+            get { return null; }
         }
 
-        public void Initialise(Scene scene, IConfigSource config)
+        public void Initialise(IConfigSource config)
         {
             m_Config = config.Configs["Git"];
+        }
+
+        public void AddRegion(Scene scene)
+        {
             m_scene = scene;
-            m_scene.RegisterModuleInterface<IRegionModule>(this);
             m_scene.EventManager.OnPluginConsole += onPluginConsole;
             
             InstallCommands();
@@ -93,6 +98,20 @@ namespace Careminster.Git
             }
 
         }
+
+        public void RegionLoaded(Scene s)
+        {
+        }
+
+        public void RemoveRegion(Scene s)
+        {
+            if (!m_Enabled) return;
+            backup(null, true);
+            Commit("Final commit; region shutdown", true);
+            m_scene = null;
+            m_Enabled = false;
+        }
+
         private void Disable(object o)
         {
             backup(null, true);
@@ -1204,9 +1223,6 @@ namespace Careminster.Git
 
         public void Close()
         {
-            if (!m_Enabled) return;
-            backup(null, true);
-            Commit("Final commit; region shutdown", true);
         }
     }
 }
