@@ -346,7 +346,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void control(uint localID, UUID itemID, UUID agentID, uint held, uint change)
         {
-            myScriptEngine.PostObjectEvent(localID, new EventParams(
+            myScriptEngine.PostScriptEvent(itemID, new EventParams(
                     "control",new object[] {
                     agentID.ToString(),
                     (int)held,
