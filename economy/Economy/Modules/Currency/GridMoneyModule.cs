@@ -471,7 +471,6 @@ namespace Careminster.Modules.Currency
         private bool DoMoneyTransfer(UUID sender, UUID receiver, int amount,
                 int transactiontype, string description, Scene scene)
         {
-m_log.DebugFormat("[MONEY]: DoMoneyTransfer called for {0} from {1} to {2}", amount, sender, receiver);
             string senderText;
             string receiverText;
             string sender_name;
@@ -482,7 +481,6 @@ m_log.DebugFormat("[MONEY]: DoMoneyTransfer called for {0} from {1} to {2}", amo
                 int funds = GetAvailableAgentFunds(sender);
                 if (transactiontype == 1101)
                     funds = GetAgentFunds(sender);
-m_log.DebugFormat("[MONEY]: DoMoneyTransfer amount={0} funds={1}", amount, funds);
                 if(funds < amount)
                     return false;
 
@@ -720,7 +718,8 @@ m_log.DebugFormat("[MONEY]: DoMoneyTransfer amount={0} funds={1}", amount, funds
             IClientAPI client=FindClient(agentID);
             if(client == null)
             {
-                NotifyAgent(agentID, text);
+                if (agentID != EconomyBaseAccount)
+                    NotifyAgent(agentID, text);
                 return;
             }
 
