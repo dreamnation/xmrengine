@@ -1074,15 +1074,19 @@ namespace Careminster.Git
             {
                 if (m_useSafetyCommit && m_Added.Contains(sog.UUID.ToString()))
                 {
-                    //This sog has been added but not committed, so, commit now
-                    Util.FireAndForget(
-                        delegate
-                        {
-                            Commit("Persisting object " + sog.UUID.ToString(), true);
-                            DoDelete("objects/" + sog.UUID.ToString());
-                        }
-                    );
-                    return;
+                    TimeSpan ts = new TimeSpan(sog.RootPart.Rezzed.Ticks - DateTime.Now.Ticks);
+                    if (ts.TotalMinutes > 60) //If this prim has been rezzed longer than 60 minutes, commit.
+                    {
+                        //This sog has been added but not committed, so, commit now
+                        Util.FireAndForget(
+                            delegate
+                            {
+                                Commit("Persisting object " + sog.UUID.ToString(), true);
+                                DoDelete("objects/" + sog.UUID.ToString());
+                            }
+                        );
+                        return;
+                    }
                 }
 
 
@@ -1137,7 +1141,7 @@ namespace Careminster.Git
             if (sog == null) return;
             try
             {
-                if (sog.IsAttachment) return;
+                if (sog.IsAttachment || sog.RootPart.AttachmentPoint != 0) return;
                 if (m_ToUpdate.Contains(sog.UUID.ToString()))
                 {
                     m_ToUpdate.Remove(sog.UUID.ToString());
