@@ -29,7 +29,7 @@ using GitSharp;
 using GitSharp.Commands;
 using Mono.Addins;
 
-[assembly: Addin("XEmail.Module", "1.0")]
+[assembly: Addin("XGitminster.Module", "1.0")]
 [assembly: AddinDependency("OpenSim", "0.5")]
 namespace Careminster.Git
 {
