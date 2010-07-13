@@ -984,7 +984,7 @@ namespace Careminster.Modules.Permissions
             ILandObject parcel = m_Scene.LandChannel.GetLandObject(X, Y);
             if (parcel != null)
             {
-                if (parcel.LandData.IsGroupOwned)
+                if (!parcel.LandData.IsGroupOwned)
                 {
                     if(GenericParcelPermission(user, parcel, 0))
                         permission = true;

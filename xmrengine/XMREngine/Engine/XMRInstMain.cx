@@ -231,7 +231,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /*
          * Makes sure migration data version is same on both ends.
          */
-        public static readonly byte migrationVersion = 7;
+        public static byte migrationVersion = 8;
 
         /**
          * @brief types of data we serialize

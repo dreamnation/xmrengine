@@ -313,6 +313,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                 if (m_StateSource == StateSource.AttachedRez)
                 {
+                    // HACK
+                    m_Part.ParentGroup.RootPart.AttachedAvatar = m_Part.OwnerID;
+                    m_Part.ParentGroup.RootPart.IsAttachment = true;
+
                     PostEvent(new EventParams("attach",
                             new object[] { m_Part.AttachedAvatar.ToString() }, 
                             zeroDetectParams));
@@ -562,6 +566,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             // Maybe an 'attach' event too
             if (m_StateSource == StateSource.AttachedRez)
             {
+                // HACK
+                m_Part.ParentGroup.RootPart.AttachedAvatar = m_Part.OwnerID;
+                m_Part.ParentGroup.RootPart.IsAttachment = true;
+
                 PostEvent(new EventParams("attach",
                         new object[] { m_Part.AttachedAvatar.ToString() }, 
                         zeroDetectParams));
@@ -756,8 +764,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * started again and this event lost.
              */
             int mv = stream.ReadByte ();
+            int cv = stream.ReadByte ();
             if (mv != migrationVersion) {
                 throw new Exception ("incoming migration version " + mv + " but accept only " + migrationVersion);
+            }
+            if (cv != ScriptCodeGen.COMPILED_VERSION_VALUE) {
+                throw new Exception ("incoming compilation version " + cv + " but accept only " + ScriptCodeGen.COMPILED_VERSION_VALUE);
             }
             this.stateCode = (int)RecvObjValue (stream);
             this.eventCode = (ScriptEventCode)RecvObjValue (stream);

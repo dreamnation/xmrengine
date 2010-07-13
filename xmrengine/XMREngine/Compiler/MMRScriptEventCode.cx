@@ -43,12 +43,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		touch_start          = 21,
 		object_rez           = 22,
 		remote_data          = 23,
+		at_rot_target        = 24,
 		run_time_permissions = 28,
 		touch_end            = 29,
 		state_entry          = 30,
 
 		// events not passed to m_Part.SetScriptEvents().
-		at_rot_target        = 32,
 		changed              = 33,
 		link_message         = 34,
 		no_sensor            = 35,

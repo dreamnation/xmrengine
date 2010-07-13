@@ -471,7 +471,6 @@ namespace Careminster.Modules.Currency
         private bool DoMoneyTransfer(UUID sender, UUID receiver, int amount,
                 int transactiontype, string description, Scene scene)
         {
-m_log.DebugFormat("[MONEY]: DoMoneyTransfer called for {0} from {1} to {2}", amount, sender, receiver);
             string senderText;
             string receiverText;
             string sender_name;
@@ -482,7 +481,6 @@ m_log.DebugFormat("[MONEY]: DoMoneyTransfer called for {0} from {1} to {2}", amo
                 int funds = GetAvailableAgentFunds(sender);
                 if (transactiontype == 1101)
                     funds = GetAgentFunds(sender);
-m_log.DebugFormat("[MONEY]: DoMoneyTransfer amount={0} funds={1}", amount, funds);
                 if(funds < amount)
                     return false;
 
@@ -695,14 +693,19 @@ m_log.DebugFormat("[MONEY]: DoMoneyTransfer amount={0} funds={1}", amount, funds
         private void SendMoneyBalance(IClientAPI client, UUID agentID,
                 UUID sessionID, UUID transactionID)
         {
+            SendMoneyBalance(client, String.Empty, transactionID);
+        }
+        private void SendMoneyBalance(IClientAPI client, string message,
+                UUID transactionID)
+        {
             int amount = GetAgentFunds(client.AgentId);
             client.SendMoneyBalance(transactionID, true,
-                    new byte[0], amount);
+                    Util.StringToBytes256(message), amount);
         }
 
         private void SendMoneyBalance(IClientAPI client)
         {
-            SendMoneyBalance(client, UUID.Zero, UUID.Zero, UUID.Zero);
+            SendMoneyBalance(client, String.Empty, UUID.Zero);
         }
 
         public int GetBalance(UUID agentID)
@@ -715,14 +718,15 @@ m_log.DebugFormat("[MONEY]: DoMoneyTransfer amount={0} funds={1}", amount, funds
             IClientAPI client=FindClient(agentID);
             if(client == null)
             {
-                NotifyAgent(agentID, text);
+                if (agentID != EconomyBaseAccount)
+                    NotifyAgent(agentID, text);
                 return;
             }
 
-            SendMoneyBalance(client);
+            SendMoneyBalance(client, text.Trim(), UUID.Zero);
 
-            if (text.Trim() != String.Empty)
-                client.SendBlueBoxMessage(UUID.Zero, "", text);
+//            if (text.Trim() != String.Empty)
+//                client.SendBlueBoxMessage(UUID.Zero, "", text);
         }
 
         //

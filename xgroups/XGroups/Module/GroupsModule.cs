@@ -1257,13 +1257,15 @@ Console.WriteLine("==> Session ID {0} UUID {1}", imSessionID.ToString(), id.ToSt
                         "?MemberID, "+
                         "?Active, "+
                         "?ActiveRole, "+
-                        "?AcceptNotices )";
+                        "?AcceptNotices, "+
+                        "?ListInProfile )";
 
                 cmd.Parameters.AddWithValue("GroupID", groupID.ToString());
                 cmd.Parameters.AddWithValue("MemberID", agentID.ToString());
                 cmd.Parameters.AddWithValue("Active", 1);
                 cmd.Parameters.AddWithValue("ActiveRole", roleID.ToString());
                 cmd.Parameters.AddWithValue("AcceptNotices", 1);
+                cmd.Parameters.AddWithValue("ListInProfile", 1);
 
                 ExecuteNonQuery(cmd);
 

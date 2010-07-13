@@ -138,6 +138,35 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (!m_Enabled)
                 return;
 
+            /*
+             * Verify that our ScriptEventCode's match OpenSim's scriptEvent's.
+             */
+            bool err = false;
+            for (int i = 0; i < 32; i ++) {
+                string mycode = "undefined";
+                string oscode = "undefined";
+                try {
+                    mycode = ((ScriptEventCode)i).ToString();
+                    Convert.ToInt32(mycode);
+                    mycode = "undefined";
+                } catch {
+                }
+                try {
+                    oscode = ((OpenSim.Region.Framework.Scenes.scriptEvents)(1 << i)).ToString();
+                    Convert.ToInt32(oscode);
+                    oscode = "undefined";
+                } catch {
+                }
+                if (mycode != oscode) {
+                    m_log.ErrorFormat("[XMREngine]: {0} mycode={1}, oscode={2}", i, mycode, oscode);
+                    err = true;
+                }
+            }
+            if (err) {
+                m_Enabled = false;
+                return;
+            }
+
             m_StackSize = (UIntPtr)m_Config.GetInt("ScriptStackSize", 
                                                    2*1024*1024);
 
@@ -158,7 +187,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             MainConsole.Instance.Commands.AddCommand("xmr", false,
                     "xmr test",
-                    "xmr test [backup|gc|ls|resume|suspend|top]",
+                    "xmr test [backup|cvv|gc|ls|mvv|resume|suspend|top]",
                     "Run current xmr test",
                     RunTest);
         }
@@ -298,30 +327,64 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             switch(args[2])
             {
-            case "gc":
-                GC.Collect();
-                break;
-            case "ls": {
-                XmrTestLs(rest);
-                break;
-            }
-            case "resume":
-                m_log.Debug("[XMREngine]: resuming scripts");
-                m_SuspendScriptThreadFlag = false;
-                Monitor.Enter (m_SuspendScriptThreadLock);
-                Monitor.PulseAll (m_SuspendScriptThreadLock);
-                Monitor.Exit (m_SuspendScriptThreadLock);
-                break;
-            case "suspend":
-                m_log.Debug("[XMREngine]: suspending scripts");
-                m_SuspendScriptThreadFlag = true;
-                Monitor.Enter (m_WakeUpLock);
-                Monitor.PulseAll (m_WakeUpLock);
-                Monitor.Exit (m_WakeUpLock);
-                break;
-            default:
-                m_log.Error("[XMREngine]: unknown command " + args[2]);
-                break;
+                case "cvv": {
+                    if (args.Length == 3) {
+                        m_log.InfoFormat("[XMREngine]: compiled version value = {0}", ScriptCodeGen.COMPILED_VERSION_VALUE);
+                        break;
+                    }
+                    if (args.Length == 4) {
+                        try {
+                            ScriptCodeGen.COMPILED_VERSION_VALUE = Convert.ToInt32(args[3]);
+                            break;
+                        } catch {
+                        }
+                    }
+                    m_log.Error("[XMREngine]: xmr test cvv [<new_compiled_version_value>]");
+                    break;
+                }
+                case "gc": {
+                    GC.Collect();
+                    break;
+                }
+                case "ls": {
+                    XmrTestLs(rest);
+                    break;
+                }
+                case "mvv": {
+                    if (args.Length == 3) {
+                        m_log.InfoFormat("[XMREngine]: migration version value = {0}", XMRInstance.migrationVersion);
+                        break;
+                    }
+                    if (args.Length == 4) {
+                        try {
+                            XMRInstance.migrationVersion = Convert.ToByte(args[3]);
+                            break;
+                        } catch {
+                        }
+                    }
+                    m_log.Error("[XMREngine]: xmr test mvv [<new_migration_version_value>]");
+                    break;
+                }
+                case "resume": {
+                    m_log.Debug("[XMREngine]: resuming scripts");
+                    m_SuspendScriptThreadFlag = false;
+                    Monitor.Enter (m_SuspendScriptThreadLock);
+                    Monitor.PulseAll (m_SuspendScriptThreadLock);
+                    Monitor.Exit (m_SuspendScriptThreadLock);
+                    break;
+                }
+                case "suspend": {
+                    m_log.Debug("[XMREngine]: suspending scripts");
+                    m_SuspendScriptThreadFlag = true;
+                    Monitor.Enter (m_WakeUpLock);
+                    Monitor.PulseAll (m_WakeUpLock);
+                    Monitor.Exit (m_WakeUpLock);
+                    break;
+                }
+                default: {
+                    m_log.Error("[XMREngine]: unknown command " + args[2]);
+                    break;
+                }
             }
         }
 
