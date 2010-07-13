@@ -1141,7 +1141,7 @@ namespace Careminster.Git
             if (sog == null) return;
             try
             {
-                if (sog.IsAttachment) return;
+                if (sog.IsAttachment || sog.RootPart.AttachmentPoint != 0) return;
                 if (m_ToUpdate.Contains(sog.UUID.ToString()))
                 {
                     m_ToUpdate.Remove(sog.UUID.ToString());
