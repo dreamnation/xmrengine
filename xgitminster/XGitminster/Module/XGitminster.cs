@@ -1074,7 +1074,7 @@ namespace Careminster.Git
             {
                 if (m_useSafetyCommit && m_Added.Contains(sog.UUID.ToString()))
                 {
-                    TimeSpan ts = new TimeSpan(sog.RootPart.Rezzed.Ticks - DateTime.Now.Ticks);
+                    TimeSpan ts = new TimeSpan(sog.RootPart.Rezzed.Ticks - DateTime.UtcNow.Ticks);
                     if (ts.TotalMinutes > 60) //If this prim has been rezzed longer than 60 minutes, commit.
                     {
                         //This sog has been added but not committed, so, commit now
