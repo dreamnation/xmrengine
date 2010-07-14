@@ -925,7 +925,10 @@ namespace Careminster.Modules.Currency
 
             if (user != null)
             {
-                user.SendEconomyData(EnergyEfficiency, 45000,
+                Scene s = GetClientScene(user.AgentId);
+                
+                user.SendEconomyData(EnergyEfficiency,
+                        s.RegionInfo.ObjectCapacity,
                         ObjectCount, PriceEnergyUnit, PriceGroupCreate,
                         PriceObjectClaim, PriceObjectRent,
                         PriceObjectScaleFactor, PriceParcelClaim,
