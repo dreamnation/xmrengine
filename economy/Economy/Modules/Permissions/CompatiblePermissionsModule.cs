@@ -714,6 +714,10 @@ namespace Careminster.Modules.Permissions
 
             private bool CanMoveObject(UUID objectID, UUID moverID, Scene scene)
             {
+                SceneObjectPart part = m_Scene.GetSceneObjectPart(objectID);
+                if ((part.EveryoneMask & (uint)PermissionMask.Move) != 0)
+                    return true;
+
                 return GenericObjectPermission(moverID, objectID, true);
             }
 
