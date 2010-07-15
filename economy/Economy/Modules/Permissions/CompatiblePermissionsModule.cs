@@ -1021,23 +1021,11 @@ namespace Careminster.Modules.Permissions
                         return true;
                 }
 
-                // SL is rather harebrained here. In SL, a script you
-                // have mod/copy no trans is readable. This subverts
-                // permissions, but is used in some products, most
-                // notably Hippo door plugin and HippoRent 5 networked
-                // prim counter.
-                // To enable this broken SL-ism, remove Transfer from
-                // the below expressions.
-                // Trying to improve on SL perms by making a script
-                // readable only if it's really full perms
-                //
                 if ((assetRequestItem.CurrentPermissions &
                         ((uint)PermissionMask.Modify |
-                        (uint)PermissionMask.Copy |
-                        (uint)PermissionMask.Transfer)) !=
+                        (uint)PermissionMask.Copy)) !=
                         ((uint)PermissionMask.Modify |
-                        (uint)PermissionMask.Copy |
-                        (uint)PermissionMask.Transfer))
+                        (uint)PermissionMask.Copy))
                     return false;
             }
             else // Prim inventory
@@ -1064,11 +1052,9 @@ namespace Careminster.Modules.Permissions
                 // Require full perms
                 if ((ti.CurrentPermissions &
                         ((uint)PermissionMask.Modify |
-                        (uint)PermissionMask.Copy |
-                        (uint)PermissionMask.Transfer)) !=
+                        (uint)PermissionMask.Copy)) !=
                         ((uint)PermissionMask.Modify |
-                        (uint)PermissionMask.Copy |
-                        (uint)PermissionMask.Transfer))
+                        (uint)PermissionMask.Copy))
                     return false;
             }
 
