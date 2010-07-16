@@ -94,7 +94,12 @@ namespace Careminster.Git
                     m_log.Info("[Git] Gitminster module disabled");
                     return;
                 }
-                Enable(null);
+                Util.FireAndForget(
+                    delegate
+                    {
+                        Enable(null);
+                    }
+                );
             }
 
         }
