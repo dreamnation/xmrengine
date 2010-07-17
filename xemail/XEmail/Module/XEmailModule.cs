@@ -91,7 +91,7 @@ namespace Careminster.Modules.XEmail
         private Dictionary<UUID, DateTime> m_LastGetEmailCall = new Dictionary<UUID, DateTime>();
         private Dictionary<UUID, DateTime> m_LastPoll = new Dictionary<UUID, DateTime>();
         private TimeSpan m_QueueTimeout = new TimeSpan(2, 0, 0); // 2 hours without llGetNextEmail drops the queue
-        private TimeSpan m_PollDelay = new TimeSpan(0, 0, 10); // 10 seconds poll delay
+        private TimeSpan m_PollDelay = new TimeSpan(0, 0, 5); // 10 seconds poll delay
         private MySQLGenericTableHandler<XEmailObject> m_ObjectsTable;
         private MySQLGenericTableHandler<XEmailMessage> m_MessagesTable;
         private MySQLGenericTableHandler<XEmailWhitelist> m_WhitelistTable;
@@ -340,13 +340,17 @@ namespace Careminster.Modules.XEmail
                         string message = "From: " + objectID.ToString() + m_HostName + "\n";
                         message += "Subject: " + subject + "\n";
                         message += "Date: " + ((int)((DateTime.UtcNow - new DateTime(1970,1,1,0,0,0)).TotalSeconds)).ToString() + "\n\n";
+
+                        int headerlen = message.Length;
+                        message = String.Format("X-XEmail-Internal-length: {0}", headerlen) + "\n" + message;
+
                         message += "Object-Name: " + LastObjectName +
                               "\nRegion: " + LastObjectRegionName + "\nLocal-Position: " +
                               LastObjectPosition + "\n\n" + body;
 
                         XEmailMessage m = new XEmailMessage();
                         m.Data = new Dictionary<string, string>();
-                        m.ObjectID = objectID;
+                        m.ObjectID = toID;
                         m.Data["Message"] = message;
                         m_MessagesTable.Store(m);
 
@@ -509,9 +513,9 @@ namespace Careminster.Modules.XEmail
                         m_ObjectsTable.Store(obj);
                     }
 
-                    if (queue.Count < 2) // Never let it become 0 before poll
+                    if (queue.Count < 3) // Never let it become 0 before poll
                     {
-                        string where = String.Format("ObjectID='{0}' order by Stamp asc limit 10", objectID);
+                        string where = String.Format("ObjectID='{0}' order by id asc", objectID);
 
                         XEmailMessage[] messages = m_MessagesTable.Get(where);
 
@@ -529,10 +533,20 @@ namespace Careminster.Modules.XEmail
 
                             if (lines[0].StartsWith("From "))
                                 msg.sender = lines[0].Substring(5);
+                            bool intersim = false;
                             bool inMessage = false;
                             string body = String.Empty;
                             foreach (string line in lines)
                             {
+                                if (line.StartsWith("X-XEmail-Internal-length: "))
+                                {
+                                    int off = line.Length;
+                                    int len = Convert.ToInt32(line.Substring(26));
+
+                                    body = message.Data["Message"].Substring(len + off + 1);
+                                    intersim = true;
+                                }
+
                                 if (line.StartsWith("Date: "))
                                 {
                                     string timestr = line.Substring(6);
@@ -551,6 +565,8 @@ namespace Careminster.Modules.XEmail
                                     msg.subject = line.Substring(9);
                                 if (line == String.Empty && inMessage == false)
                                 {
+                                    if (intersim)
+                                        break;
                                     inMessage = true;
                                     continue;
                                 }
@@ -559,7 +575,8 @@ namespace Careminster.Modules.XEmail
                             }
 
                             msg.message = body;
-                            queue.Add(msg);
+                            if (queue.Count < m_MaxQueueSize)
+                                queue.Add(msg);
                         }
                     }
                 }
