@@ -9,6 +9,7 @@ using System;
 using System.Linq;
 using System.IO;
 using System.Reflection;
+using System.Threading;
 using System.Xml;
 using System.Xml.Linq;
 using System.Collections.Generic;
@@ -51,11 +52,13 @@ namespace Careminster.Git
         private OrderedDictionary m_ToUpdate = new OrderedDictionary();
         private HashSet<string> m_Added = new HashSet<string>();
         private OrderedDictionary m_ToDelete = new OrderedDictionary();
-        private int frame = 0;
+        private DateTime m_lastCommit;
         private bool m_NeedsCommit = false;
         private bool m_useSafetyCommit = true;
+        private bool m_disableCommits = false;
         private int m_changes = 0;
-        private int m_commitFrameInterval = 360000;
+        private int m_commitInterval = 21600;
+        private Timer m_Timer;
 
         public string Name
         {
@@ -89,6 +92,7 @@ namespace Careminster.Git
             else
             {
                 m_Enabled = m_Config.GetBoolean("Enabled", false);
+                m_disableCommits = m_Config.GetBoolean("DisableNonEssentialCommits", false);
                 if (!m_Enabled)
                 {
                     m_log.Info("[Git] Gitminster module disabled");
@@ -130,7 +134,7 @@ namespace Careminster.Git
 
             m_terrainModule = m_scene.RequestModuleInterface<ITerrainModule>();
             m_repoPath = m_Config.GetString("RepoPath", "git");
-            m_commitFrameInterval = m_Config.GetInt("CommitFrameInterval", 360000);
+            m_commitInterval = m_Config.GetInt("CommitInterval", 21600);
             m_useSafetyCommit = m_Config.GetBoolean("UseSafetyCommit", true);
             if (!(m_repoPath.Substring(m_repoPath.Length - 1) == "/" || m_repoPath.Substring(m_repoPath.Length - 1) == "\\"))
             {
@@ -183,12 +187,15 @@ namespace Careminster.Git
                         {
                             lock (m_repo)
                             {
-                                Commit commit = m_repo.Commit("Uncommitted local changes - region crash", new Author(m_scene.RegionInfo.RegionName, m_scene.RegionInfo.RegionID.ToString() + "@meta7.com"));
-                                if (commit != null && commit.IsCommit && commit.IsValid)
+                                if (!m_disableCommits)
                                 {
-                                    m_log.Info("[Git] Commit made: " + commit.Hash.ToString());
+                                    Commit commit = m_repo.Commit("Uncommitted local changes - region crash", new Author(m_scene.RegionInfo.RegionName, m_scene.RegionInfo.RegionID.ToString() + "@meta7.com"));
+                                    if (commit != null && commit.IsCommit && commit.IsValid)
+                                    {
+                                        m_log.Info("[Git] Commit made: " + commit.Hash.ToString());
+                                    }
+                                    m_log.Debug("[Git] Committing changes which were queued before the region crashed");
                                 }
-                                m_log.Debug("[Git] Committing changes which were queued before the region crashed");
                             }
                         }
                         catch
@@ -203,6 +210,9 @@ namespace Careminster.Git
             WriteRegionSettings();
             SubscribeToEvents();
             m_log.Info("[Git] Gitminster online.");
+            TimerCallback m_tick = tick;
+
+            m_Timer = new Timer(m_tick, null, 30000, 5000);
 
         }
         private void LoadTerrain()
@@ -483,7 +493,10 @@ namespace Careminster.Git
         {
             //Commit any uncommitted committy committs.
             backup(null, true);
-            Commit("Preparing for clear", true);
+            if (!m_disableCommits)
+            {
+                Commit("Preparing for clear", true);
+            }
             
 
             //Now, delete all scene objects.
@@ -523,7 +536,7 @@ namespace Careminster.Git
             m_scene.SceneGraph.OnAttachToBackup += onAttachToBackup;
             m_scene.SceneGraph.OnDetachFromBackup += onDetachFromBackup;
             m_scene.SceneGraph.OnChangeBackup += onChangedBackup;
-            m_scene.EventManager.OnFrame += tick;
+            //m_scene.EventManager.OnFrame += tick;
             m_scene.EventManager.OnBackup += backup;
             m_scene.EventManager.OnLandObjectAdded += onNewLand;
             m_scene.EventManager.OnLandObjectRemoved += onLandDelete;
@@ -536,7 +549,7 @@ namespace Careminster.Git
             m_scene.SceneGraph.OnAttachToBackup -= onAttachToBackup;
             m_scene.SceneGraph.OnDetachFromBackup -= onDetachFromBackup;
             m_scene.SceneGraph.OnChangeBackup -= onChangedBackup;
-            m_scene.EventManager.OnFrame -= tick;
+            //m_scene.EventManager.OnFrame -= tick;
             m_scene.EventManager.OnBackup -= backup;
             m_scene.EventManager.OnLandObjectAdded -= onNewLand;
             m_scene.EventManager.OnLandObjectRemoved -= onLandDelete;
@@ -664,7 +677,10 @@ namespace Careminster.Git
 
             //Commit any uncommitted committy committs.
             backup(null, true);
-            Commit("Preparing for restore", true);
+            if (!m_disableCommits)
+            {
+                Commit("Preparing for restore", true);
+            }
 
             if (args.Length > 0)
             {
@@ -690,7 +706,10 @@ namespace Careminster.Git
 
             //Commit any uncommitted committy committs.
             backup(null, true);
-            Commit("Preparing for checkout", true);
+            if (!m_disableCommits)
+            {
+                Commit("Preparing for checkout", true);
+            }
 
             m_log.Info("[Git] Now checking out branch " + branchname + "..");
             try
@@ -723,7 +742,10 @@ namespace Careminster.Git
 
             //Commit any uncommitted committy committs.
             backup(null, true);
-            Commit("Preparing for checkout", true);           
+            if (!m_disableCommits)
+            {
+                Commit("Preparing for checkout", true);
+            }
 
             m_log.Info("[Git] Now checking out branch " + branchname + "..");
             try
@@ -752,7 +774,10 @@ namespace Careminster.Git
 
             //Commit any uncommitted committy committs.
             backup(null, true);
-            Commit("Preparing for branch delete", true);
+            if (!m_disableCommits)
+            {
+                Commit("Preparing for branch delete", true);
+            }
 
             //Perform branch delete
             try
@@ -781,7 +806,10 @@ namespace Careminster.Git
 
             //Commit any uncommitted committy committs.
             backup(null, true);
-            Commit("Preparing for branch", true);
+            if (!m_disableCommits)
+            {
+                Commit("Preparing for branch", true);
+            }
 
             //Create branch.
             try
@@ -810,7 +838,10 @@ namespace Careminster.Git
 
             //Commit any uncommitted committy committs.
             backup(null, true);
-            Commit("Preparing for reload",true);
+            if (!m_disableCommits)
+            {
+                Commit("Preparing for reload", true);
+            }
 
             Util.FireAndForget(DoRestore, false);
         }
@@ -828,7 +859,10 @@ namespace Careminster.Git
 
             //Commit any uncommitted committy committs.
             backup(null, true);
-            Commit("Preparing for restore", true);
+            if (!m_disableCommits)
+            {
+                Commit("Preparing for restore", true);
+            }
 
             if (args.Length > 0)
             {
@@ -907,16 +941,17 @@ namespace Careminster.Git
             }
             finally
             {
-                m_scene.EventManager.OnFrame += tick;
+                //m_scene.EventManager.OnFrame += tick;
                 m_scene.EventManager.OnBackup += backup;
             }
         }
         private void Commit(string message, bool synchronous)
         {
+            m_lastCommit = DateTime.UtcNow;
             //Committing can take some time, so spawn off to a seperate thread,
             //and remove our events so we don't have a lock situation.
             WriteTerrain();
-            m_scene.EventManager.OnFrame -= tick;
+            //m_scene.EventManager.OnFrame -= tick;
             m_scene.EventManager.OnBackup -= backup;
             if (!synchronous)
             {
@@ -934,7 +969,7 @@ namespace Careminster.Git
             {
                 try
                 {
-                    m_scene.EventManager.OnFrame -= tick;
+                    //m_scene.EventManager.OnFrame -= tick;
                     m_scene.EventManager.OnBackup -= backup;
 
                     m_log.Debug("[Git] Adding all " + m_ToUpdate.Count.ToString() + " remaining objects..");
@@ -959,47 +994,51 @@ namespace Careminster.Git
                 }
                 finally
                 {
-                    m_scene.EventManager.OnFrame += tick;
+                    //m_scene.EventManager.OnFrame += tick;
                     m_scene.EventManager.OnBackup += backup;
                 }
             }
         }
-        private void tick()
+        private void tick(Object stateInfo)
         {
-            frame++;
-            int speed = 50;
-            int dspeed = 50;
+            int speed = 5000;
             //If we've got a large queue, clear it quickly, otherwise, don't lag up our heartbeat thread too much!
-            if (m_ToUpdate.Count > 10) speed = 2;
-            if (m_ToDelete.Count > 10) dspeed = 2; 
+            if (m_ToUpdate.Count > 10) speed = 1000;
+            if (m_ToDelete.Count > 10) speed = 1000;
 
-            if ((frame % speed) == 0)
+            m_Timer.Change(speed, speed);
+
+            //Add one object per tick
+            if (m_ToUpdate.Count > 0)
             {
-                //Add one object per tick
-                if (m_ToUpdate.Count > 0)
-                {
-                    SceneObjectGroup candidate = (SceneObjectGroup)m_ToUpdate[0];
-                    m_ToUpdate.RemoveAt(0);
-                    m_NeedsCommit = true;
-                    m_changes++;
-                    AddGroup(candidate);
-                }
+                SceneObjectGroup candidate = (SceneObjectGroup)m_ToUpdate[0];
+                m_ToUpdate.RemoveAt(0);
+                m_NeedsCommit = true;
+                m_changes++;
+                AddGroup(candidate);
             }
 
-            if ((frame % dspeed) == 0)
+            //Delete one object per tick (Deleting is a lot less intensive)
+            if (m_ToDelete.Count > 0)
             {
-                //Delete one object per tick (Deleting is a lot less intensive)
-                if (m_ToDelete.Count > 0)
-                {
-                    SceneObjectGroup candidate = (SceneObjectGroup)m_ToDelete[0];
-                    m_ToDelete.RemoveAt(0);
-                    m_NeedsCommit = true;
-                    m_changes++;
-                    DeleteGroup(candidate);
-                }
+                SceneObjectGroup candidate = (SceneObjectGroup)m_ToDelete[0];
+                m_ToDelete.RemoveAt(0);
+                m_NeedsCommit = true;
+                m_changes++;
+                DeleteGroup(candidate);
             }
 
-            if (frame > m_commitFrameInterval)
+            if (m_disableCommits) return;
+
+            if (m_lastCommit == null)
+            {
+                m_lastCommit = DateTime.UtcNow;
+                return; //No point checking
+            }
+
+            TimeSpan ts = new TimeSpan(DateTime.UtcNow.Ticks - m_lastCommit.Ticks);
+
+            if (ts.TotalSeconds > m_commitInterval)
             {
                 if (m_NeedsCommit)
                 {
@@ -1010,7 +1049,6 @@ namespace Careminster.Git
                         }
                     );
                 }
-                frame = 0;
             }
         }
         private void AddGroup(SceneObjectGroup sog)
@@ -1197,6 +1235,7 @@ namespace Careminster.Git
             {
                 //Add RegionOnline as a commit. This will also commit any changes that occurred before
                 //the region crashed.. which is nice.
+
                 StreamWriter tw = new StreamWriter(m_repoPath + "RegionOnline.txt");
                 tw.WriteLine("Region " + m_scene.RegionInfo.RegionName + " Online: " + DateTime.Now.ToString());
                 tw.Close();
