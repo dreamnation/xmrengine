@@ -515,7 +515,7 @@ namespace Careminster.Modules.XEmail
 
                     if (queue.Count < 3) // Never let it become 0 before poll
                     {
-                        string where = String.Format("ObjectID='{0}' order by Stamp asc limit 10", objectID);
+                        string where = String.Format("ObjectID='{0}' order by id asc limit 10", objectID);
 
                         XEmailMessage[] messages = m_MessagesTable.Get(where);
 
