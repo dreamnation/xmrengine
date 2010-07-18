@@ -187,11 +187,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  */
                 TryToLoad(objCode);
                 m_log.DebugFormat("[XMREngine]: load successful {0}", m_DescName);
-                m_log.DebugFormat("[XMREngine]: {0} heapLimit={1}, heapLeft={2}, doGblInit={3}", m_DescName, heapLimit, heapLeft, doGblInit);
-                foreach (EventParams evt in m_EventQueue) {
-                     m_log.DebugFormat("[XMREngine]: {0}      eventname={1}", m_DescName, evt.EventName);
-                }
-                m_log.DebugFormat("[XMREngine]: {0} stateCode={1}", m_DescName, stateCode);
 
                 /*
                  * Loaded successfully, increment reference count.

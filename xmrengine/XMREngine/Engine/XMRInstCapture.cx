@@ -214,9 +214,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * Write the basic information out to the stream:
              *    state, event, eventhandler args, script's globals.
              */
-            Console.WriteLine("MigrateOutEventHandler*: {0} heapLimit={1}", this.m_DescName, this.heapLimit);
-            Console.WriteLine("MigrateOutEventHandler*: {0}  heapLeft={1}", this.m_DescName, this.heapLeft);
-            Console.WriteLine("MigrateOutEventHandler*: {0}  heapUsed={1}", this.m_DescName, this.heapLimit - this.heapLeft);
             stream.WriteByte (migrationVersion);
             stream.WriteByte ((byte)ScriptCodeGen.COMPILED_VERSION_VALUE);
             this.SendObjValue (stream, this.stateCode);
