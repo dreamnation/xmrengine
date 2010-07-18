@@ -53,13 +53,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * @param scriptBasePath = directory name where files are
          * @param stackSize = number of bytes to allocate for stacks
          * @param errors = return compiler errors in this array
+         * @param forceReset = reset script to default state (ignore saved state)
          * Throws exception if any error, so it was successful if it returns.
          */
         public XMRInstance(uint localID, UUID itemID, string script,
                            int startParam, bool postOnRez, int stateSource,
                            XMREngine engine, SceneObjectPart part, 
                            TaskInventoryItem item, string scriptBasePath,
-                           UIntPtr stackSize, ArrayList errors)
+                           UIntPtr stackSize, ArrayList errors, bool forceReset)
         {
             if (stackSize.ToUInt64() < 16384) stackSize = (UIntPtr)16384;
 
@@ -80,6 +81,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_StackSize      = stackSize;
             m_CompilerErrors = errors;
             m_StateFileName  = GetStateFileName(scriptBasePath, itemID);
+            m_ForceReset     = forceReset;
 
             /*
              * Set up a descriptive name string for debug messages.
@@ -159,7 +161,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             lock (m_CompileLock)
             {
-                bool compileFailed = false;
                 bool compiledIt = false;
                 ScriptObjCode objCode;
 
@@ -168,49 +169,32 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * we can use.  If not, try to compile it.
                  */
                 if (!m_CompiledScriptObjCode.TryGetValue (m_AssetID, 
-                                                          out objCode))
-                {
-                    try {
-                        objCode = TryToCompile(false);
-                        compiledIt = true;
-                    } catch (Exception) {
-                        compileFailed = true;
-                    }
-                }
-
-                /*
-                 * Get a new instance of that script object code loaded in
-                 * memory and try to fill in its initial state from the saved
-                 * state file.
-                 */
-                if (!compileFailed && TryToLoad(objCode))
-                {
-                    m_log.DebugFormat("[XMREngine]: load successful {0}",
-                            m_DescName);
-                } else if (compiledIt) {
-                    throw new Exception("script load failed");
-                } else {
-
-                    /*
-                     * If it didn't load, maybe it's because of a version
-                     * mismatch somewhere.  So try recompiling and reload.
-                     */
-                    m_log.DebugFormat("[XMREngine]: attempting recompile {0}",
-                            m_DescName);
-                    objCode = TryToCompile(true);
+                                                          out objCode)) {
+                    objCode = TryToCompile();
                     compiledIt = true;
-                    m_log.DebugFormat("[XMREngine]: attempting reload {0}",
-                            m_DescName);
-                    if (!TryToLoad(objCode))
-                    {
-                        throw new Exception("script reload failed");
-                    }
-                    m_log.DebugFormat("[XMREngine]: reload successful {0}",
-                            m_DescName);
                 }
 
                 /*
-                 * (Re)loaded successfully, increment reference count.
+                 * Fill in script instance from object code
+                 * Script instance is now in a "never-ever-has-run-before" state.
+                 */
+                LoadObjCode(objCode);
+
+                /*
+                 * Fill in script intial state
+                 * - either preserved in a .state file
+                 * - or initial default state_entry() event
+                 */
+                TryToLoad(objCode);
+                m_log.DebugFormat("[XMREngine]: load successful {0}", m_DescName);
+                m_log.DebugFormat("[XMREngine]: {0} heapLimit={1}, heapLeft={2}, doGblInit={3}", m_DescName, heapLimit, heapLeft, doGblInit);
+                foreach (EventParams evt in m_EventQueue) {
+                     m_log.DebugFormat("[XMREngine]: {0}      eventname={1}", m_DescName, evt.EventName);
+                }
+                m_log.DebugFormat("[XMREngine]: {0} stateCode={1}", m_DescName, stateCode);
+
+                /*
+                 * Loaded successfully, increment reference count.
                  *
                  * If we just compiled it though, reset count to 0 first as
                  * this is the one-and-only existance of this objCode struct,
@@ -228,7 +212,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         // Try to create object code from source code
         // If error, just throw exception
-        private ScriptObjCode TryToCompile(bool forceCompile)
+        private ScriptObjCode TryToCompile()
         {
             string objName = ScriptCompile.GetObjFileName(m_AssetID.ToString(),
                                                           m_ScriptBasePath);
@@ -240,11 +224,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * is old version or corrupt), delete the object file which will 
              * make ScriptCompile.Compile() create a new one from the source.
              */
-            if (!forceCompile) {
-                string envar = Environment.GetEnvironmentVariable("XMRForceCompile");
-                if ((envar != null) && ((envar[0] & 1) != 0)) forceCompile = true;
-            }
-            if (forceCompile) {
+            if ((m_SourceCode != String.Empty) && m_ForceReset) {
                 File.Delete(objName);
             }
 
@@ -287,16 +267,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         //          post initial default state events
         //      else
         //          try to restore from .state file
-        //          if unable, delete .state file and retry
+        //  If any error, throw exception
         //
-        private bool TryToLoad(ScriptObjCode objCode)
+        private void TryToLoad(ScriptObjCode objCode)
         {
-            // Set up script state in a "never-ever-has-run-before" state.
-            LoadObjCode(objCode);
 
             // If no .state file exists, start from default state
-            string envar = Environment.GetEnvironmentVariable("XMREngineIgnoreState");
-            if ((envar != null) && ((envar[0] & 1) != 0)) {
+            if (m_ForceReset) {
                 File.Delete(m_StateFileName);
             }
             if (!File.Exists(m_StateFileName))
@@ -334,13 +311,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                             new Object[] { ScriptBaseClass.CHANGED_REGION }, 
                             zeroDetectParams));
                 }
+            } else {
 
-                return true;
-            }
-
-            // Got a .state file, try to read .state file into script instance
-            try
-            {
+                // Got a .state file, try to read .state file into script instance
+                // If any error, throw an exception
                 FileStream fs = File.Open(m_StateFileName, 
                                           FileMode.Open, 
                                           FileAccess.Read);
@@ -359,18 +333,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                             new Object[] { ScriptBaseClass.CHANGED_REGION }, 
                             zeroDetectParams));
                 }
-                return true;
-            }
-            catch (Exception e)
-            {
-                m_log.Error("[XMREngine]: error restoring " +
-                        m_DescName + ": " + e.Message);
-
-                // Failed to load state, delete bad .state file and reload
-                // instance so we get a script at default state.
-                m_log.Info("[XMREngine]: attempting reset " + m_DescName);
-                File.Delete(m_StateFileName);
-                return TryToLoad(objCode);
             }
         }
 
@@ -492,7 +454,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private void LoadScriptState(XmlDocument doc)
         {
             DetectParams[] detParams;
-            Queue<EventParams> eventQueue;
+            LinkedList<EventParams> eventQueue;
 
             // Everything we know is enclosed in <ScriptState>...</ScriptState>
             XmlElement scriptStateN = (XmlElement)doc.SelectSingleNode("ScriptState");
@@ -592,9 +554,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          *          .
          *  </EventQueue>
          */
-        private Queue<EventParams> RestoreEventQueue(XmlNode eventsN)
+        private LinkedList<EventParams> RestoreEventQueue(XmlNode eventsN)
         {
-            Queue<EventParams> eventQueue = new Queue<EventParams>();
+            LinkedList<EventParams> eventQueue = new LinkedList<EventParams>();
             if (eventsN != null) {
                 XmlNodeList eventL = eventsN.SelectNodes("Event");
                 foreach (XmlNode evnt in eventL)
@@ -607,7 +569,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     if (detects == null) detects = zeroDetectParams;
 
                     EventParams evt = new EventParams(name, parms, detects);
-                    eventQueue.Enqueue(evt);
+                    eventQueue.AddLast(evt);
                 }
             }
             return eventQueue;
@@ -783,11 +745,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             this.heapLeft  = this.heapLimit - (int)RecvObjValue (stream);
             this.ehArgs    = (object[])RecvObjValue (stream);
 
-            Console.WriteLine("MigrateInEventHandler*: {0} heapLimit={1}", this.m_DescName, this.heapLimit);
-            Console.WriteLine("MigrateInEventHandler*: {0}  heapLeft={1}", this.m_DescName, this.heapLeft);
-            Console.WriteLine("MigrateInEventHandler*: {0}  heapUsed={1}", this.m_DescName, this.heapLimit - this.heapLeft);
-            Console.WriteLine("MigrateInEventHandler*: {0} eventCode={1}", this.m_DescName, this.eventCode);
-
             /*
              * Read script globals in.
              */
@@ -830,17 +787,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             this.gblRotations = (LSL_Rotation[])RecvObjArray (stream, typeof (LSL_Rotation));
             this.gblStrings   = (string[])      RecvObjArray (stream, typeof (string));
             this.gblVectors   = (LSL_Vector[])  RecvObjArray (stream, typeof (LSL_Vector));
-
-            if (false) {
-                Console.WriteLine("MigrateGlobalsIn*:    nArrays={0}", this.gblArrays.Length);
-                Console.WriteLine("MigrateGlobalsIn*:    nFloats={0}", this.gblFloats.Length);
-                Console.WriteLine("MigrateGlobalsIn*:  nIntegers={0}", this.gblIntegers.Length);
-                Console.WriteLine("MigrateGlobalsIn*:     nLists={0}", this.gblLists.Length);
-                Console.WriteLine("MigrateGlobalsIn*:   nObjects={0}", this.gblObjects.Length);
-                Console.WriteLine("MigrateGlobalsIn*: nRotations={0}", this.gblRotations.Length);
-                Console.WriteLine("MigrateGlobalsIn*:   nStrings={0}", this.gblStrings.Length);
-                Console.WriteLine("MigrateGlobalsIn*:   nVectors={0}", this.gblVectors.Length);
-            }
         }
 
         /**

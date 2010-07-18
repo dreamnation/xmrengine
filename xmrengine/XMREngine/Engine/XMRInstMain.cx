@@ -126,6 +126,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public bool   m_CheckRunStressWrite;   // true: microthread suspended because it wrote stress; false: normal suspend
         public int    m_CheckRunStressStack;   // number of stack frames remaingin to offset this time
         public Stream m_CheckRunStressStream;  // null: normal mode; else: stream to write stress data to / read stress data from
+        public bool   m_ForceReset;
 
         // If code needs to have both m_QueueLock and m_RunLock,
         // be sure to lock m_RunLock first then m_QueueLock, as
@@ -141,7 +142,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private bool m_Running = true;
 
         // queue of events that haven't been acted upon yet
-        public Queue<EventParams> m_EventQueue = new Queue<EventParams>();
+        public LinkedList<EventParams> m_EventQueue = new LinkedList<EventParams>();
 
         // number of events of each code currently in m_EventQueue.
         private int[] m_EventCounts = new int[(int)ScriptEventCode.Size];

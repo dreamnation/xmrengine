@@ -98,33 +98,61 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * Put event on end of instance's event queue.
                  */
 
-                if (evc == ScriptEventCode.attach)
-                {
+                LinkedListNode<EventParams> lln = new LinkedListNode<EventParams>(evt);
+                switch (evc) {
+
+                    /*
+                     * These need to go first.  The only time we manually
+                     * queue them is for the default state_entry() and we
+                     * need to make sure they go before any attach() events
+                     * so the heapLeft value gets properly initialized.
+                     */
+                    case ScriptEventCode.state_entry: {
+                        m_EventQueue.AddFirst(lln);
+                        break;
+                    }
+
                     /*
                      * The attach event sneaks to the front of the queue.
-                     * This is needed for quantum limiting to work.
+                     * This is needed for quantum limiting to work because
+                     * we want the attach(NULL_KEY) event to come in front
+                     * of all others so the m_DetachQuantum won't run out
+                     * before attach(NULL_KEY) is executed.
                      */
+                    case ScriptEventCode.attach: {
+                        LinkedListNode<EventParams> lln2 = null;
+                        for (lln2 = m_EventQueue.First; lln2 != null; lln2 = lln2.Next) {
+                            EventParams evt2 = lln2.Value;
+                            ScriptEventCode evc2 = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), 
+                                                                     evt2.EventName);
+                            if ((evc2 != ScriptEventCode.state_entry) &&
+                                (evc2 != ScriptEventCode.attach)) break;
+                        }
+                        if (lln2 == null) {
+                            m_EventQueue.AddLast(lln);
+                        } else {
+                            m_EventQueue.AddBefore(lln2, lln);
+                        }
 
-                    int count = m_EventQueue.Count;
-                    m_EventQueue.Enqueue(evt);
-
-                    while(count-- > 0)
-                        m_EventQueue.Enqueue(m_EventQueue.Dequeue());
-
-                    /* If we're detaching, limit the qantum. This will also
-                     * cause the script to self-suspend after running this
-                     * event
-                     */
-                    if (evt.Params[0].ToString() == UUID.Zero.ToString())
-                    {
-                        m_DetachReady.Reset();
-                        m_DetachQuantum = 100;
+                        /* If we're detaching, limit the qantum. This will also
+                         * cause the script to self-suspend after running this
+                         * event
+                         */
+                        if (evt.Params[0].ToString() == UUID.Zero.ToString())
+                        {
+                            m_DetachReady.Reset();
+                            m_DetachQuantum = 100;
+                        }
+                        break;
                     }
-                    
-                }
-                else
-                {
-                    m_EventQueue.Enqueue(evt);
+
+                    /*
+                     * All others just go on end in the order queued.
+                     */
+                    default: {
+                        m_EventQueue.AddLast(lln);
+                        break;
+                    }
                 }
 
                 /*
@@ -266,11 +294,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     lock (m_QueueLock)
                     {
                         m_RunOnePhase = "dequeue event";
-                        if (m_EventQueue.Count > 0)
+                        if (m_EventQueue.First != null)
                         {
+                            evt = m_EventQueue.First.Value;
                             if (m_DetachQuantum > 0)
                             {
-                                evt = m_EventQueue.Peek();
                                 evc = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), 
                                                                evt.EventName);
                                 if (evc != ScriptEventCode.attach)
@@ -288,8 +316,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                                     return XMRInstState.FINISHED;
                                 }
                             }
-
-                            evt = m_EventQueue.Dequeue();
+                            m_EventQueue.RemoveFirst();
                             evc = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), 
                                                                evt.EventName);
                             m_EventCounts[(int)evc] --;
@@ -871,7 +898,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             lock (m_QueueLock)
             {
                 m_Suspended = false;
-                if (m_EventQueue.Count > 0 && m_IState == XMRInstState.IDLE) {
+                if (m_EventQueue.First != null && m_IState == XMRInstState.IDLE) {
                     m_IState = XMRInstState.ONSTARTQ;
                     m_Engine.QueueToStart(this);
                 }
