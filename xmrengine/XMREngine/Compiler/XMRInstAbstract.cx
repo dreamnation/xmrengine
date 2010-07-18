@@ -15,16 +15,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
      */
     public abstract class XMRInstAbstract
     {
-        public ScriptBaseClass beAPI;      // passed as 'this' to methods such as llSay()
-        public object[] ehArgs;            // event handler argument array
-        public bool stateChanged = false;  // script sets this if/when it executes a 'state' statement
-        public bool doGblInit = true;      // default state_entry() needs to initialize global variables
-        public uint stackLimit;            // CheckRun() must always see this much stack available
-        public int heapLimit;              // let script use this many bytes of heap maximum
-                                           // includes global vars, local vars, that reference heap
-                                           // does not include value-type vars, that is part of stackLimit
-        public int heapLeft;               // how much of heapLimit remains available
-        public int stateCode = 0;          // state the script is in (0 = 'default')
+        public ScriptBaseClass beAPI;       // passed as 'this' to methods such as llSay()
+        public object[] ehArgs;             // event handler argument array
+        public bool stateChanged = false;   // script sets this if/when it executes a 'state' statement
+        public bool doGblInit = true;       // default state_entry() needs to initialize global variables
+        public uint stackLimit;             // CheckRun() must always see this much stack available
+        public int heapLimit;               // let script use this many bytes of heap maximum
+                                            // includes global vars, local vars, that reference heap
+                                            // does not include value-type vars, that is part of stackLimit
+        public int heapLeft;                // how much of heapLimit remains available
+        public string traceHeapUse = null;  // null: quiet; else: name of script
+        public int stateCode = 0;           // state the script is in (0 = 'default')
 
         /*
          * These arrays hold the global variable values for the script instance.

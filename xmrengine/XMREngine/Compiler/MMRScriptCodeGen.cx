@@ -25,7 +25,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	public class ScriptCodeGen
 	{
 		public static readonly string OBJECT_CODE_MAGIC = "XMRObjectCode";
-		public static int COMPILED_VERSION_VALUE = 11;  // incremented when compiler changes for compatibility testing
+		public static int COMPILED_VERSION_VALUE = 12;  // incremented when compiler changes for compatibility testing
 
 		public static readonly int CALL_FRAME_MEMUSE = 64;
 		public static readonly int STRING_LEN_TO_MEMUSE = 2;
@@ -74,8 +74,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		                                                                                         typeof (object).MakeByRefType () });
 		private static MethodInfo updateHeapLeftMethodInfo = GetStaticMethod (typeof (ScriptCodeGen), 
 		                                                                      "UpdateHeapLeft", 
-		                                                                      new Type[] { typeof (int).MakeByRefType (),
+		                                                                      new Type[] { typeof (XMRInstAbstract),
 		                                                                                   typeof (object),
+		                                                                                   typeof (int),
+		                                                                                   typeof (int),
 		                                                                                   typeof (int) });
 		private static MethodInfo lslVectorNegateMethodInfo = GetStaticMethod (typeof (ScriptCodeGen), 
 		                                                                       "LSLVectorNegate", 
@@ -491,7 +493,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					}
 					var.PopPost (this);
 
-					DebitHeapLeft (var, false);
+					DebitHeapLeft (var, false, gblDeclVar);
 				}
 				ilGen.Emit (OpCodes.Ldarg_0);                    // instance
 				PushConstantI4 (0);
@@ -1070,7 +1072,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				CompValu rVal = GenerateFromRVal (declVar.init);
 				rVal.PushVal (this, declVar.type);
 				local.PopPost (this);
-				DebitHeapLeft (local, true);
+				DebitHeapLeft (local, true, declVar);
 			}
 
 			/*
@@ -1326,7 +1328,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				 */
 				if ((binOpStr.outtype != typeof (bool)) && opcodeIndex.EndsWith ("=")) {
 					binOpStr.emitBO (this, left, right, left);
-					DebitHeapLeft (left, true);
+					DebitHeapLeft (left, true, token.rValLeft);
 					return left;
 				}
 
@@ -1369,7 +1371,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 								ErrorMsg (token, "invalid L-value");
 							} else {
 								binOpStr.emitBO (this, leftLVal, right, leftLVal);
-								DebitHeapLeft (left, true);
+								DebitHeapLeft (left, true, token.rValLeft);
 							}
 							return left;
 						}
@@ -2172,7 +2174,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			    (local.type is TokenTypeStr)) {
 				CompValu heapTracker = new CompValuTemp (new TokenTypeInt (name), "__htl_" + name.val, this);
 				localHeapTrackers.Add (local, heapTracker);
-				DebitHeapLeft (local, false);
+				DebitHeapLeft (local, false, name);
 			}
 		}
 
@@ -2182,8 +2184,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @param value = local or global variable
 		 * @param stValid = false: heapTracker contains garbage, so don't bother adding it back first
 		 *                   true: heapTracker contains previous debit quantity, so add it back first
+		 * @param name = token giving location in source code of assignment for tracing/debug
 		 */
-		private void DebitHeapLeft (CompValu value, bool stValid)
+		private void DebitHeapLeft (CompValu value, bool stValid, Token name)
 		{
 			CompValu heapTracker;
 
@@ -2192,8 +2195,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 				heapTracker.PopPre (this);
 				
-				ilGen.Emit (OpCodes.Ldarg_0);                         // &instance.heapLeft
-				ilGen.Emit (OpCodes.Ldflda, heapLeftFieldInfo);
+				ilGen.Emit (OpCodes.Ldarg_0);                         // instance
 
 				value.PushVal (this);                                 // object we care about
 
@@ -2202,6 +2204,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				} else {
 					PushConstantI4 (0);                           // 0 because nothing debited before
 				}
+
+				PushConstantI4 (name.line);
+				PushConstantI4 (name.posn);
 
 				ilGen.Emit (OpCodes.Call, updateHeapLeftMethodInfo);  // update instance.heapLeft
 				                                                      // throws exception if not enuf left
@@ -2361,14 +2366,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief An heap referencing variable was just set to a new object so we need to
 		 *        update instance.heapLeft to reflect the new amount of heap available
 		 *        to the script.
-		 * @param heapLeft = heap available to script prior to new value written
+		 * @param instance = script instance who's heap usage is being updated
 		 * @param value = object pointer value that was just written
 		 * @param oldHeapUse = what was previously debited by the variable that was just written
 		 * @returns amount being debited by the new assignment
-		 *          heapLeft = adjusted to reflect new heap avaialbe to script
+		 *          instance.heapLeft = adjusted to reflect new heap avaialbe to script
 		 * Throws exception if the new value exceeds available amount.
 		 */
-		public static int UpdateHeapLeft (ref int heapLeft, object value, int oldHeapUse)
+		public static int UpdateHeapLeft (XMRInstAbstract instance, object value, int oldHeapUse, int srcLine, int srcPosn)
 		{
 			int newHeapUse = 0;
 
@@ -2377,8 +2382,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			else if (value is LSL_String) newHeapUse = ((LSL_String)value).Length * 2 + 24;
 			else if (value is string)     newHeapUse = ((string)value).Length * 2 + 24;
 
-			heapLeft += oldHeapUse - newHeapUse;
-			if (heapLeft < 0) throw new OutOfHeapException ();
+			instance.heapLeft += oldHeapUse - newHeapUse;
+			if (instance.heapLeft < 0) throw new OutOfHeapException ();
+
+			if (instance.traceHeapUse != null) {
+				Console.WriteLine("traceHeapUse: {0} {1}.{2}: old={3} new={4} left={5}", 
+					instance.traceHeapUse, srcLine, srcPosn, oldHeapUse, newHeapUse, instance.heapLeft);
+			}
 
 			return newHeapUse;
 		}
