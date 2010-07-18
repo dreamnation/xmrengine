@@ -85,6 +85,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         
         private System.Timers.Timer m_MaintenanceTimer;
 
+        public string m_traceHeapUse = null;
+
         /*
          * Various instance lists:
          *   m_InstancesDict = all known instances
@@ -187,7 +189,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             MainConsole.Instance.Commands.AddCommand("xmr", false,
                     "xmr test",
-                    "xmr test [backup|cvv|gc|ls|mvv|resume|suspend|top]",
+                    "xmr test [backup|cvv|gc|ls|mvv|resume|suspend|top|traceheapuse]",
                     "Run current xmr test",
                     RunTest);
         }
@@ -379,6 +381,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     Monitor.Enter (m_WakeUpLock);
                     Monitor.PulseAll (m_WakeUpLock);
                     Monitor.Exit (m_WakeUpLock);
+                    break;
+                }
+                case "traceheapuse": {
+                    if (args.Length == 3) {
+                        m_traceHeapUse = null;
+                        break;
+                    }
+                    if (args.Length == 4) {
+                        m_traceHeapUse = args[3];
+                        break;
+                    }
+                    m_log.Debug("[XMREngine]: usage: xmr test traceheapuse [<scriptname>]");
                     break;
                 }
                 default: {

@@ -88,6 +88,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_DescName += part.Name + ":" + item.Name;
 
             /*
+             * Maybe trace heap usage.
+             */
+            if ((engine.m_traceHeapUse != null) && m_DescName.Contains(engine.m_traceHeapUse)) {
+                this.traceHeapUse = m_DescName;
+            }
+
+            /*
              * Not in any XMRInstQueue, and it is being constructed so don't
              * try to run it yet.
              */
@@ -776,6 +783,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             this.heapLeft  = this.heapLimit - (int)RecvObjValue (stream);
             this.ehArgs    = (object[])RecvObjValue (stream);
 
+            Console.WriteLine("MigrateInEventHandler*: {0} heapLimit={1}", this.m_DescName, this.heapLimit);
+            Console.WriteLine("MigrateInEventHandler*: {0}  heapLeft={1}", this.m_DescName, this.heapLeft);
+            Console.WriteLine("MigrateInEventHandler*: {0}  heapUsed={1}", this.m_DescName, this.heapLimit - this.heapLeft);
+            Console.WriteLine("MigrateInEventHandler*: {0} eventCode={1}", this.m_DescName, this.eventCode);
+
             /*
              * Read script globals in.
              */
@@ -818,6 +830,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             this.gblRotations = (LSL_Rotation[])RecvObjArray (stream, typeof (LSL_Rotation));
             this.gblStrings   = (string[])      RecvObjArray (stream, typeof (string));
             this.gblVectors   = (LSL_Vector[])  RecvObjArray (stream, typeof (LSL_Vector));
+
+            if (false) {
+                Console.WriteLine("MigrateGlobalsIn*:    nArrays={0}", this.gblArrays.Length);
+                Console.WriteLine("MigrateGlobalsIn*:    nFloats={0}", this.gblFloats.Length);
+                Console.WriteLine("MigrateGlobalsIn*:  nIntegers={0}", this.gblIntegers.Length);
+                Console.WriteLine("MigrateGlobalsIn*:     nLists={0}", this.gblLists.Length);
+                Console.WriteLine("MigrateGlobalsIn*:   nObjects={0}", this.gblObjects.Length);
+                Console.WriteLine("MigrateGlobalsIn*: nRotations={0}", this.gblRotations.Length);
+                Console.WriteLine("MigrateGlobalsIn*:   nStrings={0}", this.gblStrings.Length);
+                Console.WriteLine("MigrateGlobalsIn*:   nVectors={0}", this.gblVectors.Length);
+            }
         }
 
         /**
