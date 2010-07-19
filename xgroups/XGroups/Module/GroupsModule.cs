@@ -1252,7 +1252,7 @@ Console.WriteLine("==> Session ID {0} UUID {1}", imSessionID.ToString(), id.ToSt
                 MySqlCommand cmd = m_Connection.CreateCommand();
 
                 cmd.CommandText = "insert ignore into members (GroupID, MemberID, Active,"+
-                        "ActiveRole, AcceptNotices) values ("+
+                        "ActiveRole, AcceptNotices, ListInProfile) values ("+
                         "?GroupID, "+
                         "?MemberID, "+
                         "?Active, "+
