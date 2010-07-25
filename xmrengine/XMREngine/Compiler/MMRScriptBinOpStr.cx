@@ -175,7 +175,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			bos.Add ("string+float",   new BinOpStr (typeof (string), BinOpStrStrAddStr));
 			bos.Add ("string+integer", new BinOpStr (typeof (string), BinOpStrStrAddStr));
 
-			return bos;
+			// Now for our final slight-of-hand, we're going to scan through all those.
+			// And wherever we see an 'integer' in the key, we are going to make another
+			// entry with 'bool', as we want to accept a bool as having a value of 0 or 1.
+			// This lets us do things like 3.5 * (x > 0).
+
+			Dictionary<string, BinOpStr> bos2 = new Dictionary<string, BinOpStr> ();
+			foreach (KeyValuePair<string, BinOpStr> kvp in bos) {
+				string   key = kvp.Key;
+				BinOpStr val = kvp.Value;
+				bos2.Add (key, val);
+			}
+			foreach (KeyValuePair<string, BinOpStr> kvp in bos) {
+				string   key  = kvp.Key;
+				BinOpStr val  = kvp.Value;
+				string   key2 = key.Replace ("integer", "bool");
+				if (!bos2.ContainsKey (key2)) {
+					bos2.Add (key2, val);
+				}
+			}
+
+			return bos2;
 		}
 
 		private static void DefineBinOpsBoolX (Dictionary<string, BinOpStr> bos, string x)
