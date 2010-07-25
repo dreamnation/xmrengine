@@ -892,7 +892,11 @@ namespace Careminster.Modules.XSearch
             if (m_FreshStart)
             {
                 m_FreshStart = false;
-                SendParcelData();
+
+                m_LandTimer.Stop();
+                m_LandTimer.Start();
+
+                //SendParcelData();
             }
         }
     }

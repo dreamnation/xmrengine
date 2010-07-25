@@ -131,7 +131,6 @@ namespace Careminster.Git
         }
         private void Enable(object o)
         {
-
             m_terrainModule = m_scene.RequestModuleInterface<ITerrainModule>();
             m_repoPath = m_Config.GetString("RepoPath", "git");
             m_commitInterval = m_Config.GetInt("CommitInterval", 21600);
@@ -1171,7 +1170,12 @@ namespace Careminster.Git
             try
             {
                 if (sog.IsAttachment) return;
-                Queue(sog);
+                //Check to make sure this item isn't already in our repo
+                string primfile = m_repoPath + "objects/" + sog.UUID.ToString();
+                if (!File.Exists(primfile))
+                {
+                    Queue(sog);
+                }
             }
             catch
             {
