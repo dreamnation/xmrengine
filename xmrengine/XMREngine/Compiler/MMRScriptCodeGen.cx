@@ -101,6 +101,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		/*
 		 * There is one set of these variables for each script being compiled.
 		 */
+		private bool fallsThrough = false;
 		private bool youveAnError = false;
 		private int nStates = 0;
 		private Token errorMessageToken = null;
@@ -433,9 +434,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Push current function being processed.
+			 * Set 'fallsThrough' as the code is always entered at the top.
 			 */
+			bool oldFallsThrough = fallsThrough;
 			TokenDeclFunc oldDeclFunc = curDeclFunc;
-			curDeclFunc = declFunc;
+			fallsThrough = true;
+			curDeclFunc  = declFunc;
 
 			/*
 			 * Any vars defined by function, including its args, go in their own var block.
@@ -543,7 +547,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Output code for the statements and clean up.
 			 */
 			GenerateFuncBody (declFunc);
-			curDeclFunc = oldDeclFunc;
+
+			fallsThrough = oldFallsThrough;
+			curDeclFunc  = oldDeclFunc;
 		}
 
 		/**
@@ -589,9 +595,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Push current function being processed.
+			 * Set 'fallsThrough' as the code is always entered at the top.
 			 */
+			bool oldFallsThrough = fallsThrough;
 			TokenDeclFunc oldDeclFunc = curDeclFunc;
-			curDeclFunc = declFunc;
+			fallsThrough = true;
+			curDeclFunc  = declFunc;
 
 			/*
 			 * The function's vars, including its arguments, start in an empty definition frame.
@@ -638,7 +647,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Output code for the statements and clean up.
 			 */
 			GenerateFuncBody (declFunc);
-			curDeclFunc = oldDeclFunc;
+
+			fallsThrough = oldFallsThrough;
+			curDeclFunc  = oldDeclFunc;
 		}
 
 		/**
@@ -656,6 +667,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Output code body.
 			 */
 			GenerateStmtBlock (declFunc.body);
+
+			/*
+			 * If code falls through to this point, means they are missing 
+			 * a return statement.  And its legal only if the function 
+			 * returns 'void'.
+			 */
+			if (fallsThrough && !(declFunc.retType is TokenTypeVoid)) {
+				ErrorMsg (declFunc.body, "missing final return statement");
+			}
 
 			/*
 			 * Output epilog that subtracts heap usage by local vars.
@@ -773,8 +793,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		/**
 		 * @brief output code for a 'do' statement
-		 * Must use labels and if/goto's instead of braces as the 'while' clause may generate temp 
-		 * assignment statements and so the result may not be in scope outside the closing brace.
 		 */
 		private void GenerateStmtDo (TokenStmtDo doStmt)
 		{
@@ -783,9 +801,25 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ilGen.MarkLabel (loopLabel);
 			GenerateStmt (doStmt.bodyStmt);
 			EmitCallCheckRun (doStmt.line);
-			CompValu testRVal = GenerateFromRVal (doStmt.testRVal);
-			testRVal.PushVal (this, tokenTypeBool);
-			ilGen.Emit (OpCodes.Brtrue, loopLabel);
+			if (IsConstBoolExprTrue (doStmt.testRVal)) {
+
+				/*
+				 * Unconditional looping, don't bother with the test
+				 * and say we never fall through to next statement.
+				 */
+				ilGen.Emit (OpCodes.Br, loopLabel);
+				fallsThrough = false;
+			} else {
+
+				/*
+				 * Conditional looping, output test and loop body.
+				 * Leave fallsThrough alone as we may fall through
+				 * (but only if we might have entered the loop).
+				 */
+				CompValu testRVal = GenerateFromRVal (doStmt.testRVal);
+				testRVal.PushVal (this, tokenTypeBool);
+				ilGen.Emit (OpCodes.Brtrue, loopLabel);
+			}
 		}
 
 		/**
@@ -796,6 +830,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void GenerateStmtFor (TokenStmtFor forStmt)
 		{
+			bool hasTest;
 			ScriptMyLabel doneLabel = ilGen.DefineLabel ("fordone_" + forStmt.Unique);
 			ScriptMyLabel loopLabel = ilGen.DefineLabel ("forloop_" + forStmt.Unique);
 
@@ -804,17 +839,44 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 			ilGen.MarkLabel (loopLabel);
 			EmitCallCheckRun (forStmt.line);
-			if (forStmt.testRVal != null) {
+
+			/*
+			 * See if we have a test expression that is other than a constant TRUE.
+			 */
+			hasTest = (forStmt.testRVal != null) && !IsConstBoolExprTrue (forStmt.testRVal);
+			if (hasTest) {
 				CompValu testRVal = GenerateFromRVal (forStmt.testRVal);
 				testRVal.PushVal (this, tokenTypeBool);
 				ilGen.Emit (OpCodes.Brfalse, doneLabel);
 			}
+
+			/*
+			 * Output loop body.
+			 */
 			GenerateStmt (forStmt.bodyStmt);
+
+			/*
+			 * Output increment statement, if any.
+			 */
 			if (forStmt.incrRVal != null) {
 				GenerateFromRVal (forStmt.incrRVal);
 			}
+
+			/*
+			 * Unconditional branch back to beginning of loop.
+			 */
 			ilGen.Emit (OpCodes.Br, loopLabel);
-			ilGen.MarkLabel (doneLabel);
+
+			/*
+			 * If test needs label, output label for it to jump to.
+			 * Otherwise, clear fallsThrough as we know loop never
+			 * falls out the bottom.
+			 */
+			if (hasTest) {
+				ilGen.MarkLabel (doneLabel);
+			} else {
+				fallsThrough = false;
+			}
 		}
 
 		private void GenerateStmtForEach (TokenStmtForEach forEachStmt)
@@ -890,19 +952,50 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void GenerateStmtIf (TokenStmtIf ifStmt)
 		{
-			CompValu testRVal = GenerateFromRVal (ifStmt.testRVal);
-			testRVal.PushVal (this, tokenTypeBool);
-			ScriptMyLabel elseLabel = ilGen.DefineLabel ("ifelse_" + ifStmt.Unique);
-			ilGen.Emit (OpCodes.Brfalse, elseLabel);
-			GenerateStmt (ifStmt.trueStmt);
-			if (ifStmt.elseStmt == null) {
-				ilGen.MarkLabel (elseLabel);
+			bool constVal;
+
+			/*
+			 * See if constant test expression.
+			 */
+			if (IsConstBoolExpr (ifStmt.testRVal, out constVal)) {
+
+				/*
+				 * Constant, output just either the true or else part.
+				 */
+				if (constVal) {
+					GenerateStmt (ifStmt.trueStmt);
+				} else if (ifStmt.elseStmt != null) {
+					GenerateStmt (ifStmt.elseStmt);
+				}
 			} else {
-				ScriptMyLabel doneLabel = ilGen.DefineLabel ("ifdone_" + ifStmt.Unique);
-				ilGen.Emit (OpCodes.Br, doneLabel);
-				ilGen.MarkLabel (elseLabel);
-				GenerateStmt (ifStmt.elseStmt);
-				ilGen.MarkLabel (doneLabel);
+
+				/*
+				 * Need to output code for the test.
+				 */
+				bool startFallsThrough = fallsThrough;       // save  'fallsTrhough' at beginning of if statement
+				CompValu testRVal = GenerateFromRVal (ifStmt.testRVal);
+				testRVal.PushVal (this, tokenTypeBool);      // generate test code
+				ScriptMyLabel elseLabel = ilGen.DefineLabel ("ifelse_" + ifStmt.Unique);
+				ilGen.Emit (OpCodes.Brfalse, elseLabel);     // brfalse elseLabel
+				GenerateStmt (ifStmt.trueStmt);              // generate true body code
+				bool trueFallsThrough = fallsThrough;        // save whether or not true falls through
+				bool elseFallsThrough = startFallsThrough;   // assume there is no else code
+				if (ifStmt.elseStmt == null) {
+					ilGen.MarkLabel (elseLabel);
+				} else {
+					ScriptMyLabel doneLabel = ilGen.DefineLabel ("ifdone_" + ifStmt.Unique);
+					ilGen.Emit (OpCodes.Br, doneLabel);  // branch to done
+					ilGen.MarkLabel (elseLabel);         // beginning of else code
+					fallsThrough = startFallsThrough;    // falls through is same as beginning of if statement
+					GenerateStmt (ifStmt.elseStmt);      // output else code
+					elseFallsThrough = fallsThrough;     // save whether or not else falls through
+					ilGen.MarkLabel (doneLabel);         // where end of true code branches to
+				}
+
+				/*
+				 * The if falls through iff the true or else parts fall through.
+				 */
+				fallsThrough = trueFallsThrough | elseFallsThrough;
 			}
 		}
 
@@ -941,6 +1034,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Finally output the equivalent 'goto' statement.
 			 */
 			ilGen.Emit (OpCodes.Br, stmtLabel.labelStruct);
+
+			/*
+			 * 'goto' statements never fall through.
+			 */
+			fallsThrough = false;
 		}
 
 		/**
@@ -957,6 +1055,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (labelStmt.hasBkwdRefs) {
 				EmitCallCheckRun (labelStmt.line);
 			}
+
+			/*
+			 * We are going to say that the label falls through.
+			 * It would be nice if we could analyze all referencing
+			 * goto's to see if all of them are not used but we are
+			 * going to assume that if the script writer put a goto
+			 * somewhere, it is probably going to be used.
+			 */
+			fallsThrough = true;
 		}
 
 		/**
@@ -979,6 +1086,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				rVal.PushVal (this, curDeclFunc.retType);
 			}
 			ilGen.Emit (OpCodes.Br, retLabel);
+
+			/*
+			 * 'return' statements never fall through.
+			 */
+			fallsThrough = false;
 		}
 
 		/**
@@ -1010,6 +1122,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ilGen.Emit (OpCodes.Ldstr, stateStmt.state.val);
 				ilGen.Emit (OpCodes.Newobj, scriptUndefinedStateExceptionConstructorInfo);
 				ilGen.Emit (OpCodes.Throw);
+				fallsThrough = false;
 				return;
 			}
 
@@ -1031,6 +1144,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Return without doing anything more.
 			 */
 			EmitDummyReturn ();
+
+			/*
+			 * 'state' statements never fall through.
+			 */
+			fallsThrough = false;
 		}
 
 		/**
@@ -1041,14 +1159,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ScriptMyLabel contLabel = ilGen.DefineLabel ("whilecont_" + whileStmt.Unique);
 			ScriptMyLabel doneLabel = ilGen.DefineLabel ("whiledone_" + whileStmt.Unique);
 
-			ilGen.MarkLabel (contLabel);                                // cont:
-			CompValu testRVal = GenerateFromRVal (whileStmt.testRVal);  //   testRVal = while test expression
-			testRVal.PushVal (this, tokenTypeBool);                     //   if (!testRVal)
-			ilGen.Emit (OpCodes.Brfalse, doneLabel);                    //      goto done
-			GenerateStmt (whileStmt.bodyStmt);                          //   while body statement
-			EmitCallCheckRun (whileStmt.line);                          //   __sw.CheckRun()
-			ilGen.Emit (OpCodes.Br, contLabel);                         //   goto cont
-			ilGen.MarkLabel (doneLabel);                                // done:
+			bool isConstTrue = IsConstBoolExprTrue (whileStmt.testRVal);
+			ilGen.MarkLabel (contLabel);                                        // cont:
+			if (!isConstTrue) {
+				CompValu testRVal = GenerateFromRVal (whileStmt.testRVal);  //   testRVal = while test expression
+				testRVal.PushVal (this, tokenTypeBool);                     //   if (!testRVal)
+				ilGen.Emit (OpCodes.Brfalse, doneLabel);                    //      goto done
+			}
+			GenerateStmt (whileStmt.bodyStmt);                                  //   while body statement
+			EmitCallCheckRun (whileStmt.line);                                  //   __sw.CheckRun()
+			ilGen.Emit (OpCodes.Br, contLabel);                                 //   goto cont
+			if (!isConstTrue) {
+				ilGen.MarkLabel (doneLabel);                                // done:
+			} else {
+				fallsThrough = false;
+			}
 		}
 
 		/**
@@ -2085,6 +2210,63 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			throw new Exception ("unknown type " + type.ToString ());
+		}
+
+		/**
+		 * @brief Determine if the expression has a constant boolean value
+		 *        and if so, if the value is true or false.
+		 * @param expr = expression to evaluate
+		 * @returns true: expression is contant and has boolean value true
+		 *         false: otherwise
+		 * Note:  Current implementation accepts only the most basic things.
+		 */
+		private bool IsConstBoolExprTrue (TokenRVal expr)
+		{
+			bool constVal;
+			return IsConstBoolExpr (expr, out constVal) && constVal;
+		}
+
+		private bool IsConstBoolExpr (TokenRVal expr, out bool constVal)
+		{
+			// Accept single floatingpoint or integer constant
+			if (expr is TokenRValFloat) {
+				constVal = ((TokenRValFloat)expr).flToken.val != 0.0;
+				return true;
+			}
+			if (expr is TokenRValInt) {
+				constVal = ((TokenRValInt)expr).inToken.val != 0;
+				return true;
+			}
+
+			// Accept single LSL-defined floatingpoint or integer constant
+			if (expr is TokenRValConst) {
+				ScriptConst sc = ((TokenRValConst)expr).val;
+				CompValu cv = sc.rVal;
+				if (cv is CompValuFloat) {
+					constVal = ((CompValuFloat)cv).x != 0.0;
+					return true;
+				}
+				if (cv is CompValuInteger) {
+					constVal = ((CompValuInteger)cv).x != 0;
+					return true;
+				}
+			}
+
+			// Accept !<constexpr>
+			if ((expr is TokenRValOpUn) && (((TokenRValOpUn)expr).opcode is TokenKwExclam)) {
+				if (!IsConstBoolExpr (((TokenRValOpUn)expr).rVal, out constVal)) return false;
+				constVal = !constVal;
+				return true;
+			}
+
+			// Accept (<constexpr>)
+			if (expr is TokenRValParen) {
+				return IsConstBoolExpr (((TokenRValParen)expr).rVal, out constVal);
+			}
+
+			// Reject all else
+			constVal = false;
+			return false;
 		}
 
 		/**
