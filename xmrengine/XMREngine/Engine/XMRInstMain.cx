@@ -135,7 +135,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         // to call API routines that queue events back to the script.
         // If we just had one lock, then the queuing would deadlock.
 
-        // guards m_EventQueue, m_EventCounts, m_Running
+        // guards m_DetachQuantum, m_EventQueue, m_EventCounts, m_Running, m_Suspended
         public Object m_QueueLock = new Object();
 
         // true iff allowed to accept new events
@@ -260,8 +260,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         // tells it it's OK. This is needed to prevent loss of link messages
         // in complex objects, where no event can be allowed to run until
         // all possible link message receivers' queues are established.
-        //
-        private bool m_Suspended = true;
+        // Guarded by m_QueueLock.
+        public bool m_Suspended = true;
 
         // When llDie is executed within the attach(NULL_KEY) event of
         // a script being detached to inventory, the DeleteSceneObject call
@@ -271,6 +271,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         // Also, the attach(NULL_KEY) event needs to run with priority, and
         // it also needs to have a limited quantum.
         // If this is nonzero, we're detaching to inventory.
+        // Guarded by m_QueueLock.
         private int m_DetachQuantum = 0;
 
         // Finally, we need to wait until the quantum is done, or the script

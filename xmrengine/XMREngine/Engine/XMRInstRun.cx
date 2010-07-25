@@ -250,13 +250,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  */
                 else if (this.eventCode != ScriptEventCode.None)
                 {
-                    if (m_DetachQuantum > 0 && --m_DetachQuantum == 0)
+                    lock (m_QueueLock)
                     {
-                        m_Suspended = true;
-                        m_DetachReady.Set();
-                        m_RunOnePhase = "nothing to do #1";
-                        CheckRunLockInvariants(true);
-                        return XMRInstState.FINISHED;
+                        if (m_DetachQuantum > 0 && --m_DetachQuantum == 0)
+                        {
+                            m_Suspended = true;
+                            m_DetachReady.Set();
+                            m_RunOnePhase = "detach quantum went zero";
+                            CheckRunLockInvariants(true);
+                            return XMRInstState.FINISHED;
+                        }
                     }
 
                     m_RunOnePhase = "resume old event handler";
@@ -275,24 +278,25 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     EventParams evt = null;
                     ScriptEventCode evc = ScriptEventCode.None;
 
-                    /* We can't get here unless the script has been resumed
-                     * after creation, then suspended again, and then had
-                     * an event posted to it. We just pretend there is no
-                     * event int he queue and let the normal mechanics
-                     * carry out the suspension. A Resume will handle the
-                     * restarting gracefully. This is taking the easy way
-                     * out and may be improved in the future.
-                     */
-
-                    if (m_Suspended)
-                    {
-                        m_RunOnePhase = "nothing to do #2";
-                        CheckRunLockInvariants(true);
-                        return XMRInstState.FINISHED;
-                    }
-
                     lock (m_QueueLock)
                     {
+
+                        /* We can't get here unless the script has been resumed
+                         * after creation, then suspended again, and then had
+                         * an event posted to it. We just pretend there is no
+                         * event int he queue and let the normal mechanics
+                         * carry out the suspension. A Resume will handle the
+                         * restarting gracefully. This is taking the easy way
+                         * out and may be improved in the future.
+                         */
+
+                        if (m_Suspended)
+                        {
+                            m_RunOnePhase = "m_Suspended is set";
+                            CheckRunLockInvariants(true);
+                            return XMRInstState.FINISHED;
+                        }
+
                         m_RunOnePhase = "dequeue event";
                         if (m_EventQueue.First != null)
                         {
@@ -321,27 +325,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                                                                evt.EventName);
                             m_EventCounts[(int)evc] --;
                         }
-                    }
 
-                    /*
-                     * If there is no event to dequeue, don't run this script
-                     * until another event gets queued.
-                     */
-                    if (evt == null)
-                    {
-                        if (m_DetachQuantum > 0)
+                        /*
+                         * If there is no event to dequeue, don't run this script
+                         * until another event gets queued.
+                         */
+                        if (evt == null)
                         {
-                            /*
-                             * This will happen if the attach event has run
-                             * and exited with time slice left.
-                             */
-                            m_Suspended = true;
-                            m_DetachReady.Set();
-                            m_DetachQuantum = 0;
+                            if (m_DetachQuantum > 0)
+                            {
+                                /*
+                                 * This will happen if the attach event has run
+                                 * and exited with time slice left.
+                                 */
+                                m_Suspended = true;
+                                m_DetachReady.Set();
+                                m_DetachQuantum = 0;
+                            }
+                            m_RunOnePhase = "nothing to do #4";
+                            CheckRunLockInvariants(true);
+                            return XMRInstState.FINISHED;
                         }
-                        m_RunOnePhase = "nothing to do #4";
-                        CheckRunLockInvariants(true);
-                        return XMRInstState.FINISHED;
                     }
 
                     /*

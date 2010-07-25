@@ -1435,7 +1435,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  */
                 case XMRInstState.FINISHED: {
                     Monitor.Enter(inst.m_QueueLock);
-                    if (inst.m_EventQueue.Count > 0) {
+                    if (!inst.m_Suspended && (inst.m_EventQueue.Count > 0)) {
                         Monitor.Exit(inst.m_QueueLock);
                         lock (m_StartQueue) {
                             inst.m_IState = XMRInstState.ONSTARTQ;
