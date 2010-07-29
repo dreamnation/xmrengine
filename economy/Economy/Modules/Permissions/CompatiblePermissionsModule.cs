@@ -95,6 +95,7 @@ namespace Careminster.Modules.Permissions
             m_Scene.Permissions.OnReclaimParcel += CanReclaimParcel;
             m_Scene.Permissions.OnDeedParcel += CanDeedParcel;
             m_Scene.Permissions.OnIsGod += IsGod;
+            m_Scene.Permissions.OnIsAdministrator += IsAdministrator;
             m_Scene.Permissions.OnDuplicateObject += CanDuplicateObject;
             m_Scene.Permissions.OnDeleteObject += CanDeleteObject;
             m_Scene.Permissions.OnEditObject += CanEditObject;
