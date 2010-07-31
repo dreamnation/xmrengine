@@ -78,6 +78,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 base.llDie();
             }
         }
+
+        public override LSL_Integer llGetFreeMemory()
+        {
+            if (m_ScriptEngine is XMREngine)
+            {
+                XMREngine e = (XMREngine)m_ScriptEngine;
+
+                return new LSL_Integer(e.GetInstance(m_itemID).heapLeft);
+            }
+            else
+            {
+                return base.llGetFreeMemory();
+            }
+        }
     }
 
     public partial class XMRInstance

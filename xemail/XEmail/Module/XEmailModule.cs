@@ -506,6 +506,12 @@ namespace Careminster.Modules.XEmail
                     UUID regionID;
                     if (findPrim(objectID, out regionName, out regionID) != null)
                     {
+                        XEmailObject[] checkObjects = m_ObjectsTable.Get("ObjectID", objectID.ToString());
+                        if (checkObjects.Length > 0 && checkObjects[0].RegionID != regionID) // Transported via attach
+                        {
+                            m_ObjectsTable.Delete("ObjectID", objectID.ToString());
+                        }
+
                         XEmailObject obj = new XEmailObject();
                         obj.Data = new Dictionary<string,string>();
                         obj.ObjectID = objectID;
