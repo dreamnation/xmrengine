@@ -25,6 +25,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		DclLabel, DclLocal, DclMethod, MarkLabel,
 		EmitNull, EmitField, EmitLocal, EmitType, EmitLabel, EmitMethodExt, 
 		EmitMethodInt, EmitCtor, EmitDouble, EmitFloat, EmitInteger, EmitString,
+		EmitLabels
 	}
 
 	public delegate void ScriptMyILGenEndMethod (DynamicMethod method);
@@ -185,6 +186,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			objWriter.Write ((byte)ScriptMyILGenCode.EmitLabel);
 			WriteOpCode (opcode);
 			objWriter.Write (myLabel.number);
+		}
+
+		public void Emit (OpCode opcode, ScriptMyLabel[] myLabels)
+		{
+			objWriter.Write ((byte)ScriptMyILGenCode.EmitLabels);
+			WriteOpCode (opcode);
+			int nLabels = myLabels.Length;
+			objWriter.Write (nLabels);
+			for (int i = 0; i < nLabels; i ++) {
+				objWriter.Write (myLabels[i].number);
+			}
 		}
 
 		public void Emit (OpCode opcode, ScriptMyILGen method)
@@ -504,6 +516,33 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						LinePrefix (offset, dbg, ilGenArg, opCode);
 						dbg.Append (labelNames[number]);
 						dbg.Append ("   (label)");
+						break;
+					}
+
+					/*
+					 * Emit an opcode with a Label array operand.
+					 */
+					case ScriptMyILGenCode.EmitLabels: {
+						OpCode opCode = ReadOpCode (objReader);
+						int nLabels   = objReader.ReadInt32 ();
+						Label[] lbls  = new Label[nLabels];
+						int[] nums    = new int[nLabels];
+						for (int i = 0; i < nLabels; i ++) {
+							nums[i] = objReader.ReadInt32 ();
+							lbls[i] = labels[nums[i]];
+						}
+
+						ilGen.Emit (opCode, lbls);
+
+						LinePrefix (offset, dbg, ilGenArg, opCode);
+						int lineLen = dbg.Length;
+						for (int i = 0; i < nLabels; i ++) {
+							if (i > 0) {
+								dbg.AppendLine ();
+								dbg.Append (",".PadLeft (lineLen));
+							}
+							dbg.Append (labelNames[nums[i]]);
+						}
 						break;
 					}
 

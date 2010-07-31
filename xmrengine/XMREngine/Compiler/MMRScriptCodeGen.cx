@@ -38,7 +38,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static Dictionary<string, BinOpStr> binOpStrings = BinOpStr.DefineBinOps ();
 		private static Dictionary<string, InlineFunction> inlineFunctions = InlineFunction.CreateDictionary ();
 		private static Dictionary<string, TokenDeclFunc> legalEventHandlers = CreateLegalEventHandlers ();
-		private static TokenTypeBool  tokenTypeBool  = new TokenTypeBool  (null);
+		private static TokenTypeBool tokenTypeBool = new TokenTypeBool (null);
+		private static TokenTypeInt  tokenTypeInt  = new TokenTypeInt  (null);
 		private static Type[] instanceTypeArg = new Type[] { typeof (XMRInstAbstract) };
 
 		private static ConstructorInfo lslFloatConstructorInfo = typeof (LSL_Float).GetConstructor (new Type[] { typeof (SCRIPTFLOAT) });
@@ -101,8 +102,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		/*
 		 * There is one set of these variables for each script being compiled.
 		 */
-		private bool fallsThrough = false;
+		private bool mightGetHere = false;
 		private bool youveAnError = false;
+		private BreakContTarg curBreakTarg = null;
+		private BreakContTarg curContTarg  = null;
 		private int nStates = 0;
 		private Token errorMessageToken = null;
 		private TokenDeclFunc curDeclFunc = null;
@@ -248,11 +251,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * an unique class for each script, we can just use XMRInstance as is for all.
 			 */
 			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclVar> kvp in tokenScript.vars) {
+				TokenDeclVar declVar = kvp.Value;
+
+				/*
+				 * Omit 'constant' variables as they were handled by the reducer.
+				 */
+				if (declVar.constant) continue;
 
 				/*
 				 * Create entry in the value array for the variable.
 				 */
-				TokenDeclVar declVar = kvp.Value;
 				CompValu globalVar = new CompValuGlobal (declVar, scriptObjCode);
 
 				/*
@@ -434,11 +442,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Push current function being processed.
-			 * Set 'fallsThrough' as the code is always entered at the top.
+			 * Set 'mightGetHere' as the code at the top is always executed.
 			 */
-			bool oldFallsThrough = fallsThrough;
-			TokenDeclFunc oldDeclFunc = curDeclFunc;
-			fallsThrough = true;
+			bool          oldMightGetHere = mightGetHere;
+			BreakContTarg oldBreakTarg    = curBreakTarg;
+			BreakContTarg oldContTarg     = curContTarg;
+			TokenDeclFunc oldDeclFunc     = curDeclFunc;
+			mightGetHere = true;
+			curBreakTarg = null;
+			curContTarg  = null;
 			curDeclFunc  = declFunc;
 
 			/*
@@ -487,6 +499,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				foreach (KeyValuePair<string, TokenDeclVar> kvp in tokenScript.vars) {
 					TokenDeclVar gblDeclVar = kvp.Value;
 
+					if (gblDeclVar.constant) continue;
 					CompValu var = scriptInstanceVariables[gblDeclVar.name.val];
 					var.PopPre (this);
 					if (gblDeclVar.init != null) {
@@ -548,7 +561,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			GenerateFuncBody (declFunc);
 
-			fallsThrough = oldFallsThrough;
+			mightGetHere = oldMightGetHere;
+			curBreakTarg = oldBreakTarg;
+			curContTarg  = oldContTarg;
 			curDeclFunc  = oldDeclFunc;
 		}
 
@@ -595,11 +610,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Push current function being processed.
-			 * Set 'fallsThrough' as the code is always entered at the top.
+			 * Set 'mightGetHere' as the code is always entered at the top.
 			 */
-			bool oldFallsThrough = fallsThrough;
-			TokenDeclFunc oldDeclFunc = curDeclFunc;
-			fallsThrough = true;
+			bool oldMightGetHere       = mightGetHere;
+			BreakContTarg oldBreakTarg = curBreakTarg;
+			BreakContTarg oldContTarg  = curContTarg;
+			TokenDeclFunc oldDeclFunc  = curDeclFunc;
+			mightGetHere = true;
+			curBreakTarg = null;
+			curContTarg  = null;
 			curDeclFunc  = declFunc;
 
 			/*
@@ -648,7 +667,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			GenerateFuncBody (declFunc);
 
-			fallsThrough = oldFallsThrough;
+			mightGetHere = oldMightGetHere;
+			curBreakTarg = oldBreakTarg;
+			curContTarg  = oldContTarg;
 			curDeclFunc  = oldDeclFunc;
 		}
 
@@ -670,10 +691,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * If code falls through to this point, means they are missing 
-			 * a return statement.  And its legal only if the function 
+			 * a return statement.  And that is legal only if the function 
 			 * returns 'void'.
 			 */
-			if (fallsThrough && !(declFunc.retType is TokenTypeVoid)) {
+			if (mightGetHere && !(declFunc.retType is TokenTypeVoid)) {
 				ErrorMsg (declFunc.body, "missing final return statement");
 			}
 
@@ -716,6 +737,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			foreach (TokenDeclVar localVar in declFunc.localVars) {
 
 				/*
+				 * Skip all 'constant' vars as they were handled by the reducer.
+				 */
+				if (localVar.constant) continue;
+
+				/*
 				 * Get a stack location for it and fill in with default value.
 				 */
 				CompValu localLoc = new CompValuTemp (localVar.type, localVar.name.val, this);
@@ -739,6 +765,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			errorMessageToken = stmt;
 			if (stmt is TokenStmtBlock)   { GenerateStmtBlock   ((TokenStmtBlock)stmt);   return; }
+			if (stmt is TokenStmtBreak)   { GenerateStmtBreak   ((TokenStmtBreak)stmt);   return; }
+			if (stmt is TokenStmtCont)    { GenerateStmtCont    ((TokenStmtCont)stmt);    return; }
 			if (stmt is TokenStmtDo)      { GenerateStmtDo      ((TokenStmtDo)stmt);      return; }
 			if (stmt is TokenStmtFor)     { GenerateStmtFor     ((TokenStmtFor)stmt);     return; }
 			if (stmt is TokenStmtForEach) { GenerateStmtForEach ((TokenStmtForEach)stmt); return; }
@@ -749,6 +777,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (stmt is TokenStmtRet)     { GenerateStmtRet     ((TokenStmtRet)stmt);     return; }
 			if (stmt is TokenStmtRVal)    { GenerateStmtRVal    ((TokenStmtRVal)stmt);    return; }
 			if (stmt is TokenStmtState)   { GenerateStmtState   ((TokenStmtState)stmt);   return; }
+			if (stmt is TokenStmtSwitch)  { GenerateStmtSwitch  ((TokenStmtSwitch)stmt);  return; }
 			if (stmt is TokenStmtWhile)   { GenerateStmtWhile   ((TokenStmtWhile)stmt);   return; }
 			throw new Exception ("unknown TokenStmt type " + stmt.GetType ().ToString ());
 		}
@@ -758,6 +787,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void GenerateStmtBlock (TokenStmtBlock stmtBlock)
 		{
+			if (!mightGetHere) return;
+
 			/*
 			 * Start a new variable defintion block.
 			 */
@@ -792,34 +823,120 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		/**
+		 * @brief output code for a 'break' statement
+		 */
+		private void GenerateStmtBreak (TokenStmtBreak breakStmt)
+		{
+			if (!mightGetHere) return;
+
+			/*
+			 * Make sure we are in a breakable situation.
+			 */
+			if (curBreakTarg == null) {
+				ErrorMsg (breakStmt, "not in a breakable situation");
+				return;
+			}
+
+			/*
+			 * Output the goto instruction.
+			 */
+			ilGen.Emit (OpCodes.Br, curBreakTarg.label);
+
+			/*
+			 * Tell anyone who cares that the break target was actually used.
+			 */
+			curBreakTarg.used = true;
+
+			/*
+			 * 'break' statements never fall through.
+			 */
+			mightGetHere = false;
+		}
+
+		/**
+		 * @brief output code for a 'continue' statement
+		 */
+		private void GenerateStmtCont (TokenStmtCont contStmt)
+		{
+			if (!mightGetHere) return;
+
+			/*
+			 * Make sure we are in a contable situation.
+			 */
+			if (curContTarg == null) {
+				ErrorMsg (contStmt, "not in a continueable situation");
+				return;
+			}
+
+			/*
+			 * Output the goto instruction.
+			 */
+			ilGen.Emit (OpCodes.Br, curContTarg.label);
+
+			/*
+			 * Tell anyone who cares that the continue target was actually used.
+			 */
+			curContTarg.used = true;
+
+			/*
+			 * 'continue' statements never fall through.
+			 */
+			mightGetHere = false;
+		}
+
+		/**
 		 * @brief output code for a 'do' statement
 		 */
 		private void GenerateStmtDo (TokenStmtDo doStmt)
 		{
-			ScriptMyLabel loopLabel = ilGen.DefineLabel ("doloop_" + doStmt.Unique);
+			if (!mightGetHere) return;
+
+			BreakContTarg oldBreakTarg = curBreakTarg;
+			BreakContTarg oldContTarg  = curContTarg;
+			ScriptMyLabel loopLabel    = ilGen.DefineLabel ("doloop_" + doStmt.Unique);
+
+			curBreakTarg = new BreakContTarg (ilGen, "dobreak_" + doStmt.Unique);
+			curContTarg  = new BreakContTarg (ilGen, "docont_"  + doStmt.Unique);
 
 			ilGen.MarkLabel (loopLabel);
 			GenerateStmt (doStmt.bodyStmt);
-			EmitCallCheckRun (doStmt.line);
-			if (IsConstBoolExprTrue (doStmt.testRVal)) {
-
-				/*
-				 * Unconditional looping, don't bother with the test
-				 * and say we never fall through to next statement.
-				 */
-				ilGen.Emit (OpCodes.Br, loopLabel);
-				fallsThrough = false;
-			} else {
-
-				/*
-				 * Conditional looping, output test and loop body.
-				 * Leave fallsThrough alone as we may fall through
-				 * (but only if we might have entered the loop).
-				 */
-				CompValu testRVal = GenerateFromRVal (doStmt.testRVal);
-				testRVal.PushVal (this, tokenTypeBool);
-				ilGen.Emit (OpCodes.Brtrue, loopLabel);
+			if (curContTarg.used) {
+				ilGen.MarkLabel (curContTarg.label);
+				mightGetHere = true;
 			}
+
+			if (mightGetHere) {
+				EmitCallCheckRun (doStmt.line);
+				if (IsConstBoolExprTrue (doStmt.testRVal)) {
+
+					/*
+					 * Unconditional looping, don't bother with the test
+					 * and say we never fall through to next statement.
+					 */
+					ilGen.Emit (OpCodes.Br, loopLabel);
+					mightGetHere = false;
+				} else {
+
+					/*
+					 * Conditional looping, output test and brach back to top of loop.
+					 */
+					CompValu testRVal = GenerateFromRVal (doStmt.testRVal);
+					testRVal.PushVal (this, tokenTypeBool);
+					ilGen.Emit (OpCodes.Brtrue, loopLabel);
+				}
+			}
+
+			/*
+			 * If 'break' statement was used, output target label.
+			 * And assume that since a 'break' statement was used, it's possible for the code to get here.
+			 */
+			if (curBreakTarg.used) {
+				ilGen.MarkLabel (curBreakTarg.label);
+				mightGetHere = true;
+			}
+
+			curBreakTarg = oldBreakTarg;
+			curContTarg  = oldContTarg;
 		}
 
 		/**
@@ -830,24 +947,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void GenerateStmtFor (TokenStmtFor forStmt)
 		{
-			bool hasTest;
-			ScriptMyLabel doneLabel = ilGen.DefineLabel ("fordone_" + forStmt.Unique);
-			ScriptMyLabel loopLabel = ilGen.DefineLabel ("forloop_" + forStmt.Unique);
+			if (!mightGetHere) return;
+
+			BreakContTarg oldBreakTarg = curBreakTarg;
+			BreakContTarg oldContTarg  = curContTarg;
+			ScriptMyLabel loopLabel    = ilGen.DefineLabel ("forloop_" + forStmt.Unique);
+
+			curBreakTarg = new BreakContTarg (ilGen, "forbreak_" + forStmt.Unique);
+			curContTarg  = new BreakContTarg (ilGen, "forcont_"  + forStmt.Unique);
 
 			if (forStmt.initStmt != null) {
 				GenerateStmt (forStmt.initStmt);
 			}
 			ilGen.MarkLabel (loopLabel);
-			EmitCallCheckRun (forStmt.line);
 
 			/*
 			 * See if we have a test expression that is other than a constant TRUE.
 			 */
-			hasTest = (forStmt.testRVal != null) && !IsConstBoolExprTrue (forStmt.testRVal);
-			if (hasTest) {
+			if ((forStmt.testRVal != null) && !IsConstBoolExprTrue (forStmt.testRVal)) {
 				CompValu testRVal = GenerateFromRVal (forStmt.testRVal);
 				testRVal.PushVal (this, tokenTypeBool);
-				ilGen.Emit (OpCodes.Brfalse, doneLabel);
+				ilGen.Emit (OpCodes.Brfalse, curBreakTarg.label);
+				curBreakTarg.used = true;
 			}
 
 			/*
@@ -856,34 +977,52 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			GenerateStmt (forStmt.bodyStmt);
 
 			/*
-			 * Output increment statement, if any.
+			 * Here's where a 'continue' statement jumps to.
 			 */
-			if (forStmt.incrRVal != null) {
-				GenerateFromRVal (forStmt.incrRVal);
+			if (curContTarg.used) {
+				ilGen.MarkLabel (curContTarg.label);
+				mightGetHere = true;
 			}
 
-			/*
-			 * Unconditional branch back to beginning of loop.
-			 */
-			ilGen.Emit (OpCodes.Br, loopLabel);
+			if (mightGetHere) {
+
+				/*
+				 * After checking for excessive CPU time, output increment statement, if any.
+				 */
+				EmitCallCheckRun (forStmt.line);
+				if (forStmt.incrRVal != null) {
+					GenerateFromRVal (forStmt.incrRVal);
+				}
+
+				/*
+				 * Unconditional branch back to beginning of loop.
+				 */
+				ilGen.Emit (OpCodes.Br, loopLabel);
+			}
 
 			/*
 			 * If test needs label, output label for it to jump to.
-			 * Otherwise, clear fallsThrough as we know loop never
+			 * Otherwise, clear mightGetHere as we know loop never
 			 * falls out the bottom.
 			 */
-			if (hasTest) {
-				ilGen.MarkLabel (doneLabel);
-			} else {
-				fallsThrough = false;
+			mightGetHere = curBreakTarg.used;
+			if (mightGetHere) {
+				ilGen.MarkLabel (curBreakTarg.label);
 			}
+
+			curBreakTarg = oldBreakTarg;
+			curContTarg  = oldContTarg;
 		}
 
 		private void GenerateStmtForEach (TokenStmtForEach forEachStmt)
 		{
-			CompValu keyLVal   = null;
-			CompValu valLVal   = null;
-			CompValu arrayLVal = GenerateFromLVal (forEachStmt.arrayLVal);
+			if (!mightGetHere) return;
+
+			BreakContTarg oldBreakTarg = curBreakTarg;
+			BreakContTarg oldContTarg  = curContTarg;
+			CompValu      keyLVal      = null;
+			CompValu      valLVal      = null;
+			CompValu      arrayLVal    = GenerateFromLVal (forEachStmt.arrayLVal);
 
 			if (forEachStmt.keyLVal != null) {
 				keyLVal = GenerateFromLVal (forEachStmt.keyLVal);
@@ -901,7 +1040,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ErrorMsg (forEachStmt.arrayLVal, "must be an array");
 			}
 
-			ScriptMyLabel doneLabel = ilGen.DefineLabel ("foreachdone_" + forEachStmt.Unique);
+			curBreakTarg = new BreakContTarg (ilGen, "foreachbreak_" + forEachStmt.Unique);
+			curContTarg  = new BreakContTarg (ilGen, "foreachcont_"  + forEachStmt.Unique);
+
 			ScriptMyLabel loopLabel = ilGen.DefineLabel ("foreachloop_" + forEachStmt.Unique);
 			ScriptMyLocal indexVar  = ilGen.DeclareLocal (typeof (int), "foreachidx_" + forEachStmt.Unique);
 			ScriptMyLocal objectVar = ((keyLVal == null) || (valLVal == null)) ? ilGen.DeclareLocal (typeof (object), "foreachobj_" + forEachStmt.Unique) : null;
@@ -934,15 +1075,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			// Call XMR_Array.ForEach (arrayLVal, index, ref keyLVal, ref valLVal)
 			ilGen.Emit (OpCodes.Callvirt, forEachMethodInfo);
-			ilGen.Emit (OpCodes.Brfalse, doneLabel);
+			ilGen.Emit (OpCodes.Brfalse, curBreakTarg.label);
+			curBreakTarg.used = true;
 
-			/*
-			 * Make sure we aren't hogging the CPU then generate the body and loop back.
-			 */
-			EmitCallCheckRun (forEachStmt.line);
 			GenerateStmt (forEachStmt.bodyStmt);
-			ilGen.Emit (OpCodes.Br, loopLabel);
-			ilGen.MarkLabel (doneLabel);
+			if (curContTarg.used) {
+				ilGen.MarkLabel (curContTarg.label);
+				mightGetHere = true;
+			}
+			if (mightGetHere) {
+				EmitCallCheckRun (forEachStmt.line);
+				ilGen.Emit (OpCodes.Br, loopLabel);
+			}
+			ilGen.MarkLabel (curBreakTarg.label);
+			mightGetHere = true;
+
+			curBreakTarg = oldBreakTarg;
+			curContTarg  = oldContTarg;
 		}
 
 		/**
@@ -952,6 +1101,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void GenerateStmtIf (TokenStmtIf ifStmt)
 		{
+			if (!mightGetHere) return;
+
 			bool constVal;
 
 			/*
@@ -967,35 +1118,36 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				} else if (ifStmt.elseStmt != null) {
 					GenerateStmt (ifStmt.elseStmt);
 				}
+			} else if (ifStmt.elseStmt == null) {
+
+				/*
+				 * This is an 'if' statement without an 'else' clause.
+				 */
+				CompValu testRVal = GenerateFromRVal (ifStmt.testRVal);
+				testRVal.PushVal (this, tokenTypeBool);      // generate test code
+				ScriptMyLabel doneLabel = ilGen.DefineLabel ("ifdone_" + ifStmt.Unique);
+				ilGen.Emit (OpCodes.Brfalse, doneLabel);     // brfalse doneLabel
+				GenerateStmt (ifStmt.trueStmt);              // generate true body code
+				ilGen.MarkLabel (doneLabel);
+				mightGetHere = true;                         // there's always a possibility of getting here
 			} else {
 
 				/*
-				 * Need to output code for the test.
+				 * This is an 'if' statement with an 'else' clause.
 				 */
-				bool startFallsThrough = fallsThrough;       // save  'fallsTrhough' at beginning of if statement
 				CompValu testRVal = GenerateFromRVal (ifStmt.testRVal);
 				testRVal.PushVal (this, tokenTypeBool);      // generate test code
 				ScriptMyLabel elseLabel = ilGen.DefineLabel ("ifelse_" + ifStmt.Unique);
 				ilGen.Emit (OpCodes.Brfalse, elseLabel);     // brfalse elseLabel
 				GenerateStmt (ifStmt.trueStmt);              // generate true body code
-				bool trueFallsThrough = fallsThrough;        // save whether or not true falls through
-				bool elseFallsThrough = startFallsThrough;   // assume there is no else code
-				if (ifStmt.elseStmt == null) {
-					ilGen.MarkLabel (elseLabel);
-				} else {
-					ScriptMyLabel doneLabel = ilGen.DefineLabel ("ifdone_" + ifStmt.Unique);
-					ilGen.Emit (OpCodes.Br, doneLabel);  // branch to done
-					ilGen.MarkLabel (elseLabel);         // beginning of else code
-					fallsThrough = startFallsThrough;    // falls through is same as beginning of if statement
-					GenerateStmt (ifStmt.elseStmt);      // output else code
-					elseFallsThrough = fallsThrough;     // save whether or not else falls through
-					ilGen.MarkLabel (doneLabel);         // where end of true code branches to
-				}
-
-				/*
-				 * The if falls through iff the true or else parts fall through.
-				 */
-				fallsThrough = trueFallsThrough | elseFallsThrough;
+				bool trueMightGetHere = mightGetHere;        // save whether or not true falls through
+				ScriptMyLabel doneLabel = ilGen.DefineLabel ("ifdone_" + ifStmt.Unique);
+				ilGen.Emit (OpCodes.Br, doneLabel);          // branch to done
+				ilGen.MarkLabel (elseLabel);                 // beginning of else code
+				mightGetHere = true;                         // the top of the else might be executed
+				GenerateStmt (ifStmt.elseStmt);              // output else code
+				ilGen.MarkLabel (doneLabel);                 // where end of true clause code branches to
+				mightGetHere |= trueMightGetHere;            // gets this far if either true or else falls through
 			}
 		}
 
@@ -1004,6 +1156,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void GenerateStmtJump (TokenStmtJump jumpStmt)
 		{
+			if (!mightGetHere) return;
+
 			/*
 			 * Make sure the target label is defined somewhere in the function.
 			 */
@@ -1038,7 +1192,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * 'goto' statements never fall through.
 			 */
-			fallsThrough = false;
+			mightGetHere = false;
 		}
 
 		/**
@@ -1063,7 +1217,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * going to assume that if the script writer put a goto
 			 * somewhere, it is probably going to be used.
 			 */
-			fallsThrough = true;
+			mightGetHere = true;
 		}
 
 		/**
@@ -1072,6 +1226,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void GenerateStmtRet (TokenStmtRet retStmt)
 		{
+			if (!mightGetHere) return;
+
 			if (curDeclFunc.retType is TokenTypeVoid) {
 				if (retStmt.rVal != null) {
 					ErrorMsg (retStmt, "function returns void, no value allowed");
@@ -1090,7 +1246,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * 'return' statements never fall through.
 			 */
-			fallsThrough = false;
+			mightGetHere = false;
 		}
 
 		/**
@@ -1098,6 +1254,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void GenerateStmtRVal (TokenStmtRVal rValStmt)
 		{
+			if (!mightGetHere) return;
+
 			GenerateFromRVal (rValStmt.rVal);
 		}
 
@@ -1107,6 +1265,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void GenerateStmtState (TokenStmtState stateStmt)
 		{
+			if (!mightGetHere) return;
+
 			int index = 0;  // 'default' state
 
 			/*
@@ -1122,7 +1282,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ilGen.Emit (OpCodes.Ldstr, stateStmt.state.val);
 				ilGen.Emit (OpCodes.Newobj, scriptUndefinedStateExceptionConstructorInfo);
 				ilGen.Emit (OpCodes.Throw);
-				fallsThrough = false;
+				mightGetHere = false;
 				return;
 			}
 
@@ -1148,7 +1308,225 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * 'state' statements never fall through.
 			 */
-			fallsThrough = false;
+			mightGetHere = false;
+		}
+
+		/**
+		 * @brief output code for a 'switch' statement
+		 */
+		private void GenerateStmtSwitch (TokenStmtSwitch switchStmt)
+		{
+			if (!mightGetHere) return;
+
+			BreakContTarg   oldBreakTarg = curBreakTarg;
+			ScriptMyLabel   defaultLabel = null;
+			TokenSwitchCase sortedCases  = null;
+			TokenSwitchCase defaultCase  = null;
+
+			curBreakTarg = new BreakContTarg (ilGen, "switchbreak_" + switchStmt.Unique);
+
+			/*
+			 * Build list of cases sorted by ascending values.
+			 * There should not be any overlapping or values.
+			 */
+			for (TokenSwitchCase thisCase = switchStmt.cases; thisCase != null; thisCase = thisCase.nextCase) {
+				thisCase.label = ilGen.DefineLabel ("case_" + thisCase.Unique);
+
+				/*
+				 * The default case if any, goes in its own separate slot.
+				 */
+				if (thisCase.rVal1 == null) {
+					if (defaultCase != null) {
+						ErrorMsg (thisCase, "only one default case allowed");
+						ErrorMsg (defaultCase, "...prior default case");
+						return;
+					}
+					defaultCase  = thisCase;
+					defaultLabel = thisCase.label;
+					continue;
+				}
+
+				/*
+				 * Evaluate case operands, they must be compile-time integer constants.
+				 */
+				if (!IsConstIntExpr (thisCase.rVal1, out thisCase.val1)) {
+					ErrorMsg (thisCase.rVal1, "must be compile-time constant");
+					return;
+				}
+				thisCase.val2 = thisCase.val1;
+				if ((thisCase.rVal2 != null) && !IsConstIntExpr (thisCase.rVal2, out thisCase.val2)) {
+					ErrorMsg (thisCase.rVal2, "must be compile-time constant");
+					return;
+				}
+				if (thisCase.val2 < thisCase.val1) {
+					ErrorMsg (thisCase.rVal2, "must be .ge. first value for the case");
+					return;
+				}
+
+				/*
+				 * Insert into list, sorted by value.
+				 * Note that both limits are inclusive.
+				 */
+				TokenSwitchCase lastCase = null;
+				TokenSwitchCase nextCase;
+				for (nextCase = sortedCases; nextCase != null; nextCase = nextCase.nextSortedCase) {
+					if (nextCase.val1 >  thisCase.val2) break;
+					if (nextCase.val2 >= thisCase.val1) {
+						ErrorMsg (thisCase, "value used by previous case");
+						ErrorMsg (nextCase, "...previous case");
+						return;
+					}
+					lastCase = nextCase;
+				}
+				thisCase.nextSortedCase = nextCase;
+				if (lastCase == null) {
+					sortedCases = thisCase;
+				} else {
+					lastCase.nextSortedCase = thisCase;
+				}
+			}
+
+			if (defaultLabel == null) {
+				defaultLabel = ilGen.DefineLabel ("default_" + switchStmt.Unique);
+			}
+
+			/*
+			 * Output code to calculate index, push result on stack as an integer.
+			 */
+			CompValu testRVal = GenerateFromRVal (switchStmt.testRVal);
+			testRVal.PushVal (this, tokenTypeInt);
+
+			/*
+			 * Output code to jump to the case statement's labels based on integer index on stack.
+			 * Note that each case still has the integer index on stack when jumped to.
+			 */
+			int offset = 0;
+			for (TokenSwitchCase thisCase = sortedCases; thisCase != null;) {
+
+				/*
+				 * Scan through list of cases to find the maximum number of cases who's numvalues-to-case ratio
+				 * is from 0.5 to 2.0.  If such a group is found, use a CIL switch for them.  If not, just use a
+				 * compare-and-branch for the current case.
+				 */
+				int numCases  = 0;
+				int numFound  = 0;
+				int lowValue  = thisCase.val1;
+				int numValues = 0;
+				for (TokenSwitchCase scanCase = thisCase; scanCase != null; scanCase = scanCase.nextSortedCase) {
+					int nVals = scanCase.val2 - thisCase.val1 + 1;
+					double ratio = (double)nVals / (double)(++ numCases);
+					if ((ratio >= 0.5) && (ratio <= 2.0)) {
+						numFound  = numCases;
+						numValues = nVals;
+					}
+				}
+				if (numFound > 1) {
+
+					/*
+					 * There is a group of case's, starting with thisCase, that fall within our criteria, ie, 
+					 * that have a nice density of meaningful jumps.
+					 *
+					 * So first generate an array of jumps to the default label (explicit or implicit).
+					 */
+					ScriptMyLabel[] labels = new ScriptMyLabel[numValues];
+					for (int i = 0; i < numValues; i ++) {
+						labels[i] = defaultLabel;
+					}
+
+					/*
+					 * Next, for each case in that group, fill in the corresponding array entries to jump to
+					 * that case's label.
+					 */
+					do {
+						for (int i = thisCase.val1; i <= thisCase.val2; i ++) {
+							labels[i-lowValue] = thisCase.label;
+						}
+						thisCase = thisCase.nextSortedCase;
+					} while (-- numFound > 0);
+
+					/*
+					 * Subtract the low value and do the computed jump.
+					 * The OpCodes.Switch falls through if out of range (unsigned compare).
+					 */
+					if (offset != lowValue) {
+						PushConstantI4 (lowValue - offset);
+						ilGen.Emit (OpCodes.Sub);
+						offset = lowValue;
+					}
+					ilGen.Emit (OpCodes.Dup);
+					ilGen.Emit (OpCodes.Switch, labels);
+				} else {
+
+					/*
+					 * It's not economical to do with a computed jump, so output a subtract/compare/branch
+					 * for thisCase.
+					 */
+					if (lowValue == thisCase.val2) {
+						ilGen.Emit (OpCodes.Dup);
+						PushConstantI4 (lowValue - offset);
+						ilGen.Emit (OpCodes.Beq, thisCase.label);
+					} else {
+						if (offset != lowValue) {
+							PushConstantI4 (lowValue - offset);
+							ilGen.Emit (OpCodes.Sub);
+							offset = lowValue;
+						}
+						ilGen.Emit (OpCodes.Dup);
+						PushConstantI4 (thisCase.val2 - offset);
+						ilGen.Emit (OpCodes.Ble_Un, thisCase.label);
+					}
+					thisCase = thisCase.nextSortedCase;
+				}
+			}
+			ilGen.Emit (OpCodes.Br, defaultLabel);
+
+			/*
+			 * Output code for the cases themselves, in the order given by the programmer, 
+			 * so they fall through as programmer wants.  This includes the default case, if any.
+			 *
+			 * Each label is jumped to with the index still on the stack.  So pop it off in case
+			 * the case body does a goto outside the switch or a return.  If the case body might
+			 * fall through to the next case or the bottom of the switch, push a zero so the stack
+			 * matches in all cases.
+			 */
+			for (TokenSwitchCase thisCase = switchStmt.cases; thisCase != null; thisCase = thisCase.nextCase) {
+				ilGen.MarkLabel (thisCase.label);	// the branch comes here
+				ilGen.Emit (OpCodes.Pop);		// pop the integer index off stack
+				mightGetHere = true;			// it's possible to get here
+				for (TokenStmt stmt = thisCase.stmts; stmt != null; stmt = (TokenStmt)(stmt.nextToken)) {
+					GenerateStmt (stmt);		// output the case/explicit default body
+				}
+				if (mightGetHere) {
+					PushConstantI4 (0);		// in case we fall through, push a dummy integer index
+				}
+			}
+
+			/*
+			 * If no explicit default case, output the default label here.
+			 */
+			if (defaultCase == null) {
+				ilGen.MarkLabel (defaultLabel);
+				mightGetHere = true;
+			}
+
+			/*
+			 * If the last case of the switch falls through out the bottom,
+			 * we have to pop the index still on the stack.
+			 */
+			if (mightGetHere) {
+				ilGen.Emit (OpCodes.Pop);
+			}
+
+			/*
+			 * Output the 'break' statement target label.
+			 * Note that the integer index is not on the stack at this point.
+			 */
+			if (curBreakTarg.used) {
+				ilGen.MarkLabel (curBreakTarg.label);
+				mightGetHere = true;
+			}
+
+			curBreakTarg = oldBreakTarg;
 		}
 
 		/**
@@ -1156,24 +1534,38 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void GenerateStmtWhile (TokenStmtWhile whileStmt)
 		{
-			ScriptMyLabel contLabel = ilGen.DefineLabel ("whilecont_" + whileStmt.Unique);
-			ScriptMyLabel doneLabel = ilGen.DefineLabel ("whiledone_" + whileStmt.Unique);
+			if (!mightGetHere) return;
 
-			bool isConstTrue = IsConstBoolExprTrue (whileStmt.testRVal);
-			ilGen.MarkLabel (contLabel);                                        // cont:
-			if (!isConstTrue) {
+			BreakContTarg oldBreakTarg = curBreakTarg;
+			BreakContTarg oldContTarg  = curContTarg;
+			ScriptMyLabel loopLabel    = ilGen.DefineLabel ("whileloop_" + whileStmt.Unique);
+
+			curBreakTarg = new BreakContTarg (ilGen, "whilebreak_" + whileStmt.Unique);
+			curContTarg  = new BreakContTarg (ilGen, "whilecont_"  + whileStmt.Unique);
+
+			ilGen.MarkLabel (loopLabel);                                        // loop:
+			if (!IsConstBoolExprTrue (whileStmt.testRVal)) {
 				CompValu testRVal = GenerateFromRVal (whileStmt.testRVal);  //   testRVal = while test expression
 				testRVal.PushVal (this, tokenTypeBool);                     //   if (!testRVal)
-				ilGen.Emit (OpCodes.Brfalse, doneLabel);                    //      goto done
+				ilGen.Emit (OpCodes.Brfalse, curBreakTarg.label);           //      goto break
+				curBreakTarg.used = true;
 			}
 			GenerateStmt (whileStmt.bodyStmt);                                  //   while body statement
-			EmitCallCheckRun (whileStmt.line);                                  //   __sw.CheckRun()
-			ilGen.Emit (OpCodes.Br, contLabel);                                 //   goto cont
-			if (!isConstTrue) {
-				ilGen.MarkLabel (doneLabel);                                // done:
-			} else {
-				fallsThrough = false;
+			if (curContTarg.used) {
+				ilGen.MarkLabel (curContTarg.label);                        // cont:
+				mightGetHere = true;
 			}
+			if (mightGetHere) {
+				EmitCallCheckRun (whileStmt.line);                          //   __sw.CheckRun()
+				ilGen.Emit (OpCodes.Br, loopLabel);                         //   goto loop
+			}
+			mightGetHere = curBreakTarg.used;
+			if (mightGetHere) {
+				ilGen.MarkLabel (curBreakTarg.label);                       // done:
+			}
+
+			curBreakTarg = oldBreakTarg;
+			curContTarg  = oldContTarg;
 		}
 
 		/**
@@ -1334,23 +1726,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private CompValu GenerateFromRVal (TokenRVal rVal)
 		{
 			errorMessageToken = rVal;
-			if (rVal is TokenRValAsnPost)  return GenerateFromRValAsnPost ((TokenRValAsnPost)rVal);
-			if (rVal is TokenRValAsnPre)   return GenerateFromRValAsnPre  ((TokenRValAsnPre)rVal);
-			if (rVal is TokenRValCall)     return GenerateFromRValCall    ((TokenRValCall)rVal);
-			if (rVal is TokenRValCast)     return GenerateFromRValCast    ((TokenRValCast)rVal);
-			if (rVal is TokenRValConst)    return GenerateFromRValConst   ((TokenRValConst)rVal);
-			if (rVal is TokenRValFloat)    return GenerateFromRValFloat   ((TokenRValFloat)rVal);
-			if (rVal is TokenRValInt)      return GenerateFromRValInt     ((TokenRValInt)rVal);
-			if (rVal is TokenRValIsType)   return GenerateFromRValIsType  ((TokenRValIsType)rVal);
-			if (rVal is TokenRValList)     return GenerateFromRValList    ((TokenRValList)rVal);
-			if (rVal is TokenRValLVal)     return GenerateFromRValLVal    ((TokenRValLVal)rVal);
-			if (rVal is TokenRValOpBin)    return GenerateFromRValOpBin   ((TokenRValOpBin)rVal);
-			if (rVal is TokenRValOpUn)     return GenerateFromRValOpUn    ((TokenRValOpUn)rVal);
-			if (rVal is TokenRValParen)    return GenerateFromRValParen   ((TokenRValParen)rVal);
-			if (rVal is TokenRValRot)      return GenerateFromRValRot     ((TokenRValRot)rVal);
-			if (rVal is TokenRValStr)      return GenerateFromRValStr     ((TokenRValStr)rVal);
-			if (rVal is TokenRValUndef)    return GenerateFromRValUndef   ((TokenRValUndef)rVal);
-			if (rVal is TokenRValVec)      return GenerateFromRValVec     ((TokenRValVec)rVal);
+			if (rVal is TokenRValAsnPost)  return GenerateFromRValAsnPost  ((TokenRValAsnPost)rVal);
+			if (rVal is TokenRValAsnPre)   return GenerateFromRValAsnPre   ((TokenRValAsnPre)rVal);
+			if (rVal is TokenRValCall)     return GenerateFromRValCall     ((TokenRValCall)rVal);
+			if (rVal is TokenRValCast)     return GenerateFromRValCast     ((TokenRValCast)rVal);
+			if (rVal is TokenRValConst)    return GenerateFromRValConst    ((TokenRValConst)rVal);
+			if (rVal is TokenRValCVSField) return GenerateFromRValCVSField ((TokenRValCVSField)rVal);
+			if (rVal is TokenRValIsType)   return GenerateFromRValIsType   ((TokenRValIsType)rVal);
+			if (rVal is TokenRValList)     return GenerateFromRValList     ((TokenRValList)rVal);
+			if (rVal is TokenRValLVal)     return GenerateFromRValLVal     ((TokenRValLVal)rVal);
+			if (rVal is TokenRValOpBin)    return GenerateFromRValOpBin    ((TokenRValOpBin)rVal);
+			if (rVal is TokenRValOpUn)     return GenerateFromRValOpUn     ((TokenRValOpUn)rVal);
+			if (rVal is TokenRValParen)    return GenerateFromRValParen    ((TokenRValParen)rVal);
+			if (rVal is TokenRValRot)      return GenerateFromRValRot      ((TokenRValRot)rVal);
+			if (rVal is TokenRValUndef)    return GenerateFromRValUndef    ((TokenRValUndef)rVal);
+			if (rVal is TokenRValVec)      return GenerateFromRValVec      ((TokenRValVec)rVal);
 			throw new Exception ("bad rval class " + rVal.GetType ().ToString ());
 		}
 
@@ -1383,7 +1773,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			string opcodeIndex = token.opcode.ToString ();
 			if (opcodeIndex == "=") {
 				if (left == null) {
-					ErrorMsg (token, "invalid L-value");
+					ErrorMsg (token, "invalid L-value for =");
 					left = GenerateFromRVal (token.rValLeft);
 				} else {
 					right = GenerateFromRVal (token.rValRight);
@@ -1493,7 +1883,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						 */
 						if (binOpStr.rmwOK) {
 							if (leftLVal == null) {
-								ErrorMsg (token, "invalid L-value");
+								ErrorMsg (token, "invalid L-value for <op>=");
 							} else {
 								binOpStr.emitBO (this, leftLVal, right, leftLVal);
 								DebitHeapLeft (left, true, token.rValLeft);
@@ -1877,29 +2267,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		/**
-		 * @brief Constant in MMRScriptConsts.cs
+		 * @brief Constant in the script somewhere
 		 * @returns where the constants value is stored
 		 */
 		private CompValu GenerateFromRValConst (TokenRValConst rValConst)
 		{
-			ScriptConst sc = rValConst.val;
-			return sc.rVal;
+			if (rValConst.val is SCRIPTFLOAT) {
+				return new CompValuFloat (new TokenTypeFloat (rValConst), (SCRIPTFLOAT)(rValConst.val));
+			}
+			if (rValConst.val is int) {
+				return new CompValuInteger (new TokenTypeInt (rValConst), (int)(rValConst.val));
+			}
+			if (rValConst.val is string) {
+				return new CompValuString (new TokenTypeStr (rValConst), (string)(rValConst.val));
+			}
+			throw new Exception ("unknown constant type " + rValConst.val.GetType ());
 		}
 
 		/**
-		 * @brief floating-point constant.
+		 * @brief One of the non-scalar predefined constants
+		 * @returns where the constants value is stored
 		 */
-		private CompValu GenerateFromRValFloat (TokenRValFloat rValFloat)
+		private CompValu GenerateFromRValCVSField (TokenRValCVSField rValCVSF)
 		{
-			return new CompValuFloat (new TokenTypeFloat (rValFloat), (SCRIPTFLOAT)rValFloat.flToken.val);
-		}
-
-		/**
-		 * @brief integer constant.
-		 */
-		private CompValu GenerateFromRValInt (TokenRValInt rValInt)
-		{
-			return new CompValuInteger (new TokenTypeInt (rValInt), rValInt.inToken.val);
+			return rValCVSF.cvsf;
 		}
 
 		/**
@@ -2022,14 +2413,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			zRVal = GenerateFromRVal (rValRot.zRVal);
 			wRVal = GenerateFromRVal (rValRot.wRVal);
 			return new CompValuRot (new TokenTypeRot (rValRot), xRVal, yRVal, zRVal, wRVal);
-		}
-
-		/**
-		 * @brief string constant.
-		 */
-		private CompValu GenerateFromRValStr (TokenRValStr rValStr)
-		{
-			return new CompValuString (new TokenTypeStr (rValStr), rValStr.strToken.val);
 		}
 
 		/**
@@ -2218,7 +2601,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @param expr = expression to evaluate
 		 * @returns true: expression is contant and has boolean value true
 		 *         false: otherwise
-		 * Note:  Current implementation accepts only the most basic things.
 		 */
 		private bool IsConstBoolExprTrue (TokenRVal expr)
 		{
@@ -2228,44 +2610,44 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		private bool IsConstBoolExpr (TokenRVal expr, out bool constVal)
 		{
-			// Accept single floatingpoint or integer constant
-			if (expr is TokenRValFloat) {
-				constVal = ((TokenRValFloat)expr).flToken.val != 0.0;
-				return true;
-			}
-			if (expr is TokenRValInt) {
-				constVal = ((TokenRValInt)expr).inToken.val != 0;
-				return true;
-			}
-
-			// Accept single LSL-defined floatingpoint or integer constant
 			if (expr is TokenRValConst) {
-				ScriptConst sc = ((TokenRValConst)expr).val;
-				CompValu cv = sc.rVal;
-				if (cv is CompValuFloat) {
-					constVal = ((CompValuFloat)cv).x != 0.0;
+				object val = ((TokenRValConst)expr).val;
+				if (val is SCRIPTFLOAT) {
+					constVal = (SCRIPTFLOAT)val != 0.0;
 					return true;
 				}
-				if (cv is CompValuInteger) {
-					constVal = ((CompValuInteger)cv).x != 0;
+				if (val is int) {
+					constVal = (int)val != 0.0;
 					return true;
 				}
 			}
 
-			// Accept !<constexpr>
-			if ((expr is TokenRValOpUn) && (((TokenRValOpUn)expr).opcode is TokenKwExclam)) {
-				if (!IsConstBoolExpr (((TokenRValOpUn)expr).rVal, out constVal)) return false;
-				constVal = !constVal;
-				return true;
-			}
-
-			// Accept (<constexpr>)
-			if (expr is TokenRValParen) {
-				return IsConstBoolExpr (((TokenRValParen)expr).rVal, out constVal);
-			}
-
-			// Reject all else
 			constVal = false;
+			return false;
+		}
+
+		/**
+		 * @brief Determine if the expression has a constant integer value
+		 *        and if so, return the integer value.
+		 * @param expr = expression to evaluate
+		 * @returns true: expression is contant and has integer value
+		 *         false: otherwise
+		 */
+		private bool IsConstIntExpr (TokenRVal expr, out int constVal)
+		{
+			if (expr is TokenRValConst) {
+				object val = ((TokenRValConst)expr).val;
+				if (val is SCRIPTFLOAT) {
+					constVal = (int)(SCRIPTFLOAT)val;
+					return true;
+				}
+				if (val is int) {
+					constVal = (int)val;
+					return true;
+				}
+			}
+
+			constVal = 0;
 			return false;
 		}
 
@@ -2573,6 +2955,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			return newHeapUse;
+		}
+
+		/**
+		 * @brief Defines an internal label that is used as a target for 'break' and 'continue' statements.
+		 */
+		private class BreakContTarg {
+			public ScriptMyLabel label;
+			public bool used;
+			public BreakContTarg (ScriptMyILGen ilGen, string name) {
+				label = ilGen.DefineLabel (name);  // label to be used
+				used  = false;                     // assume it isn't referenced at all
+			}
 		}
 
 		/**

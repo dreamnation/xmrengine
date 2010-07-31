@@ -27,11 +27,20 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Reflection.Emit;
 
+#include "lsltypes.h"
+
 namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 	public class ScriptReduce {
 
 		private static Dictionary<Type, int> precedence = PrecedenceInit ();
+
+		private Type[] brkCloseOnly     = new Type[] { typeof (TokenKwBrkClose) };
+		private Type[] cmpGTOnly        = new Type[] { typeof (TokenKwCmpGT)    };
+		private Type[] colonOnly        = new Type[] { typeof (TokenKwColon)    };
+		private Type[] colonOrDotDotDot = new Type[] { typeof (TokenKwColon),   typeof (TokenKwDotDotDot) };
+		private Type[] parCloseOnly     = new Type[] { typeof (TokenKwParClose) };
+		private Type[] semiOnly         = new Type[] { typeof (TokenKwSemi)     };
 
 		/**
 		 * @brief Initialize operator precedence table
@@ -131,12 +140,31 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			while (!(token is TokenEnd)) {
 
 				/*
+				 * constant <name> = <rval> ;
+				 */
+				if (token is TokenKwConst) {
+					ParseDeclVar (ref token, tokenScript.vars);
+					continue;
+				}
+
+				/*
 				 * <type> <name> ;
 				 * <type> <name> = <rval> ;
+				 */
+				if ((token is TokenType) &&
+				    (token.nextToken is TokenName) &&
+				    ((token.nextToken.nextToken is TokenKwSemi) || 
+				     (token.nextToken.nextToken is TokenKwAssign))) {
+					ParseDeclVar (ref token, tokenScript.vars);
+					continue;
+				}
+
+				/*
 				 * <type> <name> <funcargs> <funcbody>
 				 */
 				if (token is TokenType) {
 					TokenType tokenType = (TokenType)token;
+
 					token = token.nextToken;
 					if (!(token is TokenName)) {
 						ErrorMsg (token, "expecting variable/function name");
@@ -145,42 +173,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					}
 					TokenName tokenName = (TokenName)token;
 					token = token.nextToken;
-					if (token is TokenKwSemi) {
-
-						/*
-						 * <type> <name> ;
-						 * global variable definition, default initialization
-						 */
-						TokenDeclVar tokenDeclVar = new TokenDeclVar (tokenType, null);
-						tokenDeclVar.type = tokenType;
-						tokenDeclVar.name = tokenName;
-						token = token.nextToken;
-						if (tokenScript.vars.ContainsKey (tokenName.val)) {
-							ErrorMsg (tokenName, "duplicate variable name");
-							continue;
-						}
-						tokenScript.vars.Add (tokenName.val, tokenDeclVar);
-						continue;
-					}
-					if (token is TokenKwAssign) {
-
-						/*
-						 * <type> <name> =
-						 * global variable definition, default initialization
-						 */
-						TokenDeclVar tokenDeclVar = new TokenDeclVar (tokenName, null);
-						tokenDeclVar.type = tokenType;
-						tokenDeclVar.name = tokenName;
-						token = token.nextToken;
-						tokenDeclVar.init = ParseRVal (ref token, typeof (TokenKwSemi));
-						if (tokenDeclVar.init == null) continue;
-						if (tokenScript.vars.ContainsKey (tokenName.val)) {
-							ErrorMsg (tokenName, "duplicate variable name");
-							continue;
-						}
-						tokenScript.vars.Add (tokenName.val, tokenDeclVar);
-						continue;
-					}
 					if (token is TokenKwParOpen) {
 
 						/*
@@ -374,6 +366,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 */
 			if (token is TokenKwAt)      return ParseStmtLabel   (ref token);
 			if (token is TokenKwBrcOpen) return ParseStmtBlock   (ref token);
+			if (token is TokenKwBreak)   return ParseStmtBreak   (ref token);
+			if (token is TokenKwCont)    return ParseStmtCont    (ref token);
 			if (token is TokenKwDo)      return ParseStmtDo      (ref token);
 			if (token is TokenKwFor)     return ParseStmtFor     (ref token);
 			if (token is TokenKwForEach) return ParseStmtForEach (ref token);
@@ -382,13 +376,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			if (token is TokenKwRet)     return ParseStmtRet     (ref token);
 			if (token is TokenKwSemi)    return ParseStmtNull    (ref token);
 			if (token is TokenKwState)   return ParseStmtState   (ref token);
+			if (token is TokenKwSwitch)  return ParseStmtSwitch  (ref token);
 			if (token is TokenKwWhile)   return ParseStmtWhile   (ref token);
 
 			/*
 			 * Try to parse anything else as an expression, possibly calling
 			 * something and/or writing to a variable.
 			 */
-			TokenRVal tokenRVal = ParseRVal (ref token, typeof (TokenKwSemi));
+			TokenRVal tokenRVal = ParseRVal (ref token, semiOnly);
 			if (tokenRVal != null) {
 				TokenStmtRVal tokenStmtRVal = new TokenStmtRVal (tokenRVal);
 				tokenStmtRVal.rVal = tokenRVal;
@@ -430,8 +425,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					return null;
 				}
 				Token thisStmt;
-				if (token is TokenType) {
-					thisStmt = ParseDeclVar (ref token);
+				if ((token is TokenType) || (token is TokenKwConst)) {
+					thisStmt = ParseDeclVar (ref token, currentStmtBlock.variables);
 				} else {
 					thisStmt = ParseStmt (ref token);
 				}
@@ -443,6 +438,46 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			token = token.nextToken;
 			currentStmtBlock = tokenStmtBlock.outerStmtBlock;
 			return tokenStmtBlock;
+		}
+
+		/**
+		 * @brief parse a 'break' statement
+		 * @param token = points to break keyword token
+		 * @returns null: error parsing
+		 *          else: statements bundled in this token
+		 *          token = advanced just past the ; token
+		 */
+		private TokenStmtBreak ParseStmtBreak (ref Token token)
+		{
+			TokenStmtBreak tokenStmtBreak = new TokenStmtBreak (token);
+			token = token.nextToken;
+			if (!(token is TokenKwSemi)) {
+				ErrorMsg (token, "expecting ;");
+				token = SkipPastSemi (token);
+				return null;
+			}
+			token = token.nextToken;
+			return tokenStmtBreak;
+		}
+
+		/**
+		 * @brief parse a 'continue' statement
+		 * @param token = points to continue keyword token
+		 * @returns null: error parsing
+		 *          else: statements bundled in this token
+		 *          token = advanced just past the ; token
+		 */
+		private TokenStmtCont ParseStmtCont (ref Token token)
+		{
+			TokenStmtCont tokenStmtCont = new TokenStmtCont (token);
+			token = token.nextToken;
+			if (!(token is TokenKwSemi)) {
+				ErrorMsg (token, "expecting ;");
+				token = SkipPastSemi (token);
+				return null;
+			}
+			token = token.nextToken;
+			return tokenStmtCont;
 		}
 
 		/**
@@ -512,7 +547,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			forStmtBlock.outerStmtBlock = currentStmtBlock;
 			forStmtBlock.function       = currentDeclFunc;
 
-			TokenDeclVar tokenDeclVar   = ParseDeclVar (ref token);
+			TokenDeclVar tokenDeclVar   = ParseDeclVar (ref token, currentStmtBlock.variables);
 			if (tokenDeclVar == null) {
 				currentStmtBlock    = forStmtBlock.outerStmtBlock;
 				return null;
@@ -539,13 +574,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			if (token is TokenKwSemi) {
 				token = token.nextToken;
 			} else {
-				tokenStmtFor.testRVal = ParseRVal (ref token, typeof (TokenKwSemi));
+				tokenStmtFor.testRVal = ParseRVal (ref token, semiOnly);
 				if (tokenStmtFor.testRVal == null) return false;
 			}
 			if (token is TokenKwParClose) {
 				token = token.nextToken;
 			} else {
-				tokenStmtFor.incrRVal = ParseRVal (ref token, typeof (TokenKwParClose));
+				tokenStmtFor.incrRVal = ParseRVal (ref token, parCloseOnly);
 				if (tokenStmtFor.incrRVal == null) return false;
 			}
 			tokenStmtFor.bodyStmt = ParseStmt (ref token);
@@ -692,10 +727,85 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			if (token is TokenKwSemi) {
 				token = token.nextToken;
 			} else {
-				tokenStmtRet.rVal = ParseRVal (ref token, typeof (TokenKwSemi));
+				tokenStmtRet.rVal = ParseRVal (ref token, semiOnly);
 				if (tokenStmtRet.rVal == null) return null;
 			}
 			return tokenStmtRet;
+		}
+
+		private TokenStmtSwitch ParseStmtSwitch (ref Token token)
+		{
+			TokenStmtSwitch tokenStmtSwitch = new TokenStmtSwitch (token);
+			token = token.nextToken;
+			tokenStmtSwitch.testRVal = ParseRValParen (ref token);
+			if (tokenStmtSwitch.testRVal == null) return null;
+			if (!(token is TokenKwBrcOpen)) {
+				ErrorMsg (token, "expecting open brace");
+				token = SkipPastSemi (token);
+				return null;
+			}
+			token = token.nextToken;
+			TokenSwitchCase tokenSwitchCase = null;
+			bool haveComplained = false;
+			while (!(token is TokenKwBrcClose)) {
+				if (token is TokenKwCase) {
+					tokenSwitchCase = new TokenSwitchCase (token);
+					if (tokenStmtSwitch.lastCase == null) {
+						tokenStmtSwitch.cases = tokenSwitchCase;
+					} else {
+						tokenStmtSwitch.lastCase.nextCase = tokenSwitchCase;
+					}
+					tokenStmtSwitch.lastCase =  tokenSwitchCase;
+
+					token = token.nextToken;
+					tokenSwitchCase.rVal1 = ParseRVal (ref token, colonOrDotDotDot);
+					if (tokenSwitchCase.rVal1 == null) return null;
+					if (token is TokenKwDotDotDot) {
+						token = token.nextToken;
+						tokenSwitchCase.rVal2 = ParseRVal (ref token, colonOnly);
+						if (tokenSwitchCase.rVal2 == null) return null;
+					} else {
+						if (!(token is TokenKwColon)) {
+							ErrorMsg (token, "expecting : or ...");
+							token = SkipPastSemi (token);
+							return null;
+						}
+						token = token.nextToken;
+					}
+				} else if (token is TokenKwDefault) {
+					tokenSwitchCase = new TokenSwitchCase (token);
+					if (tokenStmtSwitch.lastCase == null) {
+						tokenStmtSwitch.cases = tokenSwitchCase;
+					} else {
+						tokenStmtSwitch.lastCase.nextCase = tokenSwitchCase;
+					}
+					tokenStmtSwitch.lastCase =  tokenSwitchCase;
+
+					token = token.nextToken;
+					if (!(token is TokenKwColon)) {
+						ErrorMsg (token, "expecting :");
+						token = SkipPastSemi (token);
+						return null;
+					}
+					token = token.nextToken;
+				} else if (tokenSwitchCase != null) {
+					TokenStmt bodyStmt = ParseStmt (ref token);
+					if (bodyStmt == null) return null;
+					if (tokenSwitchCase.lastStmt == null) {
+						tokenSwitchCase.stmts = bodyStmt;
+					} else {
+						tokenSwitchCase.lastStmt.nextToken = bodyStmt;
+					}
+					tokenSwitchCase.lastStmt = bodyStmt;
+					bodyStmt.nextToken = null;
+				} else if (!haveComplained) {
+					ErrorMsg (token, "expecting case or default label");
+					token = SkipPastSemi (token);
+					haveComplained = true;
+				}
+			}
+			token = token.nextToken;
+			return tokenStmtSwitch;
 		}
 
 		private TokenStmtState ParseStmtState (ref Token token)
@@ -728,73 +838,98 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		/**
 		 * @brief parse a variable declaration statement, including init value if any.
-		 * @param token = points to 'type' token
+		 * @param token = points to type or 'constant' token
+		 * @param variables = list of variables to insert it in
 		 * @returns null: parsing error
 		 *          else: variable declaration encapulating token
 		 *          token = advanced just past semi-colon
+		 *          variables = modified to include the new variable
 		 */
-		private TokenDeclVar ParseDeclVar (ref Token token)
+		private TokenDeclVar ParseDeclVar (ref Token token, Dictionary<string, TokenDeclVar> variables)
 		{
+			TokenDeclVar tokenDeclVar = new TokenDeclVar (token.nextToken, currentDeclFunc);
 
 			/*
-			 * Build basic encapsulating token with type and name.
+			 * Handle constant declaration.
+			 * It ends up in the declared variables list for the statement block just like
+			 * any other variable, except it has .constant = true and its value is an
+			 * TokenRValConst.
+			 *
+			 * 	constant <name> = <value> ;
 			 */
-			TokenDeclVar tokenDeclVar = new TokenDeclVar (token, currentDeclFunc);
-			tokenDeclVar.type = (TokenType)token;
-			token = token.nextToken;
-			if (!(token is TokenName)) {
-				ErrorMsg (token, "expecting variable name");
-				token = SkipPastSemi (token);
-				return null;
+			if (token is TokenKwConst) {
+				token = token.nextToken;
+				if (!(token is TokenName)) {
+					ErrorMsg (token, "expecting constant name");
+					token = SkipPastSemi (token);
+					return null;
+				}
+				tokenDeclVar.name = (TokenName)token;
+				token = token.nextToken;
+				if (!(token is TokenKwAssign)) {
+					ErrorMsg (token, "expecting =");
+					token = SkipPastSemi (token);
+					return null;
+				}
+				token = token.nextToken;
+				TokenRVal rVal = ParseRVal (ref token, semiOnly);
+				if (rVal == null) return null;
+				if (!(rVal is TokenRValConst)) {
+					ErrorMsg (tokenDeclVar, "constant value not constant float,integer,string");
+					token = SkipPastSemi (token);
+					return null;
+				}
+				tokenDeclVar.type = TokenType.FromSysType (tokenDeclVar, 
+				                                           ((TokenRValConst)rVal).val.GetType ());
+				tokenDeclVar.init = rVal;
+				tokenDeclVar.constant = true;
 			}
-			tokenDeclVar.name = (TokenName)token;
-			token = token.nextToken;
 
 			/*
-			 * If just a ;, there is no explicit initialization value.
-			 * Otherwise, look for an =RVal; expression that has init value.
+			 * Otherwise, normal variable declaration with optional initialization value.
 			 */
-			if (token is TokenKwSemi) {
+			else {
+				/*
+				 * Build basic encapsulating token with type and name.
+				 */
+				tokenDeclVar.type = (TokenType)token;
 				token = token.nextToken;
-			} else if (token is TokenKwAssign) {
+				if (!(token is TokenName)) {
+					ErrorMsg (token, "expecting variable name");
+					token = SkipPastSemi (token);
+					return null;
+				}
+				tokenDeclVar.name = (TokenName)token;
 				token = token.nextToken;
-				tokenDeclVar.init = ParseRVal (ref token, typeof (TokenKwSemi));
-				if (tokenDeclVar.init == null) return null;
-			} else {
-				ErrorMsg (token, "expecting = or ;");
-				token = SkipPastSemi (token);
-				return null;
+
+				/*
+				 * If just a ;, there is no explicit initialization value.
+				 * Otherwise, look for an =RVal; expression that has init value.
+				 */
+				if (token is TokenKwSemi) {
+					token = token.nextToken;
+				} else if (token is TokenKwAssign) {
+					token = token.nextToken;
+					tokenDeclVar.init = ParseRVal (ref token, semiOnly);
+					if (tokenDeclVar.init == null) return null;
+				} else {
+					ErrorMsg (token, "expecting = or ;");
+					token = SkipPastSemi (token);
+					return null;
+				}
 			}
 
-			if (false) {
-				/*
-				 * Can't override any other var out through and including function parameters.
-				 */
-				for (TokenStmtBlock stmtBlock = currentStmtBlock; stmtBlock != null; stmtBlock = stmtBlock.outerStmtBlock) {
-					if (stmtBlock.variables.ContainsKey (tokenDeclVar.name.val)) {
-						ErrorMsg (tokenDeclVar, "duplicate variable definition");
-						ErrorMsg (stmtBlock.variables[tokenDeclVar.name.val].name, "previously defined here");
-						return tokenDeclVar;
-					}
-				}
-				foreach (TokenName name in currentDeclFunc.argDecl.names) {
-					if (name.val == tokenDeclVar.name.val) {
-						ErrorMsg (tokenDeclVar, "duplicate variable definition");
-						ErrorMsg (name, "previously defined here");
-						return tokenDeclVar;
-					}
-				}
-			} else {
-				/*
-				 * Can't be same name already in block.
-				 */
-				if (currentStmtBlock.variables.ContainsKey (tokenDeclVar.name.val)) {
-					ErrorMsg (tokenDeclVar, "duplicate variable definition");
-					ErrorMsg (currentStmtBlock.variables[tokenDeclVar.name.val].name, "previously defined here");
-					return tokenDeclVar;
-				}
+			/*
+			 * Can't be same name already in block.
+			 */
+			TokenDeclVar bad;
+			if (variables.TryGetValue (tokenDeclVar.name.val, out bad)) {
+				ErrorMsg (tokenDeclVar, "duplicate variable definition");
+				ErrorMsg (bad.name, "previously defined here");
+				return null;
 			}
-			currentStmtBlock.variables.Add (tokenDeclVar.name.val, tokenDeclVar);
+			variables.Add (tokenDeclVar.name.val, tokenDeclVar);
+
 			return tokenDeclVar;
 		}
 
@@ -858,12 +993,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 * @param termTokenType = expression termination token type
 		 * @returns null: not an RVal
 		 *          else: single token representing whole expression
-		 *          token = points past terminating token
+		 *          token = if termTokenType.Length == 1, points just past terminating token
+		 *                                          else, points right at terminating token
 		 */
-		public TokenRVal ParseRVal (ref Token token, Type termTokenType)
+		public TokenRVal ParseRVal (ref Token token, Type[] termTokenTypes)
 		{
 			/*
-			 * Start with an empty operator stack and the first operand on operand stack.
+			 * Start with pushing the first operand on operand stack.
 			 */
 			BinOp binOps = null;
 			TokenRVal operands = GetOperand (ref token);
@@ -872,7 +1008,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			/*
 			 * Keep scanning until we hit the termination token.
 			 */
-			while (token.GetType () != termTokenType) {
+			while (true) {
+				Type tokType = token.GetType();
+				for (int i = termTokenTypes.Length; -- i >= 0;) {
+					if (tokType == termTokenTypes[i]) goto done;
+				}
 
 				/*
 				 * Special form:
@@ -930,10 +1070,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					if (binOps.preced == ASNPR) break;             // equal preced, if assignment type, leave 1st on stack to do later
 					                                               //               if non-asn type, do 1st op first (ie left-to-right)
 				do1st:
-					TokenRValOpBin tokenRValOpBin = new TokenRValOpBin ((TokenRVal)operands.prevToken, binOps.token, operands);
-					tokenRValOpBin.prevToken = operands.prevToken.prevToken;
-					operands = tokenRValOpBin;
-					binOps = binOps.pop;
+					TokenRVal result = PerformBinOp ((TokenRVal)operands.prevToken, binOps, (TokenRVal)operands);
+					result.prevToken = operands.prevToken.prevToken;
+					operands = result;
+					binOps   = binOps.pop;
 				}
 
 				/*
@@ -950,22 +1090,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				operand.prevToken = operands;
 				operands = operand;
 			}
+		done:
 
 			/*
 			 * At end of expression, perform any stacked computations.
 			 */
 			while (binOps != null) {
-				TokenRValOpBin tokenRValOpBin = new TokenRValOpBin ((TokenRVal)operands.prevToken, binOps.token, operands);
-				tokenRValOpBin.prevToken = operands.prevToken.prevToken;
-				operands = tokenRValOpBin;
-				binOps = binOps.pop;
+				TokenRVal result = PerformBinOp ((TokenRVal)operands.prevToken, binOps, (TokenRVal)operands);
+				result.prevToken = operands.prevToken.prevToken;
+				operands = result;
+				binOps   = binOps.pop;
 			}
 
 			/*
-			 * There should be exactly one remaining operand on the stack.
+			 * There should be exactly one remaining operand on the stack which is our final result.
 			 */
 			if (operands.prevToken != null) throw new Exception ("too many operands");
-			token = token.nextToken;
+
+			/*
+			 * If only one terminator type possible, advance past the terminator.
+			 */
+			if (termTokenTypes.Length == 1) token = token.nextToken;
+
 			return operands;
 		}
 
@@ -1069,7 +1215,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			if (token is TokenKwParClose) {
 				token = token.nextToken;
 			} else {
-				rValCall.args = ParseRVal (ref token, typeof (TokenKwParClose));
+				rValCall.args = ParseRVal (ref token, parCloseOnly);
 				if (rValCall.args == null) return null;
 				rValCall.nArgs = SplitCommaRVals (rValCall.args, out rValCall.args, ref rValCall.sideEffects);
 			}
@@ -1104,7 +1250,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				token = token.nextToken;
 				TokenRVal rVal = GetOperand (ref token);
 				if (rVal == null) return null;
-				return new TokenRValOpUn (uop, rVal);
+				return PerformUnOp (uop, rVal);
 			}
 
 			/*
@@ -1143,19 +1289,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * Constants.
 			 */
 			if (token is TokenFloat) {
-				TokenRValFloat rValFloat = new TokenRValFloat ((TokenFloat)token);
+				TokenRValConst rValConst = new TokenRValConst (token, ((TokenFloat)token).val);
 				token = token.nextToken;
-				return rValFloat;
+				return rValConst;
 			}
 			if (token is TokenInt) {
-				TokenRValInt rValInt = new TokenRValInt ((TokenInt)token);
+				TokenRValConst rValConst = new TokenRValConst (token, ((TokenInt)token).val);
 				token = token.nextToken;
-				return rValInt;
+				return rValConst;
 			}
 			if (token is TokenStr) {
-				TokenRValStr rValStr = new TokenRValStr ((TokenStr)token);
+				TokenRValConst rValConst = new TokenRValConst (token, ((TokenStr)token).val);
 				token = token.nextToken;
-				return rValStr;
+				return rValConst;
 			}
 			if (token is TokenKwUndef) {
 				TokenRValUndef rValUndef = new TokenRValUndef ((TokenKwUndef)token);
@@ -1169,7 +1315,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			if (token is TokenKwCmpLT) {
 				Token openBkt = token;
 				token = token.nextToken;
-				TokenRVal rValAll = ParseRVal (ref token, typeof (TokenKwCmpGT));
+				TokenRVal rValAll = ParseRVal (ref token, cmpGTOnly);
 				if (rValAll == null) return null;
 				TokenRVal rVals;
 				bool sideEffects = false;
@@ -1209,11 +1355,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				if (token is TokenKwBrkClose) {
 					token = token.nextToken;  // empty list
 				} else {
-					TokenRVal rValAll = ParseRVal (ref token, typeof (TokenKwBrkClose));
+					TokenRVal rValAll = ParseRVal (ref token, brkCloseOnly);
 					if (rValAll == null) return null;
 					rValList.nItems = SplitCommaRVals (rValAll, out rValList.rVal, ref rValList.sideEffects);
 				}
 				return rValList;
+			}
+
+			/*
+			 * Reference to such as 'integer constant <name> = <value> ;'
+			 */
+			if (token is TokenName) {
+				TokenRValConst rValConst = TryUserDefConst (ref token);
+				if (rValConst != null) return rValConst;
 			}
 
 			/*
@@ -1222,10 +1376,34 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			if (token is TokenName) {
 				ScriptConst scriptConst = ScriptConst.Lookup (((TokenName)token).val);
 				if (scriptConst != null) {
-					TokenRValConst rValConst = new TokenRValConst (token);
-					rValConst.val = scriptConst;
+					CompValu val = scriptConst.rVal;
+					TokenRVal rVal = null;
+
+					/*
+					 * Decode these types as TokenRValConst's so they will combine with other constants at
+					 * compile time.
+					 */
+					if (val is CompValuFloat)   rVal = new TokenRValConst (token, ((CompValuFloat)val).x);
+					if (val is CompValuInteger) rVal = new TokenRValConst (token, ((CompValuInteger)val).x);
+					if (val is CompValuString)  rVal = new TokenRValConst (token, ((CompValuString)val).x);
+
+					/*
+					 * There is no TokenRValConst equivalent for this one, so just keep the CompValu as is.
+					 */
+					if (val is CompValuSField)  rVal = new TokenRValCVSField (token, (CompValuSField)val);
+
+					/*
+					 * We should have been able to decode it somehow!
+					 */
+					if (rVal == null) {
+						throw new Exception ("unhandled ScriptConst type " + val.GetType());
+					}
+
+					/*
+					 * Advance pointer past the name token and return ref to the constant.
+					 */
 					token = token.nextToken;
-					return rValConst;
+					return rVal;
 				}
 			}
 
@@ -1253,6 +1431,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		}
 
 		/**
+		 * @brief See if the given token (already known to be a TokenName) references a user-defined constant,
+		 *        eg, something declared like 'integer constant FOO = 3;'
+		 * @param token = points to the TokenName
+		 * @returns null: it's not such a constant
+		 *          else: corresponding constant value
+		 *                token advanced past the name
+		 */
+		private TokenRValConst TryUserDefConst (ref Token token)
+		{
+			string name = ((TokenName)token).val;
+			TokenDeclVar declVar = null;
+
+			for (TokenStmtBlock stmtBlock = currentStmtBlock; stmtBlock != null; stmtBlock = stmtBlock.outerStmtBlock) {
+				if (stmtBlock.variables.TryGetValue (name, out declVar)) goto found;
+			}
+			if (tokenScript.vars.TryGetValue (name, out declVar)) goto found;
+			return null;
+		found:
+			if (!declVar.constant) return null;
+			token = token.nextToken;
+			return (TokenRValConst)(declVar.init);
+		}
+
+		/**
 		 * @brief decode binary operator token
 		 * @param token = points to token to decode
 		 * @returns null: invalid operator token
@@ -1262,7 +1464,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			BinOp binOp = new BinOp ();
 			if (precedence.TryGetValue (token.GetType (), out binOp.preced)) {
-				binOp.token = token;
+				binOp.token = (TokenKw)token;
 				token = token.nextToken;
 				return binOp;
 			}
@@ -1278,18 +1480,85 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		private class BinOp {
 			public BinOp pop;
-			public Token token;
+			public TokenKw token;
 			public int preced;
+		}
+
+		/**
+		 * @brief If the operands are constants and the operator can do it here, perform the operation and return the
+		 *        result as a new constant token.  Otherwise, return an R-value expression token that will be used to
+		 *        generate code to perform the operation at runtime.
+		 * @param left  = left-hand operand
+		 * @param binOp = operator
+		 * @param right = right-hand operand
+		 * @returns resultant constant or expression
+		 */
+		private TokenRVal PerformBinOp (TokenRVal left, BinOp binOp, TokenRVal right)
+		{
+			/*
+			 * Maybe both operands are constants and the operator knows how to handle them.
+			 * If so, perform computation and return the resultant constant.
+			 */
+			if ((left is TokenRValConst) && (right is TokenRValConst)) {
+				object val;
+				try {
+					val = binOp.token.binOpConst (((TokenRValConst)left).val, ((TokenRValConst)right).val);
+				} catch {
+					val = null;
+				}
+				if (val != null) {
+					return new TokenRValConst (binOp.token, val);
+				}
+				////???? throw exception or print warning ????////
+			}
+
+			/*
+			 * Otherwise, output token that encapsulates the expression for code generation.
+			 */
+			return new TokenRValOpBin (left, binOp.token, right);
+		}
+
+		/**
+		 * @brief If the operand is a constant and the operator can do it here, perform the operation and return the
+		 *        result as a new constant token.  Otherwise, return an R-value expression token that will be used to
+		 *        generate code to perform the operation at runtime.
+		 * @param unOp  = operator
+		 * @param right = right-hand operand
+		 * @returns resultant constant or expression
+		 */
+		private TokenRVal PerformUnOp (Token unOp, TokenRVal right)
+		{
+			/*
+			 * Maybe the operand is a constant and the operator knows how to handle them.
+			 * If so, perform computation and return the resultant constant.
+			 */
+			if (right is TokenRValConst) {
+				object val;
+				try {
+					val = ((TokenKw)unOp).unOpConst (((TokenRValConst)right).val);
+				} catch {
+					val = null;
+				}
+				if (val != null) {
+					return new TokenRValConst (unOp, val);
+				}
+				////???? throw exception or print warning ????////
+			}
+
+			/*
+			 * Otherwise, output token that encapsulates the expression for code generation.
+			 */
+			return new TokenRValOpUn (unOp, right);
 		}
 
 		/**
 		 * @brief parse out a parenthesized expression.
 		 * @param token = points to open parenthesis
 		 * @returns null: invalid expression
-		 *          else: parenthesized expression token
+		 *          else: parenthesized expression token or constant token
 		 *          token = points past the close parenthesis
 		 */
-		private TokenRValParen ParseRValParen (ref Token token)
+		private TokenRVal ParseRValParen (ref Token token)
 		{
 			if (!(token is TokenKwParOpen)) {
 				ErrorMsg (token, "expecting (");
@@ -1298,8 +1567,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			}
 			TokenRValParen tokenRValParen = new TokenRValParen (token);
 			token = token.nextToken;
-			tokenRValParen.rVal = ParseRVal (ref token, typeof (TokenKwParClose));
+			tokenRValParen.rVal = ParseRVal (ref token, parCloseOnly);
 			if (tokenRValParen.rVal == null) return null;
+			if (tokenRValParen.rVal is TokenRValConst) return tokenRValParen.rVal;
 			tokenRValParen.sideEffects = tokenRValParen.rVal.sideEffects;
 			return tokenRValParen;
 		}
@@ -1344,7 +1614,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * L-values always start with a name
 			 */
 			if (!(token is TokenName)) {
-				ErrorMsg (token, "invalid L-value");
+				ErrorMsg (token, "invalid L-value, expect name");
 				token = SkipPastSemi (token);
 				return null;
 			}
@@ -1377,7 +1647,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				if (token is TokenKwBrkOpen) {
 					TokenLValArEle tokenLValArEle = new TokenLValArEle (token);
 					token = token.nextToken;
-					tokenLValArEle.subRVal = ParseRVal (ref token, typeof (TokenKwBrkClose));
+					tokenLValArEle.subRVal = ParseRVal (ref token, brkCloseOnly);
 					if (tokenLValArEle.subRVal == null) {
 						ErrorMsg (tokenLValArEle, "invalid subscript");
 						return null;
@@ -1564,6 +1834,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenType type;
 		public TokenName name;
 		public TokenRVal init;  // null if none
+		public bool constant;
 
 		public bool preDefd;    // used by codegen
 		                        // false: normal in-order definition
@@ -1821,54 +2092,49 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	}
 
 	/**
-	 * @brief a floating-point number is being used as an R-value
+	 * @brief all constants supposed to end up here
 	 */
-	public class TokenRValFloat : TokenRVal {
-		public TokenFloat flToken;
-		public TokenRValFloat (TokenFloat original) : base (original)
-		{
-			this.flToken = original;
+	public enum TokenRValConstType : byte { FLOAT = 0, INT = 1, STRING = 2 };
+	public class TokenRValConst : TokenRVal {
+		public object val;	// always a system type (int, SCRIPTFLOAT, string)
+		public TokenRValConstType type;
+		public TokenRValConst (Token original, object value) : base (original) {
+			val = value;
+			     if (val is int) type = TokenRValConstType.INT;
+			else if (val is SCRIPTFLOAT) type = TokenRValConstType.FLOAT;
+			else if (val is string) type = TokenRValConstType.STRING;
+			else throw new Exception ("invalid constant type " + val.GetType ());
 		}
 
-		/**
-		 * @brief Serialization/Deserialization.
-		 */
-		public TokenRValFloat (Token original) : base (original) { }
+		public TokenRValConst (Token original) : base (original) { }
 
 		public override void WriteOut (TokenWriter writer)
 		{
-			writer.Write (flToken);
+			writer.Write ((byte)type);
+			switch (type) {
+				case TokenRValConstType.FLOAT:  { writer.Write ((SCRIPTFLOAT)val); break; }
+				case TokenRValConstType.INT:    { writer.Write ((int)val);         break; }
+				case TokenRValConstType.STRING: { writer.Write ((string)val);      break; }
+				default: throw new Exception ("unknown type");
+			}
 		}
 
 		public override void ReadIn (TokenReader reader)
 		{
-			flToken = (TokenFloat)reader.ReadToken ();
+			type = (TokenRValConstType)reader.ReadByte ();
+			switch (type) {
+				case TokenRValConstType.FLOAT:  { val = reader.ReadScriptFloat (); break; }
+				case TokenRValConstType.INT:    { val = reader.ReadInt ();         break; }
+				case TokenRValConstType.STRING: { val = reader.ReadString ();      break; }
+				default: throw new Exception ("unknown type");
+			}
 		}
 	}
 
-	/**
-	 * @brief an integer number is being used as an R-value
-	 */
-	public class TokenRValInt : TokenRVal {
-		public TokenInt inToken;
-		public TokenRValInt (TokenInt original) : base (original)
-		{
-			this.inToken = original;
-		}
-
-		/**
-		 * @brief Serialization/Deserialization.
-		 */
-		public TokenRValInt (Token original) : base (original) { }
-
-		public override void WriteOut (TokenWriter writer)
-		{
-			writer.Write (inToken);
-		}
-
-		public override void ReadIn (TokenReader reader)
-		{
-			inToken = (TokenInt)reader.ReadToken ();
+	public class TokenRValCVSField : TokenRVal {
+		public CompValuSField cvsf;
+		public TokenRValCVSField (Token original, CompValuSField cvsf) : base (original) {
+			this.cvsf = cvsf;
 		}
 	}
 
@@ -1927,23 +2193,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				}
 				lastRVal = thisRVal;
 			}
-		}
-	}
-
-	public class TokenRValConst : TokenRVal {
-		public ScriptConst val;
-
-		public TokenRValConst (Token original) : base (original) { }
-
-		public override void WriteOut (TokenWriter writer)
-		{
-			writer.Write (val.name);
-		}
-
-		public override void ReadIn (TokenReader reader)
-		{
-			string name = reader.ReadString ();
-			val = ScriptConst.Lookup (name);
 		}
 	}
 
@@ -2102,32 +2351,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	}
 
 	/**
-	 * @brief a string constant is being used as an R-value
-	 */
-	public class TokenRValStr : TokenRVal {
-		public TokenStr strToken;
-		public TokenRValStr (TokenStr original) : base (original)
-		{
-			this.strToken = original;
-		}
-
-		/**
-		 * @brief Serialization/Deserialization.
-		 */
-		public TokenRValStr (Token original) : base (original) { }
-
-		public override void WriteOut (TokenWriter writer)
-		{
-			writer.Write (strToken);
-		}
-
-		public override void ReadIn (TokenReader reader)
-		{
-			strToken = (TokenStr)reader.ReadToken ();
-		}
-	}
-
-	/**
 	 * @brief the 'undef' keyword is being used as a value in an expression.
 	 */
 	public class TokenRValUndef : TokenRVal {
@@ -2181,9 +2404,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public override void WriteOut (TokenWriter writer)
 		{
-			writer.Write (vars.Count);
+			int numVars = 0;
 			foreach (KeyValuePair<string, TokenDeclVar> kvp in vars) {
-				writer.Write (kvp.Value);
+				if (!kvp.Value.constant) numVars ++;
+			}
+			writer.Write (numVars);
+			foreach (KeyValuePair<string, TokenDeclVar> kvp in vars) {
+				if (!kvp.Value.constant) writer.Write (kvp.Value);
 			}
 			writer.Write (funcs.Count);
 			foreach (KeyValuePair<string, TokenDeclFunc> kvp in funcs) {
@@ -2363,6 +2590,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		}
 	}
 
+	public class TokenStmtBreak : TokenStmt {
+		public TokenStmtBreak (Token original) : base (original) { }
+		public override void WriteOut (TokenWriter writer) { }
+		public override void ReadIn (TokenReader reader) { }
+	}
+
+	public class TokenStmtCont : TokenStmt {
+		public TokenStmtCont (Token original) : base (original) { }
+		public override void WriteOut (TokenWriter writer) { }
+		public override void ReadIn (TokenReader reader) { }
+	}
+
 	/**
 	 * @brief "do" statement
 	 */
@@ -2531,6 +2770,93 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public override void ReadIn (TokenReader reader)
 		{
 			state = (TokenName)reader.ReadToken ();
+		}
+	}
+
+	/**
+	 * @brief Encapsulates a whole switch statement including the body and all cases.
+	 */
+	public class TokenStmtSwitch : TokenStmt {
+
+		public TokenRVal testRVal;               // the integer index expression
+		public TokenSwitchCase cases = null;     // list of all cases, linked by .nextCase
+		public TokenSwitchCase lastCase = null;  // used during reduce to point to last in 'cases' list
+
+		public TokenStmtSwitch (Token original) : base (original) { }
+
+		/**
+		 * @brief Write abstract syntax tree representation
+		 */
+		public override void WriteOut (TokenWriter writer)
+		{
+			writer.Write (testRVal);
+			for (TokenSwitchCase thisCase = cases; thisCase != null; thisCase = thisCase.nextCase) {
+				writer.Write (thisCase);
+			}
+			writer.Write ((Token)null);
+		}
+
+		/**
+		 * @brief Read abstract syntax tree representation
+		 */
+		public override void ReadIn (TokenReader reader)
+		{
+			TokenSwitchCase thisCase;
+
+			testRVal = (TokenRVal)reader.ReadToken ();
+			while ((thisCase = (TokenSwitchCase)reader.ReadToken ()) != null) {
+				if (lastCase == null) {
+					cases = thisCase;
+				} else {
+					lastCase.nextCase = thisCase;
+				}
+				lastCase = thisCase;
+			}
+		}
+	}
+
+	/**
+	 * @brief Encapsulates a case/default clause from a switch statement including the
+	 *        two values and the corresponding body statements.
+	 */
+	public class TokenSwitchCase : Token {
+		public TokenSwitchCase nextCase;  // next case in source-code order
+		public TokenRVal rVal1;           // null means 'default', else 'case'
+		public TokenRVal rVal2;           // null means 'case expr:', else 'case expr ... expr:'
+		public TokenStmt stmts;           // statements associated with the case
+		public TokenStmt lastStmt;        // used during reduce for building statement list
+
+		public int val1;                        // codegen: value of rVal1 here
+		public int val2;                        // codegen: value of rVal2 here
+		public ScriptMyLabel label;             // codegen: target label here
+		public TokenSwitchCase nextSortedCase;  // codegen: next case in ascending val order
+
+		public TokenSwitchCase (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
+		{
+			writer.Write (rVal1);
+			writer.Write (rVal2);
+			for (TokenStmt stmt = stmts; stmt != null; stmt = (TokenStmt)stmt.nextToken) {
+				writer.Write (stmt);
+			}
+			writer.Write ((Token)null);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			TokenStmt stmt;
+
+			rVal1 = (TokenRVal)reader.ReadToken ();
+			rVal2 = (TokenRVal)reader.ReadToken ();
+			while ((stmt = (TokenStmt)reader.ReadToken ()) != null) {
+				if (lastStmt == null) {
+					stmts = stmt;
+				} else {
+					lastStmt.nextToken = stmt;
+				}
+				lastStmt = stmt;
+			}
 		}
 	}
 

@@ -1,0 +1,37 @@
+
+Enabled by 'XMROption' 'advFlowCtl' ';'
+
+Keywords:
+
+    break
+    case
+    constant
+    continue
+    switch
+
+    ...
+    :
+
+'break' : valid in 'do', 'for', 'foreach', 'switch', 'while'
+'continue' : valid in 'do', 'for', 'foreach', 'while'
+
+'constant' usage as follows:
+
+    'constant' name '=' constantexpr ';'
+
+    constantexpr := floatconstant | integerconstant | stringconstant | constantexpr constbinop constantexpr | constunop constantexpr
+    constbinop   := '+' | '-' | '*' | '/' | '%' | '&' | '|' | '^'
+    constunop    := '-' | '~'
+
+    Note: & | ^ ~ require all integer operands
+          - * / % require either integer or float operands
+          only + is valid for strings
+
+'switch' usage as follows :
+
+    'switch' '(' integerexpression ')' '{'
+        [ 'case' integerconstantexpression [ '...' integerconstantexpression ']' ':' singlestatement ]*
+        [ 'default' ':' singlestatement ]
+    '}'
+
+

@@ -126,13 +126,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
      */
     public class TokenBegin : Token {
 
-        private bool youveAnError;  // there was some error tokenizing
-        private int bolIdx;         // index in 'source' at begining of current line
-        private int lineNo;         // current line in source file, starting at 0
-        private string filNam;      // current source file name
-        private string source;      // the whole script source code
-        private Token lastToken;    // last token created so far
-        private bool optionArrays;  // has seen 'XMROption arrays;'
+        private bool youveAnError;      // there was some error tokenizing
+        private int bolIdx;             // index in 'source' at begining of current line
+        private int lineNo;             // current line in source file, starting at 0
+        private string filNam;          // current source file name
+        private string source;          // the whole script source code
+        private Token lastToken;        // last token created so far
+        private bool optionArrays;      // has seen 'XMROption arrays;'
+        private bool optionAdvFlowCtl;  // has seen 'XMROption advFlowCtl;'
 
         /**
          * @brief convert a source file in the form of a string
@@ -296,6 +297,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                         } else if (optionArrays && arrayKeywords.ContainsKey (name)) {
                             Object[] args = new Object[] { emsg, filNam, lineNo, i - bolIdx };
                             AppendToken ((Token)arrayKeywords[name].Invoke (args));
+                        } else if (optionAdvFlowCtl && advFlowCtlKeywords.ContainsKey (name)) {
+                            Object[] args = new Object[] { emsg, filNam, lineNo, i - bolIdx };
+                            AppendToken ((Token)advFlowCtlKeywords[name].Invoke (args));
                         } else {
                             AppendToken (new TokenName (emsg, filNam, lineNo, i - bolIdx, name));
                         }
@@ -312,6 +316,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                                   (lastToken.prevToken is TokenName) && 
                                   (((TokenName)lastToken.prevToken).val == "XMROption")) {
                     optionArrays = true;
+                    lastToken = lastToken.prevToken.prevToken;
+                    lastToken.nextToken = null;
+                    continue;
+                }
+
+                if ((c == ';') && (lastToken is TokenName) && 
+                                  (((TokenName)lastToken).val == "advFlowCtl") &&
+                                  (lastToken.prevToken is TokenName) && 
+                                  (((TokenName)lastToken.prevToken).val == "XMROption")) {
+                    optionAdvFlowCtl = true;
                     lastToken = lastToken.prevToken.prevToken;
                     lastToken.nextToken = null;
                     continue;
@@ -574,6 +588,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         }
 
         private static Delim[] delims = new Delim[] {
+            new Delim ("...", typeof (TokenKwDotDotDot)),
             new Delim ("<<=", typeof (TokenKwAsnLSh)),
             new Delim (">>=", typeof (TokenKwAsnRSh)),
             new Delim ("<=",  typeof (TokenKwCmpLE)),
@@ -666,11 +681,26 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                 //MB();
                 arrayKeywords = kws;
             }
+
+            if (advFlowCtlKeywords == null) {
+                Dictionary<string, System.Reflection.ConstructorInfo> kws = new Dictionary<string, System.Reflection.ConstructorInfo> ();
+
+                kws.Add ("break",    GetTokenCtor (typeof (TokenKwBreak)));
+                kws.Add ("case",     GetTokenCtor (typeof (TokenKwCase)));
+                kws.Add ("constant", GetTokenCtor (typeof (TokenKwConst)));
+                kws.Add ("continue", GetTokenCtor (typeof (TokenKwCont)));
+                kws.Add ("switch",   GetTokenCtor (typeof (TokenKwSwitch)));
+
+                //MB();
+                advFlowCtlKeywords = kws;
+            }
+
             //MB();
         }
 
         private static Dictionary<string, System.Reflection.ConstructorInfo> keywords = null;
         private static Dictionary<string, System.Reflection.ConstructorInfo> arrayKeywords = null;
+        private static Dictionary<string, System.Reflection.ConstructorInfo> advFlowCtlKeywords = null;
     }
 
 
@@ -788,75 +818,215 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
     /*
      * Various keywords and delimeters.
      */
-#define DEFTOKENKW(name,str) \
-    public class TokenKw##name : TokenNS {                                                                                  \
-        public TokenKw##name (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }  \
-        public override string ToString () {                                                                                \
-            return str;                                                                                                     \
-        }                                                                                                                   \
-        public TokenKw##name (Token original) : base (original) { }                                                         \
+    public delegate object TokenRValConstBinOpDelegate (object left, object right);
+    public delegate object TokenRValConstUnOpDelegate  (object right);
+
+    public class TokenKw : TokenNS {
+        public TokenRValConstBinOpDelegate binOpConst;
+        public TokenRValConstUnOpDelegate  unOpConst;
+        public TokenKw (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
+        public TokenKw (Token original) : base (original)  { }
+    }
+#define DEFTOKENKW(name,str,binopconst,unopconst) \
+    public class TokenKw##name : TokenKw {                                                                                \
+        public TokenKw##name (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) {  \
+            binOpConst = TokenRValConstOps.binopconst;                                                                    \
+            unOpConst  = TokenRValConstOps.unopconst;                                                                     \
+        }                                                                                                                 \
+        public TokenKw##name (Token original) : base (original) {                                                         \
+            binOpConst = TokenRValConstOps.binopconst;                                                                    \
+            unOpConst  = TokenRValConstOps.unopconst;                                                                     \
+        }                                                                                                                 \
+        public override string ToString () {                                                                              \
+            return str;                                                                                                   \
+        }                                                                                                                 \
     }
 
-    DEFTOKENKW(AsnLSh  , "<<")
-    DEFTOKENKW(AsnRSh  , ">>")
-    DEFTOKENKW(CmpLE   , "<=")
-    DEFTOKENKW(CmpGE   , ">=")
-    DEFTOKENKW(CmpEQ   , "==")
-    DEFTOKENKW(CmpNE   , "!=")
-    DEFTOKENKW(Incr    , "++")
-    DEFTOKENKW(Decr    , "--")
-    DEFTOKENKW(AndAnd  , "&&")
-    DEFTOKENKW(OrOr    , "||")
-    DEFTOKENKW(AsnAdd  , "+=")
-    DEFTOKENKW(AsnAnd  , "&=")
-    DEFTOKENKW(AsnSub  , "-=")
-    DEFTOKENKW(AsnMul  , "*=")
-    DEFTOKENKW(AsnDiv  , "/=")
-    DEFTOKENKW(AsnMod  , "%=")
-    DEFTOKENKW(AsnOr   , "|=")
-    DEFTOKENKW(AsnXor  , "^=")
-    DEFTOKENKW(LSh     , "<<")
-    DEFTOKENKW(RSh     , ">>")
-    DEFTOKENKW(Tilde   , "~")
-    DEFTOKENKW(Exclam  , "!")
-    DEFTOKENKW(At      , "@")
-    DEFTOKENKW(Mod     , "%")
-    DEFTOKENKW(Xor     , "^")
-    DEFTOKENKW(And     , "&")
-    DEFTOKENKW(Mul     , "*")
-    DEFTOKENKW(ParOpen , "(")
-    DEFTOKENKW(ParClose, ")")
-    DEFTOKENKW(Sub     , "-")
-    DEFTOKENKW(Add     , "+")
-    DEFTOKENKW(Assign  , "=")
-    DEFTOKENKW(BrcOpen , "{")
-    DEFTOKENKW(BrcClose, "}")
-    DEFTOKENKW(BrkOpen , "[")
-    DEFTOKENKW(BrkClose, "]")
-    DEFTOKENKW(Semi    , ";")
-    DEFTOKENKW(Colon   , ":")
-    DEFTOKENKW(CmpLT   , "<")
-    DEFTOKENKW(CmpGT   , ">")
-    DEFTOKENKW(Comma   , ":")
-    DEFTOKENKW(Dot     , ".")
-    DEFTOKENKW(QMark   , "?")
-    DEFTOKENKW(Div     , "/")
-    DEFTOKENKW(Or      , "|")
-    DEFTOKENKW(Hash    , "#")
+    DEFTOKENKW(DotDotDot, "...", Null, Null)
+    DEFTOKENKW(AsnLSh   , "<<=", Null, Null)
+    DEFTOKENKW(AsnRSh   , ">>=", Null, Null)
+    DEFTOKENKW(CmpLE    , "<=",  Null, Null)
+    DEFTOKENKW(CmpGE    , ">=",  Null, Null)
+    DEFTOKENKW(CmpEQ    , "==",  Null, Null)
+    DEFTOKENKW(CmpNE    , "!=",  Null, Null)
+    DEFTOKENKW(Incr     , "++",  Null, Null)
+    DEFTOKENKW(Decr     , "--",  Null, Null)
+    DEFTOKENKW(AndAnd   , "&&",  Null, Null)
+    DEFTOKENKW(OrOr     , "||",  Null, Null)
+    DEFTOKENKW(AsnAdd   , "+=",  Null, Null)
+    DEFTOKENKW(AsnAnd   , "&=",  Null, Null)
+    DEFTOKENKW(AsnSub   , "-=",  Null, Null)
+    DEFTOKENKW(AsnMul   , "*=",  Null, Null)
+    DEFTOKENKW(AsnDiv   , "/=",  Null, Null)
+    DEFTOKENKW(AsnMod   , "%=",  Null, Null)
+    DEFTOKENKW(AsnOr    , "|=",  Null, Null)
+    DEFTOKENKW(AsnXor   , "^=",  Null, Null)
+    DEFTOKENKW(LSh      , "<<",  LSh,  Null)
+    DEFTOKENKW(RSh      , ">>",  RSh,  Null)
+    DEFTOKENKW(Tilde    , "~",   Null, Not)
+    DEFTOKENKW(Exclam   , "!",   Null, Null)
+    DEFTOKENKW(At       , "@",   Null, Null)
+    DEFTOKENKW(Mod      , "%",   Mod,  Null)
+    DEFTOKENKW(Xor      , "^",   Xor,  Null)
+    DEFTOKENKW(And      , "&",   And,  Null)
+    DEFTOKENKW(Mul      , "*",   Mul,  Null)
+    DEFTOKENKW(ParOpen  , "(",   Null, Null)
+    DEFTOKENKW(ParClose , ")",   Null, Null)
+    DEFTOKENKW(Sub      , "-",   Sub,  Neg)
+    DEFTOKENKW(Add      , "+",   Add,  Null)
+    DEFTOKENKW(Assign   , "=",   Null, Null)
+    DEFTOKENKW(BrcOpen  , "{",   Null, Null)
+    DEFTOKENKW(BrcClose , "}",   Null, Null)
+    DEFTOKENKW(BrkOpen  , "[",   Null, Null)
+    DEFTOKENKW(BrkClose , "]",   Null, Null)
+    DEFTOKENKW(Semi     , ";",   Null, Null)
+    DEFTOKENKW(Colon    , ":",   Null, Null)
+    DEFTOKENKW(CmpLT    , "<",   Null, Null)
+    DEFTOKENKW(CmpGT    , ">",   Null, Null)
+    DEFTOKENKW(Comma    , ":",   Null, Null)
+    DEFTOKENKW(Dot      , ".",   Null, Null)
+    DEFTOKENKW(QMark    , "?",   Null, Null)
+    DEFTOKENKW(Div      , "/",   Div,  Null)
+    DEFTOKENKW(Or       , "|",   Or,   Null)
+    DEFTOKENKW(Hash     , "#",   Null, Null)
 
-    DEFTOKENKW(Default , "default")
-    DEFTOKENKW(Do      , "do")
-    DEFTOKENKW(Else    , "else")
-    DEFTOKENKW(For     , "for")
-    DEFTOKENKW(ForEach , "foreach")
-    DEFTOKENKW(If      , "if")
-    DEFTOKENKW(In      , "in")
-    DEFTOKENKW(Is      , "is")
-    DEFTOKENKW(Jump    , "jump")
-    DEFTOKENKW(Ret     , "return")
-    DEFTOKENKW(State   , "state")
-    DEFTOKENKW(Undef   , "undef")
-    DEFTOKENKW(While   , "while")
+    DEFTOKENKW(Break    , "break",    Null, Null)
+    DEFTOKENKW(Case     , "case",     Null, Null)
+    DEFTOKENKW(Const    , "constant", Null, Null)
+    DEFTOKENKW(Cont     , "continue", Null, Null)
+    DEFTOKENKW(Default  , "default",  Null, Null)
+    DEFTOKENKW(Do       , "do",       Null, Null)
+    DEFTOKENKW(Else     , "else",     Null, Null)
+    DEFTOKENKW(For      , "for",      Null, Null)
+    DEFTOKENKW(ForEach  , "foreach",  Null, Null)
+    DEFTOKENKW(If       , "if",       Null, Null)
+    DEFTOKENKW(In       , "in",       Null, Null)
+    DEFTOKENKW(Is       , "is",       Null, Null)
+    DEFTOKENKW(Jump     , "jump",     Null, Null)
+    DEFTOKENKW(Ret      , "return",   Null, Null)
+    DEFTOKENKW(State    , "state",    Null, Null)
+    DEFTOKENKW(Switch   , "switch",   Null, Null)
+    DEFTOKENKW(Undef    , "undef",    Null, Null)
+    DEFTOKENKW(While    , "while",    Null, Null)
+
+    /**
+     * @brief These static functions attempt to perform arithmetic on two constant
+     *        operands to generate the resultant constant.
+     *        Likewise for unary operators.
+     *
+     * @param left  = left-hand value
+     * @param right = right-hand value
+     * @returns null: not able to perform computation
+     *          else: resultant value object
+     *
+     * Note: it is ok for these to throw any exception (such as overflow or div-by-zero), 
+     *       and it will be treated as the 'not able to perform computation' case.
+     */
+#define DEFBINOP1(name,op) \
+        public static object name (object left, object right)       \
+        {                                                           \
+            if ((left is int) && (right is int)) {                  \
+                return (int)left op (int)right;                     \
+            }                                                       \
+            if ((left is int) && (right is SCRIPTFLOAT)) {          \
+                return (int)left op (SCRIPTFLOAT)right;             \
+            }                                                       \
+            if ((left is SCRIPTFLOAT) && (right is int)) {          \
+                return (SCRIPTFLOAT)left op (int)right;             \
+            }                                                       \
+            if ((left is SCRIPTFLOAT) && (right is SCRIPTFLOAT)) {  \
+                return (SCRIPTFLOAT)left op (SCRIPTFLOAT)right;     \
+            }                                                       \
+            return null;                                            \
+        }
+
+#define DEFBINOP2(name,op) \
+        public static object name (object left, object right)              \
+        {                                                                  \
+            if ((left is int) && (right is int)) {                         \
+                return (int)left op (int)right;                            \
+            }                                                              \
+            if ((left is int) && (right is SCRIPTFLOAT)) {                 \
+                return (int)left op (int)(SCRIPTFLOAT)right;               \
+            }                                                              \
+            if ((left is SCRIPTFLOAT) && (right is int)) {                 \
+                return (int)(SCRIPTFLOAT)left op (int)right;               \
+            }                                                              \
+            if ((left is SCRIPTFLOAT) && (right is SCRIPTFLOAT)) {         \
+                return (int)(SCRIPTFLOAT)left op (int)(SCRIPTFLOAT)right;  \
+            }                                                              \
+            return null;                                                   \
+        }
+
+#define DEFBINOP3(name,op) \
+        public static object name (object left, object right)       \
+        {                                                           \
+            if ((left is int) && (right is int)) {                  \
+                return (int)left op (int)right;                     \
+            }                                                       \
+            if ((left is int) && (right is SCRIPTFLOAT)) {          \
+                return (int)left op (SCRIPTFLOAT)right;             \
+            }                                                       \
+            if ((left is SCRIPTFLOAT) && (right is int)) {          \
+                return (SCRIPTFLOAT)left op (int)right;             \
+            }                                                       \
+            if ((left is SCRIPTFLOAT) && (right is SCRIPTFLOAT)) {  \
+                return (SCRIPTFLOAT)left op (SCRIPTFLOAT)right;     \
+            }                                                       \
+            if ((left is string) && (right is string)) {            \
+                return (string)left op (string)right;               \
+            }                                                       \
+            return null;                                            \
+        }
+
+#define DEFUNOP1(name,op) \
+        public static object name (object right)  \
+        {                                         \
+            if (right is int) {                   \
+                return op (int)right;             \
+            }                                     \
+            if (right is SCRIPTFLOAT) {           \
+                return op (SCRIPTFLOAT)right;     \
+            }                                     \
+            return null;                          \
+        }
+
+#define DEFUNOP2(name,op) \
+        public static object name (object right)  \
+        {                                         \
+            if (right is int) {                   \
+                return op (int)right;             \
+            }                                     \
+            return null;                          \
+        }
+
+    public class TokenRValConstOps {
+        public static object Null (object left, object right)
+        {
+            return null;
+        }
+
+        DEFBINOP1(Div,/)
+        DEFBINOP1(Mod,%)
+        DEFBINOP1(Mul,*)
+        DEFBINOP1(Sub,-)
+
+        DEFBINOP2(And,&)
+        DEFBINOP2(LSh,<<)
+        DEFBINOP2(Or, |)
+        DEFBINOP2(RSh,>>)
+        DEFBINOP2(Xor,^)
+
+        DEFBINOP3(Add,+)
+
+        public static object Null (object right)
+        {
+            return null;
+        }
+
+        DEFUNOP1(Neg,-)
+        DEFUNOP2(Not,~)
+    }
 
     /*
      * Various datatypes.

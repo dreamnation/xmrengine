@@ -190,7 +190,7 @@ usage:
             Console.WriteLine ("xmrengcomp.exe -version");
 #ifdef SECRET_STUFF
             Console.WriteLine ("xmrengcomp.exe -genkey");
-            Console.WriteLine ("xmrengcomp.exe -decode [-asm <outputxmrasmfile>] [-out <outputxmrobjfile>] <inputbinaryfile>");
+            Console.WriteLine ("xmrengcomp.exe -decode [-asm <outputxmrasmfile>] [-out <outputxmrobjfile>] [-src <outputsourcefile>] <inputbinaryfile>");
 #endif
 version:
             Console.WriteLine ("");
@@ -553,7 +553,7 @@ version:
         private static int aesBits = 256;
 
         private static byte[] version = new ASCIIEncoding ().GetBytes 
-               ("XMRBinary(" + ScriptCodeGen.COMPILED_VERSION_VALUE + ".1)");
+               ("XMRBinary(" + ScriptCodeGen.COMPILED_VERSION_VALUE + ".2)");
 
 #ifdef STANDALONE_COMPILER
         private static byte[][] publicKey = new byte[][] {
@@ -770,7 +770,10 @@ version:
                 byte[] ver = new byte[version.Length];
                 if ((webStream.Read (ver, 0, ver.Length) != ver.Length) ||
                      !memeq (ver, version, ver.Length)) {
-                    throw new Exception ("bad xmrbinary version");
+                    throw new Exception ("bad xmrbinary version, expect " + 
+                                         new ASCIIEncoding ().GetString (version) + 
+                                         ", but is " + 
+                                         new ASCIIEncoding ().GetString (ver));
                 }
 
                 /*

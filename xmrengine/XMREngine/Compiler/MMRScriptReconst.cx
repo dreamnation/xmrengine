@@ -111,6 +111,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void ReconstStmt (TokenStmt stmt)
 		{
 			if (stmt is TokenStmtBlock)   ReconstStmtBlock   ((TokenStmtBlock)stmt);
+			if (stmt is TokenStmtBreak)   ReconstStmtBreak   ((TokenStmtBreak)stmt);
+			if (stmt is TokenStmtCont)    ReconstStmtCont    ((TokenStmtCont)stmt);
 			if (stmt is TokenStmtLabel)   ReconstStmtLabel   ((TokenStmtLabel)stmt);
 			if (stmt is TokenStmtRVal)    ReconstStmtRVal    ((TokenStmtRVal)stmt);
 			if (stmt is TokenStmtDo)      ReconstStmtDo      ((TokenStmtDo)stmt);
@@ -121,6 +123,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (stmt is TokenStmtNull)    ReconstStmtNull    ((TokenStmtNull)stmt);
 			if (stmt is TokenStmtRet)     ReconstStmtRet     ((TokenStmtRet)stmt);
 			if (stmt is TokenStmtState)   ReconstStmtState   ((TokenStmtState)stmt);
+			if (stmt is TokenStmtSwitch)  ReconstStmtSwitch  ((TokenStmtSwitch)stmt);
 			if (stmt is TokenStmtWhile)   ReconstStmtWhile   ((TokenStmtWhile)stmt);
 		}
 
@@ -135,6 +138,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				}
 			}
 			WriteSrc ("}");
+		}
+
+		private void ReconstStmtBreak (TokenStmtBreak stmtBreak)
+		{
+			WriteSrc ("break;");
+		}
+
+		private void ReconstStmtCont (TokenStmtCont stmtCont)
+		{
+			WriteSrc ("continue;");
 		}
 
 		private void ReconstStmtLabel (TokenStmtLabel stmtLabel)
@@ -161,7 +174,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			WriteSrc ("for (");
 			indent += 5;
-			ReconstStmt (stmtFor.initStmt);
+			if (stmtFor.initStmt == null) WriteSrc (";");
+			else ReconstStmt (stmtFor.initStmt);
 			if (stmtFor.testRVal != null) {
 				WriteSrc (" ");
 				ReconstRVal (stmtFor.testRVal);
@@ -229,6 +243,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			WriteSrc ("state " + ((stmtState.state == null) ? "default" : stmtState.state.val) + ";");
 		}
 
+		private void ReconstStmtSwitch (TokenStmtSwitch stmtSwitch)
+		{
+			WriteSrc ("switch ");
+			ReconstRVal (stmtSwitch.testRVal);
+			WriteSrc (" {");
+			for (TokenSwitchCase thisCase = stmtSwitch.cases; thisCase != null; thisCase = thisCase.nextCase) {
+				if (thisCase.rVal1 == null) {
+					WriteSrc ("default:");
+				} else {
+					WriteSrc ("case ");
+					ReconstRVal (thisCase.rVal1);
+					if (thisCase.rVal2 != null) {
+						WriteSrc (" ... ");
+						ReconstRVal (thisCase.rVal2);
+					}
+					WriteSrc (":");
+				}
+				for (TokenStmt stmt = thisCase.stmts; stmt != null; stmt = (TokenStmt)stmt.nextToken) {
+					ReconstStmt (stmt);
+				}
+			}
+			WriteSrc ("}");
+		}
+
 		private void ReconstStmtWhile (TokenStmtWhile stmtWhile)
 		{
 			WriteSrc ("while (");
@@ -243,8 +281,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (rVal is TokenRValAsnPre)  ReconstRValAsnPre  ((TokenRValAsnPre) rVal);
 			if (rVal is TokenRValCall)    ReconstRValCall    ((TokenRValCall)   rVal);
 			if (rVal is TokenRValCast)    ReconstRValCast    ((TokenRValCast)   rVal);
-			if (rVal is TokenRValFloat)   ReconstRValFloat   ((TokenRValFloat)  rVal);
-			if (rVal is TokenRValInt)     ReconstRValInt     ((TokenRValInt)    rVal);
 			if (rVal is TokenRValIsType)  ReconstRValIsType  ((TokenRValIsType) rVal);
 			if (rVal is TokenRValList)    ReconstRValList    ((TokenRValList)   rVal);
 			if (rVal is TokenRValConst)   ReconstRValConst   ((TokenRValConst)  rVal);
@@ -253,7 +289,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (rVal is TokenRValOpUn)    ReconstRValOpUn    ((TokenRValOpUn)   rVal);
 			if (rVal is TokenRValParen)   ReconstRValParen   ((TokenRValParen)  rVal);
 			if (rVal is TokenRValRot)     ReconstRValRot     ((TokenRValRot)    rVal);
-			if (rVal is TokenRValStr)     ReconstRValStr     ((TokenRValStr)    rVal);
 			if (rVal is TokenRValUndef)   ReconstRValUndef   ((TokenRValUndef)  rVal);
 			if (rVal is TokenRValVec)     ReconstRValVec     ((TokenRValVec)    rVal);
 		}
@@ -287,16 +322,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ReconstRVal (rValCast.rVal);
 		}
 
-		private void ReconstRValFloat (TokenRValFloat rValFloat)
-		{
-			WriteSrc (rValFloat.flToken.val.ToString ());
-		}
-
-		private void ReconstRValInt (TokenRValInt rValInt)
-		{
-			WriteSrc (rValInt.inToken.val.ToString ());
-		}
-
 		private void ReconstRValIsType (TokenRValIsType rValIsType)
 		{
 			ReconstRVal (rValIsType.rValExp);
@@ -316,7 +341,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		private void ReconstRValConst (TokenRValConst rValConst)
 		{
-			WriteSrc (rValConst.val.name);
+			object v = rValConst.val;
+			     if (v is int) WriteSrc (((int)v).ToString());
+			else if (v is SCRIPTFLOAT) WriteSrc (((SCRIPTFLOAT)v).ToString());
+			else if (v is string) ReconstString ((string)v);
+			else throw new Exception ("unknown const type " + v.GetType ());
 		}
 
 		private void ReconstRValLVal (TokenRValLVal rValLVal)
@@ -357,11 +386,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			WriteSrc (">");
 		}
 
-		private void ReconstRValStr (TokenRValStr rValStr)
+		private void ReconstString (string s)
 		{
 			StringBuilder sb = new StringBuilder ();
 			WriteSrc ("\"");
-			String s = rValStr.strToken.val;
 			for (int i = 0; i < s.Length; i ++) {
 				char c = s[i];
 				if ((c == '"') || (c == '\\')) {
@@ -479,12 +507,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				}
 				if (atBegOfLine) {
 					if (c == ' ') continue;
-					srcsb.Append ("".PadRight (indent));
+					if ((c == '@') || ((s.Length > i + 4) && (s.Substring(i, 4) == "case")) || ((s.Length > i + 7) && (s.Substring(i, 8) == "default:"))) {
+						srcsb.Append ("".PadRight (indent - INDENTBY));
+					} else {
+						srcsb.Append ("".PadRight (indent));
+					}
 					atBegOfLine = false;
 				}
 				srcsb.Append (c);
 				if (c == '\n') atBegOfLine = true;
-				if ((c == ';') || (c == '}')) {
+				if ((c == ';') || (c == '}') || (c == ':')) {
 					srcsb.Append ('\n');
 					atBegOfLine = true;
 				}
