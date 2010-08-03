@@ -18,6 +18,23 @@ default {
             PrintSomething(i);
             //llSleep(0.5);
         }
+        integer j = 0;
+        do {
+            if (j & 1) continue;
+            if (j > 10) break;
+            llOwnerSay("do loop: " + j);
+        } while (++ j < 50);
+        for (j = 0; j < 50; j ++) {
+            if (j & 1) continue;
+            if (j > 10) break;
+            llOwnerSay("for loop: " + j);
+        }
+        j = 0;
+        while (++ j < 50) {
+            if (j & 1) continue;
+            if (j > 10) break;
+            llOwnerSay("while loop: " + j);
+        }
         llOwnerSay("all done!");
     }
 }

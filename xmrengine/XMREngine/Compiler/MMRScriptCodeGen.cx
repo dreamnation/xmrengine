@@ -1920,28 +1920,35 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			CompValu lVal = GenerateFromLVal (asnPost.lVal);
 
 			/*
-			 * Make up a temp to put result in.
+			 * Make up a temp to save original value in.
 			 */
 			CompValu result = new CompValuTemp (lVal.type, null, this);
 
 			/*
-			 * Push original value.
+			 * Prepare to pop incremented value back into variable being incremented.
 			 */
 			lVal.PopPre (this);
-			lVal.PushVal (this);
 
 			/*
-			 * Maybe caller wants value returned somewhere.
-			 * If so, copy original value and store in result.
+			 * Copy original value to temp and leave value on stack.
 			 */
-			result.PopPre (this);
-			lVal.PushVal (this, result.type);
+			lVal.PushVal (this);
+			result.PopPre (this);  // this should push nothing on stack because it is a CIL local var
+			ilGen.Emit (OpCodes.Dup);
 			result.PopPost (this);
 
 			/*
 			 * Perform the ++/--.
 			 */
-			PushConstantI4 (1);
+			if (lVal.type is TokenTypeInt) {
+				PushConstantI4 (1);
+			} else if (lVal.type is TokenTypeFloat) {
+				ilGen.Emit (OpCodes.Ldc_R4, 1.0f);
+			} else {
+				lVal.PopPost (this);
+				ErrorMsg (asnPost, "invalid type for " + asnPost.postfix.ToString ());
+				return lVal;
+			}
 			switch (asnPost.postfix.ToString ()) {
 				case "++": {
 					ilGen.Emit (OpCodes.Add);
@@ -1975,15 +1982,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			CompValu result = new CompValuTemp (lVal.type, null, this);
 
 			/*
-			 * Push original value.
+			 * Prepare to pop incremented value back into variable being incremented.
 			 */
 			lVal.PopPre (this);
+
+			/*
+			 * Push original value.
+			 */
 			lVal.PushVal (this);
 
 			/*
 			 * Perform the ++/--.
 			 */
-			PushConstantI4 (1);
+			if (lVal.type is TokenTypeInt) {
+				PushConstantI4 (1);
+			} else if (lVal.type is TokenTypeFloat) {
+				ilGen.Emit (OpCodes.Ldc_R4, 1.0f);
+			} else {
+				lVal.PopPost (this);
+				ErrorMsg (asnPre, "invalid type for " + asnPre.prefix.ToString ());
+				return lVal;
+			}
 			switch (asnPre.prefix.ToString ()) {
 				case "++": {
 					ilGen.Emit (OpCodes.Add);
@@ -1993,21 +2012,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					ilGen.Emit (OpCodes.Sub);
 					break;
 				}
-				default: throw new Exception ("unknown asnPost op");
+				default: throw new Exception ("unknown asnPre op");
 			}
+
+			/*
+			 * Store new value in temp variable, keeping new value on stack.
+			 */
+			result.PopPre (this);  // this should push nothing on stack because it is a CIL local var
+			ilGen.Emit (OpCodes.Dup);
+			result.PopPost (this);
 
 			/*
 			 * Store new value in original variable.
 			 */
 			lVal.PopPost (this);
-
-			/*
-			 * Maybe caller wants value returned somewhere.
-			 * If so, copy original value and store in result.
-			 */
-			result.PopPre (this);
-			lVal.PushVal (this, result.type);
-			result.PopPost (this);
 
 			return result;
 		}
