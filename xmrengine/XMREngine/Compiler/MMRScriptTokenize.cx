@@ -883,7 +883,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
     DEFTOKENKW(Colon    , ":",   Null, Null)
     DEFTOKENKW(CmpLT    , "<",   Null, Null)
     DEFTOKENKW(CmpGT    , ">",   Null, Null)
-    DEFTOKENKW(Comma    , ":",   Null, Null)
+    DEFTOKENKW(Comma    , ",",   Null, Null)
     DEFTOKENKW(Dot      , ".",   Null, Null)
     DEFTOKENKW(QMark    , "?",   Null, Null)
     DEFTOKENKW(Div      , "/",   Div,  Null)
