@@ -306,6 +306,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                             new Object[] { ScriptBaseClass.CHANGED_REGION }, 
                             zeroDetectParams));
                 }
+                else if (m_StateSource == StateSource.RegionStart)
+                {
+                    PostEvent(new EventParams("changed",
+                            new Object[] { ScriptBaseClass.CHANGED_REGION_START }, 
+                            zeroDetectParams));
+                }
             } else {
 
                 // Got a .state file, try to read .state file into script instance
@@ -326,6 +332,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 {
                     PostEvent(new EventParams("changed",
                             new Object[] { ScriptBaseClass.CHANGED_REGION }, 
+                            zeroDetectParams));
+                }
+                else if (m_StateSource == StateSource.RegionStart)
+                {
+                    PostEvent(new EventParams("changed",
+                            new Object[] { ScriptBaseClass.CHANGED_REGION_START }, 
                             zeroDetectParams));
                 }
             }
