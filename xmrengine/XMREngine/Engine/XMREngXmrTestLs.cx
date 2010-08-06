@@ -155,6 +155,62 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
         }
 
+        private void XmrTestReset(string[] args)
+        {
+            bool flagAll = false;
+            int numScripts = 0;
+            XMRInstance[] instances;
+
+            if (args.Length == 0) {
+                m_log.Error("[XMREngine]: must specify part of script name or -all for all scripts");
+                return;
+            }
+
+            /*
+             * Decode command line options.
+             */
+            for (int i = 0; i < args.Length; i ++) {
+                if (args[i] == "-all") {
+                    flagAll = true;
+                    continue;
+                }
+                if (args[i][0] == '-') {
+                    m_log.Error("[XMREngine]: unknown option " + args[i]);
+                    m_log.Info("[XMREngine]: options: -all");
+                    return;
+                }
+            }
+
+            /*
+             * Scan instance list to find those that match selection criteria.
+             */
+            if (!Monitor.TryEnter(m_InstancesDict, 100)) {
+                m_log.Error("[XMREngine]: deadlock m_LockedDict=" + m_LockedDict);
+                return;
+            }
+            try
+            {
+                instances = new XMRInstance[m_InstancesDict.Count];
+                foreach (XMRInstance ins in m_InstancesDict.Values)
+                {
+                    if (flagAll || InstanceMatchesArgs(ins, args)) {
+                        instances[numScripts++] = ins;
+                    }
+                }
+            } finally {
+                Monitor.Exit(m_InstancesDict);
+            }
+    
+            /*
+             * Reset the instances as if someone clicked their "Reset" button.
+             */
+            for (int i = 0; i < numScripts; i ++) {
+                XMRInstance inst = instances[i];
+                m_log.Debug("[XMREngine]: resetting " + inst.m_DescName);
+                inst.Reset();
+            }
+        }
+
         private static int CompareInstancesByCPUTime(XMRInstance a, XMRInstance b)
         {
             if (a == null) {

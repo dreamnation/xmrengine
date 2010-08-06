@@ -189,7 +189,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             MainConsole.Instance.Commands.AddCommand("xmr", false,
                     "xmr test",
-                    "xmr test [backup|cvv|gc|ls|mvv|resume|suspend|top|traceheapuse]",
+                    "xmr test [backup|cvv|gc|ls|mvv|reset|resume|suspend|top|traceheapuse]",
                     "Run current xmr test",
                     RunTest);
         }
@@ -365,6 +365,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         }
                     }
                     m_log.Error("[XMREngine]: xmr test mvv [<new_migration_version_value>]");
+                    break;
+                }
+                case "reset": {
+                    XmrTestReset(rest);
                     break;
                 }
                 case "resume": {

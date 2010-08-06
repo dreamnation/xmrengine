@@ -713,21 +713,32 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
             lock (m_RunLock) {
                 CheckRunLockInvariants(true);
-                ResetLocked("Reset");
+
+                /*
+                 * No other thread should have transitioned it from RESETTING.
+                 */
                 if (m_IState != XMRInstState.RESETTING) throw new Exception("bad state");
+
+                /*
+                 * If the microthread is active, that means it has call frame
+                 * context that we don't want.  Throw it out and get a fresh one.
+                 */
                 if (microthread.Active () < 0) {
                     microthread.Dispose ();
                     microthread = new ScriptUThread (this);
                 }
-                m_IState = XMRInstState.ONSTARTQ;
-                CheckRunLockInvariants(true);
-            }
 
-            /*
-             * Queue it to start running its default start_entry() event handler.
-             */
-            lock (m_Engine.m_StartQueue) {
-                m_Engine.m_StartQueue.InsertTail(this);
+                /*
+                 * Mark it idle now so it can get queued to process new stuff.
+                 */
+                m_IState = XMRInstState.IDLE;
+
+                /*
+                 * Reset everything and queue up default's start_entry() event.
+                 */
+                ResetLocked("external Reset");
+
+                CheckRunLockInvariants(true);
             }
         }
 
