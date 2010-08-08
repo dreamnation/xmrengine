@@ -937,8 +937,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (engine != ScriptEngineName)
                 return;
 
-            m_log.DebugFormat("[XMREngine]: loading script {0}, asset {1}, param {2}",
-                    item.Name, item.AssetID, startParam.ToString());
+            //m_log.DebugFormat("[XMREngine]: loading script {0}, asset {1}, param {2}",
+             //       item.Name, item.AssetID, startParam.ToString());
 
             /*
              * Compile and load the script in memory.
