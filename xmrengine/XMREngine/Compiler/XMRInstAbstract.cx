@@ -49,5 +49,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public abstract int  StackLeft ();
         public abstract LSL_List XMREventDequeue (SCRIPTFLOAT timeout, int returnMask1, int returnMask2,
                                                   int backgroundMask1, int backgroundMask2, int line);
+        public abstract LSL_List XMREventSaveDets ();
+        public abstract void XMREventLoadDets (LSL_List dpList);
     }
 }

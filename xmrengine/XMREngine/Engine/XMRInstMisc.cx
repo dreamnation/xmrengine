@@ -270,5 +270,35 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
             }
         }
+
+        /**
+         * @brief Convert an LSL vector to an Openmetaverse vector.
+         */
+        public static OpenMetaverse.Vector3 LSLVec2OMVec (LSL_Vector lslVec)
+        {
+            return new OpenMetaverse.Vector3 ((float)lslVec.x, (float)lslVec.y, (float)lslVec.z);
+        }
+
+        /**
+         * @brief Extract an integer from an element of an LSL_List.
+         */
+        public static int ListInt (object element)
+        {
+            if (element is LSL_Integer) {
+                return (int)(LSL_Integer)element;
+            }
+            return (int)element;
+        }
+
+        /**
+         * @brief Extract a string from an element of an LSL_List.
+         */
+        public static string ListStr (object element)
+        {
+            if (element is LSL_String) {
+                return (string)(LSL_String)element;
+            }
+            return (string)element;
+        }
     }
 }

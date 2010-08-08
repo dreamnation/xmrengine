@@ -349,6 +349,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 SendObjValue (stream, dp.Rotation);                 // rotation
                 this.migrateOutWriter.Write (dp.Type);              // integer
                 SendObjValue (stream, dp.Velocity);                 // vector
+                SendObjValue (stream, dp.TouchST);                  // vector
+                SendObjValue (stream, dp.TouchNormal);              // vector
+                SendObjValue (stream, dp.TouchBinormal);            // vector
+                SendObjValue (stream, dp.TouchPos);                 // vector
+                SendObjValue (stream, dp.TouchUV);                  // vector
+                this.migrateOutWriter.Write (dp.TouchFace);         // integer
             } else {
                 throw new Exception ("unhandled class " + graph.GetType().ToString());
             }
