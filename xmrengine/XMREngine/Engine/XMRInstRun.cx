@@ -172,15 +172,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * If instance is sleeping (ie, possibly in xmrEventDequeue),
                  * wake it up if event is in the mask.
                  */
-                m_log.DebugFormat("[XMREngine]: PostEvent*: m_IState={0}, m_Suspended={1}, evc={2}", 
-                        m_IState, m_Suspended, evc);
                 if ((m_IState == XMRInstState.ONSLEEPQ) && !m_Suspended) {
                     int evc1 = (int)evc;
                     int evc2 = evc1 - 32;
                     if ((((uint)evc1 < (uint)32) && (((m_SleepEventMask1 >> evc1) & 1) != 0)) ||
                         (((uint)evc2 < (uint)32) && (((m_SleepEventMask2 >> evc2) & 1) != 0))) {
                         wakeIt = true;
-                        m_log.DebugFormat("[XMREngine]: PostEvent*: wakeIt=true");
                     }
                 }
             }
@@ -197,7 +194,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * Likewise, if the event mask triggered a wake, wake it up.
              */
             if (wakeIt) {
-                m_log.DebugFormat("[XMREngine]: PostEvent*: waking it");
                 m_SleepUntil = DateTime.MinValue;
                 m_Engine.WakeFromSleep(this);
             }

@@ -1203,7 +1203,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * Remove from sleep queue unless someone else already woke it.
              */
             lock (m_SleepQueue) {
-                m_log.DebugFormat("[XMREngine]: WakeFromSleep*: m_IState={0}", inst.m_IState);
                 if (inst.m_IState != XMRInstState.ONSLEEPQ) {
                     return;
                 }
@@ -1213,7 +1212,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Put on end of list of scripts that are ready to run.
              */
-            m_log.DebugFormat("[XMREngine]: WakeFromSleep*: insert on yield queue");
             inst.m_IState = XMRInstState.ONYIELDQ;
             lock (m_YieldQueue) {
                 m_YieldQueue.InsertTail(inst);
