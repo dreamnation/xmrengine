@@ -1195,6 +1195,37 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         /**
+         * @brief A script may be sleeping, in which case we wake it.
+         */
+        public void WakeFromSleep(XMRInstance inst)
+        {
+            /*
+             * Remove from sleep queue unless someone else already woke it.
+             */
+            lock (m_SleepQueue) {
+                m_log.DebugFormat("[XMREngine]: WakeFromSleep*: m_IState={0}", inst.m_IState);
+                if (inst.m_IState != XMRInstState.ONSLEEPQ) {
+                    return;
+                }
+                m_SleepQueue.Remove(inst);
+            }
+
+            /*
+             * Put on end of list of scripts that are ready to run.
+             */
+            m_log.DebugFormat("[XMREngine]: WakeFromSleep*: insert on yield queue");
+            inst.m_IState = XMRInstState.ONYIELDQ;
+            lock (m_YieldQueue) {
+                m_YieldQueue.InsertTail(inst);
+            }
+
+            /*
+             * Make sure the OS thread is running so it will see the script.
+             */
+            WakeUpScriptThread();
+        }
+
+        /**
          * @brief Wake up RunScriptThread() as there is more work for it to do now.
          */
         private void WakeUpScriptThread()

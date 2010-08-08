@@ -10,6 +10,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	 *        Must have same name as corresponding event handler name, so
 	 *        the compiler will know what column in the seht to put the
 	 *        event handler entrypoint in.
+	 *
+	 *        Also, ScriptConst.Init() builds symbols of name XMREVENTCODE_<name>
+	 *        and XMREVENTMASK<n>_<name> with the values and masks of all symbols
+	 *        in range 0..63 that begin with a lower-case letter for scripts to
+	 *        reference.
 	 */
 	public enum ScriptEventCode : int {
 

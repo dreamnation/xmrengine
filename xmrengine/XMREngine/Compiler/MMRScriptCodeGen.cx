@@ -182,7 +182,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			nStates = 0;
 			tokenScript.defaultState.body.index = nStates ++;
 			stateIndices.Add ("default", 0);
-			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclState> kvp in tokenScript.states) {
+			foreach (KeyValuePair<string, TokenDeclState> kvp in tokenScript.states) {
 				TokenDeclState declState = kvp.Value;
 				declState.body.index = nStates ++;
 				stateIndices.Add (declState.name.val, declState.body.index);
@@ -194,7 +194,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			scriptObjCode = new ScriptObjCode ();
 			scriptObjCode.stateNames = new string[nStates];
 			scriptObjCode.stateNames[0] = "default";
-			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclState> kvp in tokenScript.states) {
+			foreach (KeyValuePair<string, TokenDeclState> kvp in tokenScript.states) {
 				TokenDeclState declState = kvp.Value;
 				scriptObjCode.stateNames[declState.body.index] = declState.name.val;
 			}
@@ -206,7 +206,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 *
 			 * Prefix the names with __fun_ to keep them separate from any XMRInstance functions.
 			 */
-			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclFunc> kvp in tokenScript.funcs) {
+			foreach (KeyValuePair<string, TokenDeclFunc> kvp in tokenScript.funcs) {
 				TokenDeclFunc declFunc = kvp.Value;
 				scriptFunctions.Add (declFunc.funcName.val, declFunc);
 			}
@@ -219,19 +219,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			bool foundChangedState;
 			do {
 				foundChangedState = false;
-				foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclFunc> kvpX in tokenScript.funcs) {
+				foreach (KeyValuePair<string, TokenDeclFunc> kvpX in tokenScript.funcs) {
 					TokenDeclFunc declFuncX = kvpX.Value;
-					if (!declFuncX.changesState) {
-						foreach (System.Collections.Generic.KeyValuePair<string, TokenName> kvpY in declFuncX.calledFuncs) {
-							string nameY = kvpY.Key;
-							if (scriptFunctions.ContainsKey (nameY)) {
-								TokenDeclFunc declFuncY = scriptFunctions[nameY];
-								if (declFuncY.changesState) {
-									declFuncX.changesState = true;
-									foundChangedState = true;
-									break;
-								}
-							}
+					if (declFuncX.changesState) continue;
+					foreach (KeyValuePair<string, TokenName> kvpY in declFuncX.calledFuncs) {
+						InlineFunction inlFuncY;
+						TokenDeclFunc declFuncY;
+						string nameY = kvpY.Key;
+						if ((scriptFunctions.TryGetValue (nameY, out declFuncY) && declFuncY.changesState) ||
+						    (inlineFunctions.TryGetValue (nameY, out inlFuncY) && inlFuncY.changesState)) {
+							declFuncX.changesState = true;
+							foundChangedState = true;
+							break;
 						}
 					}
 				}
@@ -250,7 +249,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Global variables are simply elements of those arrays at runtime, thus we don't need to create
 			 * an unique class for each script, we can just use XMRInstance as is for all.
 			 */
-			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclVar> kvp in tokenScript.vars) {
+			foreach (KeyValuePair<string, TokenDeclVar> kvp in tokenScript.vars) {
 				TokenDeclVar declVar = kvp.Value;
 
 				/*
@@ -331,11 +330,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Output function headers then bodies.
 			 * Do all headers first in case bodies do forward references.
 			 */
-			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclFunc> kvp in tokenScript.funcs) {
+			foreach (KeyValuePair<string, TokenDeclFunc> kvp in tokenScript.funcs) {
 				TokenDeclFunc declFunc = kvp.Value;
 				GenerateMethodHeader (declFunc);
 			}
-			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclFunc> kvp in tokenScript.funcs) {
+			foreach (KeyValuePair<string, TokenDeclFunc> kvp in tokenScript.funcs) {
 				TokenDeclFunc declFunc = kvp.Value;
 				GenerateMethodBody (declFunc);
 			}
@@ -370,7 +369,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Output script-defined state event handler methods.
 			 * Each event handler is a private static method named __seh_<statename>_<eventname>
 			 */
-			foreach (System.Collections.Generic.KeyValuePair<string, TokenDeclState> kvp in tokenScript.states) {
+			foreach (KeyValuePair<string, TokenDeclState> kvp in tokenScript.states) {
 				TokenDeclState declState = kvp.Value;
 				GenerateStateEventHandlers (declState.name.val, declState.body);
 			}
@@ -2223,17 +2222,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Also, unwind out if the called function changed state.
-			 * ???? optimize by putting just one 'dummyreturn' label at end of function ????
 			 */
 			if (declFunc.changesState) {
-
-				// if (__sw.StateChanged) return;
-				ScriptMyLabel noStateChangeLabel = ilGen.DefineLabel ("nostatechg_" + call.Unique);
-				ilGen.Emit (OpCodes.Ldarg_0);                       // instance
-				ilGen.Emit (OpCodes.Ldfld, stateChangedFieldInfo);  // instance.stateChanged
-				ilGen.Emit (OpCodes.Brfalse, noStateChangeLabel);
-				EmitDummyReturn ();
-				ilGen.MarkLabel (noStateChangeLabel);
+				EmitStateChgCk (call);
 			}
 			return result;
 		}
@@ -2535,6 +2526,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				return result;
 			}
 			throw new Exception ("unknown TokenTypeExp type " + typeExp.GetType ());
+		}
+
+		/**
+		 * @brief Emit code that check for state changed so it will do a 'return' out of this function.
+		 */
+		public void EmitStateChgCk (Token token)
+		{
+			// if (__sw.StateChanged) return;
+			ScriptMyLabel noStateChangeLabel = ilGen.DefineLabel ("nostatechg_" + token.Unique);
+			ilGen.Emit (OpCodes.Ldarg_0);                       // instance
+			ilGen.Emit (OpCodes.Ldfld, stateChangedFieldInfo);  // instance.stateChanged
+			ilGen.Emit (OpCodes.Brfalse, noStateChangeLabel);
+			EmitDummyReturn ();
+			ilGen.MarkLabel (noStateChangeLabel);
 		}
 
 		/**

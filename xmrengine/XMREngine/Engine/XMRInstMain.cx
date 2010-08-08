@@ -155,7 +155,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private int m_SuspendCount = 0;
 
         // don't run any of script until this time
+        // or until one of these events are queued
         public DateTime m_SleepUntil = DateTime.MinValue;
+        public int m_SleepEventMask1 = 0;
+        public int m_SleepEventMask2 = 0;
 
         private Dictionary<string,IScriptApi> m_Apis =
                 new Dictionary<string,IScriptApi>();
@@ -252,7 +255,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             SYSFLOAT,
             SYSINT,
             SYSSTR,
-            XMRARRAY
+            XMRARRAY,
+            DETPRMS
         }
 
         // Scripts start suspended now. This means theit event queues will

@@ -70,12 +70,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					} else if (fieldType == typeof (int)) {
 						new ScriptConst (sc, 
 						                 fieldName, 
-						                 new CompValuInteger (new TokenTypeFloat (null),
+						                 new CompValuInteger (new TokenTypeInt (null),
 						                                      (int)constField.GetValue (null)));
 					} else if (fieldType == typeof (LSL_Integer)) {
 						new ScriptConst (sc, 
 						                 fieldName, 
-						                 new CompValuInteger (new TokenTypeFloat (null),
+						                 new CompValuInteger (new TokenTypeInt (null),
 						                                      ((LSL_Integer)constField.GetValue (null)).value));
 					}
 
@@ -87,6 +87,25 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					                      new CompValuSField (TokenType.FromSysType (null, fieldType),
 					                                          constField));
 				}
+			}
+
+			/*
+			 * For every event code, define XMREVENTCODE_<eventname> and XMREVENTMASKn_<eventname> symbols.
+			 */
+			for (int i = 0; i < 64; i ++) {
+				try {
+					string s = ((ScriptEventCode)i).ToString ();
+					if ((s.Length > 0) && (s[0] >= 'a') && (s[0] <= 'z')) {
+						new ScriptConst (sc, 
+						                 "XMREVENTCODE_" + s, 
+						                 new CompValuInteger (new TokenTypeInt (null), i));
+						int n = i / 32 + 1;
+						int m = 1 << (i % 32);
+						new ScriptConst (sc, 
+						                 "XMREVENTMASK" + n + "_" + s, 
+						                 new CompValuInteger (new TokenTypeInt (null), m));
+					}
+				} catch { }
 			}
 
 			//MB();

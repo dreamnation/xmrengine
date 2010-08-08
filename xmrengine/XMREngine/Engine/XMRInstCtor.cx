@@ -869,6 +869,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     array.RecvArrayObj (this.RecvObjValue, stream);
                     return array;
                 }
+                case Ser.DETPRMS: {
+                    DetectParams dp = new DetectParams ();
+                    dp.Key       = new UUID (this.migrateInReader.ReadString ());
+                    dp.OffsetPos = (LSL_Vector)RecvObjValue (stream);
+                    dp.LinkNum   = this.migrateInReader.ReadInt32 ();
+                    dp.Group     = new UUID (this.migrateInReader.ReadString ());
+                    dp.Name      = this.migrateInReader.ReadString ();
+                    dp.Owner     = new UUID (this.migrateInReader.ReadString ());
+                    dp.Position  = (LSL_Vector)RecvObjValue (stream);
+                    dp.Rotation  = (LSL_Rotation)RecvObjValue (stream);
+                    dp.Type      = this.migrateInReader.ReadInt32 ();
+                    dp.Velocity  = (LSL_Vector)RecvObjValue (stream);
+                    return dp;
+                }
                 default: throw new Exception ("bad stream code " + code.ToString ());
             }
         }

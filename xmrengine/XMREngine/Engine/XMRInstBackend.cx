@@ -151,16 +151,162 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public void Sleep(int ms)
         {
-            /*
-             * Say how long to sleep.
-             */
-            m_SleepUntil = DateTime.UtcNow + TimeSpan.FromMilliseconds(ms);
+            lock (m_QueueLock) {
+
+                /*
+                 * Say how long to sleep.
+                 */
+                m_SleepUntil = DateTime.UtcNow + TimeSpan.FromMilliseconds(ms);
+
+                /*
+                 * Don't wake on any events.
+                 */
+                m_SleepEventMask1 = 0;
+                m_SleepEventMask2 = 0;
+            }
 
             /*
              * The compiler follows all calls to llSleep() with a call to CheckRun().
              * So tell CheckRun() to suspend the microthread.
              */
             suspendOnCheckRunTemp = true;
+        }
+
+        /**
+         * Block script execution until an event is queued or a timeout is reached.
+         * @param timeout = maximum number of seconds to wait
+         * @param returnMask = if event is queued that matches these mask bits,
+         *                     the script is woken, that event is dequeued and
+         *                     returned to the caller.  The event handler is not
+         *                     executed.
+         * @param backgroundMask = if any of these events are queued while waiting,
+         *                         execute their event handlers.  When any such event
+         *                         handler exits, continue waiting for events or the
+         *                         timeout.
+         * @param line = linenumber in script of the call
+         * @returns empty list: no event was queued that matched returnMask and the timeout was reached
+         *                      or a background event handler changed state (eg, via 'state' statement)
+         *                else: list giving parameters of the event:
+         *                      [0] = event code (integer)
+         *                   [1..n] = call parameters to the event, if any
+         * Notes:
+         *   1) Scrips should use XMREVENTMASKn_<eventname> symbols for the mask arguments,
+         *      where n is 1 or 2 for mask1 or mask2 arguments.
+         *      The list[0] return argument can be decoded by using XMREVENTCODE_<eventname> symbols.
+         *   2) If all masks are zero, the call ends up acting like llSleep.
+         *   3) If an event is enabled in both returnMask and backgroundMask, the returnMask bit
+         *      action takes precedence, ie, the event is returned.  This allows a simple specification
+         *      of -1 for both backgroundMask arguments to indicate that all events not listed in
+         *      the returnMask argumetns should be handled in the background.
+         *   4) Any events not listed in either returnMask or backgroundMask arguments will be
+         *      queued for later processing (subject to normal queue limits).
+         *   5) Background event handlers execute as calls from within XMREventDequeue, they do
+         *      not execute as separate threads.  Thus any background event handlers must return
+         *      before the call to xmrEventDequeue will return.
+         *   6) If a background event handler changes state (eg, via 'state' statement), the state
+         *      is immediately changed and the script-level xmrEventDequeue call does not return.
+         *   7) For returned events, the detect parameters are overwritten by the returned event.
+         *      For background events, the detect parameters are saved and restored.
+         *   8) Scripts must contain dummy event handler definitions for any event types that may 
+         *      be returned by XMREventDequeue, to let the runtime know that the script is capable 
+         *      of processing that event type.  Otherwise, the event may not be queued to the script.
+         */
+        private static LSL_List emptyList = new LSL_List (new object[0]);
+
+        [MMRContableAttribute ()]
+        public override LSL_List XMREventDequeue (SCRIPTFLOAT timeout, int returnMask1, int returnMask2, 
+                                                  int backgroundMask1, int backgroundMask2, int line)
+        {
+            DateTime sleepUntil = DateTime.UtcNow + TimeSpan.FromMilliseconds (timeout * 1000.0);
+            EventParams evt = null;
+            int evc1, evc2;
+            int mask1 = returnMask1 | backgroundMask1;  // codes 00..31
+            int mask2 = returnMask2 | backgroundMask2;  // codes 32..63
+            LinkedListNode<EventParams> lln = null;
+            ScriptEventCode evc;
+
+            do {
+
+                /*
+                 * Find first event that matches either the return or background masks.
+                 */
+                Monitor.Enter (m_QueueLock);
+                for (lln = m_EventQueue.First; lln != null; lln = lln.Next) {
+                    evt  = lln.Value;
+                    evc  = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), evt.EventName);
+                    evc1 = (int)evc;
+                    evc2 = evc1 - 32;
+                    if ((((uint)evc1 < (uint)32) && (((mask1 >> evc1) & 1) != 0)) ||
+                        (((uint)evc2 < (uint)32) && (((mask2 >> evc2) & 1) != 0))) goto remfromq;
+                }
+
+                /*
+                 * Nothing found, sleep while one comes in.
+                 */
+                m_SleepUntil = sleepUntil;
+                m_SleepEventMask1 = mask1;
+                m_SleepEventMask2 = mask2;
+                Monitor.Exit (m_QueueLock);
+                suspendOnCheckRunTemp = true;
+                CheckRun (line);
+                continue;
+
+                /*
+                 * Found one, remove it from queue.
+                 */
+            remfromq:
+                m_EventQueue.Remove (lln);
+                m_EventCounts[evc1] --;
+                Monitor.Exit (m_QueueLock);
+
+                /*
+                 * See if returnable or background event.
+                 */
+                if ((((uint)evc1 < (uint)32) && (((returnMask1 >> evc1) & 1) != 0)) ||
+                    (((uint)evc2 < (uint)32) && (((returnMask2 >> evc2) & 1) != 0))) {
+
+                    /*
+                     * Returnable event, return its parameters in a list.
+                     * Also set the detect parameters to what the event has.
+                     */
+                    object[] plist = new object[evt.Params.Length+1];
+                    plist[0] = evc1;
+                    Array.Copy (evt.Params, 0, plist, 1, evt.Params.Length);
+                    m_DetectParams = evt.DetectParams;
+                    return new LSL_List (plist);
+                }
+
+                /*
+                 * It is a background event, simply call its event handler,
+                 * then check event queue again.
+                 */
+                ScriptEventHandler seh = objCode.scriptEventHandlerTable[stateCode,evc1];
+                if (seh != null) {
+                    DetectParams[]  saveDetParams = this.m_DetectParams;
+                    object[]        saveEHArgs    = this.ehArgs;
+                    ScriptEventCode saveEventCode = this.eventCode;
+
+                    this.m_DetectParams = evt.DetectParams;
+                    this.ehArgs         = evt.Params;
+                    this.eventCode      = evc;
+
+                    seh (this);
+
+                    this.m_DetectParams = saveDetParams;
+                    this.ehArgs         = saveEHArgs;
+                    this.eventCode      = saveEventCode;
+                }
+
+                /*
+                 * Keep waiting until we find a returnable event or timeout.
+                 * Also stop waiting if a background event handler changed state.
+                 */
+            } while (!stateChanged && (DateTime.UtcNow < sleepUntil));
+
+            /*
+             * We timed out or background event handler changed state, return an empty list.
+             */
+            return emptyList;
         }
 
         /**

@@ -31,14 +31,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public MethodInfo methInfo;   // function called by the inline
 		public bool doCheckRun;       // valid for CodeGenBEApi only
 		public int keepNulls;         // valid for CodeGenLLParseString2List only
+		public bool changesState;     // false: this function cannot change state
+		                              //  true: this function might change state
 
 		private static TokenTypeFloat tokenTypeFloat  = new TokenTypeFloat (null);
+		private static TokenTypeInt   tokenTypeInt  = new TokenTypeInt (null);
 ///		private static TokenTypeStr   tokenTypeString = new TokenTypeStr (null);
 
 ///		private static MethodInfo consoleWrite = ScriptCodeGen.GetStaticMethod (typeof (XMRInstAbstract), "ConsoleWrite",
 ///				new Type[] { typeof (XMRInstAbstract), typeof (string) });
 		private static MethodInfo roundMethInfo = ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Round", 
 				new Type[] { typeof (double), typeof (MidpointRounding) });
+		private static MethodInfo xmrEventDequeue = typeof (XMRInstAbstract).GetMethod ("XMREventDequeue",
+				new Type[] { typeof (SCRIPTFLOAT), typeof (int), typeof (int), typeof (int), typeof (int), typeof (int) });
 
 		/**
 		 * @brief Create a dictionary of inline backend API functions.
@@ -123,9 +128,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Our internally defined functions.
 			 */
-///			inf = new InlineFunction (ifd, "consoleWrite(string)", typeof (void), null); inf.codeGen = inf.CodeGenConsoleWrite;
-			inf = new InlineFunction (ifd, "xmrHeapLeft()",        typeof (int),  null); inf.codeGen = inf.CodeGenXMRHeapLeft;
-			inf = new InlineFunction (ifd, "xmrStackLeft()",       typeof (int),  null); inf.codeGen = inf.CodeGenXMRStackLeft;
+///			inf = new InlineFunction (ifd, "consoleWrite(string)",                                   typeof (void),     null); inf.codeGen = inf.CodeGenConsoleWrite;
+			inf = new InlineFunction (ifd, "xmrEventDequeue(float,integer,integer,integer,integer)", typeof (LSL_List), null); inf.codeGen = inf.CodeGenXMREventDequeue; inf.changesState = true;
+			inf = new InlineFunction (ifd, "xmrHeapLeft()",                                          typeof (int),      null); inf.codeGen = inf.CodeGenXMRHeapLeft;
+			inf = new InlineFunction (ifd, "xmrStackLeft()",                                         typeof (int),      null); inf.codeGen = inf.CodeGenXMRStackLeft;
 
 			/*
 			 * Finally for any API functions defined by ScriptBaseClass that are not overridden 
@@ -307,6 +313,25 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 ///			args[0].PushVal (scg, tokenTypeString);
 ///			scg.ilGen.Emit (OpCodes.Call, consoleWrite);
 ///		}
+
+		/**
+		 * @brief Generate code to dequeue an event
+		 *        Script-level prototype:  list xmrEventDequeue(float,integer,integer,integer,integer)
+		 */
+		private void CodeGenXMREventDequeue (ScriptCodeGen scg, Token token, CompValu result, CompValu[] args)
+		{
+			result.PopPre (scg);
+			scg.ilGen.Emit (OpCodes.Ldarg_0);
+			args[0].PushVal (scg, tokenTypeFloat);
+			args[1].PushVal (scg, tokenTypeInt);
+			args[2].PushVal (scg, tokenTypeInt);
+			args[3].PushVal (scg, tokenTypeInt);
+			args[4].PushVal (scg, tokenTypeInt);
+			scg.PushConstantI4 (token.line);
+			scg.ilGen.Emit (OpCodes.Call, xmrEventDequeue);
+			result.PopPost (scg, retType);
+			scg.EmitStateChgCk (token);
+		}
 
 		/**
 		 * @brief Generate code to return number of bytes of heap they have left.

@@ -336,6 +336,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             } else if (graph is string) {
                 this.migrateOutWriter.Write ((byte)Ser.SYSSTR);
                 this.migrateOutWriter.Write ((string)graph);
+            } else if (graph is DetectParams) {
+                DetectParams dp = (DetectParams)graph;
+                this.migrateOutWriter.Write ((byte)Ser.DETPRMS);
+                this.migrateOutWriter.Write (dp.Key.ToString());    // UUID
+                SendObjValue (stream, dp.OffsetPos);                // vector
+                this.migrateOutWriter.Write (dp.LinkNum);           // integer
+                this.migrateOutWriter.Write (dp.Group.ToString());  // UUID
+                this.migrateOutWriter.Write (dp.Name);              // string
+                this.migrateOutWriter.Write (dp.Owner.ToString());  // UUID
+                SendObjValue (stream, dp.Position);                 // vector
+                SendObjValue (stream, dp.Rotation);                 // rotation
+                this.migrateOutWriter.Write (dp.Type);              // integer
+                SendObjValue (stream, dp.Velocity);                 // vector
             } else {
                 throw new Exception ("unhandled class " + graph.GetType().ToString());
             }

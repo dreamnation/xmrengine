@@ -145,6 +145,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 sb.AppendLine("    m_StateSource   = " + m_StateSource);
                 sb.AppendLine("    m_SuspendCount  = " + m_SuspendCount);
                 sb.AppendLine("    m_SleepUntil    = " + m_SleepUntil);
+                sb.AppendLine("    m_SleepEvMask1  = 0x" + m_SleepEventMask1.ToString("X"));
+                sb.AppendLine("    m_SleepEvMask2  = 0x" + m_SleepEventMask2.ToString("X"));
                 sb.AppendLine("    m_IState        = " + m_IState.ToString());
                 sb.AppendLine("    m_Die           = " + m_Die);
                 sb.AppendLine("    m_StateCode     = " + GetStateName(stateCode));
