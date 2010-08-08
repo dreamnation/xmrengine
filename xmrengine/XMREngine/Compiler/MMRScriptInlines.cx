@@ -42,8 +42,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 ///				new Type[] { typeof (XMRInstAbstract), typeof (string) });
 		private static MethodInfo roundMethInfo = ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Round", 
 				new Type[] { typeof (double), typeof (MidpointRounding) });
+		private static MethodInfo xmrEventCallHandler = typeof (XMRInstAbstract).GetMethod ("XMREventCallHandler",
+				new Type[] { typeof (LSL_List) });
 		private static MethodInfo xmrEventDequeue  = typeof (XMRInstAbstract).GetMethod ("XMREventDequeue",
 				new Type[] { typeof (SCRIPTFLOAT), typeof (int), typeof (int), typeof (int), typeof (int), typeof (int) });
+		private static MethodInfo xmrEventEnqueue = typeof (XMRInstAbstract).GetMethod ("XMREventEnqueue",
+				new Type[] { typeof (LSL_List) });
 		private static MethodInfo xmrEventLoadDets = typeof (XMRInstAbstract).GetMethod ("XMREventLoadDets",
 				new Type[] { typeof (LSL_List) });
 		private static MethodInfo xmrEventSaveDets = typeof (XMRInstAbstract).GetMethod ("XMREventSaveDets",
@@ -133,7 +137,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Our internally defined functions.
 			 */
 ///			inf = new InlineFunction (ifd, "consoleWrite(string)",                                   typeof (void),     null); inf.codeGen = inf.CodeGenConsoleWrite;
-			inf = new InlineFunction (ifd, "xmrEventDequeue(float,integer,integer,integer,integer)", typeof (LSL_List), null); inf.codeGen = inf.CodeGenXMREventDequeue; inf.changesState = true;
+			inf = new InlineFunction (ifd, "xmrEventCallHandler(list)",                              typeof (void),     null); inf.codeGen = inf.CodeGenXMREventCallHandler; inf.changesState = true;
+			inf = new InlineFunction (ifd, "xmrEventDequeue(float,integer,integer,integer,integer)", typeof (LSL_List), null); inf.codeGen = inf.CodeGenXMREventDequeue;     inf.changesState = true;
+			inf = new InlineFunction (ifd, "xmrEventEnqueue(list)",                                  typeof (void),     null); inf.codeGen = inf.CodeGenXMREventEnqueue;
 			inf = new InlineFunction (ifd, "xmrEventLoadDets(list)",                                 typeof (void),     null); inf.codeGen = inf.CodeGenXMREventLoadDets;
 			inf = new InlineFunction (ifd, "xmrEventSaveDets()",                                     typeof (LSL_List), null); inf.codeGen = inf.CodeGenXMREventSaveDets;
 			inf = new InlineFunction (ifd, "xmrHeapLeft()",                                          typeof (int),      null); inf.codeGen = inf.CodeGenXMRHeapLeft;
@@ -321,6 +327,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 ///		}
 
 		/**
+		 * @brief Generate code to call an event handler
+		 *        Script-level prototype:  xmrEventCallHandler(list)
+		 */
+		private void CodeGenXMREventCallHandler (ScriptCodeGen scg, Token token, CompValu result, CompValu[] args)
+		{
+			scg.ilGen.Emit (OpCodes.Ldarg_0);
+			args[0].PushVal (scg);
+			scg.ilGen.Emit (OpCodes.Call, xmrEventCallHandler);
+			scg.EmitStateChgCk (token);
+		}
+
+		/**
 		 * @brief Generate code to dequeue an event
 		 *        Script-level prototype:  list xmrEventDequeue(float,integer,integer,integer,integer)
 		 */
@@ -337,6 +355,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			scg.ilGen.Emit (OpCodes.Call, xmrEventDequeue);
 			result.PopPost (scg, retType);
 			scg.EmitStateChgCk (token);
+		}
+
+		/**
+		 * @brief Generate code to enqueue an event
+		 *        Script-level prototype:  xmrEventEnqueue(list)
+		 */
+		private void CodeGenXMREventEnqueue (ScriptCodeGen scg, Token token, CompValu result, CompValu[] args)
+		{
+			scg.ilGen.Emit (OpCodes.Ldarg_0);
+			args[0].PushVal (scg);
+			scg.ilGen.Emit (OpCodes.Call, xmrEventEnqueue);
 		}
 
 		/**
