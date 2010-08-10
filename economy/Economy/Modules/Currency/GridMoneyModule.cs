@@ -867,7 +867,7 @@ namespace Careminster.Modules.Currency
             if (client != null)
             {
                 if (soundId != UUID.Zero)
-                    client.SendPlayAttachedSound(soundId, UUID.Zero, UUID.Zero, 1.0f, 0);
+                    client.SendPlayAttachedSound(soundId, agentId, agentId, 1.0f, 0);
                 if (mode == "alert")
                     client.SendAgentAlertMessage(text, false);
                 else if (mode == "modal")
