@@ -336,6 +336,40 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 	}
 
+	// The value is kept in a struct/class method
+	public class CompValuMethod : CompValu {
+		public CompValu obj;
+		public MethodInfo field;
+
+		public CompValuMethod (TokenType type, CompValu obj, MethodInfo field) : base (type)
+		{
+			this.obj   = obj;
+			this.field = field;
+		}
+
+		// This is called when trying to read the method.
+		// It should be used only in the context of syntax that looks like a field access,
+		// eg, integer n = somearray.count;
+		// Presumably the method has zero arguments.
+		public override void PushVal (ScriptCodeGen scg)
+		{
+			obj.PushVal (scg);                         // 'this' pointer for the method
+			scg.ilGen.Emit (OpCodes.Callvirt, field);  // call method, leave rtn val on stack
+		}
+		public override void PushByRef (ScriptCodeGen scg)
+		{
+			throw new Exception ("cannot push method entrypoint");
+		}
+		public override void PopPre (ScriptCodeGen scg)
+		{
+			throw new Exception ("cannot pop method entrypoint");
+		}
+		public override void PopPost (ScriptCodeGen scg)
+		{
+			throw new Exception ("cannot pop method entrypoint");
+		}
+	}
+
 	// The value is a null
 	public class CompValuNull : CompValu {
 		public CompValuNull (TokenType type) : base (type) { }

@@ -50,9 +50,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public  static ConstructorInfo lslVectorConstructorInfo = typeof (LSL_Vector).GetConstructor (new Type[] { typeof (double), typeof (double), typeof (double) });
 		private static ConstructorInfo scriptUndefinedStateExceptionConstructorInfo = typeof (ScriptUndefinedStateException).GetConstructor (new Type[] { typeof (string) });
 		private static ConstructorInfo xmrArrayConstructorInfo = typeof (XMR_Array).GetConstructor (new Type[0]);
-		private static FieldInfo arrayCountFieldInfo   = typeof (XMR_Array).GetField ("__pub_count");
-		private static FieldInfo arrayIndexFieldInfo   = typeof (XMR_Array).GetField ("__pub_index");
-		private static FieldInfo arrayValueFieldInfo   = typeof (XMR_Array).GetField ("__pub_value");
 		public  static FieldInfo beAPIFieldInfo        = typeof (XMRInstAbstract).GetField ("beAPI");
 		private static FieldInfo doGblInitFieldInfo    = typeof (XMRInstAbstract).GetField ("doGblInit");
 		private static FieldInfo ehArgsFieldInfo       = typeof (XMRInstAbstract).GetField ("ehArgs");
@@ -68,11 +65,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static FieldInfo vectorYFieldInfo      = typeof (LSL_Vector).GetField ("y");
 		private static FieldInfo vectorZFieldInfo      = typeof (LSL_Vector).GetField ("z");
 
-		private static MethodInfo checkRunMethodInfo = typeof (XMRInstAbstract).GetMethod ("CheckRun", new Type[] { typeof (int) });
-		private static MethodInfo forEachMethodInfo = typeof (XMR_Array).GetMethod ("ForEach", 
-		                                                                            new Type[] { typeof (int),
-		                                                                                         typeof (object).MakeByRefType (),
-		                                                                                         typeof (object).MakeByRefType () });
+		private static MethodInfo arrayCountMethodInfo = typeof (XMR_Array).GetMethod ("__pub_count", new Type[] { });
+		private static MethodInfo arrayIndexMethodInfo = typeof (XMR_Array).GetMethod ("__pub_index", new Type[] { typeof (int) });
+		private static MethodInfo arrayValueMethodInfo = typeof (XMR_Array).GetMethod ("__pub_value", new Type[] { typeof (int) });
+		private static MethodInfo checkRunMethodInfo   = typeof (XMRInstAbstract).GetMethod ("CheckRun", new Type[] { typeof (int) });
+		private static MethodInfo forEachMethodInfo    = typeof (XMR_Array).GetMethod ("ForEach", 
+		                                                                               new Type[] { typeof (int),
+		                                                                                            typeof (object).MakeByRefType (),
+		                                                                                            typeof (object).MakeByRefType () });
 		private static MethodInfo updateHeapLeftMethodInfo = GetStaticMethod (typeof (ScriptCodeGen), 
 		                                                                      "UpdateHeapLeft", 
 		                                                                      new Type[] { typeof (XMRInstAbstract),
@@ -1651,13 +1651,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Since we only have a few types with fields, just pound them out.
 			 */
 			if (baseLVal.type is TokenTypeArray) {
+
+				// no arguments, no parentheses, just the field name
+				// but internally, it is a call to a method()
 				if (fieldName == "count") {
-					return new CompValuField (new TokenTypeInt (lVal.field), baseLVal, arrayCountFieldInfo);
+					TokenTypeInt tti = new TokenTypeInt (lVal);
+					return new CompValuMethod (tti, baseLVal, arrayCountMethodInfo);
 				}
-				FieldInfo fi = null;
-				if (fieldName == "index") fi = arrayIndexFieldInfo;
-				if (fieldName == "value") fi = arrayValueFieldInfo;
-				if (fi != null) {
+
+				// single integer argument
+				MethodInfo mi = null;
+				if (fieldName == "index") mi = arrayIndexMethodInfo;
+				if (fieldName == "value") mi = arrayValueMethodInfo;
+				if (mi != null) {
 					TokenTypeMeth ttm             = new TokenTypeMeth (lVal);
 					ttm.funcs                     = new TokenDeclFunc[1];
 					ttm.funcs[0]                  = new TokenDeclFunc (lVal);
@@ -1668,7 +1674,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					ttm.funcs[0].argDecl.types[0] = new TokenTypeInt (lVal);
 					ttm.funcs[0].argDecl.names    = new TokenName[1];
 					ttm.funcs[0].argDecl.names[0] = new TokenName (lVal, "number");
-					return new CompValuField (ttm, baseLVal, fi);
+					return new CompValuMethod (ttm, baseLVal, mi);
 				}
 			}
 			if (baseLVal.type is TokenTypeRot) {
@@ -2049,14 +2055,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			CompValu[] argRVals = null;
 			int i, nargs;
 			TokenLValField meth = (TokenLValField)call.meth;
-			Type[] argTypes = null;
 
 			/*
 			 * Get method's entrypoint and signature.
 			 */
-			CompValu baseObj = GenerateFromLVal (meth.baseLVal);
-			CompValu method = GenerateFromLVal (meth);
+			CompValu method = GenerateFromLValField (meth);
+			if (!(method is CompValuMethod)) {
+				ErrorMsg (meth, "must be a method, not a field");
+				return new CompValuVoid (meth);
+			}
+
+			/*
+			 * Sorry, we're tu stOOpid to handle multiple prototypes.
+			 */
 			if (((TokenTypeMeth)method.type).funcs.Length != 1) throw new Exception ("tu stOOpid");
+
+			/*
+			 * Get the one-and-only function declaration, the param types better match...
+			 */
 			TokenDeclFunc declFunc = ((TokenTypeMeth)method.type).funcs[0];
 
 			/*
@@ -2066,42 +2082,33 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			CompValu result = SetupReturnLocation (declFunc.retType);
 
 			/*
-			 * Push 'this' pointer as first arg to function.
+			 * Push 'this' pointer as hidden first arg to function.
 			 */
-			baseObj.PushVal (this);
+			((CompValuMethod)method).obj.PushVal (this);
 
 			/*
 			 * Compute and push the values of all the function's call arguments, left-to-right.
 			 */
 			nargs = call.nArgs;
-			argTypes = new Type[nargs];
-			if (nargs > 0) {
-				argRVals = new CompValu[nargs];
-				i = 0;
-				for (TokenRVal arg = call.args; arg != null; arg = (TokenRVal)arg.nextToken) {
-					argRVals[i] = GenerateFromRVal (arg);
-					argRVals[i].PushVal (this);
-					argTypes[i] = argRVals[i].type.typ;
-					i ++;
-				}
-			}
-
-			/*
-			 * Number of arguments passed should match number of params the function was declared with.
-			 */
 			if (nargs != declFunc.argDecl.types.Length) {
 				ErrorMsg (call, "method has " + declFunc.argDecl.types.Length.ToString () + " param(s), but call has " + nargs.ToString ());
 				if (nargs > declFunc.argDecl.types.Length) nargs = declFunc.argDecl.types.Length;
+			}
+			TokenRVal arg = call.args;
+			for (i = 0; i < nargs; i ++) {
+				CompValu argVal = GenerateFromRVal (arg);
+				argVal.PushVal (this, declFunc.argDecl.types[i]);
+				arg = (TokenRVal)arg.nextToken;
 			}
 
 			/*
 			 * Generate call, leaving the return value (if any) on the stack.
 			 */
-			MethodInfo methodInfo = baseObj.type.typ.GetMethod (meth.field.val, argTypes);
+			MethodInfo methodInfo = ((CompValuMethod)method).field;
 			ilGen.Emit (OpCodes.Callvirt, methodInfo);
 
 			/*
-			 * Deal with return value by putting it in 'result'.
+			 * Deal with return value by popping it in 'result'.
 			 */
 			result.PopPost (this, declFunc.retType);
 			return result;

@@ -95,8 +95,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /**
          * @brief return number of elements in the array.
          */
-        public int __pub_count {
-            get { return dnary.Count; }
+        public int __pub_count () {
+            return dnary.Count;
         }
 
         /**
