@@ -952,14 +952,29 @@ namespace Careminster.Modules.Permissions
                 return false;
 
             perms = grp.GetEffectivePermissions();
-            if((perms & (PERM_COPY | PERM_TRANS)) != (PERM_COPY | PERM_TRANS))
+            if (grp.OwnerID != userID)
             {
-                ScenePresence presence = inScene.GetScenePresence(userID);
-                if (presence != null)
+                if((perms & (PERM_COPY | PERM_TRANS)) != (PERM_COPY | PERM_TRANS))
                 {
-                    presence.ControllingClient.SendAgentAlertMessage("Copying this item has been denied by the permissions system", false);
+                    ScenePresence presence = inScene.GetScenePresence(userID);
+                    if (presence != null)
+                    {
+                        presence.ControllingClient.SendAgentAlertMessage("Copying this item has been denied by the permissions system", false);
+                    }
+                    return false;
                 }
-                return false;
+            }
+            else
+            {
+                if((perms & PERM_COPY) == 0)
+                {
+                    ScenePresence presence = inScene.GetScenePresence(userID);
+                    if (presence != null)
+                    {
+                        presence.ControllingClient.SendAgentAlertMessage("Copying this item has been denied by the permissions system", false);
+                    }
+                    return false;
+                }
             }
 
             return true;
