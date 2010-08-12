@@ -431,7 +431,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 	// The value is in a static field of a class
 	public class CompValuSField : CompValu {
-		private FieldInfo field;
+		public FieldInfo field;
 
 		public CompValuSField (TokenType type, FieldInfo field) : base (type)
 		{

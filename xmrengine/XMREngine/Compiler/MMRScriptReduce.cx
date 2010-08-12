@@ -1388,9 +1388,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					if (val is CompValuString)  rVal = new TokenRValConst (token, ((CompValuString)val).x);
 
 					/*
-					 * There is no TokenRValConst equivalent for this one, so just keep the CompValu as is.
+					 * If tere is no TokenRValConst equivalent for this one, just keep the CompValu as is.
 					 */
-					if (val is CompValuSField)  rVal = new TokenRValCVSField (token, (CompValuSField)val);
+                    if (val is CompValuSField) {
+                        object v = ((CompValuSField)val).field.GetValue(null);
+
+                        // Handle the basic types LSL_Constants contains
+                        if (v is string)
+                            rVal =  new TokenRValConst (token, v);
+                        else if (v is float)
+                            rVal =  new TokenRValConst (token, v);
+                        else if (v is int)
+                            rVal =  new TokenRValConst (token, v);
+                        else
+                            rVal = new TokenRValCVSField (token, (CompValuSField)val);
+                    }
 
 					/*
 					 * We should have been able to decode it somehow!
