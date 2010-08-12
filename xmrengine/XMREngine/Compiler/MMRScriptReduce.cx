@@ -2136,6 +2136,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenRValCVSField (Token original, CompValuSField cvsf) : base (original) {
 			this.cvsf = cvsf;
 		}
+        public override void WriteOut (TokenWriter writer) {
+            writer.Write(cvsf.field.GetValue(null).ToString());
+        }
 	}
 
 	/**
