@@ -1,0 +1,29 @@
+   <Project name="MOTD" path="addon-modules/MOTD/Module" type="Library">
+     <Configuration name="Debug">
+       <Options>
+         <OutputPath>../../../bin/</OutputPath>
+       </Options>
+     </Configuration>
+     <Configuration name="Release">
+       <Options>
+         <OutputPath>../../../bin/</OutputPath>
+       </Options>
+     </Configuration>
+
+     <ReferencePath>../../../bin/</ReferencePath>
+     <Reference name="System"/>
+     <Reference name="OpenMetaverseTypes.dll"/>
+     <Reference name="OpenMetaverse.dll"/>
+     <Reference name="OpenSim.Framework"/>
+     <Reference name="OpenSim.Framework.Console"/>
+     <Reference name="OpenSim.Framework.Servers.HttpServer"/>
+     <Reference name="OpenSim.Region.Framework"/>
+     <Reference name="Mono.Addins"/>
+     <Reference name="OpenSim.Data"/>
+     <Reference name="Nini.dll" />
+     <Reference name="log4net.dll"/>
+
+     <Files>
+       <Match pattern="*.cs" recurse="true"/>
+     </Files>
+   </Project>
