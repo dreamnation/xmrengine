@@ -1084,12 +1084,16 @@ namespace Careminster.Modules.Currency
 
             UUID sellerID = part.OwnerID;
 
-            if (s.PerformObjectBuy(remoteClient, categoryID, localID, saleType))
+            IBuySellModule module = s.RequestModuleInterface<IBuySellModule>();
+            if (module != null)
             {
-                bool transactionresult = DoMoneyTransfer(remoteClient.AgentId, sellerID, salePrice, 5000, part.Name, s);
-                if (!transactionresult)
+                if (module.BuyObject(remoteClient, categoryID, localID, saleType))
                 {
-                    remoteClient.SendAgentAlertMessage("Stale money transfer", false);
+                    bool transactionresult = DoMoneyTransfer(remoteClient.AgentId, sellerID, salePrice, 5000, part.Name, s);
+                    if (!transactionresult)
+                    {
+                        remoteClient.SendAgentAlertMessage("Stale money transfer", false);
+                    }
                 }
             }
         }

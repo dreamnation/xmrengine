@@ -115,7 +115,7 @@ namespace Careminster.Modules.XEstate
                     s.ForEachScenePresence(delegate(ScenePresence p) {
                         if (p != null && !p.IsChildAgent)
                         {
-                            p.ControllingClient.SendTeleportLocationStart();
+                            p.ControllingClient.SendTeleportStart(16);
                             s.TeleportClientHome(p.ControllingClient.AgentId, p.ControllingClient);
                         }
                     });
@@ -149,7 +149,7 @@ namespace Careminster.Modules.XEstate
                     ScenePresence p = s.GetScenePresence(PreyID);
                     if (p != null && !p.IsChildAgent)
                     {
-                        p.ControllingClient.SendTeleportLocationStart();
+                        p.ControllingClient.SendTeleportStart(16);
                         s.TeleportClientHome(PreyID, p.ControllingClient);
                     }
                 }

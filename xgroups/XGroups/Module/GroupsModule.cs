@@ -1436,7 +1436,7 @@ Console.WriteLine("==> Session ID {0} UUID {1}", imSessionID.ToString(), id.ToSt
                 OSDMap NewGroupDataMap = new OSDMap(1);
 
                 GroupDataMap.Add("GroupID", OSD.FromUUID(m.GroupID));
-                GroupDataMap.Add("GroupPowers", OSD.FromBinary(m.GroupPowers));
+                GroupDataMap.Add("GroupPowers", OSD.FromULong(m.GroupPowers));
                 GroupDataMap.Add("AcceptNotices", OSD.FromBoolean(m.AcceptNotices));
                 GroupDataMap.Add("GroupInsigniaID", OSD.FromUUID(m.GroupPicture));
                 GroupDataMap.Add("Contribution", OSD.FromInteger(m.Contribution));
