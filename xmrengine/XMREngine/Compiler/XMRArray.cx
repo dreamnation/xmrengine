@@ -34,12 +34,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public object GetByKey(object key)
         {
             object val;
+            key = FixKey (key);
             if (!dnary.TryGetValue (key, out val)) val = null;
             return val;
         }
 
         public void SetByKey(object key, object value)
         {
+            key = FixKey (key);
+
             /*
              * Save new value in array, replacing one of same key if there.
              * null means remove the value, ie, script did array[key] = undef.
@@ -93,6 +96,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         /**
+         * @brief remove all elements from the array.
+         *        sets everything to its 'just constructed' state.
+         */
+        public void __pub_clear ()
+        {
+            dnary.Clear ();
+            enumrValid = false;
+            arrayValid = 0;
+            array = null;
+        }
+
+        /**
          * @brief return number of elements in the array.
          */
         public int __pub_count () {
@@ -138,7 +153,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public bool ForEach (int number, ref object key, ref object val)
         {
-
             /*
              * If we don't have any array, we can't have ever done
              * any calls here before, so allocate an array big enough
@@ -175,7 +189,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Return the element values.
              */
-            key = array[number].Key;
+            key = UnfixKey (array[number].Key);
             val = array[number].Value;
             return true;
         }
@@ -206,7 +220,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
             sendObj (stream, (object)arrayValid);
             for (index = 0; index < arrayValid; index ++) {
-                sendObj (stream, array[index].Key);
+                sendObj (stream, UnfixKey (array[index].Key));
                 sendObj (stream, array[index].Value);
             }
         }
@@ -250,10 +264,103 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * modified).
              */
             for (index = 0; index < arrayValid; index ++) {
-                object key = recvObj (stream);
+                object key = FixKey (recvObj (stream));
                 object val = recvObj (stream);
                 array[index] = new KeyValuePair<object, object> (key, val);
                 dnary.Add (key, val);
+            }
+        }
+
+        /**
+         * We want our index values to be of consistent type, otherwise we get things like (LSL_Integer)1 != (int)1.
+         * So strip off any LSL-ness from the types.
+         * We also deep-strip any given lists used as keys (multi-dimensional arrays).
+         */
+        private static object FixKey (object key)
+        {
+            if (key is LSL_Integer) return (int)(LSL_Integer)key;
+            if (key is LSL_Float)   return (SCRIPTFLOAT)(LSL_Float)key;
+            if (key is LSL_Key)     return (string)(LSL_Key)key;
+            if (key is LSL_String)  return (string)(LSL_String)key;
+            if (key is LSL_List)    return new XMRArrayListKey ((LSL_List)key);
+            return key;  // int, SCRIPTFLOAT, string, LSL_Vector, LSL_Rotation, etc are ok as is
+        }
+
+        /**
+         * @brief When returning a key, such as for array.index(), we want to return the original
+         *        LSL_List, not the sanitized one, as the script compiler expects an LSL_List.
+         *        Any other sanitized types can remain as is (int, string, etc).
+         */
+        private static object UnfixKey (object key)
+        {
+            if (key is XMRArrayListKey) key = ((XMRArrayListKey)key).GetOriginal ();
+            return key;
+        }
+
+        /**
+         * @brief Lists used as keys must be sanitized first.
+         *        List gets converted to an object[] and each element is converted from LSL_ types to system types where possible.
+         *        And we also need an equality operator that compares the values of all elements of the list, not just the lengths.
+         *        Note that just like LSL_Lists, we consider these objects to be immutable, so they can be directly used as keys in
+         *        the dictionary as they don't ever change.
+         */
+        private class XMRArrayListKey {
+            private LSL_List original;
+            private object[] cleaned;
+            private int length;
+            private int hashCode;
+
+            /**
+             * @brief Construct a sanitized object[] from a list.
+             *        Also save the original list in case we need it later.
+             */
+            public XMRArrayListKey (LSL_List key)
+            {
+                original = key;
+                object[] given = key.Data;
+                int len  = given.Length;
+                length   = len;
+                cleaned  = new object[len];
+                int hc   = len;
+                for (int i = 0; i < len; i ++) {
+                    object v   = FixKey (given[i]);
+                    hc        += hc + ((hc < 0) ? 1 : 0);
+                    hc        ^= v.GetHashCode ();
+                    cleaned[i] = v;
+                }
+                hashCode = hc;
+            }
+
+            /**
+             * @brief See if the given object is an XMRArrayListKey and every value is equal to our own.
+             */
+            public override bool Equals (object o)
+            {
+                if (!(o is XMRArrayListKey)) return false;
+                XMRArrayListKey a = (XMRArrayListKey)o;
+                int len = a.length;
+                if (len != length) return false;
+                if (a.hashCode != hashCode) return false;
+                for (int i = 0; i < len; i ++) {
+                    if (!cleaned[i].Equals (a.cleaned[i])) return false;
+                }
+                return true;
+            }
+
+            /**
+             * @brief Get an hash code.
+             */
+            public override int GetHashCode ()
+            {
+                return hashCode;
+            }
+
+            /**
+             * @brief Get the original LSL_List we were built from.
+             */
+            public LSL_List GetOriginal ()
+            {
+                return original;
             }
         }
     }

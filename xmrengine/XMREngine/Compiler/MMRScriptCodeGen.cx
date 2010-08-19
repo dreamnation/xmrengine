@@ -65,6 +65,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static FieldInfo vectorYFieldInfo      = typeof (LSL_Vector).GetField ("y");
 		private static FieldInfo vectorZFieldInfo      = typeof (LSL_Vector).GetField ("z");
 
+		private static MethodInfo arrayClearMethodInfo = typeof (XMR_Array).GetMethod ("__pub_clear", new Type[] { });
 		private static MethodInfo arrayCountMethodInfo = typeof (XMR_Array).GetMethod ("__pub_count", new Type[] { });
 		private static MethodInfo arrayIndexMethodInfo = typeof (XMR_Array).GetMethod ("__pub_index", new Type[] { typeof (int) });
 		private static MethodInfo arrayValueMethodInfo = typeof (XMR_Array).GetMethod ("__pub_value", new Type[] { typeof (int) });
@@ -1652,14 +1653,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			if (baseLVal.type is TokenTypeArray) {
 
-				// no arguments, no parentheses, just the field name
+				// no arguments, no parentheses, just the field name, returning integer
 				// but internally, it is a call to a method()
 				if (fieldName == "count") {
 					TokenTypeInt tti = new TokenTypeInt (lVal);
 					return new CompValuMethod (tti, baseLVal, arrayCountMethodInfo);
 				}
 
-				// single integer argument
+				// no arguments but with the parentheses, returning void
+				if (fieldName == "clear") {
+					TokenTypeMeth ttm             = new TokenTypeMeth (lVal);
+					ttm.funcs                     = new TokenDeclFunc[1];
+					ttm.funcs[0]                  = new TokenDeclFunc (lVal);
+					ttm.funcs[0].retType          = new TokenTypeVoid (lVal);
+					ttm.funcs[0].funcName         = new TokenName (lVal, "array." + fieldName);
+					ttm.funcs[0].argDecl          = new TokenArgDecl (lVal);
+					ttm.funcs[0].argDecl.types    = new TokenType[0];
+					ttm.funcs[0].argDecl.names    = new TokenName[0];
+					return new CompValuMethod (ttm, baseLVal, arrayClearMethodInfo);
+				}
+
+				// single integer argument, returning an object
 				MethodInfo mi = null;
 				if (fieldName == "index") mi = arrayIndexMethodInfo;
 				if (fieldName == "value") mi = arrayValueMethodInfo;
