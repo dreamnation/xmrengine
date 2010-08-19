@@ -1390,19 +1390,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					/*
 					 * If tere is no TokenRValConst equivalent for this one, just keep the CompValu as is.
 					 */
-                    if (val is CompValuSField) {
-                        object v = ((CompValuSField)val).field.GetValue(null);
+					if (val is CompValuSField) {
+						object v = ((CompValuSField)val).field.GetValue(null);
 
-                        // Handle the basic types LSL_Constants contains
-                        if (v is string)
-                            rVal =  new TokenRValConst (token, v);
-                        else if (v is float)
-                            rVal =  new TokenRValConst (token, v);
-                        else if (v is int)
-                            rVal =  new TokenRValConst (token, v);
-                        else
-                            rVal = new TokenRValCVSField (token, (CompValuSField)val);
-                    }
+						// Handle the basic types LSL_Constants contains
+						if (v is string)
+							rVal =  new TokenRValConst (token, v);
+						else if (v is float)
+							rVal =  new TokenRValConst (token, v);
+						else if (v is int)
+							rVal =  new TokenRValConst (token, v);
+						else
+							rVal = new TokenRValCVSField (token, (CompValuSField)val);
+					}
 
 					/*
 					 * We should have been able to decode it somehow!
@@ -1654,16 +1654,43 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				}
 
 				/*
-				 * They may be followed by [subscript]
+				 * They may be followed by [subscript(s)]
 				 */
 				if (token is TokenKwBrkOpen) {
 					TokenLValArEle tokenLValArEle = new TokenLValArEle (token);
 					token = token.nextToken;
+
+					/*
+					 * Parse subscript(s) expression.
+					 */
 					tokenLValArEle.subRVal = ParseRVal (ref token, brkCloseOnly);
 					if (tokenLValArEle.subRVal == null) {
 						ErrorMsg (tokenLValArEle, "invalid subscript");
 						return null;
 					}
+
+					/*
+					 * See if comma-separated list of values.
+					 */
+					bool sideEffects = false;
+					TokenRVal subscriptRVals;
+					int numSubscripts = SplitCommaRVals (tokenLValArEle.subRVal, out subscriptRVals, ref sideEffects);
+					if (numSubscripts > 1) {
+
+						/*
+						 * If so, put the values in an LSL_List object.
+						 */
+						TokenRValList rValList = new TokenRValList (tokenLValArEle);
+						rValList.rVal = subscriptRVals;
+						rValList.nItems = numSubscripts;
+						rValList.sideEffects = sideEffects;
+						tokenLValArEle.subRVal = rValList;
+					}
+
+					/*
+					 * Either way, save array variable name
+					 * and substitute whole reference for L-value
+					 */
 					tokenLValArEle.baseLVal = tokenLVal;
 					tokenLVal = tokenLValArEle;
 					continue;
