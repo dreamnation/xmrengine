@@ -120,6 +120,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             else
             {
                 SceneObjectPart originalPart = myScriptEngine.World.GetSceneObjectPart(originalID);
+                if (originalPart == null)
+                    return;
+
                 det[0].LinkNum = originalPart.LinkNum;
             }
 
