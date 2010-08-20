@@ -163,7 +163,12 @@ namespace Careminster.Modules.XAttachments
             rc.RequestMethod = "POST";
 
             MemoryStream reqStream = new MemoryStream(attStream.ToArray());
-            rc.Request(reqStream);
+            Util.FireAndForget(
+                delegate
+                {
+                    rc.Request(reqStream);
+                }
+            );
         }
     }
 }
