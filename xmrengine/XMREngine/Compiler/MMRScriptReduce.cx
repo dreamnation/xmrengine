@@ -1400,8 +1400,31 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 							rVal =  new TokenRValConst (token, v);
 						else if (v is int)
 							rVal =  new TokenRValConst (token, v);
+						else if (v is LSL_Vector)
+                        {
+                            LSL_Vector vec = (LSL_Vector)v;
+							TokenRValVec rValVec =  new TokenRValVec (token);
+                            rValVec.xRVal = new TokenRValConst(token, vec.x);
+                            rValVec.yRVal = new TokenRValConst(token, vec.y);
+                            rValVec.zRVal = new TokenRValConst(token, vec.z);
+                            rVal = rValVec;
+                        }
+						else if (v is LSL_Rotation)
+                        {
+                            LSL_Rotation rot = (LSL_Rotation)v;
+							TokenRValRot rValRot =  new TokenRValRot (token);
+                            rValRot.xRVal = new TokenRValConst(token, rot.x);
+                            rValRot.yRVal = new TokenRValConst(token, rot.y);
+                            rValRot.zRVal = new TokenRValConst(token, rot.z);
+                            rValRot.wRVal = new TokenRValConst(token, rot.s);
+                            rVal = rValRot;
+                        }
 						else
+                        {
+                            //ErrorMsg (token, "unhandled type for "+((CompValuSField)val).field.Name);
+                            
 							rVal = new TokenRValCVSField (token, (CompValuSField)val);
+                        }
 					}
 
 					/*
