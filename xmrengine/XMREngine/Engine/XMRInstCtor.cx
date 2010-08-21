@@ -828,7 +828,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     return (ScriptEventCode)this.migrateInReader.ReadInt32 ();
                 }
                 case Ser.LSLFLOAT: {
-                    return new LSL_Float (this.migrateInReader.ReadSingle ());
+                    return new LSL_Float (this.migrateInReader.ReadDouble ());
                 }
                 case Ser.LSLINT: {
                     return new LSL_Integer (this.migrateInReader.ReadInt32 ());
