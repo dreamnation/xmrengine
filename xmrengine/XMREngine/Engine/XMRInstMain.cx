@@ -192,9 +192,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public BinaryReader migrateInReader;   // used to read script state from a file
         public Stream       migrateInStream;
+        public Dictionary<int, object> migrateInObjects;
         public BinaryWriter migrateOutWriter;  // used to write script state to a file
         public Stream       migrateOutStream;
         public bool         migrateComplete;   // false: migration in progress; true: migration complete
+        public Dictionary<object, int> migrateOutObjects;
 
         /*
          * The subsArray[] is used by continuations to say which object references
@@ -256,10 +258,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             SYSINT,
             SYSSTR,
             XMRARRAY,
-            DETPRMS
+            DETPRMS,
+            DUPREF
         }
 
-        // Scripts start suspended now. This means theit event queues will
+        // Scripts start suspended now. This means that event queues will
         // accept events, but will not actually run them until the core
         // tells it it's OK. This is needed to prevent loss of link messages
         // in complex objects, where no event can be allowed to run until

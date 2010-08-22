@@ -43,7 +43,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * @brief Constructor, loads script in memory and all ready for running.
          * @param localID = ?
          * @param itemID = UUID of this script instance
-         * @param script = script source code all in one string
+         * @param sourceCode = script source code all in one string
          * @param startParam = as passed to llRez() ???
          * @param postOnRez = post an "on_rez" event to script
          * @param stateSource = ?
@@ -54,9 +54,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * @param stackSize = number of bytes to allocate for stacks
          * @param errors = return compiler errors in this array
          * @param forceReset = reset script to default state (ignore saved state)
+         *                     (also forces recompilation if sourceCode != "")
          * Throws exception if any error, so it was successful if it returns.
          */
-        public XMRInstance(uint localID, UUID itemID, string script,
+        public XMRInstance(uint localID, UUID itemID, string sourceCode,
                            int startParam, bool postOnRez, int stateSource,
                            XMREngine engine, SceneObjectPart part, 
                            TaskInventoryItem item, string scriptBasePath,
@@ -69,7 +70,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
             m_LocalID        = localID;
             m_ItemID         = itemID;
-            m_SourceCode     = script;
+            m_SourceCode     = sourceCode;
             m_StartParam     = startParam;
             m_PostOnRez      = postOnRez;
             m_StateSource    = (StateSource)stateSource;
@@ -731,8 +732,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Set up to migrate state in from the network stream.
              */
-            this.migrateInReader = new BinaryReader (stream);
-            this.migrateInStream = stream;
+            this.migrateInReader  = new BinaryReader (stream);
+            this.migrateInStream  = stream;
+            this.migrateInObjects = new Dictionary<int, object> ();
 
             /*
              * Read current state code and event code from stream.
@@ -777,8 +779,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Clear out migration state.
              */
-            this.migrateInReader = null;
-            this.migrateInStream = null;
+            this.migrateInReader  = null;
+            this.migrateInStream  = null;
+            this.migrateInObjects = null;
         }
 
         /**
@@ -819,6 +822,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public object RecvObjValue (Stream stream)
         {
+            int ident = this.migrateInObjects.Count;
             Ser code = (Ser)this.migrateInReader.ReadByte ();
             switch (code) {
                 case Ser.NULL: {
@@ -834,11 +838,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     return new LSL_Integer (this.migrateInReader.ReadInt32 ());
                 }
                 case Ser.LSLKEY: {
-                    return new LSL_Key ((string)RecvObjValue (stream));
+                    LSL_Key key = new LSL_Key ("");
+                    object boxedKey = key;
+                    this.migrateInObjects.Add (ident, boxedKey);
+                    key.m_string = (string)RecvObjValue (stream);
+                    return boxedKey;
                 }
                 case Ser.LSLLIST: {
-                    object[] array = (object[])RecvObjValue (stream);
-                    return new LSL_List (array);
+                    LSL_List list =  new LSL_List (null);
+                    this.migrateInObjects.Add (ident, list);
+                    list.Data = (object[])RecvObjValue (stream);
+                    return list;
                 }
                 case Ser.LSLROT: {
                     double x = this.migrateInReader.ReadDouble ();
@@ -848,7 +858,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     return new LSL_Rotation (x, y, z, s);
                 }
                 case Ser.LSLSTR: {
-                    return new LSL_String ((string)RecvObjValue (stream));
+                    LSL_String str = new LSL_String ("");
+                    object boxedStr = str;
+                    this.migrateInObjects.Add (ident, boxedStr);
+                    str.m_string = (string)RecvObjValue (stream);
+                    return boxedStr;
                 }
                 case Ser.LSLVEC: {
                     double x = this.migrateInReader.ReadDouble ();
@@ -859,6 +873,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 case Ser.OBJARRAY: {
                     int len = this.migrateInReader.ReadInt32 ();
                     object[] array = new object[len];
+                    this.migrateInObjects.Add (ident, array);
                     for (int i = 0; i < len; i ++) {
                         array[i] = RecvObjValue (stream);
                     }
@@ -874,16 +889,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     return this.migrateInReader.ReadInt32 ();
                 }
                 case Ser.SYSSTR: {
-                    return this.migrateInReader.ReadString ();
+                    string s = this.migrateInReader.ReadString ();
+                    this.migrateInObjects.Add (ident, s);
+                    return s;
                 }
                 case Ser.XMRARRAY: {
                     XMR_Array array = new XMR_Array ();
+                    this.migrateInObjects.Add (ident, array);
                     array.RecvArrayObj (this.RecvObjValue, stream);
                     return array;
                 }
                 case Ser.DETPRMS: {
                     DetectParams dp = new DetectParams ();
                     SurfaceTouchEventArgs stea = new SurfaceTouchEventArgs ();
+                    this.migrateInObjects.Add (ident, dp);
 
                     dp.Key         = new UUID (this.migrateInReader.ReadString ());
                     dp.OffsetPos   = (LSL_Vector)RecvObjValue (stream);
@@ -906,6 +925,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     dp.SurfaceTouchArgs = stea;
 
                     return dp;
+                }
+                case Ser.DUPREF: {
+                    ident = this.migrateInReader.ReadInt32 ();
+                    return this.migrateInObjects[ident];
                 }
                 default: throw new Exception ("bad stream code " + code.ToString ());
             }

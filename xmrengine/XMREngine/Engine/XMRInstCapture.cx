@@ -205,10 +205,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * CheckRun(), unless it has exited.  Tell CheckRun() that it 
              * should migrate the script out then suspend.
              */
-            this.migrateInReader  = null;
-            this.migrateInStream  = null;
-            this.migrateOutWriter = new BinaryWriter (stream);
-            this.migrateOutStream = stream;
+            this.migrateInReader   = null;
+            this.migrateInStream   = null;
+            this.migrateOutWriter  = new BinaryWriter (stream);
+            this.migrateOutStream  = stream;
+            this.migrateOutObjects = new Dictionary<object, int> ();
 
             /*
              * Write the basic information out to the stream:
@@ -241,8 +242,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * No longer migrating.
              */
-            this.migrateOutWriter = null;
-            this.migrateOutStream = null;
+            this.migrateOutWriter  = null;
+            this.migrateOutStream  = null;
+            this.migrateOutObjects = null;
         }
 
         /**
@@ -276,21 +278,92 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public void SendObjValue (Stream stream, object graph)
         {
-            if (stream == null) throw new ArgumentNullException ("stream");
+            if (stream != this.migrateOutStream) throw new ArgumentNullException ("stream");
             if (this.migrateOutWriter == null) throw new ArgumentNullException ("migrateOutWriter");
 
+            /*
+             * Value types (including nulls) are always output directly.
+             */
             if (graph == null) {
                 this.migrateOutWriter.Write ((byte)Ser.NULL);
-            } else if (graph is ScriptEventCode) {
+                return;
+            }
+            if (graph is ScriptEventCode) {
                 this.migrateOutWriter.Write ((byte)Ser.EVENTCODE);
                 this.migrateOutWriter.Write ((int)graph);
-            } else if (graph is LSL_Float) {
+                return;
+            }
+            if (graph is LSL_Float) {
                 this.migrateOutWriter.Write ((byte)Ser.LSLFLOAT);
                 this.migrateOutWriter.Write ((double)((LSL_Float)graph).value);
-            } else if (graph is LSL_Integer) {
+                return;
+            }
+            if (graph is LSL_Integer) {
                 this.migrateOutWriter.Write ((byte)Ser.LSLINT);
                 this.migrateOutWriter.Write ((int)((LSL_Integer)graph).value);
-            } else if (graph is LSL_Key) {
+                return;
+            }
+            if (graph is LSL_Rotation) {
+                this.migrateOutWriter.Write ((byte)Ser.LSLROT);
+                this.migrateOutWriter.Write ((double)((LSL_Rotation)graph).x);
+                this.migrateOutWriter.Write ((double)((LSL_Rotation)graph).y);
+                this.migrateOutWriter.Write ((double)((LSL_Rotation)graph).z);
+                this.migrateOutWriter.Write ((double)((LSL_Rotation)graph).s);
+                return;
+            }
+            if (graph is LSL_Vector) {
+                this.migrateOutWriter.Write ((byte)Ser.LSLVEC);
+                this.migrateOutWriter.Write ((double)((LSL_Vector)graph).x);
+                this.migrateOutWriter.Write ((double)((LSL_Vector)graph).y);
+                this.migrateOutWriter.Write ((double)((LSL_Vector)graph).z);
+                return;
+            }
+            if (graph is double) {
+                this.migrateOutWriter.Write ((byte)Ser.SYSDOUB);
+                this.migrateOutWriter.Write ((double)graph);
+                return;
+            }
+            if (graph is float) {
+                this.migrateOutWriter.Write ((byte)Ser.SYSFLOAT);
+                this.migrateOutWriter.Write ((float)graph);
+                return;
+            }
+            if (graph is int) {
+                this.migrateOutWriter.Write ((byte)Ser.SYSINT);
+                this.migrateOutWriter.Write ((int)graph);
+                return;
+            }
+
+            /*
+             * If this same exact object was already serialized,
+             * just output an index telling the receiver to use
+             * that same old object, rather than creating a whole
+             * new object with the same values.  Also this prevents
+             * self-referencing objects (like arrays) from causing
+             * an infinite loop.
+             */
+            int ident;
+            if (this.migrateOutObjects.TryGetValue (graph, out ident)) {
+                this.migrateOutWriter.Write ((byte)Ser.DUPREF);
+                this.migrateOutWriter.Write (ident);
+                return;
+            }
+
+            /*
+             * Object not seen before, save its address with an unique
+             * ident number that the receiver can easily regenerate.
+             */
+            ident = this.migrateOutObjects.Count;
+            this.migrateOutObjects.Add (graph, ident);
+
+            /*
+             * Now output the object's value(s).
+             * If the object self-references, the object is alreay entered
+             * in the dictionary and so the self-reference will just emit
+             * a DUPREF tag instead of trying to output the whole object 
+             * again.
+             */
+            if (graph is LSL_Key) {
                 this.migrateOutWriter.Write ((byte)Ser.LSLKEY);
                 LSL_Key key = (LSL_Key)graph;
                 SendObjValue (stream, key.m_string);  // m_string can be null
@@ -298,21 +371,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 this.migrateOutWriter.Write ((byte)Ser.LSLLIST);
                 LSL_List list = (LSL_List)graph;
                 SendObjValue (stream, list.Data);
-            } else if (graph is LSL_Rotation) {
-                this.migrateOutWriter.Write ((byte)Ser.LSLROT);
-                this.migrateOutWriter.Write ((double)((LSL_Rotation)graph).x);
-                this.migrateOutWriter.Write ((double)((LSL_Rotation)graph).y);
-                this.migrateOutWriter.Write ((double)((LSL_Rotation)graph).z);
-                this.migrateOutWriter.Write ((double)((LSL_Rotation)graph).s);
             } else if (graph is LSL_String) {
                 this.migrateOutWriter.Write ((byte)Ser.LSLSTR);
                 LSL_String str = (LSL_String)graph;
                 SendObjValue (stream, str.m_string);  // m_string can be null
-            } else if (graph is LSL_Vector) {
-                this.migrateOutWriter.Write ((byte)Ser.LSLVEC);
-                this.migrateOutWriter.Write ((double)((LSL_Vector)graph).x);
-                this.migrateOutWriter.Write ((double)((LSL_Vector)graph).y);
-                this.migrateOutWriter.Write ((double)((LSL_Vector)graph).z);
             } else if (graph is XMR_Array) {
                 this.migrateOutWriter.Write ((byte)Ser.XMRARRAY);
                 ((XMR_Array)graph).SendArrayObj (this.SendObjValue, stream);
@@ -324,15 +386,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 for (int i = 0; i < len; i ++) {
                     SendObjValue (stream, array[i]);
                 }
-            } else if (graph is double) {
-                this.migrateOutWriter.Write ((byte)Ser.SYSDOUB);
-                this.migrateOutWriter.Write ((double)graph);
-            } else if (graph is float) {
-                this.migrateOutWriter.Write ((byte)Ser.SYSFLOAT);
-                this.migrateOutWriter.Write ((float)graph);
-            } else if (graph is int) {
-                this.migrateOutWriter.Write ((byte)Ser.SYSINT);
-                this.migrateOutWriter.Write ((int)graph);
             } else if (graph is string) {
                 this.migrateOutWriter.Write ((byte)Ser.SYSSTR);
                 this.migrateOutWriter.Write ((string)graph);
