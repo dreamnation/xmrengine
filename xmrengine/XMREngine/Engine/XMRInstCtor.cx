@@ -838,11 +838,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     return new LSL_Integer (this.migrateInReader.ReadInt32 ());
                 }
                 case Ser.LSLKEY: {
-                    LSL_Key key = new LSL_Key ("");
-                    object boxedKey = key;
-                    this.migrateInObjects.Add (ident, boxedKey);
-                    key.m_string = (string)RecvObjValue (stream);
-                    return boxedKey;
+                    return new LSL_Key ((string)RecvObjValue (stream));
                 }
                 case Ser.LSLLIST: {
                     LSL_List list =  new LSL_List (null);
@@ -858,11 +854,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     return new LSL_Rotation (x, y, z, s);
                 }
                 case Ser.LSLSTR: {
-                    LSL_String str = new LSL_String ("");
-                    object boxedStr = str;
-                    this.migrateInObjects.Add (ident, boxedStr);
-                    str.m_string = (string)RecvObjValue (stream);
-                    return boxedStr;
+                    return new LSL_String ((string)RecvObjValue (stream));
                 }
                 case Ser.LSLVEC: {
                     double x = this.migrateInReader.ReadDouble ();

@@ -303,12 +303,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 this.migrateOutWriter.Write ((int)((LSL_Integer)graph).value);
                 return;
             }
+            if (graph is LSL_Key) {
+                this.migrateOutWriter.Write ((byte)Ser.LSLKEY);
+                LSL_Key key = (LSL_Key)graph;
+                SendObjValue (stream, key.m_string);  // m_string can be null
+                return;
+            }
             if (graph is LSL_Rotation) {
                 this.migrateOutWriter.Write ((byte)Ser.LSLROT);
                 this.migrateOutWriter.Write ((double)((LSL_Rotation)graph).x);
                 this.migrateOutWriter.Write ((double)((LSL_Rotation)graph).y);
                 this.migrateOutWriter.Write ((double)((LSL_Rotation)graph).z);
                 this.migrateOutWriter.Write ((double)((LSL_Rotation)graph).s);
+                return;
+            }
+            if (graph is LSL_String) {
+                this.migrateOutWriter.Write ((byte)Ser.LSLSTR);
+                LSL_String str = (LSL_String)graph;
+                SendObjValue (stream, str.m_string);  // m_string can be null
                 return;
             }
             if (graph is LSL_Vector) {
@@ -363,18 +375,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * a DUPREF tag instead of trying to output the whole object 
              * again.
              */
-            if (graph is LSL_Key) {
-                this.migrateOutWriter.Write ((byte)Ser.LSLKEY);
-                LSL_Key key = (LSL_Key)graph;
-                SendObjValue (stream, key.m_string);  // m_string can be null
-            } else if (graph is LSL_List) {
+            if (graph is LSL_List) {
                 this.migrateOutWriter.Write ((byte)Ser.LSLLIST);
                 LSL_List list = (LSL_List)graph;
                 SendObjValue (stream, list.Data);
-            } else if (graph is LSL_String) {
-                this.migrateOutWriter.Write ((byte)Ser.LSLSTR);
-                LSL_String str = (LSL_String)graph;
-                SendObjValue (stream, str.m_string);  // m_string can be null
             } else if (graph is XMR_Array) {
                 this.migrateOutWriter.Write ((byte)Ser.XMRARRAY);
                 ((XMR_Array)graph).SendArrayObj (this.SendObjValue, stream);
