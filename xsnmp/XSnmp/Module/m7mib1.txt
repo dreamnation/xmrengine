@@ -3,7 +3,7 @@
 --
 -- This MIB is not supposed to work on any browser
 -- This is still a WIP
--- Sacha wuzz here 
+-- 
 
 META7-MIB DEFINITIONS ::= BEGIN
 
