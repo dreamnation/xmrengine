@@ -53,7 +53,7 @@ namespace OpenSim.Region.OptionalModules.MOTD
         public void Initialise(IConfigSource source)
         {
             IConfig motdConfig = source.Configs["MOTD"];
-            if (source == null)
+            if (motdConfig == null)
                 return;
 
             if (motdConfig.GetBoolean("Enabled", false))
