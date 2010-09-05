@@ -52,11 +52,15 @@ namespace OpenSim.Region.OptionalModules.MOTD
 
         public void Initialise(IConfigSource source)
         {
-            if (source.Configs["MOTD"].GetBoolean("Enabled", false))
+            IConfig motdConfig = source.Configs["MOTD"];
+            if (source == null)
+                return;
+
+            if (motdConfig.GetBoolean("Enabled", false))
             {
                 m_enabled = true;
                 m_log.Info("[MOTD]: Module enabled");
-                m_message = source.Configs["MOTD"].GetString("Message", "The MOTD module is working, but the INI message is not present.");
+                m_message = motdConfig.GetString("Message", "The MOTD module is working, but the INI message is not present.");
             }
         }
 
