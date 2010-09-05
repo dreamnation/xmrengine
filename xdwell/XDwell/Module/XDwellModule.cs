@@ -13,6 +13,8 @@ using Nini.Config;
 using Nwc.XmlRpc;
 using OpenMetaverse;
 using OpenSim.Framework;
+using OpenSim.Data;
+using OpenSim.Data.MySQL;
 using OpenSim.Framework.Communications;
 using OpenSim.Region.Framework.Interfaces;
 using OpenSim.Region.Framework.Scenes;
@@ -22,17 +24,43 @@ using Mono.Addins;
 [assembly: Addin("XDwell.Module", "1.0")]
 [assembly: AddinDependency("OpenSim", "0.5")]
 
-namespace Careminster.Modules.XEstate
+namespace Careminster.Modules.XDwell
 {
+    public class XDwellData
+    {
+        public UUID ParcelID;
+        public UUID RegionID;
+        public Dictionary<string,string> Data;
+    }
+
     [Extension(Path = "/OpenSim/RegionModules", NodeName = "RegionModule", Id = "Dwell")]
     public class XDwellModule : INonSharedRegionModule
     {
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
+        protected DwellTableHandler m_DwellTable;
+
         protected Scene m_Scene;
+        protected string m_DatabaseConnect;
 
         public void Initialise(IConfigSource config)
         {
+            IConfig dwellConfig = config.Configs["Dwell"];
+            if (dwellConfig == null)
+                return;
+
+            if (dwellConfig.GetString("Module", String.Empty) != Name)
+                return;
+
+            m_DatabaseConnect = dwellConfig.GetString("DatabaseConnect", String.Empty);
+            if (m_DatabaseConnect == String.Empty)
+            {
+                m_log.Error("[XDWELL]: No DatabaseConnect in section Dwell");
+                return;
+            }
+
+            m_DwellTable = new DwellTableHandler("", "XDwell", String.Empty);
+            m_log.Info("[XDwell]: Dwell module active");
         }
 
         public void Close()
@@ -57,7 +85,7 @@ namespace Careminster.Modules.XEstate
 
         public string Name
         {
-            get { return "DwellModule"; }
+            get { return "XDwellModule"; }
         }
 
         public Type ReplaceableInterface
@@ -82,6 +110,14 @@ namespace Careminster.Modules.XEstate
         public int GetDwell(UUID parcelID)
         {
             return 0;
+        }
+    }
+
+    public class DwellTableHandler : MySQLGenericTableHandler<XDwellData>
+    {
+        public DwellTableHandler(string conn, string realm, string migration) :
+                base(conn, realm, migration)
+        {
         }
     }
 }
