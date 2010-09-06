@@ -155,6 +155,8 @@ namespace Careminster.Modules.XSearch
         public void RemoveRegion(Scene scene)
         {
             scene.EventManager.OnNewClient -= OnNewClient;
+            scene.EventManager.OnParcelPropertiesUpdateRequest +=
+                    OnParcelPropertiesUpdateRequest;
         }
 
         public string Name
@@ -197,8 +199,6 @@ namespace Careminster.Modules.XSearch
                     OnParcelBuy;
             client.OnParcelReclaim +=
                     OnParcelReclaim;
-            client.OnParcelPropertiesUpdateRequest +=
-                    OnParcelPropertiesUpdateRequest;
             client.OnParcelAbandonRequest +=
                     OnParcelAbandonRequest;
             client.OnParcelGodForceOwner +=
