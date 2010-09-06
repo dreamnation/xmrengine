@@ -37,7 +37,7 @@ namespace Careminster.Modules.XDwell
     }
 
     [Extension(Path = "/OpenSim/RegionModules", NodeName = "RegionModule", Id = "Dwell")]
-    public class XDwellModule : INonSharedRegionModule
+    public class XDwellModule : INonSharedRegionModule, IDwellModule
     {
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
@@ -81,6 +81,7 @@ namespace Careminster.Modules.XDwell
             m_Scene = scene;
 
             m_Scene.EventManager.OnNewClient += OnNewClient;
+            m_Scene.RegisterModuleInterface<IDwellModule>(this);
         }
 
         public void RegionLoaded(Scene scene)
@@ -90,6 +91,7 @@ namespace Careminster.Modules.XDwell
         public void RemoveRegion(Scene scene)
         {
             m_Scene.EventManager.OnNewClient -= OnNewClient;
+            m_Scene.UnregisterModuleInterface<IDwellModule>(this);
         }
 
         public string Name
