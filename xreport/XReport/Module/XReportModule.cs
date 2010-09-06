@@ -73,11 +73,22 @@ namespace Careminster.Modules.XEstate
             {
                 m_LastCheck = DateTime.Now;
 
+                // Mono peeps, I know you've got to be kidding. So WebRequest
+                // is actually non-reentrant, keeping static per-request
+                // data?! What?! I think this is about as drainbramaged as
+                // it gets. Without the lock - boom.
+                // If course, ForEachScenePresence should probably not be
+                // fire and forget, either.....
+                object lockObject = new Object();
+
                 m_Scene.ForEachScenePresence(delegate (ScenePresence sp)
                         {
                             if (!sp.IsChildAgent)
                             {
-                                m_Scene.PresenceService.ReportAgent(sp.ControllingClient.SessionId, m_Scene.RegionInfo.RegionID);
+                                lock(lockObject)
+                                {
+                                    m_Scene.PresenceService.ReportAgent(sp.ControllingClient.SessionId, m_Scene.RegionInfo.RegionID);
+                                }
                             }
                         });
             }
