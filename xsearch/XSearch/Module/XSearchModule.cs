@@ -143,6 +143,8 @@ namespace Careminster.Modules.XSearch
 
             scene.EventManager.OnNewClient += OnNewClient;
             scene.EventManager.OnParcelPrimCountUpdate += OnParcelPrimCountUpdate;
+            scene.EventManager.OnParcelPropertiesUpdateRequest +=
+                    OnParcelPropertiesUpdateRequest;
 
             m_log.Debug("[XSEARCH]: Clearing stale parcel data and sending new parcels");
         }
@@ -155,8 +157,9 @@ namespace Careminster.Modules.XSearch
         public void RemoveRegion(Scene scene)
         {
             scene.EventManager.OnNewClient -= OnNewClient;
-            scene.EventManager.OnParcelPropertiesUpdateRequest +=
+            scene.EventManager.OnParcelPropertiesUpdateRequest -=
                     OnParcelPropertiesUpdateRequest;
+            scene.EventManager.OnParcelPrimCountUpdate -= OnParcelPrimCountUpdate;
         }
 
         public string Name
