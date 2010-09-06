@@ -117,10 +117,58 @@ namespace Careminster.Modules.XAttachments
 
             m_log.InfoFormat("[XAttachments]: Storing attachment script states for {0}", AgentID);
 
+            // Get the old data we need to possibly keep
+            string attData = Get(AgentID.ToString());
+
+            // These are the ones actually inworld, from which state
+            // can be saved
             List<SceneObjectGroup> attachments = sp.Attachments;
 
+            // These are the ones we should have. These states need
+            // to be preserved
+            Dictionary<int, UUID[]> attDict = sp.Appearance.GetAttachmentDictionary();
+            List<UUID> validIDs = new List<UUID>();
+            foreach (UUID[] idlist in attDict.Values)
+            {
+                if (!validIDs.Contains(idlist[0]))
+                    validIDs.Add(idlist[0]);
+            }
+
+            // Contains the actual states
             Dictionary<UUID, string> states = new Dictionary<UUID, string>();
 
+            XmlDocument doc = new XmlDocument();
+
+            // If this is empty or invalid, we don't want to know
+            if (attData != String.Empty)
+            {
+                try
+                {
+                    doc.LoadXml(attData);
+                }
+                catch { }
+            }
+
+            // This will load all the states we "inherit" on login. This
+            // may include states for attachments that haven't rezzed yet,
+            // as in the event of a crash or incomplete login
+            XmlNodeList nodes = doc.GetElementsByTagName("Attachment");
+            if (nodes.Count > 0)
+            {
+                haveAttachments = true;
+                foreach (XmlNode n in nodes)
+                {
+                    XmlElement elem = (XmlElement)n;
+                    UUID itemID = new UUID(elem.GetAttribute("ItemID"));
+                    string xml = elem.InnerXml;
+
+                    // Don't save it if we're no longer wearing that attachment
+                    if (validIDs.Contains(itemID))
+                        states[itemID] = xml;
+                }
+            }
+
+            // Now, let's add the ones that did rez
             foreach (SceneObjectGroup att in attachments)
             {
                 MemoryStream ms = new MemoryStream();
@@ -141,6 +189,7 @@ namespace Careminster.Modules.XAttachments
             if (!haveAttachments)
                 return;
 
+            // Finally, write out new XML
             MemoryStream attStream = new MemoryStream();
             XmlTextWriter attWriter = new XmlTextWriter(attStream, null);
 
