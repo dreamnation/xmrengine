@@ -63,7 +63,7 @@ namespace Careminster.Modules.XDwell
                 return;
             }
 
-            m_DwellTable = new DwellTableHandler("", "XDwell", String.Empty);
+            m_DwellTable = new DwellTableHandler(m_DatabaseConnect, "XDwell", String.Empty);
             m_log.Info("[XDwell]: Dwell module active");
 
             m_DwellTimer.AutoReset = true;
@@ -142,7 +142,7 @@ namespace Careminster.Modules.XDwell
             }
 
             string where = "ParcelID not in ('" + string.Join("', '", parcelIDs.ToArray()) + "')";
-            m_DwellTable.Delete(where);
+            m_DwellTable.Delete(m_Scene.RegionInfo.RegionID, where);
 
             m_Scene.ForEachScenePresence(delegate (ScenePresence p)
                     {
@@ -190,12 +190,13 @@ namespace Careminster.Modules.XDwell
         {
         }
 
-        public void Delete(string where)
+        public void Delete(UUID regionID, string where)
         {
             MySqlCommand cmd = new MySqlCommand();
 
-            cmd.CommandText = "delete from " + m_Realm + " where " + where;
-            
+            cmd.CommandText = "delete from " + m_Realm + " where RegionID = ?RegionID and " + where;
+            cmd.Parameters.AddWithValue("?RegionID", regionID);
+
             ExecuteNonQuery(cmd);
 
             cmd.Dispose();
