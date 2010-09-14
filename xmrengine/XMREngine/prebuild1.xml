@@ -13,20 +13,21 @@
      <ReferencePath>../../../bin/</ReferencePath>
      <Reference name="System" localCopy="false"/>
      <Reference name="System.Xml"/>
-     <Reference name="OpenMetaverseTypes" path="../../../bin"/>
-     <Reference name="OpenMetaverse.StructuredData" path="../../../bin"/>
-     <Reference name="OpenSim.Region.CoreModules" path="../../../bin"/>
-     <Reference name="OpenSim.Framework" path="../../../bin"/>
-     <Reference name="OpenSim.Framework.Console" path="../../../bin"/>
-     <Reference name="OpenSim.Region.Framework" path="../../../bin"/>
-     <Reference name="OpenSim.Region.ScriptEngine.Shared" path="../../../bin"/>
-     <Reference name="OpenSim.Region.ScriptEngine.Shared.Api" path="../../../bin"/>
-     <Reference name="OpenSim.Region.ScriptEngine.Shared.Api.Runtime" path="../../../bin"/>
-     <Reference name="xmrengshare" path="../../../bin"/>
+     <Reference name="System.Core"/>
+     <Reference name="OpenMetaverseTypes"/>
+     <Reference name="OpenMetaverse.StructuredData"/>
+     <Reference name="OpenSim.Region.CoreModules"/>
+     <Reference name="OpenSim.Framework"/>
+     <Reference name="OpenSim.Framework.Console"/>
+     <Reference name="OpenSim.Region.Framework"/>
+     <Reference name="OpenSim.Region.ScriptEngine.Shared"/>
+     <Reference name="OpenSim.Region.ScriptEngine.Shared.Api"/>
+     <Reference name="OpenSim.Region.ScriptEngine.Shared.Api.Runtime"/>
+     <Reference name="xmrengshare"/>
      <Reference name="Mono.Tasklets" />
-     <Reference name="Mono.Addins"  path="../../../bin"/>
-     <Reference name="Nini"  path="../../../bin"/>
-     <Reference name="log4net" path="../../../bin"/>
+     <Reference name="Mono.Addins" />
+     <Reference name="Nini" />
+     <Reference name="log4net"/>
 
      <Files>
        <Match pattern="*.cs" recurse="false"/>

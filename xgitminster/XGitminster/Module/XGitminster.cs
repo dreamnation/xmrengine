@@ -962,7 +962,7 @@ namespace Careminster.Git
             }
             
         }
-        private void backup(IRegionDataStore datastore, bool m_forced)
+        private void backup(ISimulationDataService datastore, bool m_forced)
         {
             if (m_forced)
             {

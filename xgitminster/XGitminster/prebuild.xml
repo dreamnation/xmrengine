@@ -15,18 +15,18 @@
      <Reference name="System.Core"/>
      <Reference name="System.Xml"/>
      <Reference name="System.Xml.Linq"/>
-     <Reference name="GitSharp"  path="../../../bin"/>
-     <Reference name="GitSharp.Core"  path="../../../bin"/>
-     <Reference name="log4net"  path="../../../bin"/>
-     <Reference name="Nini"  path="../../../bin"/>
-     <Reference name="Mono.Addins"  path="../../../bin"/>
-     <Reference name="OpenMetaverse"  path="../../../bin"/>
-     <Reference name="OpenMetaverseTypes"  path="../../../bin"/>
-     <Reference name="OpenSim.Framework"  path="../../../bin"/>
-     <Reference name="OpenSim.Framework.Console"  path="../../../bin"/>
-     <Reference name="OpenSim.Framework.Serialization"  path="../../../bin"/>
-     <Reference name="OpenSim.Region.Framework" path="../../../bin" />
-     <Reference name="OpenSim.Region.CoreModules"  path="../../../bin"/>
+     <Reference name="GitSharp" />
+     <Reference name="GitSharp.Core" />
+     <Reference name="log4net" />
+     <Reference name="Nini" />
+     <Reference name="Mono.Addins" />
+     <Reference name="OpenMetaverse" />
+     <Reference name="OpenMetaverseTypes" />
+     <Reference name="OpenSim.Framework" />
+     <Reference name="OpenSim.Framework.Console" />
+     <Reference name="OpenSim.Framework.Serialization" />
+     <Reference name="OpenSim.Region.Framework" />
+     <Reference name="OpenSim.Region.CoreModules" />
     
      <Files>
        <Match pattern="*.cs" recurse="true"/>

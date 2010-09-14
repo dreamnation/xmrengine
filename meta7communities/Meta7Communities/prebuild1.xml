@@ -12,18 +12,18 @@
 
      <ReferencePath>../../../bin/</ReferencePath>
      <Reference name="System"/>
-     <Reference name="OpenMetaverseTypes" path="../../../bin"/>
-     <Reference name="OpenMetaverse" path="../../../bin"/>
-     <Reference name="OpenSim.Framework" path="../../../bin"/>
-     <Reference name="OpenSim.Framework.Console" path="../../../bin"/>
-     <Reference name="OpenSim.Framework.Servers.HttpServer" path="../../../bin"/>
-     <Reference name="OpenSim.Services.Interfaces" path="../../../bin"/>
-     <Reference name="OpenSim.Services.Base" path="../../../bin"/>
-     <Reference name="OpenSim.Services.Connectors" path="../../../bin"/>
-     <Reference name="OpenSim.Services.AuthorizationService" path="../../../bin"/>
-     <Reference name="OpenSim.Data" path="../../../bin"/>
-     <Reference name="Nini"  path="../../../bin"/>
-     <Reference name="log4net" path="../../../bin"/>
+     <Reference name="OpenMetaverseTypes"/>
+     <Reference name="OpenMetaverse"/>
+     <Reference name="OpenSim.Framework"/>
+     <Reference name="OpenSim.Framework.Console"/>
+     <Reference name="OpenSim.Framework.Servers.HttpServer"/>
+     <Reference name="OpenSim.Services.Interfaces"/>
+     <Reference name="OpenSim.Services.Base"/>
+     <Reference name="OpenSim.Services.Connectors"/>
+     <Reference name="OpenSim.Services.AuthorizationService"/>
+     <Reference name="OpenSim.Data"/>
+     <Reference name="Nini" />
+     <Reference name="log4net"/>
 
      <Files>
        <Match pattern="*.cs" recurse="true"/>

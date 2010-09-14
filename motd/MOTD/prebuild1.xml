@@ -12,16 +12,16 @@
 
      <ReferencePath>../../../bin/</ReferencePath>
      <Reference name="System"/>
-     <Reference name="OpenMetaverseTypes" path="../../../bin"/>
-     <Reference name="OpenMetaverse" path="../../../bin"/>
-     <Reference name="OpenSim.Framework" path="../../../bin"/>
-     <Reference name="OpenSim.Framework.Console" path="../../../bin"/>
-     <Reference name="OpenSim.Framework.Servers.HttpServer" path="../../../bin"/>
-     <Reference name="OpenSim.Region.Framework" path="../../../bin"/>
-     <Reference name="Mono.Addins" path="../../../bin"/>
-     <Reference name="OpenSim.Data" path="../../../bin"/>
-     <Reference name="Nini"  path="../../../bin"/>
-     <Reference name="log4net" path="../../../bin"/>
+     <Reference name="OpenMetaverseTypes"/>
+     <Reference name="OpenMetaverse"/>
+     <Reference name="OpenSim.Framework"/>
+     <Reference name="OpenSim.Framework.Console"/>
+     <Reference name="OpenSim.Framework.Servers.HttpServer"/>
+     <Reference name="OpenSim.Region.Framework"/>
+     <Reference name="Mono.Addins"/>
+     <Reference name="OpenSim.Data"/>
+     <Reference name="Nini" />
+     <Reference name="log4net"/>
 
      <Files>
        <Match pattern="*.cs" recurse="true"/>
