@@ -53,6 +53,13 @@ namespace Careminster.Modules.XEstate
         private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
         protected List<Scene> m_Scenes = new List<Scene>();
+        protected bool m_InInfoUpdate = false;
+
+        public bool InInfoUpdate
+        {
+            get { return m_InInfoUpdate; }
+            set { m_InInfoUpdate = value; }
+        }
 
         public List<Scene> Scenes
         {
@@ -136,7 +143,8 @@ namespace Careminster.Modules.XEstate
             if (s == null)
                 return;
 
-            m_EstateConnector.SendUpdateCovenant(s.RegionInfo.EstateSettings.EstateID, s.RegionInfo.RegionSettings.Covenant);
+            if (!m_InInfoUpdate)
+                m_EstateConnector.SendUpdateCovenant(s.RegionInfo.EstateSettings.EstateID, s.RegionInfo.RegionSettings.Covenant);
         }
 
         private void OnEstateInfoChange(UUID RegionID)
@@ -145,7 +153,8 @@ namespace Careminster.Modules.XEstate
             if (s == null)
                 return;
 
-            m_EstateConnector.SendUpdateEstate(s.RegionInfo.EstateSettings.EstateID);
+            if (!m_InInfoUpdate)
+                m_EstateConnector.SendUpdateEstate(s.RegionInfo.EstateSettings.EstateID);
         }
 
         private void OnEstateMessage(UUID RegionID, UUID FromID, string FromName, string Message)
@@ -169,7 +178,8 @@ namespace Careminster.Modules.XEstate
                     }
                 }
             }
-            m_EstateConnector.SendEstateMessage(estateID, FromID, FromName, Message);
+            if (!m_InInfoUpdate)
+                m_EstateConnector.SendEstateMessage(estateID, FromID, FromName, Message);
         }
 
         private void OnNewClient(IClientAPI client)
