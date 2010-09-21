@@ -564,6 +564,9 @@ namespace Careminster.Modules.Permissions
 
             private bool CanDuplicateObject(int objectCount, UUID objectID, UUID owner, Scene scene, Vector3 objectPosition)
             {
+                if (IsAdministrator(editorID))
+                    return true;
+
                 SceneObjectPart part = scene.GetSceneObjectPart(objectID);
                 if (part == null)
                     return false;
@@ -593,6 +596,9 @@ namespace Careminster.Modules.Permissions
 
             private bool CanEditObject(UUID objectID, UUID editorID, Scene scene)
             {
+                if (IsAdministrator(editorID))
+                    return true;
+
                 uint perms=GetEffectivePermissions(editorID, objectID);
 
                 if((perms & PERM_MODIFY) == 0)
@@ -603,6 +609,9 @@ namespace Careminster.Modules.Permissions
 
             private bool CanEditObjectInventory(UUID objectID, UUID editorID, Scene scene)
             {
+                if (IsAdministrator(editorID))
+                    return true;
+
                 SceneObjectPart part = m_Scene.GetSceneObjectPart(objectID);
 
                 if (part.OwnerID != editorID)
