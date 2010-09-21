@@ -564,7 +564,7 @@ namespace Careminster.Modules.Permissions
 
             private bool CanDuplicateObject(int objectCount, UUID objectID, UUID owner, Scene scene, Vector3 objectPosition)
             {
-                if (IsAdministrator(editorID))
+                if (IsAdministrator(owner))
                     return true;
 
                 SceneObjectPart part = scene.GetSceneObjectPart(objectID);
