@@ -1140,45 +1140,69 @@ namespace Careminster.Modules.Permissions
         }
         #endregion
 
-            public bool CanLinkObject(UUID userID, UUID objectID)
+        public bool CanLinkObject(UUID userID, UUID objectID)
+        {
+            uint perms=GetEffectivePermissions(userID, objectID);
+
+            if((perms & PERM_MODIFY) == 0)
+                return false;
+
+            return true;
+        }
+
+        public bool CanDelinkObject(UUID userID, UUID objectID)
+        {
+            uint perms=GetEffectivePermissions(userID, objectID);
+
+            if((perms & PERM_MODIFY) == 0)
+                return false;
+
+            return true;
+        }
+
+        public bool CanBuyLand(UUID userID, ILandObject parcel, Scene scene)
+        {
+            return true;
+        }
+
+        public bool CanCopyObjectInventory(UUID itemID, UUID objectID, UUID userID)
+        {
+            return true;
+        }
+
+        public bool CanDeleteObjectInventory(UUID itemID, UUID objectID, UUID userID)
+        {
+            return true;
+        }
+
+        public bool CanCreateObjectInventory(int invType, UUID objectID, UUID userID)
+        {
+            SceneObjectPart part = m_Scene.GetSceneObjectPart(objectID);
+            ScenePresence p = m_Scene.GetScenePresence(userID);
+
+            if (part == null || p == null)
+                return false;
+
+            if (!IsAdministrator(userID))
             {
-                uint perms=GetEffectivePermissions(userID, objectID);
-
-                if((perms & PERM_MODIFY) == 0)
-                    return false;
-
-                return true;
+                if (part.OwnerID != userID)
+                {
+                    if ((part.GroupID == UUID.Zero) ||
+                        (p.ControllingClient.GetGroupPowers(part.GroupID) == 0) ||
+                        ((part.GroupMask & (uint)PermissionMask.Modify) == 0))
+                    {
+                        return false;
+                    }
+                }
+                else
+                {
+                    if ((part.OwnerMask & (uint)PermissionMask.Modify) == 0)
+                        return false;
+                }
             }
 
-            public bool CanDelinkObject(UUID userID, UUID objectID)
-            {
-                uint perms=GetEffectivePermissions(userID, objectID);
-
-                if((perms & PERM_MODIFY) == 0)
-                    return false;
-
-                return true;
-            }
-
-            public bool CanBuyLand(UUID userID, ILandObject parcel, Scene scene)
-            {
-                return true;
-            }
-
-            public bool CanCopyObjectInventory(UUID itemID, UUID objectID, UUID userID)
-            {
-                return true;
-            }
-
-            public bool CanDeleteObjectInventory(UUID itemID, UUID objectID, UUID userID)
-            {
-                return true;
-            }
-
-            public bool CanCreateObjectInventory(int invType, UUID objectID, UUID userID)
-            {
-                return true;
-            }
+            return true;
+        }
 
         public bool CanCreateUserInventory(int invType, UUID userID)
         {
