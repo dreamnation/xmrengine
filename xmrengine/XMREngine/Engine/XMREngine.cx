@@ -122,6 +122,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             get { return null; }
         }
 
+        public string ScriptEnginePath
+        {
+            get { return m_ScriptBasePath; }
+        }
+
         public void Initialise(IConfigSource config)
         {
             m_ConfigSource = config;
