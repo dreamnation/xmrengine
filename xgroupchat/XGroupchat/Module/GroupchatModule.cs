@@ -834,6 +834,8 @@ namespace Careminster.Modules.Groups
                             !m_PresenceData[imSessionID].ContainsKey(fromAgentID))
                         return;
                     
+                    if (client != null)
+                        fromAgentName = client.FirstName + " " + client.LastName;
                     Send(fromAgentID, fromAgentName, imSessionID.ToString(),
                             message);
                 }
