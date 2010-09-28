@@ -658,6 +658,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             {
                 m_log.DebugFormat("[XMREngine]: XMREngine.GetXMLState({0})", itemID.ToString());
             }
+
+            if (instance.m_Suspended)
+                return String.Empty;
+
             XmlDocument doc = new XmlDocument();
 
             /*
