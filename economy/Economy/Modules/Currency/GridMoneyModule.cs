@@ -1087,7 +1087,7 @@ namespace Careminster.Modules.Currency
             IBuySellModule module = s.RequestModuleInterface<IBuySellModule>();
             if (module != null)
             {
-                if (module.BuyObject(remoteClient, categoryID, localID, saleType))
+                if (module.BuyObject(remoteClient, categoryID, localID, saleType, salePrice))
                 {
                     bool transactionresult = DoMoneyTransfer(remoteClient.AgentId, sellerID, salePrice, 5000, part.Name, s);
                     if (!transactionresult)
