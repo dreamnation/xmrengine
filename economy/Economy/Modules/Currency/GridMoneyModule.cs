@@ -111,6 +111,8 @@ namespace Careminster.Modules.Currency
         private float TeleportPriceExponent = 0f;
         private int UserLevelPaysFees = 2;
 
+        protected IDialogModule m_dialogModule;
+
         //
         // Database
         //
@@ -219,6 +221,7 @@ namespace Careminster.Modules.Currency
 
         public void RegionLoaded(Scene scene)
         {
+            m_dialogModule = scene.RequestModuleInterface<IDialogModule>();
         }
 
         public void RemoveRegion(Scene scene)
@@ -1082,11 +1085,26 @@ namespace Careminster.Modules.Currency
                 return;
             }
 
+            part = part.ParentGroup.RootPart;
+
             UUID sellerID = part.OwnerID;
 
             IBuySellModule module = s.RequestModuleInterface<IBuySellModule>();
             if (module != null)
             {
+                if (part.ObjectSaleType != saleType)
+                {
+                    if (m_dialogModule != null)
+                        m_dialogModule.SendAlertToUser(remoteClient, "Cannot buy now. Buy failed.");
+                    return;
+                }
+                if (part.SalePrice != salePrice)
+                {
+                    if (m_dialogModule != null)
+                        m_dialogModule.SendAlertToUser(remoteClient, "Cannot buy at this price. Buy failed.");
+                    return;
+                }
+
                 if (module.BuyObject(remoteClient, categoryID, localID, saleType, salePrice))
                 {
                     bool transactionresult = DoMoneyTransfer(remoteClient.AgentId, sellerID, salePrice, 5000, part.Name, s);
