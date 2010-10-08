@@ -90,6 +90,7 @@ namespace Careminster.Modules.Groups
 
             scene.RegisterModuleInterface<IGroupsModule>(this);
             scene.EventManager.OnNewClient += OnNewClient;
+            scene.EventManager.OnMakeRootAgent += OnMakeRootAgent;
             scene.EventManager.OnClientClosed += OnClientClosed;
             scene.EventManager.OnIncomingInstantMessage +=
                     OnIncomingInstantMessage;
@@ -652,6 +653,11 @@ namespace Careminster.Modules.Groups
             client.OnGroupAccountTransactionsRequest += OnGroupAccountTransactionsRequest;
 
             SendGroupMembershipCaps(GetMembershipData(client.AgentId), client);
+        }
+
+        private void OnMakeRootAgent(ScenePresence presence)
+        {
+            OnAgentDataUpdateRequest(presence.ControllingClient, presence.ControllingClient.AgentId, UUID.Zero);
         }
 
         private void OnAgentDataUpdateRequest(IClientAPI remoteClient, UUID AgentID, UUID SessionID)
