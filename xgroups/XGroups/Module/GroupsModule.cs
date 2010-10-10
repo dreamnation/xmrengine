@@ -1980,7 +1980,6 @@ Console.WriteLine("==> Session ID {0} UUID {1}", imSessionID.ToString(), id.ToSt
                     m_PendingInvites.Add(new UUID(msg.fromAgentID) ^ new UUID(msg.toAgentID) ^
                             new UUID(msg.imSessionID));
 
-                    msg.offline = (byte)1; // Make sure they're stored
                     m_TransferModule.SendInstantMessage(msg,
                         delegate(bool success) {} );
                 }
