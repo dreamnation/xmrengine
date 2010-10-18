@@ -92,14 +92,6 @@ namespace Careminster.Modules.XSearch
 
         public void Initialise(IConfigSource config)
         {
-            m_LandTimer.AutoReset = false;
-            m_LandTimer.Interval = 20000;
-            m_LandTimer.Elapsed +=
-                    delegate(object sender, ElapsedEventArgs e)
-                    {
-                        SendParcelData();
-                    };
-
             IConfig searchConfig = config.Configs["Search"];
             if (searchConfig == null)
                 return;
@@ -121,6 +113,14 @@ namespace Careminster.Modules.XSearch
                 m_log.Error("[XSEARCH]: Module enabled but no DatabaseConnect in [Search]");
                 return;
             }
+
+            m_LandTimer.AutoReset = false;
+            m_LandTimer.Interval = 20000;
+            m_LandTimer.Elapsed +=
+                    delegate(object sender, ElapsedEventArgs e)
+                    {
+                        SendParcelData();
+                    };
 
             m_ClassifiedsTable = new MySQLGenericTableHandler<XProfileClassified>(
                     m_ConnectionString, "XProfileClassifieds", String.Empty);
