@@ -46,6 +46,7 @@ namespace Careminster.Modules.XDwell
         protected Scene m_Scene;
         protected string m_DatabaseConnect;
         protected Timer m_DwellTimer = new Timer();
+        protected bool m_Enabled = false;
 
         public void Initialise(IConfigSource config)
         {
@@ -64,6 +65,14 @@ namespace Careminster.Modules.XDwell
             }
 
             m_DwellTable = new DwellTableHandler(m_DatabaseConnect, "XDwell", String.Empty);
+            if (m_DwellTable == null)
+            {
+                m_log.Error("[XDWELL]: Filed to connect to database");
+                return;
+            }
+
+            m_Enabled = true;
+
             m_log.Info("[XDwell]: Dwell module active");
 
             m_DwellTimer.AutoReset = true;
@@ -80,6 +89,9 @@ namespace Careminster.Modules.XDwell
         {
             m_Scene = scene;
 
+            if (!m_Enabled)
+                return;
+
             m_Scene.EventManager.OnNewClient += OnNewClient;
             m_Scene.RegisterModuleInterface<IDwellModule>(this);
         }
@@ -90,6 +102,9 @@ namespace Careminster.Modules.XDwell
 
         public void RemoveRegion(Scene scene)
         {
+            if (!m_Enabled)
+                return;
+
             m_Scene.EventManager.OnNewClient -= OnNewClient;
             m_Scene.UnregisterModuleInterface<IDwellModule>(this);
         }
