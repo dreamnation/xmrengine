@@ -703,7 +703,6 @@ namespace Careminster.Modules.Groups
             {
                 UUID id = new UUID(binaryBucket, 0);
 
-Console.WriteLine("==> Session ID {0} UUID {1}", imSessionID.ToString(), id.ToString());
                 lock(m_Connection)
                 {
                     MySqlCommand cmd = m_Connection.CreateCommand();
@@ -746,11 +745,31 @@ Console.WriteLine("==> Session ID {0} UUID {1}", imSessionID.ToString(), id.ToSt
                     item.CreationDate = Util.UnixTimeSinceEpoch();
                     item.Folder = invService.GetFolderForType(client.AgentId, (AssetType)item.AssetType).ID;
 
-                    r.Close();
-                    cmd.Dispose();
-
                     invService.AddItem(item);
                     client.SendBulkUpdateInventory(item);
+
+                    byte[] itembytes = item.ID.GetBytes();
+                    byte[] data = new byte[17];
+                    data[0] = (byte)item.AssetType;
+                    Array.Copy(itembytes, 0, data, 1, 16);
+
+                    GridInstantMessage msg = new GridInstantMessage(
+                            client.Scene,
+                            new UUID(r["GroupID"].ToString()),
+                            r["FromName"].ToString(),
+                            client.AgentId,
+                            (byte)InstantMessageDialog.InventoryOffered,
+                            true,
+                            r["AttachmentName"].ToString(),
+                            UUID.Random(),
+                            false,
+                            Vector3.Zero,
+                            data);
+
+                    client.SendInstantMessage(msg);
+
+                    r.Close();
+                    cmd.Dispose();
 
                     return;
                 }
