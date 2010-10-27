@@ -683,8 +683,8 @@ namespace Careminster.Modules.XSearch
                 {
                     Vector3 landingPoint = Vector3.Parse(p.Data["LandingPoint"]);
                     mapItemReply mapitem = new mapItemReply();
-                    mapitem.x = (uint)((regionX * 256) + landingPoint.X);
-                    mapitem.y = (uint)((regionY * 256) + landingPoint.Y);
+                    mapitem.x = (uint)(regionX + landingPoint.X);
+                    mapitem.y = (uint)(regionY + landingPoint.Y);
                     mapitem.id = new UUID(p.FakeID);
                     mapitem.name = p.Data["Name"];
                     mapitem.Extra = Convert.ToInt32(p.Data["Area"]);
