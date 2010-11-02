@@ -126,12 +126,12 @@ namespace Careminster.Modules.XAttachments
 
             // These are the ones we should have. These states need
             // to be preserved
-            Dictionary<int, UUID[]> attDict = sp.Appearance.GetAttachmentDictionary();
+            List<AvatarAttachment> attList = sp.Appearance.GetAttachments();
             List<UUID> validIDs = new List<UUID>();
-            foreach (UUID[] idlist in attDict.Values)
+            foreach (AvatarAttachment att in attList)
             {
-                if (!validIDs.Contains(idlist[0]))
-                    validIDs.Add(idlist[0]);
+                if (!validIDs.Contains(att.ItemID))
+                    validIDs.Add(att.ItemID);
             }
 
             // Contains the actual states
