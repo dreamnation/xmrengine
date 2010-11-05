@@ -39,6 +39,7 @@ namespace Careminster.Modules.Permissions
         private bool m_EstateOwnerIsGod = false;
         private bool m_EstateManagerIsGod = false;
         private bool m_Enabled = false;
+        private bool m_AllowFriendAttachmentEdits = false;
         private InventoryFolderImpl m_LibraryRootFolder;
 
         private IFriendsModule m_friendsModule = null;
@@ -77,6 +78,7 @@ namespace Careminster.Modules.Permissions
             m_AllowGridGods = myConfig.GetBoolean("allow_grid_gods", true);
             m_EstateOwnerIsGod = myConfig.GetBoolean("estate_owner_is_god", false);
             m_EstateManagerIsGod = myConfig.GetBoolean("estate_manager_is_god", false);
+            m_AllowFriendAttachmentEdits = myConfig.GetBoolean("allow_friend_attachment_edits", false);
 
             m_Enabled = true;
         }
@@ -289,7 +291,7 @@ namespace Careminster.Modules.Permissions
                   PrimFlags.ObjectYouOfficer);
 
             // Object owners should be able to edit their own content
-            if (user == objectOwner || ((!task.ParentGroup.IsAttachment) && IsFriendWithPerms(user, objectOwner)))
+            if (user == objectOwner || (((!task.ParentGroup.IsAttachment) || m_AllowFriendAttachmentEdits) && IsFriendWithPerms(user, objectOwner)))
             {
                 uint flags=ApplyObjectModifyMasks(task.OwnerMask, objflags) |
                         (uint)PrimFlags.ObjectYouOwner |
@@ -734,6 +736,15 @@ namespace Careminster.Modules.Permissions
                 if ((part.EveryoneMask & (uint)PermissionMask.Move) != 0)
                     return true;
 
+                if (part.ParentGroup.IsAttachment)
+                {
+                    if (part.ParentGroup.RootPart.OwnerID == moverID)
+                        return true;
+                    if (IsAdministrator(moverID))
+                        return true;
+                    if (IsFriendWithPerms(moverID, part.ParentGroup.RootPart.OwnerID) && m_AllowFriendAttachmentEdits)
+                        return true;
+                }
                 return GenericObjectPermission(moverID, objectID, true);
             }
 
