@@ -289,7 +289,7 @@ namespace Careminster.Modules.Permissions
                   PrimFlags.ObjectYouOfficer);
 
             // Object owners should be able to edit their own content
-            if (user == objectOwner || IsFriendWithPerms(user, objectOwner))
+            if (user == objectOwner || ((!task.ParentGroup.IsAttachment) && IsFriendWithPerms(user, objectOwner)))
             {
                 uint flags=ApplyObjectModifyMasks(task.OwnerMask, objflags) |
                         (uint)PrimFlags.ObjectYouOwner |
@@ -306,6 +306,12 @@ namespace Careminster.Modules.Permissions
                         (uint)PrimFlags.ObjectYouOwner |
                         (uint)PrimFlags.ObjectAnyOwner |
                         (uint)PrimFlags.ObjectOwnerModify;
+            }
+
+            if (task.ParentGroup.IsAttachment)
+            {
+                return ApplyObjectModifyMasks(task.EveryoneMask, objflags) |
+                        (uint)PrimFlags.ObjectAnyOwner;
             }
 
             if (task.OwnerID == task.GroupID && CheckGroupPowers(user, task.GroupID, (ulong)GroupPowers.ObjectManipulate))
