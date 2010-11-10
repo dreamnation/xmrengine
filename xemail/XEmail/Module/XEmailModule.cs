@@ -396,7 +396,7 @@ namespace Careminster.Modules.XEmail
                     //Creation EmailMessage
                     EmailMessage emailMessage = new EmailMessage();
                     //From
-                    emailMessage.FromAddress = new EmailAddress(objectID.ToString() + m_HostName);
+                    emailMessage.FromAddress = new EmailAddress(objectID.ToString() + m_HostName, LastObjectName);
                     //To - Only One
                     emailMessage.AddToAddress(new EmailAddress(address));
                     //Subject
