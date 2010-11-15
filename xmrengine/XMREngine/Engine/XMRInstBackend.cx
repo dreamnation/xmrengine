@@ -43,7 +43,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             {
                 XMREngine e = (XMREngine)m_ScriptEngine;
 
-                e.GetInstance(m_itemID).Sleep(delay);
+                XMRInstance inst = e.GetInstance(m_itemID);
+                if (inst != null)
+                    inst.Sleep(delay);
             }
             else
             {
