@@ -218,6 +218,19 @@ namespace Careminster.Modules.XAttachments
                     rc.Request(reqStream);
                 }
             );
+
+            IAttachmentsModule attachmentsModule = m_Scene.AttachmentsModule;
+            if (attachmentsModule != null)
+            {
+                foreach (SceneObjectGroup grp in attachments)
+                {
+                    if (grp.HasGroupChanged) // Resizer scripts?
+                    {
+                        attachmentsModule.UpdateKnownItem(sp.ControllingClient,
+                                grp, grp.GetFromItemID(), grp.OwnerID);
+                    }
+                }
+            }
         }
     }
 }
