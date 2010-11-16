@@ -270,6 +270,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         // Guarded by m_QueueLock.
         public bool m_Suspended = true;
 
+        // We really don't want to save state for a script that hasn't had
+        // a chance to run, because it's state will be blank. That would
+        // cause attachment state loss.
+        public bool m_HasRun = false;
+
         // When llDie is executed within the attach(NULL_KEY) event of
         // a script being detached to inventory, the DeleteSceneObject call
         // it causes will delete the script instances before their state can

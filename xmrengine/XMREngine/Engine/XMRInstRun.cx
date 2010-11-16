@@ -939,6 +939,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_IState = XMRInstState.ONSTARTQ;
                     m_Engine.QueueToStart(this);
                 }
+                m_HasRun = true;
             }
         }
 
