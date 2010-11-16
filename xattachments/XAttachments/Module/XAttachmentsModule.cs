@@ -122,11 +122,11 @@ namespace Careminster.Modules.XAttachments
 
             // These are the ones actually inworld, from which state
             // can be saved
-            List<SceneObjectGroup> attachments = sp.Attachments;
+            List<SceneObjectGroup> attachments = new List<SceneObjectGroup>(sp.Attachments.ToArray());
 
             // These are the ones we should have. These states need
             // to be preserved
-            List<AvatarAttachment> attList = sp.Appearance.GetAttachments();
+            List<AvatarAttachment> attList = new List<AvatarAttachment>(sp.Appearance.GetAttachments().ToArray());
             List<UUID> validIDs = new List<UUID>();
             foreach (AvatarAttachment att in attList)
             {
@@ -174,7 +174,12 @@ namespace Careminster.Modules.XAttachments
                 MemoryStream ms = new MemoryStream();
                 XmlTextWriter xw = new XmlTextWriter(ms, null);
 
-                att.SaveScriptedState(xw, true);
+                // If the group itself has changed, use new IDs because
+                // the asset with the new ids is saved later
+                if (att.HasGroupChanged)
+                    att.SaveScriptedState(xw, false);
+                else
+                    att.SaveScriptedState(xw, true);
                 xw.Flush();
                 xw.Close();
                 string state = enc.GetString(ms.ToArray());
@@ -218,19 +223,6 @@ namespace Careminster.Modules.XAttachments
                     rc.Request(reqStream);
                 }
             );
-
-            IAttachmentsModule attachmentsModule = m_Scene.AttachmentsModule;
-            if (attachmentsModule != null)
-            {
-                foreach (SceneObjectGroup grp in attachments)
-                {
-                    if (grp.HasGroupChanged) // Resizer scripts?
-                    {
-                        attachmentsModule.UpdateKnownItem(sp.ControllingClient,
-                                grp, grp.GetFromItemID(), grp.OwnerID);
-                    }
-                }
-            }
         }
     }
 }
