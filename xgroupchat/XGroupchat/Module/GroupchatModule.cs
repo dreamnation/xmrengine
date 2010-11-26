@@ -114,8 +114,8 @@ namespace Careminster.Modules.Groups
 
             scene.EventManager.OnNewClient += OnNewClient;
             scene.EventManager.OnClientClosed += OnClientClosed;
-            scene.EventManager.OnIncomingInstantMessage +=
-                    OnIncomingInstantMessage;
+//            scene.EventManager.OnIncomingInstantMessage +=
+//                    OnIncomingInstantMessage;
             scene.EventManager.OnMakeRootAgent += OnMakeRootAgent;
             scene.EventManager.OnMakeChildAgent += OnMakeChildAgent;
         }
@@ -851,17 +851,17 @@ namespace Careminster.Modules.Groups
             }
         }
 
-        private void OnIncomingInstantMessage(GridInstantMessage im)
-        {
-            if (im.dialog != (byte)InstantMessageDialog.GroupNotice)
-                return;
-
-            ScenePresence p = FindPresence(new UUID(im.toAgentID));
-            if (p.IsChildAgent)
-                return;
-
-            p.ControllingClient.SendInstantMessage(im);
-        }
+//        private void OnIncomingInstantMessage(GridInstantMessage im)
+//        {
+//            if (im.dialog != (byte)InstantMessageDialog.GroupNotice)
+//                return;
+//
+//            ScenePresence p = FindPresence(new UUID(im.toAgentID));
+//            if (p.IsChildAgent)
+//                return;
+//
+//            p.ControllingClient.SendInstantMessage(im);
+//        }
 
         private void SendToClient(Scene scene, UUID agentID, UUID fromID, string fromAgentName, UUID sessionID, string message, string sessionName)
         {
