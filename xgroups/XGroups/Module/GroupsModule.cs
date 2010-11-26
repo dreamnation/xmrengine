@@ -844,8 +844,6 @@ namespace Careminster.Modules.Groups
                             UUID itemID = llsd["item_id"].AsUUID();
                             UUID ownerID = llsd["owner_id"].AsUUID();
 
-                            Console.WriteLine("==> {0} {1}", itemID.ToString(), ownerID.ToString());
-
                             IInventoryService invService = client.Scene.RequestModuleInterface<IInventoryService>();
                             InventoryItemBase item = new InventoryItemBase(itemID, client.AgentId);
                             item = invService.GetItem(item);

@@ -920,8 +920,6 @@ namespace Careminster.Modules.Groups
         {
             List<GroupMembersData> members = m_GroupsModule.GroupMembersRequest(null, groupID);
 
-            List<UUID> inChat = new List<UUID>();
-            
             foreach (GroupMembersData gd in members)
             {
                 if (!gd.AcceptNotices)
