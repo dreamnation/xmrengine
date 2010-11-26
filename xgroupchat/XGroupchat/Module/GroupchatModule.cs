@@ -204,7 +204,11 @@ namespace Careminster.Modules.Groups
         {
             IConfig groupsConfig = m_Config.Configs["Groups"];
 
-            string oneRegion = scene.RegionInfo.RegionName.Replace(" ", "_");
+            string allowed = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_";
+            string oneRegion = String.Empty;
+            for (int i = 0 ; i < scene.RegionInfo.RegionName.Length ; i++)
+                if (allowed.IndexOf(scene.RegionInfo.RegionName.Substring(i, 1)) != -1)
+                    oneRegion += scene.RegionInfo.RegionName.Substring(i, 1);
 
             m_Server = groupsConfig.GetString("Server", "");
             m_Port = groupsConfig.GetInt("Port", 6667);
@@ -296,6 +300,7 @@ namespace Careminster.Modules.Groups
                     {
                         lock (m_ConnectionLock)
                         {
+                            m_log.InfoFormat("[GROUPCHAT]: Socket disconnected");
                             m_Stream = null;
                             continue;
                         }
