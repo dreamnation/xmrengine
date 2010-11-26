@@ -1625,7 +1625,7 @@ namespace Careminster.Modules.Groups
             if (sp != null)
             {
                 sp.Grouptitle = GetGroupTitle(remoteClient.AgentId);
-                sp.SendFullUpdateToAllClients();
+                sp.SendAvatarDataToAllAgents();
             }
         }
 
