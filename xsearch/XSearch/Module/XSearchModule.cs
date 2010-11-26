@@ -547,7 +547,16 @@ namespace Careminster.Modules.XSearch
                                  ClassifiedQueryFlags.IncludeAdult);
             if (queryFlags == 0)
                 queryFlags |= (uint)ClassifiedQueryFlags.IncludePG;
-            terms.Add("ClassifiedFlags & " + queryFlags.ToString());
+
+            if ((queryFlags & (uint)ClassifiedQueryFlags.IncludePG) == 0 ||
+                ((queryFlags & (uint)ClassifiedQueryFlags.IncludeMature) == 0 &&
+                 (queryFlags & (uint)ClassifiedQueryFlags.IncludeAdult) == 0))
+            {
+                if ((queryFlags & (uint)ClassifiedQueryFlags.IncludePG) != 0)
+                    terms.Add("(ClassifiedFlags & 8 = 0)");
+                else
+                    terms.Add("(ClassifiedFlags & 8 <> 0)");
+            }
 
             terms.Add("(ScopeID='" + m_Scene.RegionInfo.ScopeID.ToString() +
                     "' or ScopeID='00000000-0000-0000-0000-000000000000')");
