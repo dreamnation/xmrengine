@@ -47,6 +47,8 @@ namespace Careminster.XCallingCard.Modules
             m_Scenes.Remove(scene);
 
             scene.EventManager.OnNewClient -= OnNewClient;
+            scene.EventManager.OnIncomingInstantMessage +=
+                    OnIncomingInstantMessage;
 
             scene.UnregisterModuleInterface<ICallingCardModule>(this);
         }
@@ -85,6 +87,33 @@ namespace Careminster.XCallingCard.Modules
 
         private void OnOfferCallingCard(IClientAPI client, UUID destID, UUID transactionID)
         {
+            IClientAPI dest = FindClientObject(destID);
+            if (dest != null)
+            {
+                DoCallingCardOffer(dest, client.AgentId);
+                return;
+            }
+
+            IMessageTransferModule transferModule =
+                    m_Scenes[0].RequestModuleInterface<IMessageTransferModule>();
+
+            if (transferModule != null)
+            {
+                transferModule.SendInstantMessage(new GridInstantMessage(
+                        client.Scene, client.AgentId,
+                        client.FirstName+" "+client.LastName,
+                        destID, (byte)211, false,
+                        String.Empty,
+                        transactionID, false, new Vector3(), new byte[0]),
+                        delegate(bool success) {} );
+            }
+        }
+
+        private void DoCallingCardOffer(IClientAPI dest, UUID from)
+        {
+            UUID itemID = CreateCallingCard(dest.AgentId, from, UUID.Zero);
+
+            dest.SendOfferCallingCard(from, itemID);
         }
 
         // Create a calling card in the user's inventory. This is called
@@ -92,19 +121,19 @@ namespace Careminster.XCallingCard.Modules
         // and from the friends module when the friend is confirmed.
         // Because of the latter, it will send a bulk inventory update
         // if the receiving user is in the same simulator.
-        public void CreateCallingCard(UUID userID, UUID creatorID, UUID folderID)
+        public UUID CreateCallingCard(UUID userID, UUID creatorID, UUID folderID)
         {
             IUserAccountService userv = m_Scenes[0].UserAccountService;
             if (userv == null)
-                return;
+                return UUID.Zero;
 
             UserAccount info = userv.GetUserAccount(UUID.Zero, creatorID);
             if (info == null)
-                return;
+                return UUID.Zero;
 
             IInventoryService inv = m_Scenes[0].InventoryService;
             if (inv == null)
-                return;
+                return UUID.Zero;
 
             if (folderID == UUID.Zero)
             {
@@ -112,7 +141,7 @@ namespace Careminster.XCallingCard.Modules
                         AssetType.CallingCard);
 
                 if (folder == null) // Nowhere to put it
-                    return;
+                    return UUID.Zero;
 
                 folderID = folder.ID;
             }
@@ -146,9 +175,11 @@ namespace Careminster.XCallingCard.Modules
 
             inv.AddItem(item);
 
-            IClientAPI client = LocateClientObject(userID);
+            IClientAPI client = FindClientObject(userID);
             if (client != null)
                 client.SendBulkUpdateInventory(item);
+
+            return item.ID;
         }
 
         private void OnAcceptCallingCard(IClientAPI client, UUID transactionID, UUID folderID)
@@ -157,9 +188,25 @@ namespace Careminster.XCallingCard.Modules
 
         private void OnDeclineCallingCard(IClientAPI client, UUID transactionID)
         {
+            IInventoryService invService = m_Scenes[0].InventoryService;
+
+            InventoryFolderBase trashFolder =
+                    invService.GetFolderForType(client.AgentId, AssetType.TrashFolder);
+
+            InventoryItemBase item = new InventoryItemBase(transactionID, client.AgentId);
+            item = invService.GetItem(item);
+
+            if (item != null && trashFolder != null)
+            {
+                item.Folder = trashFolder.ID;
+                List<UUID> uuids = new List<UUID>();
+                uuids.Add(item.ID);
+                invService.DeleteItems(item.Owner, uuids);
+                m_Scenes[0].AddInventoryItem(client, item);
+            }
         }
 
-        public IClientAPI LocateClientObject(UUID agentID)
+        public IClientAPI FindClientObject(UUID agentID)
         {
             Scene scene = GetClientScene(agentID);
             if (scene == null)
@@ -187,6 +234,18 @@ namespace Careminster.XCallingCard.Modules
                 }
             }
             return null;
+        }
+
+        private void OnIncomingInstantMessage(GridInstantMessage msg)
+        {
+            if (msg.dialog == (uint)211)
+            {
+                IClientAPI client = FindClientObject(new UUID(msg.toAgentID));
+                if (client == null)
+                    return;
+
+                DoCallingCardOffer(client, new UUID(msg.fromAgentID));
+            }
         }
     }
 }
