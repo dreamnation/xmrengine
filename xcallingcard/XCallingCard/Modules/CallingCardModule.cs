@@ -87,6 +87,19 @@ namespace Careminster.XCallingCard.Modules
 
         private void OnOfferCallingCard(IClientAPI client, UUID destID, UUID transactionID)
         {
+            ScenePresence sp = GetClientPresence(client.AgentId);
+            if (sp != null)
+            {
+                // If we're in god mode, we reverse the meaning. Offer
+                // calling card becomes "Take a calling card" for that
+                // person, no matter if they agree or not.
+                if (sp.GodLevel >= 200)
+                {
+                    CreateCallingCard(client.AgentId, destID, UUID.Zero, true);
+                    return;
+                }
+            }
+
             IClientAPI dest = FindClientObject(destID);
             if (dest != null)
             {
@@ -111,7 +124,7 @@ namespace Careminster.XCallingCard.Modules
 
         private void DoCallingCardOffer(IClientAPI dest, UUID from)
         {
-            UUID itemID = CreateCallingCard(dest.AgentId, from, UUID.Zero);
+            UUID itemID = CreateCallingCard(dest.AgentId, from, UUID.Zero, false);
 
             dest.SendOfferCallingCard(from, itemID);
         }
@@ -122,6 +135,11 @@ namespace Careminster.XCallingCard.Modules
         // Because of the latter, it will send a bulk inventory update
         // if the receiving user is in the same simulator.
         public UUID CreateCallingCard(UUID userID, UUID creatorID, UUID folderID)
+        {
+            return CreateCallingCard(userID, creatorID, folderID, false);
+        }
+
+        private UUID CreateCallingCard(UUID userID, UUID creatorID, UUID folderID, bool isGod)
         {
             IUserAccountService userv = m_Scenes[0].UserAccountService;
             if (userv == null)
@@ -152,9 +170,12 @@ namespace Careminster.XCallingCard.Modules
             item.AssetID = UUID.Zero;
             item.AssetType = (int)AssetType.CallingCard;
             item.BasePermissions = (uint)(PermissionMask.Copy | PermissionMask.Modify);
+            if (isGod)
+                item.BasePermissions = (uint)(PermissionMask.Copy | PermissionMask.Modify | PermissionMask.Transfer | PermissionMask.Move);
+
             item.EveryOnePermissions = (uint)PermissionMask.None;
             item.CurrentPermissions = item.BasePermissions;
-            item.NextPermissions = item.EveryOnePermissions;
+            item.NextPermissions = (uint)(PermissionMask.Copy | PermissionMask.Modify);
 
             item.ID = UUID.Random();
             item.CreatorId = creatorID.ToString();
@@ -230,6 +251,23 @@ namespace Careminster.XCallingCard.Modules
                     {
                         if (!presence.IsChildAgent)
                             return scene;
+                    }
+                }
+            }
+            return null;
+        }
+
+        private ScenePresence GetClientPresence(UUID agentId)
+        {
+            lock (m_Scenes)
+            {
+                foreach (Scene scene in m_Scenes)
+                {
+                    ScenePresence presence = scene.GetScenePresence(agentId);
+                    if (presence != null)
+                    {
+                        if (!presence.IsChildAgent)
+                            return presence;
                     }
                 }
             }
