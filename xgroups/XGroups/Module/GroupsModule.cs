@@ -1955,7 +1955,7 @@ namespace Careminster.Modules.Groups
             Array.Copy(RoleID.GetBytes(), 0, data, 4, 16);
 
             string text = remoteClient.FirstName+" "+remoteClient.LastName+
-                    "has invited you to join the group "+g.GroupName+".\n";
+                    " has invited you to join the group "+g.GroupName+".\n";
             if (price > 0)
                 text += "Joining this group costs D$ "+price.ToString()+"\n";
             if (RoleID != UUID.Zero)
