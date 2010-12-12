@@ -40,6 +40,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static Dictionary<string, TokenDeclFunc> legalEventHandlers = CreateLegalEventHandlers ();
 		private static TokenTypeBool tokenTypeBool = new TokenTypeBool (null);
 		private static TokenTypeInt  tokenTypeInt  = new TokenTypeInt  (null);
+		private static TokenTypeStr  tokenTypeStr  = new TokenTypeStr  (null);
 		private static Type[] instanceTypeArg = new Type[] { typeof (XMRInstAbstract) };
 
 		private static ConstructorInfo lslFloatConstructorInfo = typeof (LSL_Float).GetConstructor (new Type[] { typeof (SCRIPTFLOAT) });
@@ -84,6 +85,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static MethodInfo lslVectorNegateMethodInfo = GetStaticMethod (typeof (ScriptCodeGen), 
 		                                                                       "LSLVectorNegate", 
 		                                                                       new Type[] { typeof (LSL_Vector) });
+		private static MethodInfo throwStrToExcMethodInfo = GetStaticMethod (typeof (ScriptCodeGen),
+		                                                                     "ThrowStrToExc",
+		                                                                     new Type[] { typeof (string) });
+		private static MethodInfo catchExcToStrMethodInfo = GetStaticMethod (typeof (ScriptCodeGen),
+		                                                                     "CatchExcToStr",
+		                                                                     new Type[] { typeof (Exception) });
 
 		public static bool CodeGen (TokenScript tokenScript, BinaryWriter objFileWriter)
 		{
@@ -778,6 +785,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (stmt is TokenStmtRVal)    { GenerateStmtRVal    ((TokenStmtRVal)stmt);    return; }
 			if (stmt is TokenStmtState)   { GenerateStmtState   ((TokenStmtState)stmt);   return; }
 			if (stmt is TokenStmtSwitch)  { GenerateStmtSwitch  ((TokenStmtSwitch)stmt);  return; }
+			if (stmt is TokenStmtThrow)   { GenerateStmtThrow   ((TokenStmtThrow)stmt);   return; }
+			if (stmt is TokenStmtTry)     { GenerateStmtTry     ((TokenStmtTry)stmt);     return; }
 			if (stmt is TokenStmtWhile)   { GenerateStmtWhile   ((TokenStmtWhile)stmt);   return; }
 			throw new Exception ("unknown TokenStmt type " + stmt.GetType ().ToString ());
 		}
@@ -1173,11 +1182,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Find which block the target label is in.  Must be in this or an outer block,
-			 * no laterals allowed or it would make memory usage accounting very difficult.
+			 * no laterals allowed.  And if we exit a try/catch block, use Leave instead of Br.
 			 */
 			TokenStmtBlock stmtBlock;
+			OpCode brop = OpCodes.Br;
 			for (stmtBlock = curStmtBlock; stmtBlock != null; stmtBlock = stmtBlock.outerStmtBlock) {
 				if (stmtBlock == stmtLabel.block) break;
+				if (stmtBlock.isTry || stmtBlock.isCatch) brop = OpCodes.Leave;
+				if (stmtBlock.isFinally) {
+					ErrorMsg (jumpStmt, "cannot jump out of finally");
+					return;
+				}
 			}
 			if (stmtBlock == null) {
 				ErrorMsg (jumpStmt, "no lateral jumps allowed");
@@ -1185,9 +1200,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
-			 * Finally output the equivalent 'goto' statement.
+			 * Finally output the branch/leave opcode.
 			 */
-			ilGen.Emit (OpCodes.Br, stmtLabel.labelStruct);
+			ilGen.Emit (brop, stmtLabel.labelStruct);
 
 			/*
 			 * 'goto' statements never fall through.
@@ -1227,6 +1242,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void GenerateStmtRet (TokenStmtRet retStmt)
 		{
 			if (!mightGetHere) return;
+
+			for (TokenStmtBlock stmtBlock = curStmtBlock; stmtBlock != null; stmtBlock = stmtBlock.outerStmtBlock) {
+				if (stmtBlock.isTry || stmtBlock.isCatch || stmtBlock.isFinally) {
+					ErrorMsg (retStmt, "cannot return out of try/catch/finally");
+					return;
+				}
+			}
 
 			if (curDeclFunc.retType is TokenTypeVoid) {
 				if (retStmt.rVal != null) {
@@ -1527,6 +1549,111 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			curBreakTarg = oldBreakTarg;
+		}
+
+		/**
+		 * @brief output code for a throw statement.
+		 * @param throwStmt = throw statement token, including value to be thrown
+		 */
+		private void GenerateStmtThrow (TokenStmtThrow throwStmt)
+		{
+			if (!mightGetHere) return;
+
+			if (throwStmt.rVal == null) {
+				if (!curStmtBlock.isCatch) {
+					ErrorMsg (throwStmt, "rethrow allowed only in catch clause");
+				}
+				ilGen.Emit (OpCodes.Rethrow);
+			} else {
+				CompValu rVal = GenerateFromRVal (throwStmt.rVal);
+				rVal.PushVal (this, tokenTypeStr);
+				ilGen.Emit (OpCodes.Call, throwStrToExcMethodInfo);
+				ilGen.Emit (OpCodes.Throw);
+			}
+
+			/*
+			 * 'throw' statements never fall through.
+			 */
+			mightGetHere = false;
+		}
+
+		/**
+		 * @brief output code for an 'try' statement
+		 */
+		private void GenerateStmtTry (TokenStmtTry tryStmt)
+		{
+			if (!mightGetHere) return;
+
+			BreakContTarg oldBreakTarg = curBreakTarg;		// cannot continue out of try/catch/finally
+			BreakContTarg oldContTarg  = curContTarg;		// (break jumps to end of try/catch/finally)
+			curBreakTarg = null;
+			curContTarg  = null;
+
+			ScriptMyLabel tryEndLabel = ilGen.DefineLabel ("tryend_" + tryStmt.Unique);
+
+
+			tryStmt.tryStmt.isTry = true;				// jumps out of try require Leave opcode
+										// rethrow not allowed
+										// return statements not allowed
+			curBreakTarg = new BreakContTarg (ilGen, "trybreak_" + tryStmt.Unique);
+			ilGen.BeginExceptionBlock ();
+			GenerateStmtBlock (tryStmt.tryStmt);			// output the try block statement block
+			if (curBreakTarg.used) {
+				ilGen.MarkLabel (curBreakTarg.label);
+				mightGetHere = true;
+			}
+			bool mightGetOut = mightGetHere;
+			ilGen.Emit (OpCodes.Leave, tryEndLabel);
+			if (tryStmt.catchStmt != null) {
+				tryStmt.catchStmt.isCatch = true;		// jumps out of catch require Leave opcode
+										// rethrow allowed
+										// return statements not allowed
+				CompValu catchVarLoc = new CompValuTemp (tokenTypeStr, tryStmt.catchVar.val, this);
+				Dictionary<string, CompValu> frame = PushVarDefnBlock ();
+				frame.Add (tryStmt.catchVar.val, catchVarLoc);
+				ScriptMyLabel catchLabel = ilGen.DefineLabel ("catchlbl_" + tryStmt.Unique);
+				ScriptMyLocal excLocal = ilGen.DeclareLocal (typeof (Exception), "catchexc_" + tryStmt.Unique);
+
+				curBreakTarg = new BreakContTarg (ilGen, "catchbreak_" + tryStmt.Unique);
+				ilGen.BeginCatchBlock (typeof (Exception));	// start of the catch block
+				ilGen.Emit (OpCodes.Stloc, excLocal);		// save pointer to exception object
+				catchVarLoc.PopPre (this);
+				ilGen.Emit (OpCodes.Ldloc, excLocal);		// convert exception object to string
+				ilGen.Emit (OpCodes.Call, catchExcToStrMethodInfo);
+				catchVarLoc.PopPost (this);			// ... and store in catch clause var
+				catchVarLoc.PushVal (this);			// see if null
+				ilGen.Emit (OpCodes.Brtrue_S, catchLabel);
+				ilGen.Emit (OpCodes.Rethrow);			// if so, rethrow exception
+				ilGen.MarkLabel (catchLabel);			// if not, process script code
+
+				mightGetHere = true;				// if we can get to the 'try' assume we can get to the 'catch'
+				GenerateStmtBlock (tryStmt.catchStmt);		// output catch clause statement block
+				if (curBreakTarg.used) {
+					ilGen.MarkLabel (curBreakTarg.label);
+					mightGetHere = true;
+				}
+				mightGetOut |= mightGetHere;			// remember whether or not we can get to end of try or catch at all
+				ilGen.Emit (OpCodes.Leave, tryEndLabel);
+
+				PopVarDefnBlock ();				// forget about catch clause var
+			}
+			if (tryStmt.finallyStmt != null) {
+				curBreakTarg = new BreakContTarg (ilGen, "finbreak_" + tryStmt.Unique);
+				tryStmt.finallyStmt.isFinally = true;		// cannot exit finally with jump or return statement
+				ilGen.BeginFinallyBlock ();			// start of the finally block
+				mightGetHere = true;
+				GenerateStmtBlock (tryStmt.finallyStmt);
+				if (curBreakTarg.used) {
+					ilGen.MarkLabel (curBreakTarg.label);
+				}
+				ilGen.Emit (OpCodes.Endfinally);
+			}
+			ilGen.EndExceptionBlock ();
+			ilGen.MarkLabel (tryEndLabel);
+			mightGetHere = mightGetOut;
+
+			curBreakTarg = oldBreakTarg;
+			curContTarg  = oldContTarg;
 		}
 
 		/**
@@ -2066,7 +2193,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private CompValu GenerateFromRValCallField (TokenRValCall call)
 		{
-			CompValu[] argRVals = null;
 			int i, nargs;
 			TokenLValField meth = (TokenLValField)call.meth;
 
@@ -2971,6 +3097,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public static LSL_Vector LSLVectorNegate (LSL_Vector v) { return -v; }
 
 		/**
+		 * @brief Called at runtime to convert the string given by the script in a throw statement to an exception.
+		 */
+		public static Exception ThrowStrToExc (string msg)
+		{
+			return new ScriptThrownException (msg);
+		}
+
+		/**
+		 * @brief Called at runtime to convert a caught exception to the string given to the catch clause.
+		 *        If we return null, the script's catch clause will do a rethrow before letting the script see it.
+		 */
+		public static string CatchExcToStr (Exception exc)
+		{
+			return exc.ToString ();
+		}
+
+		/**
 		 * @brief An heap referencing variable was just set to a new object so we need to
 		 *        update instance.heapLeft to reflect the new amount of heap available
 		 *        to the script.
@@ -3136,6 +3279,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public ScriptUndefinedStateException (string stateName) : base ("undefined state " + stateName) {
 			this.stateName = stateName;
 		}
+	}
+
+	/**
+	 * @brief Thrown by a script from a 'throw' statement.
+	 */
+	public class ScriptThrownException : Exception {
+		public ScriptThrownException (string msg) : base (msg) { }
 	}
 
 	public class OutOfHeapException : Exception { }

@@ -377,6 +377,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			if (token is TokenKwSemi)    return ParseStmtNull    (ref token);
 			if (token is TokenKwState)   return ParseStmtState   (ref token);
 			if (token is TokenKwSwitch)  return ParseStmtSwitch  (ref token);
+			if (token is TokenKwThrow)   return ParseStmtThrow   (ref token);
+			if (token is TokenKwTry)     return ParseStmtTry     (ref token);
 			if (token is TokenKwWhile)   return ParseStmtWhile   (ref token);
 
 			/*
@@ -408,7 +410,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		private TokenStmtBlock ParseStmtBlock (ref Token token)
 		{
 			if (!(token is TokenKwBrcOpen)) {
-				ErrorMsg (token, "function body must begin with a {");
+				ErrorMsg (token, "statement block body must begin with a {");
 				token = SkipPastSemi (token);
 				return null;
 			}
@@ -823,6 +825,50 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			currentDeclFunc.changesState = true;
 			token = token.nextToken.nextToken;
 			return tokenStmtState;
+		}
+
+		private TokenStmtThrow ParseStmtThrow (ref Token token)
+		{
+			TokenStmtThrow tokenStmtThrow = new TokenStmtThrow (token);
+			token = token.nextToken;
+			if (token is TokenKwSemi) {
+				token = token.nextToken;
+			} else {
+				tokenStmtThrow.rVal = ParseRVal (ref token, semiOnly);
+				if (tokenStmtThrow.rVal == null) return null;
+			}
+			return tokenStmtThrow;
+		}
+
+		private TokenStmtTry ParseStmtTry (ref Token token)
+		{
+			TokenStmtTry tokenStmtTry = new TokenStmtTry (token);
+			token = token.nextToken;
+			tokenStmtTry.tryStmt = ParseStmtBlock (ref token);
+			if (tokenStmtTry.tryStmt == null) return null;
+			if (token is TokenKwCatch) {
+				if (!(token.nextToken is TokenKwParOpen) ||
+				    !(token.nextToken.nextToken is TokenTypeStr) ||
+				    !(token.nextToken.nextToken.nextToken is TokenName) ||
+				    !(token.nextToken.nextToken.nextToken.nextToken is TokenKwParClose)) {
+					ErrorMsg (token, "catch must be followed by ( string <varname> ) <statement>");
+					return null;
+				}
+				tokenStmtTry.catchVar = (TokenName) token.nextToken.nextToken.nextToken;
+				token = token.nextToken.nextToken.nextToken.nextToken.nextToken;
+				tokenStmtTry.catchStmt = ParseStmtBlock (ref token);
+				if (tokenStmtTry.catchStmt == null) return null;
+			}
+			if (token is TokenKwFinally) {
+				token = token.nextToken;
+				tokenStmtTry.finallyStmt = ParseStmtBlock (ref token);
+				if (tokenStmtTry.finallyStmt == null) return null;
+			}
+			if ((tokenStmtTry.catchStmt == null) && (tokenStmtTry.finallyStmt == null)) {
+				ErrorMsg (tokenStmtTry, "try must have a matching catch and/or finally");
+				return null;
+			}
+			return tokenStmtTry;
 		}
 
 		private TokenStmtWhile ParseStmtWhile (ref Token token)
@@ -2562,6 +2608,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenStmtBlock outerStmtBlock;  // next outer stmtBlock or null if top-level, ie, function definition
 		public TokenDeclFunc function;         // function it is part of
 		public Dictionary<string, TokenDeclVar> variables = new Dictionary<string, TokenDeclVar> ();  // variables declared herein
+		public bool isTry;                     // true iff it's a try statement block
+		public bool isCatch;                   // true iff it's a catch statement block
+		public bool isFinally;                 // true iff it's a finally statement block
 
 		public TokenStmtBlock (Token original) : base (original) { }
 
@@ -2919,6 +2968,52 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				}
 				lastStmt = stmt;
 			}
+		}
+	}
+
+	public class TokenStmtThrow : TokenStmt {
+
+		public TokenRVal rVal;  // null if rethrow style
+
+		public TokenStmtThrow (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
+		{
+			writer.Write (rVal);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			rVal = (TokenRVal)reader.ReadToken ();
+		}
+	}
+
+	/**
+	 * @brief Encapsulates related try, catch and finally statements.
+	 */
+	public class TokenStmtTry : TokenStmt {
+
+		public TokenStmtBlock tryStmt;
+		public TokenName catchVar;		// null iff catchStmt is null
+		public TokenStmtBlock catchStmt;	// can be null
+		public TokenStmtBlock finallyStmt;	// can be null
+
+		public TokenStmtTry (Token original) : base (original) { }
+
+		public override void WriteOut (TokenWriter writer)
+		{
+			writer.Write (tryStmt);
+			writer.Write (catchVar);
+			writer.Write (catchStmt);
+			writer.Write (finallyStmt);
+		}
+
+		public override void ReadIn (TokenReader reader)
+		{
+			tryStmt     = (TokenStmtBlock)reader.ReadToken ();
+			catchVar    = (TokenName)reader.ReadToken ();
+			catchStmt   = (TokenStmtBlock)reader.ReadToken ();
+			finallyStmt = (TokenStmtBlock)reader.ReadToken ();
 		}
 	}
 

@@ -25,7 +25,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		DclLabel, DclLocal, DclMethod, MarkLabel,
 		EmitNull, EmitField, EmitLocal, EmitType, EmitLabel, EmitMethodExt, 
 		EmitMethodInt, EmitCtor, EmitDouble, EmitFloat, EmitInteger, EmitString,
-		EmitLabels
+		EmitLabels,
+		BegExcBlk, BegCatBlk, BegFinBlk, EndExcBlk
 	}
 
 	public delegate void ScriptMyILGenEndMethod (DynamicMethod method);
@@ -148,6 +149,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			objWriter.Write (myLabel.name);
 
 			return myLabel;
+		}
+
+		/**
+		 * @brief try/catch blocks.
+		 */
+		public void BeginExceptionBlock ()
+		{
+			objWriter.Write ((byte)ScriptMyILGenCode.BegExcBlk);
+		}
+
+		public void BeginCatchBlock (Type excType)
+		{
+			objWriter.Write ((byte)ScriptMyILGenCode.BegCatBlk);
+			objWriter.Write (GetStrFromType (excType));
+		}
+
+		public void BeginFinallyBlock ()
+		{
+			objWriter.Write ((byte)ScriptMyILGenCode.BegFinBlk);
+		}
+
+		public void EndExceptionBlock ()
+		{
+			objWriter.Write ((byte)ScriptMyILGenCode.EndExcBlk);
 		}
 
 		/**
@@ -438,6 +463,39 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 						dbg.Append (labelNames[number]);
 						dbg.Append (":");
+						break;
+					}
+
+					/*
+					 * Try/Catch blocks.
+					 */
+					case ScriptMyILGenCode.BegExcBlk: {
+						ilGen.BeginExceptionBlock ();
+						LinePrefix (offset, dbg, ilGenArg);
+						dbg.Append (" BeginExceptionBlock");
+						break;
+					}
+
+					case ScriptMyILGenCode.BegCatBlk: {
+						Type excType = GetTypeFromStr (objReader.ReadString ());
+						ilGen.BeginCatchBlock (excType);
+						LinePrefix (offset, dbg, ilGenArg);
+						dbg.Append (" BeginCatchBlock ");
+						dbg.Append (excType.Name);
+						break;
+					}
+
+					case ScriptMyILGenCode.BegFinBlk: {
+						ilGen.BeginFinallyBlock ();
+						LinePrefix (offset, dbg, ilGenArg);
+						dbg.Append (" BeginFinallyBlock");
+						break;
+					}
+
+					case ScriptMyILGenCode.EndExcBlk: {
+						ilGen.EndExceptionBlock ();
+						LinePrefix (offset, dbg, ilGenArg);
+						dbg.Append (" EndExceptionBlock");
 						break;
 					}
 

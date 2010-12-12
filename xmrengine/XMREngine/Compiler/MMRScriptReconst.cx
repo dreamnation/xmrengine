@@ -124,6 +124,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (stmt is TokenStmtRet)     ReconstStmtRet     ((TokenStmtRet)stmt);
 			if (stmt is TokenStmtState)   ReconstStmtState   ((TokenStmtState)stmt);
 			if (stmt is TokenStmtSwitch)  ReconstStmtSwitch  ((TokenStmtSwitch)stmt);
+			if (stmt is TokenStmtThrow)   ReconstStmtThrow   ((TokenStmtThrow)stmt);
+			if (stmt is TokenStmtTry)     ReconstStmtTry     ((TokenStmtTry)stmt);
 			if (stmt is TokenStmtWhile)   ReconstStmtWhile   ((TokenStmtWhile)stmt);
 		}
 
@@ -265,6 +267,32 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				}
 			}
 			WriteSrc ("}");
+		}
+
+		private void ReconstStmtThrow (TokenStmtThrow stmtThrow)
+		{
+			WriteSrc ("throw");
+			if (stmtThrow.rVal != null) {
+				WriteSrc (" ");
+				ReconstRVal (stmtThrow.rVal);
+			}
+			WriteSrc (";");
+		}
+
+		private void ReconstStmtTry (TokenStmtTry stmtTry)
+		{
+			WriteSrc ("try ");
+			ReconstStmt (stmtTry.tryStmt);
+			if (stmtTry.catchStmt != null) {
+				WriteSrc (" catch (string ");
+				WriteSrc (stmtTry.catchVar.val);
+				WriteSrc (") ");
+				ReconstStmt (stmtTry.catchStmt);
+			}
+			if (stmtTry.finallyStmt != null) {
+				WriteSrc (" finally ");
+				ReconstStmt (stmtTry.finallyStmt);
+			}
 		}
 
 		private void ReconstStmtWhile (TokenStmtWhile stmtWhile)
