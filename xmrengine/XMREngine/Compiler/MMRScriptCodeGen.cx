@@ -136,6 +136,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		// These get cleared at beginning of every function definition
 		public  ScriptMyILGen ilGen    = null;  // the output instruction stream
 		private ScriptMyLabel retLabel = null;  // where to jump to exit function
+		private ScriptMyLocal retValue = null;
 		private Dictionary<CompValu, CompValu> localHeapTrackers = null;
 		                                        // given a script-visible local variable (or argument variable),
 		                                        // ... return the corresponding heapTracker variable, if any.
@@ -687,13 +688,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			/*
 			 * Any return statements inside function body jump to this label
-			 * after pushing return value (if any).
+			 * after putting return value in retValue.
 			 */
-			retLabel = ilGen.DefineLabel ("__ret");
+			retLabel = ilGen.DefineLabel ("__retlbl");
+			retValue = null;
+			if (!(declFunc.retType is TokenTypeVoid)) {
+				retValue = ilGen.DeclareLocal (declFunc.retType.typ, "__retval");
+			}
 
 			/*
 			 * Output code body.
 			 */
+			ilGen.BeginExceptionBlock ();
 			GenerateStmtBlock (declFunc.body);
 
 			/*
@@ -701,22 +707,32 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * a return statement.  And that is legal only if the function 
 			 * returns 'void'.
 			 */
-			if (mightGetHere && !(declFunc.retType is TokenTypeVoid)) {
-				ErrorMsg (declFunc.body, "missing final return statement");
+			if (mightGetHere) {
+				if (!(declFunc.retType is TokenTypeVoid)) {
+					ErrorMsg (declFunc.body, "missing final return statement");
+				}
+				ilGen.Emit (OpCodes.Leave, retLabel);
 			}
 
 			/*
 			 * Output epilog that subtracts heap usage by local vars.
 			 */
-			ilGen.MarkLabel (retLabel);
-			retLabel = null;
+			ilGen.BeginFinallyBlock ();
 			CreditAllLocalsHeapLeft ();
+			ilGen.Emit (OpCodes.Endfinally);
+			ilGen.EndExceptionBlock ();
 			localHeapTrackers = null;
 
 			/*
 			 * Output the 'real' return opcode.
 			 */
+			ilGen.MarkLabel (retLabel);
+			if (!(declFunc.retType is TokenTypeVoid)) {
+				ilGen.Emit (OpCodes.Ldloc, retValue);
+			}
 			ilGen.Emit (OpCodes.Ret);
+			retLabel = null;
+			retValue = null;
 
 			/*
 			 * No more instructions for this method.
@@ -1244,8 +1260,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (!mightGetHere) return;
 
 			for (TokenStmtBlock stmtBlock = curStmtBlock; stmtBlock != null; stmtBlock = stmtBlock.outerStmtBlock) {
-				if (stmtBlock.isTry || stmtBlock.isCatch || stmtBlock.isFinally) {
-					ErrorMsg (retStmt, "cannot return out of try/catch/finally");
+				if (stmtBlock.isFinally) {
+					ErrorMsg (retStmt, "cannot return out of finally");
 					return;
 				}
 			}
@@ -1262,8 +1278,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				}
 				CompValu rVal = GenerateFromRVal (retStmt.rVal);
 				rVal.PushVal (this, curDeclFunc.retType);
+				ilGen.Emit (OpCodes.Stloc, retValue);
 			}
-			ilGen.Emit (OpCodes.Br, retLabel);
+			ilGen.Emit (OpCodes.Leave, retLabel);
 
 			/*
 			 * 'return' statements never fall through.
@@ -2695,8 +2712,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void EmitDummyReturn ()
 		{
-			PushDefaultValue (curDeclFunc.retType);
-			ilGen.Emit (OpCodes.Br, retLabel);
+			ilGen.Emit (OpCodes.Leave, retLabel);
 		}
 
 		/**
