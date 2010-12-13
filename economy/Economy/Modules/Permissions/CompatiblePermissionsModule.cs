@@ -9,6 +9,7 @@ using Nini.Config;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.Reflection;
 using log4net;
 using OpenSim.Framework;
@@ -43,7 +44,11 @@ namespace Careminster.Modules.Permissions
         private InventoryFolderImpl m_LibraryRootFolder;
 
         private IFriendsModule m_friendsModule = null;
+        private IGroupsModule m_groupsModule = null;
         private IMoapModule m_moapModule = null;
+
+        private ExpiringCache<UUID, ulong> m_powersCache =
+                new ExpiringCache<UUID, ulong>();
 
         protected InventoryFolderImpl LibraryRootFolder
         {
@@ -103,7 +108,6 @@ namespace Careminster.Modules.Permissions
             m_Scene.Permissions.OnDeleteObject += CanDeleteObject;
             m_Scene.Permissions.OnEditObject += CanEditObject;
             m_Scene.Permissions.OnEditObjectInventory += CanEditObjectInventory;
-            m_Scene.Permissions.OnEditParcel += CanEditParcel;
             m_Scene.Permissions.OnEditParcelProperties += CanEditParcelProperties;
             m_Scene.Permissions.OnEditScript += CanEditScript;
             m_Scene.Permissions.OnEditNotecard += CanEditNotecard;
@@ -150,6 +154,8 @@ namespace Careminster.Modules.Permissions
                 m_log.Error("[PERMISSIONS]: Friends module not found, friend permissions will not work");
             else
                 m_log.Info("[PERMISSIONS]: Friends module found, friend permissions enabled");
+
+            m_groupsModule = m_Scene.RequestModuleInterface<IGroupsModule>();
 
             m_moapModule = m_Scene.RequestModuleInterface<IMoapModule>();
         }
@@ -255,11 +261,31 @@ namespace Careminster.Modules.Permissions
 
         protected bool CheckGroupPowers(UUID agentID, UUID groupID, ulong mask)
         {
+            ulong powers = 0;
+
             ScenePresence sp = m_Scene.GetScenePresence(agentID);
             if (sp == null)
-                return false;
+            {
+                if (m_powersCache.TryGetValue(agentID, out powers))
+                {
+                    if ((powers & mask) == mask)
+                        return true;
+                    return false;
+                }
 
-            ulong powers = sp.ControllingClient.GetGroupPowers(groupID);
+                GroupMembershipData gmd = m_groupsModule.GetMembershipData(groupID, agentID);
+                if (gmd != null)
+                    powers = gmd.GroupPowers;
+
+                m_powersCache.AddOrUpdate(agentID, powers, 86400);
+
+                if ((powers & mask) == mask)
+                    return true;
+
+                return false;
+            }
+
+            powers = sp.ControllingClient.GetGroupPowers(groupID);
             if (powers == 0)
                 return false;
 
@@ -443,11 +469,6 @@ namespace Careminster.Modules.Permissions
         protected bool GenericParcelPermission(UUID user, ILandObject parcel, ulong powers)
         {
             bool permission = false;
-
-            ScenePresence presence=m_Scene.GetScenePresence(user);
-
-            if(presence == null)
-                return false;
 
             if (parcel.LandData.OwnerID == user)
             {
@@ -636,11 +657,6 @@ namespace Careminster.Modules.Permissions
                     return false;
 
                 return true;
-            }
-
-            private bool CanEditParcel(UUID user, ILandObject parcel, Scene scene)
-            {
-                return GenericParcelPermission(user, parcel, (ulong)GroupPowers.LandDivideJoin);
             }
 
             private bool CanEditParcelProperties(UUID user, ILandObject parcel, GroupPowers p, Scene scene)
