@@ -43,6 +43,7 @@ namespace Careminster.Modules.Permissions
         private InventoryFolderImpl m_LibraryRootFolder;
 
         private IFriendsModule m_friendsModule = null;
+        private IMoapModule m_moapModule = null;
 
         protected InventoryFolderImpl LibraryRootFolder
         {
@@ -133,7 +134,8 @@ namespace Careminster.Modules.Permissions
             m_Scene.Permissions.OnDeleteUserInventory += CanDeleteUserInventory;
             m_Scene.Permissions.OnTeleport += CanTeleport;
             m_Scene.Permissions.OnResetScript += CanResetScript;
-		
+            m_Scene.Permissions.OnControlPrimMedia += CanControlPrimMedia;
+            m_Scene.Permissions.OnInteractWithPrimMedia += CanInteractWithPrimMedia;
         }
 
         public void RegionLoaded(Scene scene)
@@ -147,6 +149,8 @@ namespace Careminster.Modules.Permissions
                 m_log.Error("[PERMISSIONS]: Friends module not found, friend permissions will not work");
             else
                 m_log.Info("[PERMISSIONS]: Friends module found, friend permissions enabled");
+
+            m_moapModule = m_Scene.RequestModuleInterface<IMoapModule>();
         }
 
         public void RemoveRegion(Scene scene)
@@ -1269,5 +1273,65 @@ namespace Careminster.Modules.Permissions
         {
             return GenericObjectPermission(agentID, objectID, false);
         }
+
+        private bool CanControlPrimMedia(UUID agentID, UUID primID, int face)
+        {
+            if (m_moapModule == null)
+                return false;
+
+            SceneObjectPart part = m_Scene.GetSceneObjectPart(primID);
+            if (part == null)
+                return false;
+
+            MediaEntry me = m_moapModule.GetMediaEntry(part, face);
+
+            // If there is no existing media entry then it can be controlled (in this context, created).
+            if (me == null)
+                return true;
+            
+            return GenericPrimMediaPermission(part, agentID, me.ControlPermissions);
+        }
+
+        private bool CanInteractWithPrimMedia(UUID agentID, UUID primID, int face)
+        {
+            if (m_moapModule == null)
+                return false;
+
+            SceneObjectPart part = m_Scene.GetSceneObjectPart(primID);
+            if (part == null)
+                return false;
+
+            MediaEntry me = m_moapModule.GetMediaEntry(part, face);
+
+            // If there is no existing media entry then it can be controlled (in this context, created).
+            if (me == null)
+                return true;
+            
+            return GenericPrimMediaPermission(part, agentID, me.InteractPermissions);
+        }
+
+        private bool GenericPrimMediaPermission(SceneObjectPart part, UUID agentID, MediaPermission perms)
+        {
+            if (IsAdministrator(agentID))
+                return true;
+
+            if ((perms & MediaPermission.Anyone) == MediaPermission.Anyone)
+                return true;
+
+            if ((perms & MediaPermission.Owner) == MediaPermission.Owner)
+            {
+                if (agentID == part.OwnerID)
+                    return true;
+            }
+
+            if ((perms & MediaPermission.Group) == MediaPermission.Group)
+            {
+                if (CheckGroupPowers(agentID, part.GroupID, 0))
+                    return true;
+            }
+
+            return false;
+        }
+
     }
 }
