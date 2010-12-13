@@ -104,6 +104,7 @@ namespace Careminster.Modules.Permissions
             m_Scene.Permissions.OnEditObject += CanEditObject;
             m_Scene.Permissions.OnEditObjectInventory += CanEditObjectInventory;
             m_Scene.Permissions.OnEditParcel += CanEditParcel;
+            m_Scene.Permissions.OnEditParcelProperties += CanEditParcelProperties;
             m_Scene.Permissions.OnEditScript += CanEditScript;
             m_Scene.Permissions.OnEditNotecard += CanEditNotecard;
             m_Scene.Permissions.OnInstantMessage += CanInstantMessage;
@@ -642,6 +643,11 @@ namespace Careminster.Modules.Permissions
                 return GenericParcelPermission(user, parcel, (ulong)GroupPowers.LandDivideJoin);
             }
 
+            private bool CanEditParcelProperties(UUID user, ILandObject parcel, GroupPowers p, Scene scene)
+            {
+                return GenericParcelPermission(user, parcel, (ulong)p);
+            }
+
             private bool CanEditScript(UUID script, UUID objectID, UUID user, Scene scene)
             {
                 if (IsAdministrator(user))
@@ -793,7 +799,7 @@ namespace Careminster.Modules.Permissions
 
                 // If we are EM, God, Owner, etc, allow it
                 //
-                if (GenericParcelPermission(task.OwnerID, newPoint, 0))
+                if (GenericParcelPermission(task.OwnerID, newPoint, (ulong)GroupPowers.AllowRez))
                     return true;
 
                 //Otherwise, false!
@@ -923,7 +929,7 @@ namespace Careminster.Modules.Permissions
                     permission = true;
                 }
 
-                if (GenericParcelPermission(owner, objectPosition, 0))
+                if (GenericParcelPermission(owner, objectPosition, (ulong)GroupPowers.AllowRez))
                 {
                     permission = true;
                 }
