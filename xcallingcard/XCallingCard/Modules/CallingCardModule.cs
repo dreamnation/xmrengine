@@ -10,7 +10,7 @@ using OpenSim.Region.Framework.Scenes;
 using OpenSim.Services.Interfaces;
 using Mono.Addins;
 
-[assembly: Addin("XAbuse.Module", "1.0")]
+[assembly: Addin("XCallingCard.Module", "1.0")]
 [assembly: AddinDependency("OpenSim", "0.5")]
 
 namespace Careminster.XCallingCard.Modules

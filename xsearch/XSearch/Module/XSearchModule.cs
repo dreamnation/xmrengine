@@ -820,6 +820,7 @@ namespace Careminster.Modules.XSearch
                 parcel.Data["Area"] = land.LandData.Area.ToString();
                 parcel.Data["ParentEstate"] = m_Scene.RegionInfo.EstateSettings.EstateID.ToString();
                 parcel.Data["AccessLevel"] = m_Scene.RegionInfo.AccessLevel.ToString();
+                parcel.Data["Category"] = land.LandData.Category.ToString();
 
                 m_ParcelsTable.Store(parcel);
 
