@@ -1056,20 +1056,16 @@ namespace Careminster.Modules.Permissions
             ILandObject parcel = m_Scene.LandChannel.GetLandObject(X, Y);
             if (parcel != null)
             {
-                if (!parcel.LandData.IsGroupOwned)
-                {
-                    if(GenericParcelPermission(user, parcel, 0))
-                        permission = true;
-                }
+                if ((parcel.LandData.Flags & (uint)ParcelFlags.AllowTerraform) != 0)
+                    permission = true;
                 else
                 {
                     if(GenericParcelPermission(user, parcel,
                             (ulong)GroupPowers.AllowEditLand))
-                        permission = true;
+                    {
+                            permission = true;
+                    }
                 }
-
-                if ((parcel.LandData.Flags & (uint)ParcelFlags.AllowTerraform) != 0)
-                    permission = true;
             }
 
             return permission;
