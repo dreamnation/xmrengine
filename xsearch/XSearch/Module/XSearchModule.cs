@@ -486,7 +486,7 @@ namespace Careminster.Modules.XSearch
             if (args[0] == "u")
                 terms.Add("date_add(from_unixtime(StartTime), interval Duration minute) >= now()");
             else
-                terms.Add(String.Format("date(from_unixtime(StartTime)) = date(date_add(now(), interval {0} day))", args[0]));
+                terms.Add(String.Format("date(from_unixtime(StartTime)) = date(date_add(convert_tz(now(), 'SYSTEM', 'America/Los_Angeles'), interval {0} day))", args[0]));
 
             int category = Convert.ToInt32(args[1]);
             if (category > 0)
