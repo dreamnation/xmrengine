@@ -2036,7 +2036,7 @@ namespace Careminster.Modules.Groups
             MySqlCommand cmd = m_Connection.CreateCommand();
 
             cmd.CommandText = "select groups.*, count(members.MemberID) as members from groups left join members on groups.GroupID = members.GroupID where "+
-                    "GroupName like ?GroupName";
+                    "GroupName like ?GroupName and ScopeID=?ScopeID";
             if ((queryFlags & 0x400000) != 0)
                 cmd.CommandText += " and MaturePublish = 0";
 
@@ -2044,6 +2044,7 @@ namespace Careminster.Modules.Groups
 
             cmd.Parameters.Add("GroupName", query);
             cmd.Parameters.Add("queryStart", queryStart);
+            cmd.Parameters.Add("ScopeID", remoteClient.Scene.RegionInfo.ScopeID);
 
             IDataReader r = ExecuteReader(cmd);
 
