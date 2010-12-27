@@ -2036,7 +2036,7 @@ namespace Careminster.Modules.Groups
             MySqlCommand cmd = m_Connection.CreateCommand();
 
             cmd.CommandText = "select groups.*, count(members.MemberID) as members from groups left join members on groups.GroupID = members.GroupID where "+
-                    "GroupName like ?GroupName and ScopeID=?ScopeID";
+                    "GroupName like ?GroupName and (ScopeID='00000000-0000-0000-0000-000000000000' or ScopeID=?ScopeID)";
             if ((queryFlags & 0x400000) != 0)
                 cmd.CommandText += " and MaturePublish = 0";
 
