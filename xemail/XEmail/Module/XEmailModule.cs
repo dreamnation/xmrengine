@@ -330,30 +330,38 @@ namespace Careminster.Modules.XEmail
             {
                 if (toID != UUID.Zero && address.EndsWith(m_HostName)) // Prim
                 {
-                    XEmailObject[] prims = m_ObjectsTable.Get("ObjectID", toID.ToString());
-                    if (prims.Length == 0)
+                    try
                     {
-                        return;
+                        XEmailObject[] prims = m_ObjectsTable.Get("ObjectID", toID.ToString());
+                        if (prims.Length == 0)
+                        {
+                            return;
+                        }
+                        else
+                        {
+                            string message = "From: " + objectID.ToString() + m_HostName + "\n";
+                            message += "Subject: " + subject + "\n";
+                            message += "Date: " + ((int)((DateTime.UtcNow - new DateTime(1970,1,1,0,0,0)).TotalSeconds)).ToString() + "\n\n";
+
+                            int headerlen = message.Length;
+                            message = String.Format("X-XEmail-Internal-length: {0}", headerlen) + "\n" + message;
+
+                            message += "Object-Name: " + LastObjectName +
+                                  "\nRegion: " + LastObjectRegionName + "\nLocal-Position: " +
+                                  LastObjectPosition + "\n\n" + body;
+
+                            XEmailMessage m = new XEmailMessage();
+                            m.Data = new Dictionary<string, string>();
+                            m.ObjectID = toID;
+                            m.Data["Message"] = message;
+                            m_MessagesTable.Store(m);
+
+                            return;
+                        }
                     }
-                    else
+                    catch
                     {
-                        string message = "From: " + objectID.ToString() + m_HostName + "\n";
-                        message += "Subject: " + subject + "\n";
-                        message += "Date: " + ((int)((DateTime.UtcNow - new DateTime(1970,1,1,0,0,0)).TotalSeconds)).ToString() + "\n\n";
-
-                        int headerlen = message.Length;
-                        message = String.Format("X-XEmail-Internal-length: {0}", headerlen) + "\n" + message;
-
-                        message += "Object-Name: " + LastObjectName +
-                              "\nRegion: " + LastObjectRegionName + "\nLocal-Position: " +
-                              LastObjectPosition + "\n\n" + body;
-
-                        XEmailMessage m = new XEmailMessage();
-                        m.Data = new Dictionary<string, string>();
-                        m.ObjectID = toID;
-                        m.Data["Message"] = message;
-                        m_MessagesTable.Store(m);
-
+                        // Failed to send.
                         return;
                     }
                 }
@@ -379,9 +387,16 @@ namespace Careminster.Modules.XEmail
 
                 if (!addressOK && m_AllowExternal)
                 {
-                    XEmailWhitelist[] wl = m_WhitelistTable.Get("Email", address);
-                    if (wl.Length > 0)
-                        addressOK = true;
+                    try
+                    {
+                        XEmailWhitelist[] wl = m_WhitelistTable.Get("Email", address);
+                        if (wl.Length > 0)
+                            addressOK = true;
+                    }
+                    catch
+                    {
+                        // If Database throws, assume not whitelisted
+                    }
                 }
 
                 if (!addressOK)
@@ -506,83 +521,97 @@ namespace Careminster.Modules.XEmail
                     UUID regionID;
                     if (findPrim(objectID, out regionName, out regionID) != null)
                     {
-                        XEmailObject[] checkObjects = m_ObjectsTable.Get("ObjectID", objectID.ToString());
-                        if (checkObjects.Length > 0 && checkObjects[0].RegionID != regionID) // Transported via attach
+                        try
                         {
-                            m_ObjectsTable.Delete("ObjectID", objectID.ToString());
-                        }
+                            XEmailObject[] checkObjects = m_ObjectsTable.Get("ObjectID", objectID.ToString());
+                            if (checkObjects.Length > 0 && checkObjects[0].RegionID != regionID) // Transported via attach
+                            {
+                                m_ObjectsTable.Delete("ObjectID", objectID.ToString());
+                            }
 
-                        XEmailObject obj = new XEmailObject();
-                        obj.Data = new Dictionary<string,string>();
-                        obj.ObjectID = objectID;
-                        obj.RegionID = regionID;
-                        m_ObjectsTable.Store(obj);
+                            XEmailObject obj = new XEmailObject();
+                            obj.Data = new Dictionary<string,string>();
+                            obj.ObjectID = objectID;
+                            obj.RegionID = regionID;
+                            m_ObjectsTable.Store(obj);
+                        }
+                        catch
+                        {
+                            // Database issue. Will add it next time
+                        }
                     }
 
                     if (queue.Count < 3) // Never let it become 0 before poll
                     {
-                        string where = String.Format("ObjectID='{0}' order by id asc", objectID);
-
-                        XEmailMessage[] messages = m_MessagesTable.Get(where);
-
-                        foreach (XEmailMessage message in messages)
+                        try
                         {
-                            m_MessagesTable.Delete("id", message.Data["id"]);
+                            string where = String.Format("ObjectID='{0}' order by id asc", objectID);
 
-                            // As the PHP script writes this, line endings
-                            // are sane (LF), not RFC 2822
-                            string[] lines = message.Data["Message"].Split(new char[] {'\n'});
-                            if (lines.Length == 0)
-                                continue;
+                            XEmailMessage[] messages = m_MessagesTable.Get(where);
 
-                            Email msg = new Email();
-
-                            if (lines[0].StartsWith("From "))
-                                msg.sender = lines[0].Substring(5);
-                            bool intersim = false;
-                            bool inMessage = false;
-                            string body = String.Empty;
-                            foreach (string line in lines)
+                            foreach (XEmailMessage message in messages)
                             {
-                                if (line.StartsWith("X-XEmail-Internal-length: "))
-                                {
-                                    int off = line.Length;
-                                    int len = Convert.ToInt32(line.Substring(26));
+                                m_MessagesTable.Delete("id", message.Data["id"]);
 
-                                    body = message.Data["Message"].Substring(len + off + 1);
-                                    intersim = true;
-                                }
-
-                                if (line.StartsWith("Date: "))
-                                {
-                                    string timestr = line.Substring(6);
-                                    DateTime tx = DateTime.Now;
-                                    try
-                                    {
-                                        tx = Convert.ToDateTime(timestr);
-                                    }
-                                    catch { }
-
-                                    msg.time = ((int)((tx - new DateTime(1970,1,1,0,0,0)).TotalSeconds)).ToString();
-                                }
-                                if (line.StartsWith("From: "))
-                                    msg.sender = line.Substring(6);
-                                if (line.StartsWith("Subject: "))
-                                    msg.subject = line.Substring(9);
-                                if (line == String.Empty && inMessage == false)
-                                {
-                                    if (intersim)
-                                        break;
-                                    inMessage = true;
+                                // As the PHP script writes this, line endings
+                                // are sane (LF), not RFC 2822
+                                string[] lines = message.Data["Message"].Split(new char[] {'\n'});
+                                if (lines.Length == 0)
                                     continue;
-                                }
-                                if (inMessage)
-                                    body += line + "\r\n";
-                            }
 
-                            msg.message = body;
-                            if (queue.Count < m_MaxQueueSize)
-                                queue.Add(msg);
+                                Email msg = new Email();
+
+                                if (lines[0].StartsWith("From "))
+                                    msg.sender = lines[0].Substring(5);
+                                bool intersim = false;
+                                bool inMessage = false;
+                                string body = String.Empty;
+                                foreach (string line in lines)
+                                {
+                                    if (line.StartsWith("X-XEmail-Internal-length: "))
+                                    {
+                                        int off = line.Length;
+                                        int len = Convert.ToInt32(line.Substring(26));
+
+                                        body = message.Data["Message"].Substring(len + off + 1);
+                                        intersim = true;
+                                    }
+
+                                    if (line.StartsWith("Date: "))
+                                    {
+                                        string timestr = line.Substring(6);
+                                        DateTime tx = DateTime.Now;
+                                        try
+                                        {
+                                            tx = Convert.ToDateTime(timestr);
+                                        }
+                                        catch { }
+
+                                        msg.time = ((int)((tx - new DateTime(1970,1,1,0,0,0)).TotalSeconds)).ToString();
+                                    }
+                                    if (line.StartsWith("From: "))
+                                        msg.sender = line.Substring(6);
+                                    if (line.StartsWith("Subject: "))
+                                        msg.subject = line.Substring(9);
+                                    if (line == String.Empty && inMessage == false)
+                                    {
+                                        if (intersim)
+                                            break;
+                                        inMessage = true;
+                                        continue;
+                                    }
+                                    if (inMessage)
+                                        body += line + "\r\n";
+                                }
+
+                                msg.message = body;
+                                if (queue.Count < m_MaxQueueSize)
+                                    queue.Add(msg);
+                            }
+                        }
+                        catch
+                        {
+                            // Database issue, can't dequeue
                         }
                     }
                 }

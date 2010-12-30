@@ -24,6 +24,7 @@ using OpenSim.Region.Framework.Interfaces;
 using OpenSim.Region.Framework.Scenes;
 using OpenSim.Services.Interfaces;
 using Mono.Addins;
+using GridRegion = OpenSim.Services.Interfaces.GridRegion;
 
 [assembly: Addin("XSearch.Module", "1.0")]
 [assembly: AddinDependency("OpenSim", "0.5")]
@@ -216,6 +217,7 @@ namespace Careminster.Modules.XSearch
             client.OnEventInfoRequest += EventInfoRequest;
             client.OnClassifiedInfoRequest += ClassifiedInfoRequest;
             client.OnMapItemRequest += HandleMapItemRequest;
+            client.OnPlacesQuery += HandlePlacesQuery;
         }
 
         private Hashtable GenericXMLRPCRequest(Hashtable ReqParams, string method)
@@ -336,6 +338,61 @@ namespace Careminster.Modules.XSearch
             }
 
             remoteClient.SendDirPlacesReply(queryID, data);
+        }
+
+        public void HandlePlacesQuery(UUID queryID, UUID transactionID,
+                string queryText, uint queryFlags, byte category,
+                string simName, IClientAPI remoteClient)
+        {
+            string where = String.Empty;
+
+            if ((queryFlags & 64) != 0)
+            {
+                where = String.Format("OwnerID='{0}'", remoteClient.AgentId.ToString());
+            }
+
+            if (where == String.Empty)
+                return;
+            
+            XSearchParcel[] parcels = m_ParcelsTable.Get(where);
+
+            PlacesReplyData[] data = new PlacesReplyData[parcels.Length];
+
+            for (int i = 0 ; i < parcels.Length ; i++)
+            {
+                data[i] = new PlacesReplyData();
+
+                data[i].OwnerID = parcels[i].OwnerID;
+                data[i].Name = parcels[i].Data["Name"];
+                data[i].Desc = parcels[i].Data["Description"];
+                data[i].ActualArea = Convert.ToInt32(parcels[i].Data["Area"]);
+                data[i].BillableArea = 0;
+                data[i].Flags = (byte)Convert.ToInt32(parcels[i].Data["Flags"]);
+
+                GridRegion info = m_Scene.GridService.GetRegionByUUID(UUID.Zero, parcels[i].RegionID);
+                Vector3 landingPoint = Vector3.Parse(parcels[i].Data["LandingPoint"]);
+                if (landingPoint.X == 0 && landingPoint.Y == 0)
+                    landingPoint.X = landingPoint.Y = 128;
+                if (landingPoint.Z == 0)
+                    landingPoint.Z = 25;
+
+                data[i].GlobalX = (uint)info.RegionLocX + (uint)landingPoint.X;
+                data[i].GlobalY = (uint)info.RegionLocY + (uint)landingPoint.Y;
+                data[i].GlobalZ = (uint)landingPoint.Z;
+
+                data[i].SimName = info.RegionName;
+
+                data[i].SnapshotID = new UUID(parcels[i].Data["ImageID"]);
+
+                if (m_DwellModule != null)
+                    data[i].Dwell = (uint)m_DwellModule.GetDwell(parcels[i].ParcelID);
+                else
+                    data[i].Dwell = 0;
+
+                data[i].Price = Convert.ToInt32(parcels[i].Data["SalePrice"]);
+            }
+
+            remoteClient.SendPlacesReply(queryID, transactionID, data);
         }
 
         public void DirLandQuery(IClientAPI remoteClient, UUID queryID,
