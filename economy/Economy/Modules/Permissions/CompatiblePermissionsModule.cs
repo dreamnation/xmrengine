@@ -106,6 +106,7 @@ namespace Careminster.Modules.Permissions
             m_Scene.Permissions.OnIsAdministrator += IsAdministrator;
             m_Scene.Permissions.OnDuplicateObject += CanDuplicateObject;
             m_Scene.Permissions.OnDeleteObject += CanDeleteObject;
+            m_Scene.Permissions.OnTransferObject += CanTransferObject;
             m_Scene.Permissions.OnEditObject += CanEditObject;
             m_Scene.Permissions.OnEditObjectInventory += CanEditObjectInventory;
             m_Scene.Permissions.OnEditParcelProperties += CanEditParcelProperties;
@@ -131,12 +132,14 @@ namespace Careminster.Modules.Permissions
             m_Scene.Permissions.OnDelinkObject += CanDelinkObject;
             m_Scene.Permissions.OnBuyLand += CanBuyLand;
             m_Scene.Permissions.OnCopyObjectInventory += CanCopyObjectInventory;
+            m_Scene.Permissions.OnTransferObjectInventory += CanTransferObjectInventory;
             m_Scene.Permissions.OnDeleteObjectInventory += CanDeleteObjectInventory;
             m_Scene.Permissions.OnCreateObjectInventory += CanCreateObjectInventory;
             m_Scene.Permissions.OnCreateUserInventory += CanCreateUserInventory;
             m_Scene.Permissions.OnCopyUserInventory += CanCopyUserInventory;
             m_Scene.Permissions.OnEditUserInventory += CanEditUserInventory;
             m_Scene.Permissions.OnDeleteUserInventory += CanDeleteUserInventory;
+            m_Scene.Permissions.OnTransferUserInventory += CanTransferUserInventory;
             m_Scene.Permissions.OnTeleport += CanTeleport;
             m_Scene.Permissions.OnResetScript += CanResetScript;
             m_Scene.Permissions.OnControlPrimMedia += CanControlPrimMedia;
@@ -620,6 +623,11 @@ namespace Careminster.Modules.Permissions
                 if((perms & PERM_COPY) == 0)
                     return false;
 
+                return true;
+            }
+
+            private bool CanTransferObject(UUID objectID, UUID recipient, Scene scene)
+            {
                 return true;
             }
 
@@ -1218,6 +1226,11 @@ namespace Careminster.Modules.Permissions
             return true;
         }
 
+        public bool CanTransferObjectInventory(UUID itemID, UUID objectID, UUID userID)
+        {
+            return true;
+        }
+
         public bool CanDeleteObjectInventory(UUID itemID, UUID objectID, UUID userID)
         {
             return true;
@@ -1267,6 +1280,11 @@ namespace Careminster.Modules.Permissions
             return true;            
         }
         
+        public bool CanTransferUserInventory(UUID itemID, UUID userID, UUID receipientID)
+        {
+            return true;
+        }
+
         public bool CanDeleteUserInventory(UUID itemID, UUID userID)
         {
             return true;            

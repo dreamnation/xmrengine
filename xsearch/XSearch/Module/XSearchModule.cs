@@ -346,9 +346,14 @@ namespace Careminster.Modules.XSearch
         {
             string where = String.Empty;
 
-            if ((queryFlags & 64) != 0)
+            if ((queryFlags & 64) != 0) // My Land
             {
                 where = String.Format("OwnerID='{0}'", remoteClient.AgentId.ToString());
+            }
+
+            if ((queryFlags & 256) != 0) // Land section in groups
+            {
+                where = String.Format("OwnerID='{0}'", queryID.ToString());
             }
 
             if (where == String.Empty)
