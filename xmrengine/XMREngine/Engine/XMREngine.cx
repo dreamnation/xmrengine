@@ -1173,6 +1173,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
         }
 
+        public bool HasScript(UUID itemID, out bool running)
+        {
+            running = true;
+
+            XMRInstance instance = null;
+
+            lock (m_InstancesDict)
+            {
+                if (!m_InstancesDict.TryGetValue(itemID, out instance))
+                {
+                    return false;
+                }
+            }
+
+            running = instance.Running;
+            return true;
+        }
+
         /**
          * @brief Gets called early as part of shutdown,
          *        right after "Persisting changed objects" message.
