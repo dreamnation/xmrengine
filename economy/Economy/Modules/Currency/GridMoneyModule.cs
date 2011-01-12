@@ -496,6 +496,12 @@ namespace Careminster.Modules.Currency
                             String.Empty, scene);
 
                     break;
+                case 1102: // Group Creation
+                    MoveMoney(sender, EconomyBaseAccount, amount,
+                            transactiontype, "Group reation fee", String.Empty,
+                            String.Empty, scene);
+
+                    break;
                 case 5000: // Object bought
                     sender_name=ResolveAgentName(sender);
                     receiver_name=ResolveAgentName(receiver);
@@ -1001,16 +1007,21 @@ namespace Careminster.Modules.Currency
                     if (part == null)
                         return;
 
+                    // If the sub part doesn't take money, delegate
+                    // to root part
+                    if ((part.ScriptEvents & scriptEvents.money) == 0)
+                        part = part.ParentGroup.RootPart;
+
                     bool transactionresult = DoMoneyTransfer(e.sender,
                             part.OwnerID, e.amount, e.transactiontype,
-                            part.Name, scene);
+                            part.ParentGroup.RootPart.Name, scene);
 
                     if (transactionresult)
                     {
                         ObjectPaid handlerOnObjectPaid = OnObjectPaid;
                         if (handlerOnObjectPaid != null)
                         {
-                            handlerOnObjectPaid(e.receiver, e.sender, e.amount);
+                            handlerOnObjectPaid(part.UUID, e.sender, e.amount);
                         }
                     }
                 }
