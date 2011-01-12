@@ -36,8 +36,6 @@ namespace Careminster.Modules.Groups
         private List<UUID> m_PendingInvites = new
                 List<UUID>();
 
-        private MySqlConnection m_Connection;
-
         private IMessageTransferModule m_TransferModule = null;
         private IGroupchatModule m_Groupchat = null;
 
@@ -182,11 +180,12 @@ namespace Careminster.Modules.Groups
 
         private bool OpenDatabase()
         {
+            MySqlConnection connection;
             try
             {
-                m_Connection = new MySqlConnection(m_ConnectionString);
+                connection = new MySqlConnection(m_ConnectionString);
 
-                m_Connection.Open();
+                connection.Open();
             }
             catch (MySqlException e)
             {
@@ -196,254 +195,192 @@ namespace Careminster.Modules.Groups
                 return false;
             }
 
+            connection.Close();
+            connection.Dispose();
+
             return true;
-        }
-
-        private IDataReader ExecuteReader(MySqlCommand c)
-        {
-            IDataReader r = null;
-            bool errorSeen = false;
-
-            while (true)
-            {
-                try
-                {
-                    r = c.ExecuteReader();
-                }
-                catch (MySqlException)
-                {
-                    System.Threading.Thread.Sleep(500);
-
-                    m_Connection.Close();
-                    m_Connection = (MySqlConnection) ((ICloneable)m_Connection).Clone();
-                    m_Connection.Open();
-                    c.Connection = m_Connection;
-
-                    if (!errorSeen)
-                    {
-                        errorSeen = true;
-                        continue;
-                    }
-                    throw;
-                }
-
-                break;
-            }
-
-            return r;
-        }
-
-        private void ExecuteNonQuery(MySqlCommand c)
-        {
-            bool errorSeen = false;
-
-            while (true)
-            {
-                try
-                {
-                    c.ExecuteNonQuery();
-                }
-                catch (MySqlException)
-                {
-                    System.Threading.Thread.Sleep(500);
-
-                    m_Connection.Close();
-                    m_Connection = (MySqlConnection) ((ICloneable)m_Connection).Clone();
-                    m_Connection.Open();
-                    c.Connection = m_Connection;
-
-                    if (!errorSeen)
-                    {
-                        errorSeen = true;
-                        continue;
-                    }
-                    m_log.ErrorFormat("[GROUPS] MySQL command: {0}", c.CommandText);
-                    throw;
-                }
-
-                break;
-            }
         }
 
         private string GetRoleTitle(UUID GroupID, UUID RoleID)
         {
-            lock(m_Connection)
+            MySqlConnection c =
+                    new MySqlConnection(m_ConnectionString);
+
+            c.Open();
+
+            MySqlCommand cmd = c.CreateCommand();
+
+            cmd.CommandText = "select RoleTitle from roles where "+
+                    "GroupID = ?GroupID and RoleID = ?RoleID";
+
+            cmd.Parameters.AddWithValue("RoleID", RoleID.ToString());
+            cmd.Parameters.AddWithValue("GroupID", GroupID.ToString());
+
+            IDataReader r = cmd.ExecuteReader();
+
+            if (r.Read())
             {
-                MySqlConnection c = (MySqlConnection) ((ICloneable)m_Connection).Clone();
-                c.Open();
-
-                MySqlCommand cmd = c.CreateCommand();
-
-                cmd.CommandText = "select RoleTitle from roles where "+
-                        "GroupID = ?GroupID and RoleID = ?RoleID";
-
-                cmd.Parameters.AddWithValue("RoleID", RoleID.ToString());
-                cmd.Parameters.AddWithValue("GroupID", GroupID.ToString());
-
-                IDataReader r = ExecuteReader(cmd);
-
-                if (r.Read())
-                {
-                    string name = r["RoleTitle"].ToString();
-
-                    r.Close();
-                    c.Close();
-
-                    return name;
-                }
+                string name = r["RoleTitle"].ToString();
 
                 r.Close();
-                cmd.Dispose();
                 c.Close();
 
+                return name;
             }
+
+            r.Close();
+            cmd.Dispose();
+            c.Close();
+
             return "";
         }
 
         private string GetRoleName(UUID RoleID)
         {
-            lock(m_Connection)
+            MySqlConnection c =
+                    new MySqlConnection(m_ConnectionString);
+
+            c.Open();
+
+            MySqlCommand cmd = c.CreateCommand();
+
+            cmd.CommandText = "select RoleName from roles where "+
+                    "RoleID = ?RoleID";
+
+            cmd.Parameters.AddWithValue("RoleID", RoleID.ToString());
+
+            IDataReader r = cmd.ExecuteReader();
+
+            if (r.Read())
             {
-                MySqlConnection c = (MySqlConnection) ((ICloneable)m_Connection).Clone();
-                c.Open();
-
-                MySqlCommand cmd = c.CreateCommand();
-
-                cmd.CommandText = "select RoleName from roles where "+
-                        "RoleID = ?RoleID";
-
-                cmd.Parameters.AddWithValue("RoleID", RoleID.ToString());
-
-                IDataReader r = ExecuteReader(cmd);
-
-                if (r.Read())
-                {
-                    string name = r["RoleName"].ToString();
-
-                    r.Close();
-                    c.Close();
-
-                    return name;
-                }
+                string name = r["RoleName"].ToString();
 
                 r.Close();
-                cmd.Dispose();
                 c.Close();
 
+                return name;
             }
+
+            r.Close();
+            cmd.Dispose();
+            c.Close();
+
             return "";
         }
 
         private bool IsMember(UUID GroupID, UUID RoleID, UUID MemberID)
         {
-            lock(m_Connection)
+            MySqlConnection c =
+                    new MySqlConnection(m_ConnectionString);
+
+            c.Open();
+
+            MySqlCommand cmd = c.CreateCommand();
+
+            cmd.CommandText = "select count(*) as count from rolemembers where "+
+                    "GroupID = ?GroupID and "+
+                    "MemberID = ?MemberID and "+
+                    "RoleID = ?RoleID";
+
+            cmd.Parameters.AddWithValue("RoleID", RoleID.ToString());
+            cmd.Parameters.AddWithValue("GroupID", GroupID.ToString());
+            cmd.Parameters.AddWithValue("MemberID", MemberID.ToString());
+
+            IDataReader r = cmd.ExecuteReader();
+
+            if (r.Read())
             {
-                MySqlConnection c = (MySqlConnection) ((ICloneable)m_Connection).Clone();
-                c.Open();
-
-                MySqlCommand cmd = c.CreateCommand();
-
-                cmd.CommandText = "select count(*) as count from rolemembers where "+
-                        "GroupID = ?GroupID and "+
-                        "MemberID = ?MemberID and "+
-                        "RoleID = ?RoleID";
-
-                cmd.Parameters.AddWithValue("RoleID", RoleID.ToString());
-                cmd.Parameters.AddWithValue("GroupID", GroupID.ToString());
-                cmd.Parameters.AddWithValue("MemberID", MemberID.ToString());
-
-                IDataReader r = ExecuteReader(cmd);
-
-                if (r.Read())
-                {
-                    int count = Convert.ToInt32(r["count"]);
-
-                    r.Close();
-                    cmd.Dispose();
-                    c.Close();
-
-                    if (count > 0)
-                        return true;
-                    return false;
-                }
+                int count = Convert.ToInt32(r["count"]);
 
                 r.Close();
                 cmd.Dispose();
                 c.Close();
 
+                if (count > 0)
+                    return true;
                 return false;
             }
+
+            r.Close();
+            cmd.Dispose();
+            c.Close();
+
+            return false;
         }
 
         private int GetMembersCount(UUID GroupID)
         {
-            lock(m_Connection)
+            MySqlConnection conn =
+                    new MySqlConnection(m_ConnectionString);
+
+            conn.Open();
+
+            MySqlCommand cmd = conn.CreateCommand();
+
+            cmd.CommandText = "select count(*) as count from members where "+
+                    "GroupID = ?GroupID";
+
+            cmd.Parameters.AddWithValue("GroupID", GroupID.ToString());
+
+            IDataReader r = cmd.ExecuteReader();
+
+            if (r.Read())
             {
-                MySqlCommand cmd = m_Connection.CreateCommand();
-
-                cmd.CommandText = "select count(*) as count from members where "+
-                        "GroupID = ?GroupID";
-
-                cmd.Parameters.AddWithValue("GroupID", GroupID.ToString());
-
-                IDataReader r = ExecuteReader(cmd);
-
-                if (r.Read())
-                {
-                    int count = Convert.ToInt32(r["count"]);
-
-                    r.Close();
-                    cmd.Dispose();
-
-                    return count;
-                }
+                int count = Convert.ToInt32(r["count"]);
 
                 r.Close();
                 cmd.Dispose();
 
-                return 0;
+                return count;
             }
+
+            r.Close();
+            cmd.Dispose();
+
+            return 0;
         }
 
         private List<GroupTitlesData> GetGroupTitles(UUID UserID, UUID GroupID)
         {
             List<GroupTitlesData> titles = new List<GroupTitlesData>();
 
-            lock(m_Connection)
+            MySqlConnection conn =
+                    new MySqlConnection(m_ConnectionString);
+
+            conn.Open();
+
+            MySqlCommand cmd = conn.CreateCommand();
+
+            cmd.CommandText = "select RoleTitle,RoleID from roles where "+
+                    "GroupID = ?GroupID";
+
+            cmd.Parameters.AddWithValue("GroupID", GroupID.ToString());
+
+            IDataReader r = cmd.ExecuteReader();
+
+            while (r.Read())
             {
-                MySqlCommand cmd = m_Connection.CreateCommand();
+                UUID RoleID;
+                UUID.TryParse(r["RoleID"].ToString(), out RoleID);
 
-                cmd.CommandText = "select RoleTitle,RoleID from roles where "+
-                        "GroupID = ?GroupID";
+                if (!IsMember(GroupID, RoleID, UserID))
+                    continue;
 
-                cmd.Parameters.AddWithValue("GroupID", GroupID.ToString());
-
-                IDataReader r = ExecuteReader(cmd);
-
-                while (r.Read())
+                GroupTitlesData d = new GroupTitlesData();
+                d.Name = r["RoleTitle"].ToString();
+                d.UUID=RoleID;
+                if (m_ActiveRoles.ContainsKey(UserID))
                 {
-                    UUID RoleID;
-                    UUID.TryParse(r["RoleID"].ToString(), out RoleID);
-
-                    if (!IsMember(GroupID, RoleID, UserID))
-                        continue;
-
-                    GroupTitlesData d = new GroupTitlesData();
-                    d.Name = r["RoleTitle"].ToString();
-                    d.UUID=RoleID;
-                    if (m_ActiveRoles.ContainsKey(UserID))
-                    {
-                        if (m_ActiveRoles[UserID] == d.UUID)
-                            d.Selected = true;
-                    }
-                    titles.Add(d);
+                    if (m_ActiveRoles[UserID] == d.UUID)
+                        d.Selected = true;
                 }
-
-                r.Close();
-                cmd.Dispose();
-
-                return titles;
+                titles.Add(d);
             }
+
+            r.Close();
+            cmd.Dispose();
+
+            return titles;
         }
 
         public GroupRecord GetGroupRecord(string GroupName)
@@ -474,169 +411,175 @@ namespace Careminster.Modules.Groups
 
         private GroupRecord RealGetGroupRecord(MySqlCommand cmd)
         {
-            lock(m_Connection)
+            MySqlConnection conn =
+                    new MySqlConnection(m_ConnectionString);
+
+            conn.Open();
+
+            cmd.Connection = conn;
+
+            IDataReader r = cmd.ExecuteReader();
+
+            if (r.Read())
             {
-                cmd.Connection = m_Connection;
-
-                IDataReader r = ExecuteReader(cmd);
-
-                if (r.Read())
-                {
-                    GroupRecord g = new GroupRecord();
-                    g.GroupID = new UUID(r["GroupID"].ToString());
-                    g.GroupName = r["GroupName"].ToString();
-                    g.AllowPublish = Convert.ToInt32(r["AllowPublish"]) > 0 ?
-                            true : false;
-                    g.MaturePublish = Convert.ToInt32(r["MaturePublish"]) > 0 ?
-                            true : false;
-                    g.Charter = r["Charter"].ToString();
-                    UUID.TryParse(r["FounderID"].ToString(), out g.FounderID);
-                    UUID.TryParse(r["GroupPicture"].ToString(),
-                            out g.GroupPicture);
-                    g.MembershipFee = Convert.ToInt32(r["MembershipFee"]);
-                    g.OpenEnrollment = Convert.ToInt32(r["OpenEnrollment"]) > 0 ?
-                            true : false;
-                    g.ShowInList = Convert.ToInt32(r["ShowInList"]) > 0 ?
-                            true : false;
-                    UUID.TryParse(r["OwnerRoleID"].ToString(),
-                            out g.OwnerRoleID);
-
-                    r.Close();
-                    cmd.Dispose();
-
-                    return g;
-                }
+                GroupRecord g = new GroupRecord();
+                g.GroupID = new UUID(r["GroupID"].ToString());
+                g.GroupName = r["GroupName"].ToString();
+                g.AllowPublish = Convert.ToInt32(r["AllowPublish"]) > 0 ?
+                        true : false;
+                g.MaturePublish = Convert.ToInt32(r["MaturePublish"]) > 0 ?
+                        true : false;
+                g.Charter = r["Charter"].ToString();
+                UUID.TryParse(r["FounderID"].ToString(), out g.FounderID);
+                UUID.TryParse(r["GroupPicture"].ToString(),
+                        out g.GroupPicture);
+                g.MembershipFee = Convert.ToInt32(r["MembershipFee"]);
+                g.OpenEnrollment = Convert.ToInt32(r["OpenEnrollment"]) > 0 ?
+                        true : false;
+                g.ShowInList = Convert.ToInt32(r["ShowInList"]) > 0 ?
+                        true : false;
+                UUID.TryParse(r["OwnerRoleID"].ToString(),
+                        out g.OwnerRoleID);
 
                 r.Close();
                 cmd.Dispose();
-                return null;
+
+                return g;
             }
+
+            r.Close();
+            cmd.Dispose();
+            return null;
         }
 
         public GroupMembershipData GetMembershipData(UUID GroupID, UUID UserID)
         {
-            lock(m_Connection)
+            MySqlConnection conn =
+                    new MySqlConnection(m_ConnectionString);
+
+            conn.Open();
+
+            MySqlCommand cmd = conn.CreateCommand();
+
+            cmd.CommandText = "select groups.*, members.AcceptNotices, "+
+                    "members.ListInProfile, members.Contribution, "+
+                    "members.Active, members.ActiveRole,"+
+                    "bit_or(roles.RolePowers) as GroupPowers "+
+                    "from members left join groups on "+
+                    "groups.GroupID=members.GroupID left join "+
+                    "rolemembers on rolemembers.MemberID = members.MemberID "+
+                    "left join roles on groups.GroupID=roles.GroupID and "+
+                    "roles.RoleID = rolemembers.RoleID "+
+                    "where members.MemberID=?MemberID and "+
+                    "groups.GroupID=?GroupID group by groups.GroupID";
+
+            cmd.Parameters.AddWithValue("MemberID", UserID.ToString());
+            cmd.Parameters.AddWithValue("GroupID", GroupID.ToString());
+            IDataReader r = cmd.ExecuteReader();
+
+            if (r.Read())
             {
-                MySqlCommand cmd = m_Connection.CreateCommand();
+                GroupMembershipData g = new GroupMembershipData();
 
-                cmd.CommandText = "select groups.*, members.AcceptNotices, "+
-                        "members.ListInProfile, members.Contribution, "+
-                        "members.Active, members.ActiveRole,"+
-                        "bit_or(roles.RolePowers) as GroupPowers "+
-                        "from members left join groups on "+
-                        "groups.GroupID=members.GroupID left join "+
-                        "rolemembers on rolemembers.MemberID = members.MemberID "+
-                        "left join roles on groups.GroupID=roles.GroupID and "+
-                        "roles.RoleID = rolemembers.RoleID "+
-                        "where members.MemberID=?MemberID and "+
-                        "groups.GroupID=?GroupID group by groups.GroupID";
+                UUID.TryParse(r["GroupID"].ToString(), out g.GroupID);
+                g.GroupName = r["GroupName"].ToString();
+                g.AllowPublish = Convert.ToInt32(r["AllowPublish"]) > 0 ?
+                        true : false;
+                g.MaturePublish = Convert.ToInt32(r["MaturePublish"]) > 0 ?
+                        true : false;
+                g.Charter = r["Charter"].ToString();
+                UUID.TryParse(r["FounderID"].ToString(), out g.FounderID);
+                UUID.TryParse(r["GroupPicture"].ToString(),
+                        out g.GroupPicture);
+                g.MembershipFee = Convert.ToInt32(r["MembershipFee"]);
+                g.OpenEnrollment = Convert.ToInt32(r["OpenEnrollment"]) > 0 ?
+                        true : false;
+                g.AcceptNotices = Convert.ToInt32(r["AcceptNotices"]) > 0 ?
+                        true : false;
+                g.ListInProfile = Convert.ToInt32(r["ListInProfile"]) > 0 ?
+                        true : false;
+                g.Contribution = Convert.ToInt32(r["Contribution"]);
+                g.GroupPowers = Convert.ToUInt64(r["GroupPowers"]);
+                g.Active = Convert.ToInt32(r["Active"]) > 0 ?
+                        true : false;
+                UUID.TryParse(r["ActiveRole"].ToString(), out g.ActiveRole);
+                g.GroupTitle = GetRoleTitle(g.GroupID, g.ActiveRole);
 
-                cmd.Parameters.AddWithValue("MemberID", UserID.ToString());
-                cmd.Parameters.AddWithValue("GroupID", GroupID.ToString());
-                IDataReader r = ExecuteReader(cmd);
-
-                if (r.Read())
-                {
-                    GroupMembershipData g = new GroupMembershipData();
-
-                    UUID.TryParse(r["GroupID"].ToString(), out g.GroupID);
-                    g.GroupName = r["GroupName"].ToString();
-                    g.AllowPublish = Convert.ToInt32(r["AllowPublish"]) > 0 ?
-                            true : false;
-                    g.MaturePublish = Convert.ToInt32(r["MaturePublish"]) > 0 ?
-                            true : false;
-                    g.Charter = r["Charter"].ToString();
-                    UUID.TryParse(r["FounderID"].ToString(), out g.FounderID);
-                    UUID.TryParse(r["GroupPicture"].ToString(),
-                            out g.GroupPicture);
-                    g.MembershipFee = Convert.ToInt32(r["MembershipFee"]);
-                    g.OpenEnrollment = Convert.ToInt32(r["OpenEnrollment"]) > 0 ?
-                            true : false;
-                    g.AcceptNotices = Convert.ToInt32(r["AcceptNotices"]) > 0 ?
-                            true : false;
-                    g.ListInProfile = Convert.ToInt32(r["ListInProfile"]) > 0 ?
-                            true : false;
-                    g.Contribution = Convert.ToInt32(r["Contribution"]);
-                    g.GroupPowers = Convert.ToUInt64(r["GroupPowers"]);
-                    g.Active = Convert.ToInt32(r["Active"]) > 0 ?
-                            true : false;
-                    UUID.TryParse(r["ActiveRole"].ToString(), out g.ActiveRole);
-                    g.GroupTitle = GetRoleTitle(g.GroupID, g.ActiveRole);
-
-                    m_ActiveRoles[UserID] = g.ActiveRole;
-
-                    r.Close();
-                    cmd.Dispose();
-
-                    return g;
-                }
+                m_ActiveRoles[UserID] = g.ActiveRole;
 
                 r.Close();
                 cmd.Dispose();
 
-                return null;
+                return g;
             }
+
+            r.Close();
+            cmd.Dispose();
+
+            return null;
         }
 
         public GroupMembershipData[] GetMembershipData(UUID UserID)
         {
-            lock(m_Connection)
+            MySqlConnection conn =
+                    new MySqlConnection(m_ConnectionString);
+
+            conn.Open();
+
+            MySqlCommand cmd = conn.CreateCommand();
+
+            List<GroupMembershipData> m = new List<GroupMembershipData>();
+
+            cmd.CommandText = "select groups.*, members.AcceptNotices, "+
+                    "members.ListInProfile, members.Contribution, "+
+                    "members.Active, members.ActiveRole,"+
+                    "bit_or(roles.RolePowers) as GroupPowers "+
+                    "from members left join groups on "+
+                    "groups.GroupID=members.GroupID left join "+
+                    "rolemembers on rolemembers.MemberID = members.MemberID "+
+                    "left join roles on groups.GroupID=roles.GroupID and "+
+                    "roles.RoleID = rolemembers.RoleID "+
+                    "where members.MemberID=?MemberID and groups.GroupID is not null group by groups.GroupID";
+
+            cmd.Parameters.AddWithValue("MemberID", UserID.ToString());
+
+            IDataReader r = cmd.ExecuteReader();
+
+            while (r.Read())
             {
-                List<GroupMembershipData> m = new List<GroupMembershipData>();
+                GroupMembershipData g = new GroupMembershipData();
 
-                MySqlCommand cmd = m_Connection.CreateCommand();
+                UUID.TryParse(r["GroupID"].ToString(), out g.GroupID);
+                g.GroupName = r["GroupName"].ToString();
+                g.AllowPublish = Convert.ToInt32(r["AllowPublish"]) > 0 ?
+                        true : false;
+                g.MaturePublish = Convert.ToInt32(r["MaturePublish"]) > 0 ?
+                        true : false;
+                g.Charter = r["Charter"].ToString();
+                UUID.TryParse(r["FounderID"].ToString(), out g.FounderID);
+                UUID.TryParse(r["GroupPicture"].ToString(),
+                        out g.GroupPicture);
+                g.MembershipFee = Convert.ToInt32(r["MembershipFee"]);
+                g.OpenEnrollment = Convert.ToInt32(r["OpenEnrollment"]) > 0 ?
+                        true : false;
+                g.AcceptNotices = Convert.ToInt32(r["AcceptNotices"]) > 0 ?
+                        true : false;
+                g.ListInProfile = Convert.ToInt32(r["ListInProfile"]) > 0 ?
+                        true : false;
+                g.Contribution = Convert.ToInt32(r["Contribution"]);
+                g.GroupPowers = Convert.ToUInt64(r["GroupPowers"]);
+                g.Active = Convert.ToInt32(r["Active"]) > 0 ?
+                        true : false;
+                UUID.TryParse(r["ActiveRole"].ToString(), out g.ActiveRole);
+                g.GroupTitle = GetRoleTitle(g.GroupID, g.ActiveRole);
 
-                cmd.CommandText = "select groups.*, members.AcceptNotices, "+
-                        "members.ListInProfile, members.Contribution, "+
-                        "members.Active, members.ActiveRole,"+
-                        "bit_or(roles.RolePowers) as GroupPowers "+
-                        "from members left join groups on "+
-                        "groups.GroupID=members.GroupID left join "+
-                        "rolemembers on rolemembers.MemberID = members.MemberID "+
-                        "left join roles on groups.GroupID=roles.GroupID and "+
-                        "roles.RoleID = rolemembers.RoleID "+
-                        "where members.MemberID=?MemberID and groups.GroupID is not null group by groups.GroupID";
-
-                cmd.Parameters.AddWithValue("MemberID", UserID.ToString());
-
-                IDataReader r = ExecuteReader(cmd);
-
-                while (r.Read())
-                {
-                    GroupMembershipData g = new GroupMembershipData();
-
-                    UUID.TryParse(r["GroupID"].ToString(), out g.GroupID);
-                    g.GroupName = r["GroupName"].ToString();
-                    g.AllowPublish = Convert.ToInt32(r["AllowPublish"]) > 0 ?
-                            true : false;
-                    g.MaturePublish = Convert.ToInt32(r["MaturePublish"]) > 0 ?
-                            true : false;
-                    g.Charter = r["Charter"].ToString();
-                    UUID.TryParse(r["FounderID"].ToString(), out g.FounderID);
-                    UUID.TryParse(r["GroupPicture"].ToString(),
-                            out g.GroupPicture);
-                    g.MembershipFee = Convert.ToInt32(r["MembershipFee"]);
-                    g.OpenEnrollment = Convert.ToInt32(r["OpenEnrollment"]) > 0 ?
-                            true : false;
-                    g.AcceptNotices = Convert.ToInt32(r["AcceptNotices"]) > 0 ?
-                            true : false;
-                    g.ListInProfile = Convert.ToInt32(r["ListInProfile"]) > 0 ?
-                            true : false;
-                    g.Contribution = Convert.ToInt32(r["Contribution"]);
-                    g.GroupPowers = Convert.ToUInt64(r["GroupPowers"]);
-                    g.Active = Convert.ToInt32(r["Active"]) > 0 ?
-                            true : false;
-                    UUID.TryParse(r["ActiveRole"].ToString(), out g.ActiveRole);
-                    g.GroupTitle = GetRoleTitle(g.GroupID, g.ActiveRole);
-
-                    m_ActiveRoles[UserID] = g.ActiveRole;
-                    m.Add(g);
-                }
-                r.Close();
-                cmd.Dispose();
-
-                return m.ToArray();
+                m_ActiveRoles[UserID] = g.ActiveRole;
+                m.Add(g);
             }
+            r.Close();
+            cmd.Dispose();
+
+            return m.ToArray();
         }
 
         private void OnNewClient(IClientAPI client)
@@ -703,194 +646,197 @@ namespace Careminster.Modules.Groups
             {
                 UUID id = new UUID(binaryBucket, 0);
 
-                lock(m_Connection)
+                MySqlConnection conn =
+                        new MySqlConnection(m_ConnectionString);
+
+                conn.Open();
+
+                MySqlCommand cmd = conn.CreateCommand();
+
+                cmd.CommandText = "select * from notices where "+
+                        "NoticeID = ?NoticeID";
+
+                cmd.Parameters.AddWithValue("NoticeID", imSessionID.ToString());
+                IDataReader r = cmd.ExecuteReader();
+                if (!r.Read())
                 {
-                    MySqlCommand cmd = m_Connection.CreateCommand();
-
-                    cmd.CommandText = "select * from notices where "+
-                            "NoticeID = ?NoticeID";
-
-                    cmd.Parameters.AddWithValue("NoticeID", imSessionID.ToString());
-                    IDataReader r = ExecuteReader(cmd);
-                    if (!r.Read())
-                    {
-                        r.Close();
-                        cmd.Dispose();
-                        return;
-                    }
-
-                    IInventoryService invService = client.Scene.RequestModuleInterface<IInventoryService>();
-                    if (invService == null)
-                    {
-                        r.Close();
-                        cmd.Dispose();
-                        return;
-                    }
-
-                    InventoryItemBase item = new InventoryItemBase();
-                    item.ID = UUID.Random();
-                    item.InvType = Convert.ToInt32(r["InvType"]);
-                    item.Owner = client.AgentId;
-                    item.CreatorId = r["CreatorID"].ToString();
-                    item.Name = r["AttachmentName"].ToString();
-                    item.Description = r["Description"].ToString();
-                    item.NextPermissions = Convert.ToUInt32(r["NextOwnerPerms"]);
-                    item.CurrentPermissions = Convert.ToUInt32(r["NextOwnerPerms"]);
-                    item.BasePermissions = Convert.ToUInt32(r["NextOwnerPerms"]);
-                    item.EveryOnePermissions = 0;
-                    item.AssetType = Convert.ToInt32(r["AssetType"]);
-                    item.AssetID = new UUID(r["AssetID"].ToString());
-                    item.GroupID = UUID.Zero;
-                    item.Flags = Convert.ToUInt32(r["flags"]);
-                    item.CreationDate = Util.UnixTimeSinceEpoch();
-                    item.Folder = invService.GetFolderForType(client.AgentId, (AssetType)item.AssetType).ID;
-
-                    invService.AddItem(item);
-                    client.SendBulkUpdateInventory(item);
-
-                    byte[] itembytes = item.ID.GetBytes();
-                    byte[] data = new byte[17];
-                    data[0] = (byte)item.AssetType;
-                    Array.Copy(itembytes, 0, data, 1, 16);
-
-                    GridInstantMessage msg = new GridInstantMessage(
-                            client.Scene,
-                            new UUID(r["GroupID"].ToString()),
-                            r["FromName"].ToString(),
-                            client.AgentId,
-                            (byte)InstantMessageDialog.InventoryOffered,
-                            true,
-                            r["AttachmentName"].ToString(),
-                            UUID.Random(),
-                            false,
-                            Vector3.Zero,
-                            data);
-
-                    client.SendInstantMessage(msg);
-
                     r.Close();
                     cmd.Dispose();
-
                     return;
                 }
+
+                IInventoryService invService = client.Scene.RequestModuleInterface<IInventoryService>();
+                if (invService == null)
+                {
+                    r.Close();
+                    cmd.Dispose();
+                    return;
+                }
+
+                InventoryItemBase item = new InventoryItemBase();
+                item.ID = UUID.Random();
+                item.InvType = Convert.ToInt32(r["InvType"]);
+                item.Owner = client.AgentId;
+                item.CreatorId = r["CreatorID"].ToString();
+                item.Name = r["AttachmentName"].ToString();
+                item.Description = r["Description"].ToString();
+                item.NextPermissions = Convert.ToUInt32(r["NextOwnerPerms"]);
+                item.CurrentPermissions = Convert.ToUInt32(r["NextOwnerPerms"]);
+                item.BasePermissions = Convert.ToUInt32(r["NextOwnerPerms"]);
+                item.EveryOnePermissions = 0;
+                item.AssetType = Convert.ToInt32(r["AssetType"]);
+                item.AssetID = new UUID(r["AssetID"].ToString());
+                item.GroupID = UUID.Zero;
+                item.Flags = Convert.ToUInt32(r["flags"]);
+                item.CreationDate = Util.UnixTimeSinceEpoch();
+                item.Folder = invService.GetFolderForType(client.AgentId, (AssetType)item.AssetType).ID;
+
+                invService.AddItem(item);
+                client.SendBulkUpdateInventory(item);
+
+                byte[] itembytes = item.ID.GetBytes();
+                byte[] data = new byte[17];
+                data[0] = (byte)item.AssetType;
+                Array.Copy(itembytes, 0, data, 1, 16);
+
+                GridInstantMessage msg = new GridInstantMessage(
+                        client.Scene,
+                        new UUID(r["GroupID"].ToString()),
+                        r["FromName"].ToString(),
+                        client.AgentId,
+                        (byte)InstantMessageDialog.InventoryOffered,
+                        true,
+                        r["AttachmentName"].ToString(),
+                        UUID.Random(),
+                        false,
+                        Vector3.Zero,
+                        data);
+
+                client.SendInstantMessage(msg);
+
+                r.Close();
+                cmd.Dispose();
+
+                return;
             }
             if (dialog == (byte)InstantMessageDialog.GroupNotice)
             {
-                lock(m_Connection)
+                MySqlConnection conn =
+                        new MySqlConnection(m_ConnectionString);
+
+                conn.Open();
+
+                MySqlCommand cmd = conn.CreateCommand();
+
+                cmd.CommandText = "select * from members where "+
+                        "GroupID = ?GroupID and "+
+                        "MemberID = ?MemberID";
+
+                cmd.Parameters.AddWithValue("GroupID", toAgentID.ToString());
+                cmd.Parameters.AddWithValue("MemberID", client.AgentId.ToString());
+
+                IDataReader r = cmd.ExecuteReader();
+
+                if (!r.Read())
                 {
-                    MySqlCommand cmd = m_Connection.CreateCommand();
-
-                    cmd.CommandText = "select * from members where "+
-                            "GroupID = ?GroupID and "+
-                            "MemberID = ?MemberID";
-
-                    cmd.Parameters.AddWithValue("GroupID", toAgentID.ToString());
-                    cmd.Parameters.AddWithValue("MemberID", client.AgentId.ToString());
-
-                    IDataReader r = ExecuteReader(cmd);
-
-                    if (!r.Read())
-                    {
-                        r.Close();
-                        cmd.Dispose();
-                        return;
-                    }
                     r.Close();
-
-                    cmd.Parameters.Clear();
-
-                    cmd.CommandText="insert into notices (GroupID, NoticeID, "+
-                            "Stamp, FromName, Subject, HasAttachment, "+
-                            "AssetType, AttachmentName, NoticeText, NextOwnerPerms, CreatorID, Flags, AssetID, InvType, Description) values ("+
-                            "?GroupID, "+
-                            "?NoticeID, "+
-                            "unix_timestamp(now()), "+
-                            "?FromName, "+
-                            "?Subject, "+
-                            "?HasAttachment, "+
-                            "?AssetType, "+
-                            "?AttachmentName, "+
-                            "?NoticeText, "+
-                            "?NextOwnerPerms, "+
-                            "?CreatorID, "+
-                            "?Flags, "+
-                            "?AssetID, "+
-                            "?InvType, "+
-                            "?Description )";
-                    
-                    int AssetType = 0;
-                    string AttachmentName = String.Empty;
-                    int HasAttachment = 0;
-                    int NextOwnerPerms = 0;
-                    UUID CreatorID = UUID.Zero;
-                    int Flags = 0;
-                    UUID AssetID = UUID.Zero;
-                    int InvType = 0;
-                    string Description = String.Empty;
-
-                    string data = Utils.BytesToString(binaryBucket);
-                    if (data.StartsWith("<? LLSD/XML ?>"))
-                    {
-                        data = data.Substring(14).Trim();
-                    }
-
-                    if (data.Trim() != "")
-                    {
-                        OSDMap llsd = (OSDMap)OSDParser.DeserializeLLSDXml(data);
-
-                        if (llsd.ContainsKey("item_id") &&
-                            llsd.ContainsKey("owner_id"))
-                        {
-                            UUID itemID = llsd["item_id"].AsUUID();
-                            UUID ownerID = llsd["owner_id"].AsUUID();
-
-                            IInventoryService invService = client.Scene.RequestModuleInterface<IInventoryService>();
-                            InventoryItemBase item = new InventoryItemBase(itemID, client.AgentId);
-                            item = invService.GetItem(item);
-
-                            if (item != null)
-                            {
-                                AssetType = item.AssetType;
-                                AttachmentName = item.Name;
-                                HasAttachment = 1;
-                                InvType = item.InvType;
-                                AssetID = item.AssetID;
-                                CreatorID = item.CreatorIdAsUuid;
-                                NextOwnerPerms = (int)item.NextPermissions;
-                                Flags = (int)item.Flags;
-                                Description = item.Description;
-                            }
-                        }
-                    }
-
-                    UUID noticeID = UUID.Random();
-
-                    string[] parts = message.Split(new Char[] {'|'});
-
-                    cmd.Parameters.AddWithValue("GroupID", toAgentID.ToString());
-                    cmd.Parameters.AddWithValue("NoticeID", noticeID);
-                    cmd.Parameters.AddWithValue("FromName", fromAgentName);
-                    cmd.Parameters.AddWithValue("Subject", parts[0]);
-                    cmd.Parameters.AddWithValue("HasAttachment", HasAttachment);
-                    cmd.Parameters.AddWithValue("AssetType", AssetType);
-                    cmd.Parameters.AddWithValue("AttachmentName", AttachmentName);
-                    cmd.Parameters.AddWithValue("NoticeText", parts[1]);
-                    cmd.Parameters.AddWithValue("NextOwnerPerms", NextOwnerPerms);
-                    cmd.Parameters.AddWithValue("CreatorID", CreatorID.ToString());
-                    cmd.Parameters.AddWithValue("Flags", Flags);
-                    cmd.Parameters.AddWithValue("AssetID", AssetID.ToString());
-                    cmd.Parameters.AddWithValue("InvType", InvType);
-                    cmd.Parameters.AddWithValue("Description", Description);
-
-                    ExecuteNonQuery(cmd);
                     cmd.Dispose();
+                    return;
+                }
+                r.Close();
 
-                    NewGroupNotice handlerNewGroupNotice = OnNewGroupNotice;
+                cmd.Parameters.Clear();
 
-                    if (handlerNewGroupNotice != null)
-                        handlerNewGroupNotice(toAgentID, noticeID);
+                cmd.CommandText="insert into notices (GroupID, NoticeID, "+
+                        "Stamp, FromName, Subject, HasAttachment, "+
+                        "AssetType, AttachmentName, NoticeText, NextOwnerPerms, CreatorID, Flags, AssetID, InvType, Description) values ("+
+                        "?GroupID, "+
+                        "?NoticeID, "+
+                        "unix_timestamp(now()), "+
+                        "?FromName, "+
+                        "?Subject, "+
+                        "?HasAttachment, "+
+                        "?AssetType, "+
+                        "?AttachmentName, "+
+                        "?NoticeText, "+
+                        "?NextOwnerPerms, "+
+                        "?CreatorID, "+
+                        "?Flags, "+
+                        "?AssetID, "+
+                        "?InvType, "+
+                        "?Description )";
+                
+                int AssetType = 0;
+                string AttachmentName = String.Empty;
+                int HasAttachment = 0;
+                int NextOwnerPerms = 0;
+                UUID CreatorID = UUID.Zero;
+                int Flags = 0;
+                UUID AssetID = UUID.Zero;
+                int InvType = 0;
+                string Description = String.Empty;
+
+                string data = Utils.BytesToString(binaryBucket);
+                if (data.StartsWith("<? LLSD/XML ?>"))
+                {
+                    data = data.Substring(14).Trim();
                 }
 
+                if (data.Trim() != "")
+                {
+                    OSDMap llsd = (OSDMap)OSDParser.DeserializeLLSDXml(data);
+
+                    if (llsd.ContainsKey("item_id") &&
+                        llsd.ContainsKey("owner_id"))
+                    {
+                        UUID itemID = llsd["item_id"].AsUUID();
+                        UUID ownerID = llsd["owner_id"].AsUUID();
+
+                        IInventoryService invService = client.Scene.RequestModuleInterface<IInventoryService>();
+                        InventoryItemBase item = new InventoryItemBase(itemID, client.AgentId);
+                        item = invService.GetItem(item);
+
+                        if (item != null)
+                        {
+                            AssetType = item.AssetType;
+                            AttachmentName = item.Name;
+                            HasAttachment = 1;
+                            InvType = item.InvType;
+                            AssetID = item.AssetID;
+                            CreatorID = item.CreatorIdAsUuid;
+                            NextOwnerPerms = (int)item.NextPermissions;
+                            Flags = (int)item.Flags;
+                            Description = item.Description;
+                        }
+                    }
+                }
+
+                UUID noticeID = UUID.Random();
+
+                string[] parts = message.Split(new Char[] {'|'});
+
+                cmd.Parameters.AddWithValue("GroupID", toAgentID.ToString());
+                cmd.Parameters.AddWithValue("NoticeID", noticeID);
+                cmd.Parameters.AddWithValue("FromName", fromAgentName);
+                cmd.Parameters.AddWithValue("Subject", parts[0]);
+                cmd.Parameters.AddWithValue("HasAttachment", HasAttachment);
+                cmd.Parameters.AddWithValue("AssetType", AssetType);
+                cmd.Parameters.AddWithValue("AttachmentName", AttachmentName);
+                cmd.Parameters.AddWithValue("NoticeText", parts[1]);
+                cmd.Parameters.AddWithValue("NextOwnerPerms", NextOwnerPerms);
+                cmd.Parameters.AddWithValue("CreatorID", CreatorID.ToString());
+                cmd.Parameters.AddWithValue("Flags", Flags);
+                cmd.Parameters.AddWithValue("AssetID", AssetID.ToString());
+                cmd.Parameters.AddWithValue("InvType", InvType);
+                cmd.Parameters.AddWithValue("Description", Description);
+
+                cmd.ExecuteNonQuery();
+                cmd.Dispose();
+
+                NewGroupNotice handlerNewGroupNotice = OnNewGroupNotice;
+
+                if (handlerNewGroupNotice != null)
+                    handlerNewGroupNotice(toAgentID, noticeID);
             }
             if (dialog == (byte)InstantMessageDialog.GroupInvitationAccept)
             {
@@ -961,17 +907,19 @@ namespace Careminster.Modules.Groups
 
         private void SetActiveGroup(UUID agentID, UUID groupID)
         {
-            lock(m_Connection)
-            {
-                MySqlCommand cmd = m_Connection.CreateCommand();
+            MySqlConnection conn =
+                    new MySqlConnection(m_ConnectionString);
 
-                cmd.CommandText = "update members set Active = case when GroupID = ?GroupID then 1 else 0 end where MemberID = ?MemberID";
-                cmd.Parameters.AddWithValue("GroupID", groupID.ToString());
-                cmd.Parameters.AddWithValue("MemberID", agentID);
+            conn.Open();
 
-                ExecuteNonQuery(cmd);
-                cmd.Dispose();
-            }
+            MySqlCommand cmd = conn.CreateCommand();
+
+            cmd.CommandText = "update members set Active = case when GroupID = ?GroupID then 1 else 0 end where MemberID = ?MemberID";
+            cmd.Parameters.AddWithValue("GroupID", groupID.ToString());
+            cmd.Parameters.AddWithValue("MemberID", agentID);
+
+            cmd.ExecuteNonQuery();
+            cmd.Dispose();
         }
 
         public void ActivateGroup(IClientAPI remoteClient, UUID groupID)
@@ -1030,109 +978,118 @@ namespace Careminster.Modules.Groups
             if (gr == null)
                 return m;
 
-            lock(m_Connection)
+            MySqlConnection conn =
+                    new MySqlConnection(m_ConnectionString);
+
+            conn.Open();
+
+            MySqlCommand cmd = conn.CreateCommand();
+
+            cmd.CommandText = "select *,bit_or(roles.RolePowers) as "+
+                    "AgentPowers from members left join rolemembers on "+
+                    "members.MemberID = rolemembers.Memberid and "+
+                    "members.GroupID = rolemembers.GroupID left join "+
+                    "roles on rolemembers.RoleID = roles.RoleID and "+
+                    "roles.GroupID = members.GroupID where "+
+                    "members.GroupID = ?GroupID group by members.MemberID";
+
+            cmd.Parameters.AddWithValue("GroupID", groupID.ToString());
+
+            IDataReader r = cmd.ExecuteReader();
+
+            while(r.Read())
             {
-                MySqlCommand cmd = m_Connection.CreateCommand();
-                cmd.CommandText = "select *,bit_or(roles.RolePowers) as "+
-                        "AgentPowers from members left join rolemembers on "+
-                        "members.MemberID = rolemembers.Memberid and "+
-                        "members.GroupID = rolemembers.GroupID left join "+
-                        "roles on rolemembers.RoleID = roles.RoleID and "+
-                        "roles.GroupID = members.GroupID where "+
-                        "members.GroupID = ?GroupID group by members.MemberID";
+                GroupMembersData d = new GroupMembersData();
+                UUID.TryParse(r["MemberID"].ToString(), out d.AgentID);
+                d.Contribution = 0;
+                d.OnlineStatus = "Unknown";
+                d.AgentPowers = Convert.ToUInt64(r["AgentPowers"]);
+                UUID roleID = UUID.Zero;
+                UUID.TryParse(r["ActiveRole"].ToString(), out roleID);
+                d.Title = GetRoleTitle(groupID, roleID);
+                d.IsOwner = IsMember(groupID, gr.OwnerRoleID, d.AgentID);
+                d.AcceptNotices = Convert.ToInt32(r["AcceptNotices"]) > 0 ?
+                        true : false;
 
-                cmd.Parameters.AddWithValue("GroupID", groupID.ToString());
-
-                IDataReader r = ExecuteReader(cmd);
-
-                while(r.Read())
-                {
-                    GroupMembersData d = new GroupMembersData();
-                    UUID.TryParse(r["MemberID"].ToString(), out d.AgentID);
-                    d.Contribution = 0;
-                    d.OnlineStatus = "Unknown";
-                    d.AgentPowers = Convert.ToUInt64(r["AgentPowers"]);
-                    UUID roleID = UUID.Zero;
-                    UUID.TryParse(r["ActiveRole"].ToString(), out roleID);
-                    d.Title = GetRoleTitle(groupID, roleID);
-                    d.IsOwner = IsMember(groupID, gr.OwnerRoleID, d.AgentID);
-                    d.AcceptNotices = Convert.ToInt32(r["AcceptNotices"]) > 0 ?
-                            true : false;
-
-                    m.Add(d);
-                }
-
-                r.Close();
-                cmd.Dispose();
-
-                return m;
+                m.Add(d);
             }
+
+            r.Close();
+            cmd.Dispose();
+
+            return m;
         }
 
         public List<GroupRolesData> GroupRoleDataRequest(IClientAPI remoteClient, UUID groupID)
         {
             List<GroupRolesData> rd = new List<GroupRolesData>();
 
-            lock(m_Connection)
+            MySqlConnection conn =
+                    new MySqlConnection(m_ConnectionString);
+
+            conn.Open();
+
+            MySqlCommand cmd = conn.CreateCommand();
+
+            cmd.CommandText = "select roles.*, count(MemberID) as Members "+
+                    "from roles left join rolemembers on "+
+                    "roles.RoleID = rolemembers.RoleID where "+
+                    "roles.GroupID = ?GroupID group by roles.RoleID";
+            cmd.Parameters.AddWithValue("GroupID", groupID.ToString());
+
+            IDataReader r = cmd.ExecuteReader();
+
+            while (r.Read())
             {
-                MySqlCommand cmd = m_Connection.CreateCommand();
-                cmd.CommandText = "select roles.*, count(MemberID) as Members "+
-                        "from roles left join rolemembers on "+
-                        "roles.RoleID = rolemembers.RoleID where "+
-                        "roles.GroupID = ?GroupID group by roles.RoleID";
-                cmd.Parameters.AddWithValue("GroupID", groupID.ToString());
+                GroupRolesData rr = new GroupRolesData();
 
-                IDataReader r = ExecuteReader(cmd);
+                UUID.TryParse(r["RoleID"].ToString(), out rr.RoleID);
+                rr.Name = r["RoleName"].ToString();
+                rr.Title = r["RoleTitle"].ToString();
+                rr.Description = r["RoleDescription"].ToString();
+                rr.Powers = Convert.ToUInt64(r["RolePowers"]);
+                rr.Members = Convert.ToInt32(r["Members"]);
 
-                while (r.Read())
-                {
-                    GroupRolesData rr = new GroupRolesData();
-
-                    UUID.TryParse(r["RoleID"].ToString(), out rr.RoleID);
-                    rr.Name = r["RoleName"].ToString();
-                    rr.Title = r["RoleTitle"].ToString();
-                    rr.Description = r["RoleDescription"].ToString();
-                    rr.Powers = Convert.ToUInt64(r["RolePowers"]);
-                    rr.Members = Convert.ToInt32(r["Members"]);
-
-                    rd.Add(rr);
-                }
-
-                r.Close();
-                cmd.Dispose();
-
-                return rd;
+                rd.Add(rr);
             }
+
+            r.Close();
+            cmd.Dispose();
+
+            return rd;
         }
 
         public List<GroupRoleMembersData> GroupRoleMembersRequest(IClientAPI remoteClient, UUID groupID)
         {
             List<GroupRoleMembersData> rm = new List<GroupRoleMembersData>();
 
-            lock(m_Connection)
+            MySqlConnection conn =
+                    new MySqlConnection(m_ConnectionString);
+
+            conn.Open();
+
+            MySqlCommand cmd = conn.CreateCommand();
+
+            cmd.CommandText = "select * from rolemembers where "+
+                    "GroupID = ?GroupID";
+            cmd.Parameters.AddWithValue("GroupID", groupID.ToString());
+
+            IDataReader r = cmd.ExecuteReader();
+
+            while (r.Read())
             {
-                MySqlCommand cmd = m_Connection.CreateCommand();
-                cmd.CommandText = "select * from rolemembers where "+
-                        "GroupID = ?GroupID";
-                cmd.Parameters.AddWithValue("GroupID", groupID.ToString());
+                GroupRoleMembersData rr = new GroupRoleMembersData();
 
-                IDataReader r = ExecuteReader(cmd);
+                UUID.TryParse(r["RoleID"].ToString(), out rr.RoleID);
+                UUID.TryParse(r["MemberID"].ToString(), out rr.MemberID);
 
-                while (r.Read())
-                {
-                    GroupRoleMembersData rr = new GroupRoleMembersData();
-
-                    UUID.TryParse(r["RoleID"].ToString(), out rr.RoleID);
-                    UUID.TryParse(r["MemberID"].ToString(), out rr.MemberID);
-
-                    rm.Add(rr);
-                }
-
-                r.Close();
-                cmd.Dispose();
-
-                return rm;
+                rm.Add(rr);
             }
+
+            r.Close();
+            cmd.Dispose();
+
+            return rm;
         }
 
         public UUID CreateGroup(IClientAPI remoteClient, string name,
@@ -1150,98 +1107,101 @@ namespace Careminster.Modules.Groups
                 }
             }
 
-            lock(m_Connection)
+            MySqlConnection conn =
+                    new MySqlConnection(m_ConnectionString);
+
+            conn.Open();
+
+            MySqlCommand cmd = conn.CreateCommand();
+
+            cmd.CommandText = "insert ignore into groups (GroupID, GroupName, "+
+                    "Charter, GroupPicture, MembershipFee, OpenEnrollment, "+
+                    "AllowPublish, MaturePublish, FounderID, ShowInList, "+
+                    "OwnerRoleID) "+
+                    "values ("+
+                    "?GroupID , "+
+                    "?GroupName , "+
+                    "?Charter , "+
+                    "?GroupPicture , "+
+                    "?MembershipFee , "+
+                    "?OpenEnrollment , "+
+                    "?AllowPublish , "+
+                    "?MaturePublish , "+
+                    "?FounderID , "+
+                    "?ShowInList , "+
+                    "?OwnerRoleID )";
+
+            UUID groupID = UUID.Random();
+            UUID ownerRoleID = UUID.Random();
+
+            cmd.Parameters.AddWithValue("GroupID", groupID.ToString());
+            cmd.Parameters.AddWithValue("GroupName", name);
+            cmd.Parameters.AddWithValue("Charter", charter);
+            cmd.Parameters.AddWithValue("GroupPicture", insigniaID.ToString());
+            cmd.Parameters.AddWithValue("MembershipFee", membershipFee);
+            cmd.Parameters.AddWithValue("OpenEnrollment", openEnrollment ? 1 : 0);
+            cmd.Parameters.AddWithValue("ShowInList", showInList ? 1 : 0);
+            cmd.Parameters.AddWithValue("AllowPublish", allowPublish ? 1 : 0);
+            cmd.Parameters.AddWithValue("MaturePublish", maturePublish ? 1 : 0);
+            cmd.Parameters.AddWithValue("FounderID", remoteClient.AgentId.ToString());
+            cmd.Parameters.AddWithValue("OwnerRoleID", ownerRoleID.ToString());
+
+            try
             {
-                MySqlCommand cmd = m_Connection.CreateCommand();
-                cmd.CommandText = "insert ignore into groups (GroupID, GroupName, "+
-                        "Charter, GroupPicture, MembershipFee, OpenEnrollment, "+
-                        "AllowPublish, MaturePublish, FounderID, ShowInList, "+
-                        "OwnerRoleID) "+
-                        "values ("+
-                        "?GroupID , "+
-                        "?GroupName , "+
-                        "?Charter , "+
-                        "?GroupPicture , "+
-                        "?MembershipFee , "+
-                        "?OpenEnrollment , "+
-                        "?AllowPublish , "+
-                        "?MaturePublish , "+
-                        "?FounderID , "+
-                        "?ShowInList , "+
-                        "?OwnerRoleID )";
-
-                UUID groupID = UUID.Random();
-                UUID ownerRoleID = UUID.Random();
-
-                cmd.Parameters.AddWithValue("GroupID", groupID.ToString());
-                cmd.Parameters.AddWithValue("GroupName", name);
-                cmd.Parameters.AddWithValue("Charter", charter);
-                cmd.Parameters.AddWithValue("GroupPicture", insigniaID.ToString());
-                cmd.Parameters.AddWithValue("MembershipFee", membershipFee);
-                cmd.Parameters.AddWithValue("OpenEnrollment", openEnrollment ? 1 : 0);
-                cmd.Parameters.AddWithValue("ShowInList", showInList ? 1 : 0);
-                cmd.Parameters.AddWithValue("AllowPublish", allowPublish ? 1 : 0);
-                cmd.Parameters.AddWithValue("MaturePublish", maturePublish ? 1 : 0);
-                cmd.Parameters.AddWithValue("FounderID", remoteClient.AgentId.ToString());
-                cmd.Parameters.AddWithValue("OwnerRoleID", ownerRoleID.ToString());
-
-                try
-                {
-                    ExecuteNonQuery(cmd);
-                }
-                catch (Exception)
-                {
-                    remoteClient.SendCreateGroupReply(UUID.Zero, false, "Group creation failed. Try another name");
-                    return UUID.Zero;
-                }
-
-                cmd.Parameters.Clear();
-
-                cmd.CommandText = "insert ignore into roles (GroupID, RoleID, RoleName, "+
-                        "RoleTitle, RolePowers) values ("+
-                        "?GroupID, "+
-                        "?RoleID, "+
-                        "?RoleName, "+
-                        "?RoleTitle, "+
-                        "?RolePowers )";
-
-                cmd.Parameters.AddWithValue("GroupID", groupID.ToString());
-                cmd.Parameters.AddWithValue("RoleID", UUID.Zero.ToString());
-                cmd.Parameters.AddWithValue("RoleName", "Everyone");
-                cmd.Parameters.AddWithValue("RoleTitle", "Member");
-                cmd.Parameters.AddWithValue("RolePowers", 0);
-
-                ExecuteNonQuery(cmd);
-
-                cmd.Parameters.Clear();
-
-                cmd.Parameters.AddWithValue("GroupID", groupID.ToString());
-                cmd.Parameters.AddWithValue("RoleID", ownerRoleID.ToString());
-                cmd.Parameters.AddWithValue("RoleName", "Owners");
-                cmd.Parameters.AddWithValue("RoleTitle", "Owner");
-                cmd.Parameters.AddWithValue("RolePowers", "9223372036854775807");
-
-                ExecuteNonQuery(cmd);
-
-                cmd.Parameters.Clear();
-                cmd.Dispose();
-
-                AddToGroup(remoteClient.AgentId, groupID, ownerRoleID, true);
-
-                if (money != null)
-                    money.ApplyCharge(remoteClient.AgentId, money.GroupCreationCharge, "Group creation");
-
-                ActivateGroup(remoteClient, groupID);
-
-                remoteClient.SendCreateGroupReply(groupID, true, name);
-
-                System.Threading.Thread.Sleep(3000);
-
-                SendGroupMembershipCaps(GetMembershipData(remoteClient.AgentId), remoteClient);
-                remoteClient.RefreshGroupMembership();
-
-                return groupID;
+                cmd.ExecuteNonQuery();
             }
+            catch (Exception)
+            {
+                remoteClient.SendCreateGroupReply(UUID.Zero, false, "Group creation failed. Try another name");
+                return UUID.Zero;
+            }
+
+            cmd.Parameters.Clear();
+
+            cmd.CommandText = "insert ignore into roles (GroupID, RoleID, RoleName, "+
+                    "RoleTitle, RolePowers) values ("+
+                    "?GroupID, "+
+                    "?RoleID, "+
+                    "?RoleName, "+
+                    "?RoleTitle, "+
+                    "?RolePowers )";
+
+            cmd.Parameters.AddWithValue("GroupID", groupID.ToString());
+            cmd.Parameters.AddWithValue("RoleID", UUID.Zero.ToString());
+            cmd.Parameters.AddWithValue("RoleName", "Everyone");
+            cmd.Parameters.AddWithValue("RoleTitle", "Member");
+            cmd.Parameters.AddWithValue("RolePowers", 0);
+
+            cmd.ExecuteNonQuery();
+
+            cmd.Parameters.Clear();
+
+            cmd.Parameters.AddWithValue("GroupID", groupID.ToString());
+            cmd.Parameters.AddWithValue("RoleID", ownerRoleID.ToString());
+            cmd.Parameters.AddWithValue("RoleName", "Owners");
+            cmd.Parameters.AddWithValue("RoleTitle", "Owner");
+            cmd.Parameters.AddWithValue("RolePowers", "9223372036854775807");
+
+            cmd.ExecuteNonQuery();
+
+            cmd.Parameters.Clear();
+            cmd.Dispose();
+
+            AddToGroup(remoteClient.AgentId, groupID, ownerRoleID, true);
+
+            if (money != null)
+                money.ApplyCharge(remoteClient.AgentId, money.GroupCreationCharge, "Group creation");
+
+            ActivateGroup(remoteClient, groupID);
+
+            remoteClient.SendCreateGroupReply(groupID, true, name);
+
+            System.Threading.Thread.Sleep(3000);
+
+            SendGroupMembershipCaps(GetMembershipData(remoteClient.AgentId), remoteClient);
+            remoteClient.RefreshGroupMembership();
+
+            return groupID;
         }
 	    public void AddToGroup(UUID agentID, UUID groupID, UUID roleID)
 	    {
@@ -1270,54 +1230,56 @@ namespace Careminster.Modules.Groups
             if (!roleGood)
                 roleID = UUID.Zero;
 
-            lock(m_Connection)
+            MySqlConnection conn =
+                    new MySqlConnection(m_ConnectionString);
+
+            conn.Open();
+
+            MySqlCommand cmd = conn.CreateCommand();
+
+            cmd.CommandText = "insert ignore into members (GroupID, MemberID, Active,"+
+                    "ActiveRole, AcceptNotices, ListInProfile) values ("+
+                    "?GroupID, "+
+                    "?MemberID, "+
+                    "?Active, "+
+                    "?ActiveRole, "+
+                    "?AcceptNotices, "+
+                    "?ListInProfile )";
+
+            cmd.Parameters.AddWithValue("GroupID", groupID.ToString());
+            cmd.Parameters.AddWithValue("MemberID", agentID.ToString());
+            cmd.Parameters.AddWithValue("Active", 1);
+            cmd.Parameters.AddWithValue("ActiveRole", roleID.ToString());
+            cmd.Parameters.AddWithValue("AcceptNotices", 1);
+            cmd.Parameters.AddWithValue("ListInProfile", 1);
+
+            cmd.ExecuteNonQuery();
+
+            cmd.Parameters.Clear();
+
+            cmd.CommandText = "insert ignore into rolemembers (GroupID, RoleID, "+
+                    "MemberID) values ("+
+                    "?GroupID, "+
+                    "?RoleID, "+
+                    "?MemberID )";
+
+            if (roleID != UUID.Zero)
             {
-                MySqlCommand cmd = m_Connection.CreateCommand();
-
-                cmd.CommandText = "insert ignore into members (GroupID, MemberID, Active,"+
-                        "ActiveRole, AcceptNotices, ListInProfile) values ("+
-                        "?GroupID, "+
-                        "?MemberID, "+
-                        "?Active, "+
-                        "?ActiveRole, "+
-                        "?AcceptNotices, "+
-                        "?ListInProfile )";
-
                 cmd.Parameters.AddWithValue("GroupID", groupID.ToString());
+                cmd.Parameters.AddWithValue("RoleID", roleID.ToString());
                 cmd.Parameters.AddWithValue("MemberID", agentID.ToString());
-                cmd.Parameters.AddWithValue("Active", 1);
-                cmd.Parameters.AddWithValue("ActiveRole", roleID.ToString());
-                cmd.Parameters.AddWithValue("AcceptNotices", 1);
-                cmd.Parameters.AddWithValue("ListInProfile", 1);
 
-                ExecuteNonQuery(cmd);
+                cmd.ExecuteNonQuery();
 
                 cmd.Parameters.Clear();
-
-                cmd.CommandText = "insert ignore into rolemembers (GroupID, RoleID, "+
-                        "MemberID) values ("+
-                        "?GroupID, "+
-                        "?RoleID, "+
-                        "?MemberID )";
-
-                if (roleID != UUID.Zero)
-                {
-                    cmd.Parameters.AddWithValue("GroupID", groupID.ToString());
-                    cmd.Parameters.AddWithValue("RoleID", roleID.ToString());
-                    cmd.Parameters.AddWithValue("MemberID", agentID.ToString());
-
-                    ExecuteNonQuery(cmd);
-
-                    cmd.Parameters.Clear();
-                }
-
-                cmd.Parameters.AddWithValue("GroupID", groupID.ToString());
-                cmd.Parameters.AddWithValue("RoleID", UUID.Zero);
-                cmd.Parameters.AddWithValue("MemberID", agentID.ToString());
-
-                ExecuteNonQuery(cmd);
-                cmd.Dispose();
             }
+
+            cmd.Parameters.AddWithValue("GroupID", groupID.ToString());
+            cmd.Parameters.AddWithValue("RoleID", UUID.Zero);
+            cmd.Parameters.AddWithValue("MemberID", agentID.ToString());
+
+            cmd.ExecuteNonQuery();
+            cmd.Dispose();
         }
 
         public void UpdateGroupInfo(IClientAPI remoteClient, UUID groupID,
@@ -1327,60 +1289,64 @@ namespace Careminster.Modules.Groups
         {
             if (((GetGroupPowers(remoteClient.AgentId, groupID) & (ulong)GroupPowers.ChangeOptions) != 0) || (FindPresence(remoteClient.AgentId).GodLevel >= 200))
             {
-                lock (m_Connection)
-                {
-                    MySqlCommand cmd = m_Connection.CreateCommand();
+                MySqlConnection conn =
+                        new MySqlConnection(m_ConnectionString);
 
-                    cmd.CommandText = "update groups set " +
-                            "Charter = ?Charter, " +
-                            "GroupPicture = ?GroupPicture, " +
-                            "MembershipFee = ?MembershipFee, " +
-                            "OpenEnrollment = ?OpenEnrollment, " +
-                            "AllowPublish = ?AllowPublish, " +
-                            "MaturePublish = ?MaturePublish, " +
-                            "ShowInList = ?ShowInList " +
-                            "where GroupID = ?GroupID";
+                conn.Open();
 
-                    cmd.Parameters.AddWithValue("Charter", charter);
-                    cmd.Parameters.AddWithValue("GroupPicture", insigniaID.ToString());
-                    cmd.Parameters.AddWithValue("MembershipFee", membershipFee);
-                    cmd.Parameters.AddWithValue("OpenEnrollment", openEnrollment ? 1 : 0);
-                    cmd.Parameters.AddWithValue("ShowInList", showInList ? 1 : 0);
-                    cmd.Parameters.AddWithValue("AllowPublish", allowPublish ? 1 : 0);
-                    cmd.Parameters.AddWithValue("MaturePublish", maturePublish ? 1 : 0);
-                    cmd.Parameters.AddWithValue("GroupID", groupID.ToString());
+                MySqlCommand cmd = conn.CreateCommand();
 
-                    ExecuteNonQuery(cmd);
-                    cmd.Dispose();
+                cmd.CommandText = "update groups set " +
+                        "Charter = ?Charter, " +
+                        "GroupPicture = ?GroupPicture, " +
+                        "MembershipFee = ?MembershipFee, " +
+                        "OpenEnrollment = ?OpenEnrollment, " +
+                        "AllowPublish = ?AllowPublish, " +
+                        "MaturePublish = ?MaturePublish, " +
+                        "ShowInList = ?ShowInList " +
+                        "where GroupID = ?GroupID";
 
-                    SendGroupMembershipCaps(GetMembershipData(remoteClient.AgentId), remoteClient);
-                }
+                cmd.Parameters.AddWithValue("Charter", charter);
+                cmd.Parameters.AddWithValue("GroupPicture", insigniaID.ToString());
+                cmd.Parameters.AddWithValue("MembershipFee", membershipFee);
+                cmd.Parameters.AddWithValue("OpenEnrollment", openEnrollment ? 1 : 0);
+                cmd.Parameters.AddWithValue("ShowInList", showInList ? 1 : 0);
+                cmd.Parameters.AddWithValue("AllowPublish", allowPublish ? 1 : 0);
+                cmd.Parameters.AddWithValue("MaturePublish", maturePublish ? 1 : 0);
+                cmd.Parameters.AddWithValue("GroupID", groupID.ToString());
+
+                cmd.ExecuteNonQuery();
+                cmd.Dispose();
+
+                SendGroupMembershipCaps(GetMembershipData(remoteClient.AgentId), remoteClient);
             }
         }
 
         public void SetGroupAcceptNotices(IClientAPI remoteClient,
                 UUID groupID, bool acceptNotices, bool listInProfile)
         {
-            lock(m_Connection)
-            {
-                MySqlCommand cmd = m_Connection.CreateCommand();
+            MySqlConnection conn =
+                    new MySqlConnection(m_ConnectionString);
 
-                cmd.CommandText = "update members set "+
-                        "AcceptNotices = ?AcceptNotices, "+
-                        "ListInProfile = ?ListInProfile "+
-                        "where GroupID = ?GroupID and "+
-                        "MemberID = ?MemberID";
+            conn.Open();
 
-                cmd.Parameters.AddWithValue("AcceptNotices", acceptNotices ? 1 : 0);
-                cmd.Parameters.AddWithValue("ListInProfile", listInProfile ? 1 : 0);
-                cmd.Parameters.AddWithValue("MemberID", remoteClient.AgentId.ToString());
-                cmd.Parameters.AddWithValue("GroupID", groupID.ToString());
+            MySqlCommand cmd = conn.CreateCommand();
 
-                ExecuteNonQuery(cmd);
-                cmd.Dispose();
+            cmd.CommandText = "update members set "+
+                    "AcceptNotices = ?AcceptNotices, "+
+                    "ListInProfile = ?ListInProfile "+
+                    "where GroupID = ?GroupID and "+
+                    "MemberID = ?MemberID";
 
-                SendGroupMembershipCaps(GetMembershipData(remoteClient.AgentId), remoteClient);
-            }
+            cmd.Parameters.AddWithValue("AcceptNotices", acceptNotices ? 1 : 0);
+            cmd.Parameters.AddWithValue("ListInProfile", listInProfile ? 1 : 0);
+            cmd.Parameters.AddWithValue("MemberID", remoteClient.AgentId.ToString());
+            cmd.Parameters.AddWithValue("GroupID", groupID.ToString());
+
+            cmd.ExecuteNonQuery();
+            cmd.Dispose();
+
+            SendGroupMembershipCaps(GetMembershipData(remoteClient.AgentId), remoteClient);
         }
 
         public void GroupTitleUpdate(IClientAPI remoteClient, UUID GroupID, UUID TitleRoleID)
@@ -1388,26 +1354,28 @@ namespace Careminster.Modules.Groups
             if (!IsMember(GroupID, TitleRoleID, remoteClient.AgentId))
                 return;
 
-            lock(m_Connection)
-            {
-                MySqlCommand cmd = m_Connection.CreateCommand();
+            MySqlConnection conn =
+                    new MySqlConnection(m_ConnectionString);
 
-                cmd.CommandText = "update members set "+
-                        "ActiveRole = ?ActiveRole "+
-                        "where GroupID = ?GroupID and "+
-                        "MemberID = ?MemberID";
+            conn.Open();
 
-                cmd.Parameters.AddWithValue("ActiveRole", TitleRoleID.ToString());
-                cmd.Parameters.AddWithValue("MemberID", remoteClient.AgentId.ToString());
-                cmd.Parameters.AddWithValue("GroupID", GroupID.ToString());
+            MySqlCommand cmd = conn.CreateCommand();
 
-                ExecuteNonQuery(cmd);
-                cmd.Dispose();
+            cmd.CommandText = "update members set "+
+                    "ActiveRole = ?ActiveRole "+
+                    "where GroupID = ?GroupID and "+
+                    "MemberID = ?MemberID";
 
-                OnAgentDataUpdateRequest(remoteClient, remoteClient.AgentId, UUID.Zero);
-                SendGroupMembershipCaps(GetMembershipData(remoteClient.AgentId), remoteClient);
-                UpdateGroupTitle(remoteClient);
-            }
+            cmd.Parameters.AddWithValue("ActiveRole", TitleRoleID.ToString());
+            cmd.Parameters.AddWithValue("MemberID", remoteClient.AgentId.ToString());
+            cmd.Parameters.AddWithValue("GroupID", GroupID.ToString());
+
+            cmd.ExecuteNonQuery();
+            cmd.Dispose();
+
+            OnAgentDataUpdateRequest(remoteClient, remoteClient.AgentId, UUID.Zero);
+            SendGroupMembershipCaps(GetMembershipData(remoteClient.AgentId), remoteClient);
+            UpdateGroupTitle(remoteClient);
         }
 
         private void OnRequestAvatarProperties(IClientAPI remoteClient, UUID avatarID)
@@ -1495,36 +1463,38 @@ namespace Careminster.Modules.Groups
         {
             List<GroupNoticeData> notices = new List<GroupNoticeData>();
 
-            lock(m_Connection)
+            MySqlConnection conn =
+                    new MySqlConnection(m_ConnectionString);
+
+            conn.Open();
+
+            MySqlCommand cmd = conn.CreateCommand();
+
+            cmd.CommandText = "select * from notices where "+
+                    "GroupID = ?GroupID order by Stamp desc";
+
+            cmd.Parameters.AddWithValue("GroupID", GroupID.ToString());
+
+            IDataReader r = cmd.ExecuteReader();
+
+            while (r.Read())
             {
-                MySqlCommand cmd = m_Connection.CreateCommand();
+                GroupNoticeData d = new GroupNoticeData();
 
-                cmd.CommandText = "select * from notices where "+
-                        "GroupID = ?GroupID order by Stamp desc";
+                UUID.TryParse(r["NoticeID"].ToString(), out d.NoticeID);
+                d.Timestamp = Convert.ToUInt32(r["Stamp"]);
+                d.FromName = r["FromName"].ToString();
+                d.Subject = r["Subject"].ToString();
+                d.HasAttachment = Convert.ToInt32(r["HasAttachment"]) > 0 ? true : false;
+                d.AssetType = Convert.ToByte(r["AssetType"]);
 
-                cmd.Parameters.AddWithValue("GroupID", GroupID.ToString());
-
-                IDataReader r = ExecuteReader(cmd);
-
-                while (r.Read())
-                {
-                    GroupNoticeData d = new GroupNoticeData();
-
-                    UUID.TryParse(r["NoticeID"].ToString(), out d.NoticeID);
-                    d.Timestamp = Convert.ToUInt32(r["Stamp"]);
-                    d.FromName = r["FromName"].ToString();
-                    d.Subject = r["Subject"].ToString();
-                    d.HasAttachment = Convert.ToInt32(r["HasAttachment"]) > 0 ? true : false;
-                    d.AssetType = Convert.ToByte(r["AssetType"]);
-
-                    notices.Add(d);
-                }
-
-                r.Close();
-                cmd.Dispose();
-
-                return notices.ToArray();
+                notices.Add(d);
             }
+
+            r.Close();
+            cmd.Dispose();
+
+            return notices.ToArray();
         }
 
         public void GroupNoticeRequest(IClientAPI remoteClient, UUID groupNoticeID)
@@ -1542,54 +1512,56 @@ namespace Careminster.Modules.Groups
 
             m_LastNoticeRequest[agentID] = groupNoticeID;
 
-            lock(m_Connection)
+            MySqlConnection conn =
+                    new MySqlConnection(m_ConnectionString);
+
+            conn.Open();
+
+            MySqlCommand cmd = conn.CreateCommand();
+
+            cmd.CommandText = "select * from notices where "+
+                    "NoticeID = ?NoticeID";
+
+            cmd.Parameters.Add("NoticeID", groupNoticeID.ToString());
+
+            IDataReader r = cmd.ExecuteReader();
+
+            if (r.Read())
             {
-                MySqlCommand cmd = m_Connection.CreateCommand();
+                UUID groupID = UUID.Zero;
+                UUID.TryParse(r["GroupID"].ToString(), out groupID);
 
-                cmd.CommandText = "select * from notices where "+
-                        "NoticeID = ?NoticeID";
+                UUID itemID = UUID.Zero;
+                UUID.TryParse(r["NoticeID"].ToString(), out itemID);
 
-                cmd.Parameters.Add("NoticeID", groupNoticeID.ToString());
+                string attachmentName = r["AttachmentName"].ToString();
 
-                IDataReader r = ExecuteReader(cmd);
+                Byte[] att = Utils.StringToBytes(attachmentName);
 
-                if (r.Read())
-                {
-                    UUID groupID = UUID.Zero;
-                    UUID.TryParse(r["GroupID"].ToString(), out groupID);
+                Byte[] BinData = new Byte[19 + att.Length];
+                BinData[BinData.Length - 1] = 0;
 
-                    UUID itemID = UUID.Zero;
-                    UUID.TryParse(r["NoticeID"].ToString(), out itemID);
+                BinData[0] = Convert.ToByte(r["HasAttachment"]);
+                BinData[1] = Convert.ToByte(r["AssetType"]);
 
-                    string attachmentName = r["AttachmentName"].ToString();
+                Array.Copy(groupID.GetBytes(), 0, BinData, 2, 16);
 
-                    Byte[] att = Utils.StringToBytes(attachmentName);
+                Array.Copy(att, 0, BinData, 18, att.Length);
 
-                    Byte[] BinData = new Byte[19 + att.Length];
-                    BinData[BinData.Length - 1] = 0;
-
-                    BinData[0] = Convert.ToByte(r["HasAttachment"]);
-                    BinData[1] = Convert.ToByte(r["AssetType"]);
-
-                    Array.Copy(groupID.GetBytes(), 0, BinData, 2, 16);
-
-                    Array.Copy(att, 0, BinData, 18, att.Length);
-
-                    string message = r["Subject"].ToString()+"|"+r["NoticeText"].ToString();
-                    string fromName = r["FromName"].ToString();
-
-                    r.Close();
-                    cmd.Dispose();
-
-                    return new GridInstantMessage(
-                            null, groupID, fromName, agentID,
-                            dialog, true, message, itemID, true,
-                            new Vector3(), BinData);
-                }
+                string message = r["Subject"].ToString()+"|"+r["NoticeText"].ToString();
+                string fromName = r["FromName"].ToString();
 
                 r.Close();
                 cmd.Dispose();
+
+                return new GridInstantMessage(
+                        null, groupID, fromName, agentID,
+                        dialog, true, message, itemID, true,
+                        new Vector3(), BinData);
             }
+
+            r.Close();
+            cmd.Dispose();
             return null;
         }
 
@@ -1632,133 +1604,137 @@ namespace Careminster.Modules.Groups
             if (updateType == 0)
                 return;
 
-            lock(m_Connection)
+            MySqlConnection conn =
+                    new MySqlConnection(m_ConnectionString);
+
+            conn.Open();
+
+            MySqlCommand cmd = conn.CreateCommand();
+
+            if (updateType == 5) // Delete
             {
-                MySqlCommand cmd = m_Connection.CreateCommand();
-
-                if (updateType == 5) // Delete
-                {
-                    if ((GetGroupPowers(remoteClient.AgentId, GroupID) &
-                            (ulong)GroupPowers.DeleteRole) == 0L)
-                        return;
-
-                    cmd.CommandText = "delete from roles where RoleID = ?RoleID";
-                    cmd.Parameters.AddWithValue("RoleID", RoleID.ToString());
-
-                    ExecuteNonQuery(cmd);
-
-                    cmd.Parameters.Clear();
-
-                    cmd.CommandText = "update members set ActiveRole = '00000000-0000-0000-0000-000000000000' where ActiveRole = ?RoleID";
-                    cmd.Parameters.AddWithValue("RoleID", RoleID.ToString());
-
-                    ExecuteNonQuery(cmd);
-                    // TODO: Iterate SPs and send updates
-
-                    cmd.Dispose();
-                    UpdateGroupTitle(remoteClient);
+                if ((GetGroupPowers(remoteClient.AgentId, GroupID) &
+                        (ulong)GroupPowers.DeleteRole) == 0L)
                     return;
-                }
 
-                if (updateType == 4) // Create
-                {
-                    if ((GetGroupPowers(remoteClient.AgentId, GroupID) &
-                            (ulong)GroupPowers.CreateRole) == 0L)
-                        return;
+                cmd.CommandText = "delete from roles where RoleID = ?RoleID";
+                cmd.Parameters.AddWithValue("RoleID", RoleID.ToString());
 
-                    cmd.CommandText = "insert ignore into roles (GroupID, RoleID, "+
-                            "RoleName, RoleTitle, RolePowers, RoleDescription) "+
-                            "values ("+
-                            "?GroupID, "+
-                            "?RoleID, "+
-                            "?RoleName, "+
-                            "?RoleTitle, "+
-                            "?RolePowers, "+
-                            "?RoleDescription )";
+                cmd.ExecuteNonQuery();
 
-                    cmd.Parameters.AddWithValue("GroupID", GroupID.ToString());
-                    cmd.Parameters.AddWithValue("RoleID", RoleID);
-                    cmd.Parameters.AddWithValue("RoleName", name).ToString();
-                    cmd.Parameters.AddWithValue("RoleTitle", title);
-                    cmd.Parameters.AddWithValue("RolePowers", powers.ToString());
-                    cmd.Parameters.AddWithValue("RoleDescription", description);
+                cmd.Parameters.Clear();
 
-                    ExecuteNonQuery(cmd);
-                    cmd.Dispose();
+                cmd.CommandText = "update members set ActiveRole = '00000000-0000-0000-0000-000000000000' where ActiveRole = ?RoleID";
+                cmd.Parameters.AddWithValue("RoleID", RoleID.ToString());
 
-                    return;
-                }
+                cmd.ExecuteNonQuery();
+                // TODO: Iterate SPs and send updates
 
-                string datafields = "RoleName = ?RoleName, RoleTitle = ?RoleTitle, RoleDescription= ?RoleDescription";
-                string powerfields = "RolePowers = ?RolePowers";
-                string fields = "";
-
-                ulong currentPowers = GetGroupPowers(remoteClient.AgentId, GroupID);
-
-                if (((int)updateType & 1) != 0) // Update data
-                {
-                    if ((currentPowers & (ulong)GroupPowers.RoleProperties) != 0)
-                    {
-                        fields = datafields;
-                        cmd.Parameters.AddWithValue("RoleName", name);
-                        cmd.Parameters.AddWithValue("RoleTitle", title);
-                        cmd.Parameters.AddWithValue("RoleDescription", description);
-                    }
-                }
-
-                if (((int)updateType & 2) != 0) // Update data
-                {
-                    if ((currentPowers & (ulong)GroupPowers.ChangeActions) != 0)
-                    {
-                        if (fields != "")
-                            fields += ",";
-                        fields += powerfields;
-                        cmd.Parameters.AddWithValue("RolePowers", powers.ToString());
-                    }
-                }
-                
-                if (fields != String.Empty)
-                {
-                    cmd.Parameters.AddWithValue("GroupID", GroupID.ToString());
-                    cmd.Parameters.AddWithValue("RoleID", RoleID.ToString());
-
-                    cmd.CommandText = "update roles set " + fields + " where GroupID = ?GroupID and RoleID = ?RoleID";
-
-                    ExecuteNonQuery(cmd);
-                    cmd.Dispose();
-                }
-
+                cmd.Dispose();
                 UpdateGroupTitle(remoteClient);
+                return;
+            }
+
+            if (updateType == 4) // Create
+            {
+                if ((GetGroupPowers(remoteClient.AgentId, GroupID) &
+                        (ulong)GroupPowers.CreateRole) == 0L)
+                    return;
+
+                cmd.CommandText = "insert ignore into roles (GroupID, RoleID, "+
+                        "RoleName, RoleTitle, RolePowers, RoleDescription) "+
+                        "values ("+
+                        "?GroupID, "+
+                        "?RoleID, "+
+                        "?RoleName, "+
+                        "?RoleTitle, "+
+                        "?RolePowers, "+
+                        "?RoleDescription )";
+
+                cmd.Parameters.AddWithValue("GroupID", GroupID.ToString());
+                cmd.Parameters.AddWithValue("RoleID", RoleID);
+                cmd.Parameters.AddWithValue("RoleName", name).ToString();
+                cmd.Parameters.AddWithValue("RoleTitle", title);
+                cmd.Parameters.AddWithValue("RolePowers", powers.ToString());
+                cmd.Parameters.AddWithValue("RoleDescription", description);
+
+                cmd.ExecuteNonQuery();
+                cmd.Dispose();
 
                 return;
             }
+
+            string datafields = "RoleName = ?RoleName, RoleTitle = ?RoleTitle, RoleDescription= ?RoleDescription";
+            string powerfields = "RolePowers = ?RolePowers";
+            string fields = "";
+
+            ulong currentPowers = GetGroupPowers(remoteClient.AgentId, GroupID);
+
+            if (((int)updateType & 1) != 0) // Update data
+            {
+                if ((currentPowers & (ulong)GroupPowers.RoleProperties) != 0)
+                {
+                    fields = datafields;
+                    cmd.Parameters.AddWithValue("RoleName", name);
+                    cmd.Parameters.AddWithValue("RoleTitle", title);
+                    cmd.Parameters.AddWithValue("RoleDescription", description);
+                }
+            }
+
+            if (((int)updateType & 2) != 0) // Update data
+            {
+                if ((currentPowers & (ulong)GroupPowers.ChangeActions) != 0)
+                {
+                    if (fields != "")
+                        fields += ",";
+                    fields += powerfields;
+                    cmd.Parameters.AddWithValue("RolePowers", powers.ToString());
+                }
+            }
+            
+            if (fields != String.Empty)
+            {
+                cmd.Parameters.AddWithValue("GroupID", GroupID.ToString());
+                cmd.Parameters.AddWithValue("RoleID", RoleID.ToString());
+
+                cmd.CommandText = "update roles set " + fields + " where GroupID = ?GroupID and RoleID = ?RoleID";
+
+                cmd.ExecuteNonQuery();
+                cmd.Dispose();
+            }
+
+            UpdateGroupTitle(remoteClient);
+
+            return;
         }
 
         public List<UUID> GetMemberRoles(UUID GroupID, UUID MemberID)
         {
-            lock(m_Connection)
+            MySqlConnection conn =
+                    new MySqlConnection(m_ConnectionString);
+
+            conn.Open();
+
+            MySqlCommand cmd = conn.CreateCommand();
+
+            cmd.CommandText = "select RoleID from rolemembers where GroupID = ?GroupID and MemberID = ?MemberID";
+
+            cmd.Parameters.AddWithValue("GroupID", GroupID.ToString());
+            cmd.Parameters.AddWithValue("MemberID", MemberID.ToString());
+
+            IDataReader r = cmd.ExecuteReader();
+
+            List<UUID> ret = new List<UUID>();
+
+            while(r.Read())
             {
-                MySqlCommand cmd = m_Connection.CreateCommand();
-
-                cmd.CommandText = "select RoleID from rolemembers where GroupID = ?GroupID and MemberID = ?MemberID";
-
-                cmd.Parameters.AddWithValue("GroupID", GroupID.ToString());
-                cmd.Parameters.AddWithValue("MemberID", MemberID.ToString());
-
-                IDataReader r = ExecuteReader(cmd);
-
-                List<UUID> ret = new List<UUID>();
-
-                while(r.Read())
-                {
-                    ret.Add(new UUID(r["RoleID"].ToString()));
-                }
-
-                r.Close();
-                cmd.Dispose();
-
-                return ret;
+                ret.Add(new UUID(r["RoleID"].ToString()));
             }
+
+            r.Close();
+            cmd.Dispose();
+
+            return ret;
         }
 
         public void GroupRoleChanges(IClientAPI remoteClient, UUID GroupID, UUID RoleID, UUID MemberID, uint change)
@@ -1766,71 +1742,75 @@ namespace Careminster.Modules.Groups
             if (change == 2)
                 return; // No change requested
 
-            lock(m_Connection)
+            MySqlConnection conn =
+                    new MySqlConnection(m_ConnectionString);
+
+            conn.Open();
+
+            MySqlCommand cmd = conn.CreateCommand();
+
+            ulong powers = GetGroupPowers(remoteClient.AgentId, GroupID);
+
+            if (change == 0) // Add
             {
-                MySqlCommand cmd = m_Connection.CreateCommand();
+                List<UUID> roles = GetMemberRoles(GroupID, remoteClient.AgentId);
 
-                ulong powers = GetGroupPowers(remoteClient.AgentId, GroupID);
-
-                if (change == 0) // Add
+                if (((powers & (ulong)GroupPowers.AssignMember) > 0) || ((powers & (ulong)GroupPowers.AssignMemberLimited) > 0 && roles.Contains(RoleID)))
                 {
-                    List<UUID> roles = GetMemberRoles(GroupID, remoteClient.AgentId);
-
-                    if (((powers & (ulong)GroupPowers.AssignMember) > 0) || ((powers & (ulong)GroupPowers.AssignMemberLimited) > 0 && roles.Contains(RoleID)))
-                    {
-                        cmd.CommandText = "delete from rolemembers where GroupID = ?GroupID and RoleID = ?RoleID and MemberID = ?MemberID";
-
-                        cmd.Parameters.AddWithValue("GroupID", GroupID.ToString());
-                        cmd.Parameters.AddWithValue("RoleID", RoleID.ToString());
-                        cmd.Parameters.AddWithValue("MemberID", MemberID.ToString());
-
-                        ExecuteNonQuery(cmd);
-
-                        cmd.CommandText = "insert ignore into rolemembers (GroupID, RoleID, MemberID) values (?GroupID, ?RoleID, ?MemberID)";
-
-                        ExecuteNonQuery(cmd);
-                        cmd.Dispose();
-                        return;
-                    }
-                }
-
-                if (change == 1) // remove
-                {
-                    if ((powers & (ulong)GroupPowers.RemoveMember) == 0)
-                        return;
-
                     cmd.CommandText = "delete from rolemembers where GroupID = ?GroupID and RoleID = ?RoleID and MemberID = ?MemberID";
+
                     cmd.Parameters.AddWithValue("GroupID", GroupID.ToString());
                     cmd.Parameters.AddWithValue("RoleID", RoleID.ToString());
                     cmd.Parameters.AddWithValue("MemberID", MemberID.ToString());
 
-                    ExecuteNonQuery(cmd);
+                    cmd.ExecuteNonQuery();
+
+                    cmd.CommandText = "insert ignore into rolemembers (GroupID, RoleID, MemberID) values (?GroupID, ?RoleID, ?MemberID)";
+
+                    cmd.ExecuteNonQuery();
                     cmd.Dispose();
                     return;
                 }
+            }
+
+            if (change == 1) // remove
+            {
+                if ((powers & (ulong)GroupPowers.RemoveMember) == 0)
+                    return;
+
+                cmd.CommandText = "delete from rolemembers where GroupID = ?GroupID and RoleID = ?RoleID and MemberID = ?MemberID";
+                cmd.Parameters.AddWithValue("GroupID", GroupID.ToString());
+                cmd.Parameters.AddWithValue("RoleID", RoleID.ToString());
+                cmd.Parameters.AddWithValue("MemberID", MemberID.ToString());
+
+                cmd.ExecuteNonQuery();
+                cmd.Dispose();
+                return;
             }
         }
 
         private void RemoveFromGroup(UUID groupID, UUID memberID)
         {
-            lock(m_Connection)
-            {
-                MySqlCommand cmd = m_Connection.CreateCommand();
+            MySqlConnection conn =
+                    new MySqlConnection(m_ConnectionString);
 
-                cmd.CommandText = "delete from members where "+
-                        "GroupID = ?GroupID and MemberID = ?memberID";
+            conn.Open();
 
-                cmd.Parameters.AddWithValue("GroupID", groupID.ToString());
-                cmd.Parameters.AddWithValue("MemberID", memberID.ToString());
+            MySqlCommand cmd = conn.CreateCommand();
 
-                ExecuteNonQuery(cmd);
+            cmd.CommandText = "delete from members where "+
+                    "GroupID = ?GroupID and MemberID = ?memberID";
 
-                cmd.CommandText = "delete from rolemembers where "+
-                        "GroupID = ?GroupID and MemberID = ?memberID";
+            cmd.Parameters.AddWithValue("GroupID", groupID.ToString());
+            cmd.Parameters.AddWithValue("MemberID", memberID.ToString());
 
-                ExecuteNonQuery(cmd);
-                cmd.Dispose();
-            }
+            cmd.ExecuteNonQuery();
+
+            cmd.CommandText = "delete from rolemembers where "+
+                    "GroupID = ?GroupID and MemberID = ?memberID";
+
+            cmd.ExecuteNonQuery();
+            cmd.Dispose();
         }
 
         public void JoinGroupRequest(IClientAPI remoteClient, UUID GroupID)
@@ -2033,7 +2013,12 @@ namespace Careminster.Modules.Groups
             string[] words = queryText.Split(new char[] {' '});
             string query = "%"+string.Join("%", words)+"%";
 
-            MySqlCommand cmd = m_Connection.CreateCommand();
+            MySqlConnection conn =
+                    new MySqlConnection(m_ConnectionString);
+
+            conn.Open();
+
+            MySqlCommand cmd = conn.CreateCommand();
 
             cmd.CommandText = "select groups.*, count(members.MemberID) as members from groups left join members on groups.GroupID = members.GroupID where "+
                     "GroupName like ?GroupName and (ScopeID='00000000-0000-0000-0000-000000000000' or ScopeID=?ScopeID)";
@@ -2046,7 +2031,7 @@ namespace Careminster.Modules.Groups
             cmd.Parameters.Add("queryStart", queryStart);
             cmd.Parameters.Add("ScopeID", remoteClient.Scene.RegionInfo.ScopeID);
 
-            IDataReader r = ExecuteReader(cmd);
+            IDataReader r = cmd.ExecuteReader();
 
             List<DirGroupsReplyData> reply = new List<DirGroupsReplyData>();
 
