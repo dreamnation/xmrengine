@@ -109,6 +109,7 @@ namespace Careminster.Modules.Permissions
             m_Scene.Permissions.OnTransferObject += CanTransferObject;
             m_Scene.Permissions.OnEditObject += CanEditObject;
             m_Scene.Permissions.OnEditObjectInventory += CanEditObjectInventory;
+            m_Scene.Permissions.OnViewObjectInventory += CanViewObjectInventory;
             m_Scene.Permissions.OnEditParcelProperties += CanEditParcelProperties;
             m_Scene.Permissions.OnEditScript += CanEditScript;
             m_Scene.Permissions.OnEditNotecard += CanEditNotecard;
@@ -645,6 +646,21 @@ namespace Careminster.Modules.Permissions
 
                 if((perms & PERM_MODIFY) == 0)
                     return false;
+
+                return true;
+            }
+
+            private bool CanViewObjectInventory(UUID objectID, UUID editorID, Scene scene)
+            {
+                if (IsAdministrator(editorID))
+                    return true;
+
+                SceneObjectPart part = m_Scene.GetSceneObjectPart(objectID);
+
+                if (part.OwnerID != editorID)
+                    return false;
+
+                uint perms=GetEffectivePermissions(editorID, objectID);
 
                 return true;
             }
