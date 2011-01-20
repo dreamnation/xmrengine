@@ -498,7 +498,7 @@ namespace Careminster.Modules.Currency
                     break;
                 case 1102: // Group Creation
                     MoveMoney(sender, EconomyBaseAccount, amount,
-                            transactiontype, "Group reation fee", String.Empty,
+                            transactiontype, "Group creation fee", String.Empty,
                             String.Empty, scene);
 
                     break;
