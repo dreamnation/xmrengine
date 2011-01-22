@@ -922,22 +922,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                             ScenePresence presence =
                                     m_Scene.GetScenePresence(item.OwnerID);
 
-                            if (presence != null)
-                            {
-                                StringBuilder sb = new StringBuilder();
-                                sb.Append("Selected engine (");
-                                sb.Append(engineName);
-                                sb.Append(") unavailable.  Have");
-                                foreach (string n in names)
-                                {
-                                    sb.Append(" ");
-                                    sb.Append(n);
-                                }
-                                sb.Append(".  Running script on ");
-                                sb.Append(ScriptEngineName);
-                                sb.Append(".");
-                                presence.ControllingClient.SendAgentAlertMessage(sb.ToString(), false);
-                            }
+//                            if (presence != null)
+//                            {
+//                                StringBuilder sb = new StringBuilder();
+//                                sb.Append("Selected engine (");
+//                                sb.Append(engineName);
+//                                sb.Append(") unavailable.  Have");
+//                                foreach (string n in names)
+//                                {
+//                                    sb.Append(" ");
+//                                    sb.Append(n);
+//                                }
+//                                sb.Append(".  Running script on ");
+//                                sb.Append(ScriptEngineName);
+//                                sb.Append(".");
+//                                presence.ControllingClient.SendAgentAlertMessage(sb.ToString(), false);
+//                            }
                         }
                     }
                 }
