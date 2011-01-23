@@ -279,7 +279,23 @@ namespace Careminster
                 newAsset.Data = GetFsData(hash);
                 if (newAsset.Data.Length == 0)
                 {
-                    m_log.InfoFormat("[ASSET]: Asset {0}, hash {1} not found in FS", id, hash);
+                    AssetBase asset = null;
+                    if (m_FallbackService != null)
+                    {
+                        asset = m_FallbackService.Get(id);
+                        if (asset != null)
+                        {
+                            asset.Metadata.ContentType =
+                                    SLUtil.SLAssetTypeToContentType((int)asset.Type);
+                            sha = GetSHA1Hash(asset.Data);
+                            m_log.InfoFormat("[FALLBACK]: Added asset {0} from fallback to local store", id);
+                            Store(asset);
+                        }
+                    }
+                    if (asset == null)
+                        m_log.InfoFormat("[ASSET]: Asset {0}, hash {1} not found in FS", id, hash);
+                    else
+                        return asset;
                 }
 
                 lock (m_statsLock)
