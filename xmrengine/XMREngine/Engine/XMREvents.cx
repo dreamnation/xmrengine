@@ -71,6 +71,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private void HandleObjectPaid(UUID objectID, UUID agentID,
                 int amount)
         {
+            // Add to queue for all scripts in ObjectID object
+            DetectParams[] det = new DetectParams[1];
+            det[0] = new DetectParams();
+            det[0].Key = agentID;
+            det[0].Populate(myScriptEngine.World);
+
             // Since this is an event from a shared module, all scenes will
             // get it. But only one has the object in question. The others
             // just ignore it.
@@ -87,7 +93,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             if (part != null)
             {
-                money(part.LocalId, agentID, amount);
+                money(part.LocalId, agentID, amount, det);
             }
         }
 
@@ -216,13 +222,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         // state_entry: not processed here
         // state_exit: not processed here
 
-        public void money(uint localID, UUID agentID, int amount)
+        public void money(uint localID, UUID agentID, int amount, DetectParams[] det)
         {
             myScriptEngine.PostObjectEvent(localID, new EventParams(
                     "money", new object[] {
                     agentID.ToString(),
                     amount },
-                    zeroDetectParams));
+                    det));
         }
 
         public void collision_start(uint localID, ColliderArgs col)

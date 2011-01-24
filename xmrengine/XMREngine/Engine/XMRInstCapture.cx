@@ -478,6 +478,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             d_velocity.Value = d.Velocity.ToString();
             detectParamsN.Attributes.Append(d_velocity);
 
+            XmlAttribute d_country = doc.CreateAttribute("",
+                    "country", "");
+            d_country.Value = d.Country;
+            detectParamsN.Attributes.Append(d_country);
+
             detectParamsN.AppendChild(
                 doc.CreateTextNode(d.Key.ToString()));
 

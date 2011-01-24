@@ -639,6 +639,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 int d_type = 0;
                 LSL_Types.Vector3 d_velocity =
                     new LSL_Types.Vector3();
+                string d_country = String.Empty;
 
                 string tmp;
 
@@ -665,6 +666,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 tmp = det.Attributes.GetNamedItem("velocity").Value;
                 d_velocity = new LSL_Types.Vector3(tmp);
 
+                d_country = det.Attributes.GetNamedItem("country").Value;
+
                 UUID uuid = new UUID();
                 UUID.TryParse(det.InnerText, out uuid);
 
@@ -679,6 +682,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 d.Rotation = d_rotation;
                 d.Type = d_type;
                 d.Velocity = d_velocity;
+                d.Country = d_country;
 
                 detected.Add(d);
             }
