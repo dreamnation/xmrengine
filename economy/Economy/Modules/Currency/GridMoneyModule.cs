@@ -46,7 +46,7 @@ namespace Careminster.Modules.Currency
     [Extension(Path = "/OpenSim/RegionModules", NodeName = "RegionModule", Id = "GridMoneyModule")]
     public class GridMoneyModule : ISharedRegionModule, IMoneyModule
     {
-        private const string currency = "L$";
+        private const string currency = "C$";
         //
         // Log module
         //
