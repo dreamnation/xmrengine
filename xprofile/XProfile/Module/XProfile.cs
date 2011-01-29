@@ -206,7 +206,11 @@ namespace Careminster.Profile
             }
 
             XProfileData[] data = m_ProfileTable.Get("UserID", avatarID.ToString());
-            uint flags = (uint)account.UserFlags & 0x0c;
+            uint flags = (uint)account.UserFlags & 0x2c;
+
+            PresenceInfo[] presences = m_Scene.PresenceService.GetAgents(new string[] { avatarID.ToString() } );
+            if (presences.Length > 0)
+                flags |= 16;
 
             if (data.Length == 0)
             {
@@ -220,11 +224,7 @@ namespace Careminster.Profile
             }
             else
             {
-                flags |= Convert.ToUInt32(data[0].Data["Flags"]);
-
-                PresenceInfo[] presences = m_Scene.PresenceService.GetAgents(new string[] { avatarID.ToString() } );
-                if (presences.Length > 0)
-                    flags |= 16;
+                flags |= Convert.ToUInt32(data[0].Data["Flags"]) & 0x3;
 
                 remoteClient.SendAvatarProperties(account.PrincipalID,
                         data[0].Data["ProfileText"],
