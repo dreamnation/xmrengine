@@ -121,10 +121,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			inf = new InlineFunction (ifd, "llAcos(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Acos",    oneDoub));  inf.codeGen = inf.CodeGenStatic;
 			inf = new InlineFunction (ifd, "llAsin(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Asin",    oneDoub));  inf.codeGen = inf.CodeGenStatic;
 			inf = new InlineFunction (ifd, "llAtan2(float,float)", typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Atan2",   twoDoubs)); inf.codeGen = inf.CodeGenStatic;
-			inf = new InlineFunction (ifd, "llCeil(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Ceiling", oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new InlineFunction (ifd, "llCeil(float)",        typeof (int), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Ceiling", oneDoub));  inf.codeGen = inf.CodeGenStatic;
 			inf = new InlineFunction (ifd, "llCos(float)",         typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Cos",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
 			inf = new InlineFunction (ifd, "llFabs(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Abs",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
-			inf = new InlineFunction (ifd, "llFloor(float)",       typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Floor",   oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new InlineFunction (ifd, "llFloor(float)",       typeof (int), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Floor",   oneDoub));  inf.codeGen = inf.CodeGenStatic;
 			inf = new InlineFunction (ifd, "llLog(float)",         typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Log",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
 			inf = new InlineFunction (ifd, "llLog10(float)",       typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Log10",   oneDoub));  inf.codeGen = inf.CodeGenStatic;
 			inf = new InlineFunction (ifd, "llPow(float,float)",   typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Pow",     twoDoubs)); inf.codeGen = inf.CodeGenStatic;
