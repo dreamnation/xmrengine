@@ -1071,6 +1071,22 @@ namespace Careminster.Modules.Groups
 
                 using (MySqlCommand cmd = conn.CreateCommand())
                 {
+                    cmd.CommandText = "select * from groups where GroupName=?GroupName'";
+                    cmd.Parameters.AddWithValue("?GroupName", name);
+
+                    using (IDataReader r = cmd.ExecuteReader())
+                    {
+                        if (r.Read())
+                        {
+                            r.Close();
+
+                            remoteClient.SendCreateGroupReply(UUID.Zero, false, "The selected group name already exists");
+                            return UUID.Zero;
+                        }
+                    }
+
+                    cmd.Parameters.Clear();
+
                     cmd.CommandText = "insert ignore into groups (GroupID, GroupName, "+
                             "Charter, GroupPicture, MembershipFee, OpenEnrollment, "+
                             "AllowPublish, MaturePublish, FounderID, ShowInList, "+
