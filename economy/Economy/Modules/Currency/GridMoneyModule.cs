@@ -611,7 +611,9 @@ namespace Careminster.Modules.Currency
         // Make database ledger entry
         //
         private void MakeLedgerEntry(UUID sender, UUID receiver, int amount,
-                int transactiontype, string text, Scene scene)
+                int transactiontype, string text, Scene scene,
+                int senderFunds, int senderUpload,
+                int receiverFunds, int receiverUpload)
         {
             LedgerData l = new LedgerData();
             l.Data = new Dictionary<string,string>();
@@ -621,6 +623,10 @@ namespace Careminster.Modules.Currency
             l.Data["l_type"] = transactiontype.ToString();
             l.Data["l_description"] = text;
             l.Data["l_region"] = scene.RegionInfo.RegionName;
+            l.Data["l_from_running_amount"] = senderFunds.ToString();
+            l.Data["l_from_running_upload"] = senderUpload.ToString();
+            l.Data["l_to_running_amount"] = receiverFunds.ToString();
+            l.Data["l_to_running_upload"] = receiverUpload.ToString();
 
             m_LedgerTable.Store(l);
         }
@@ -642,8 +648,18 @@ namespace Careminster.Modules.Currency
                 if (transactiontype == 1101) // Upload
                     m_AccountsTable.AddUpload(sender, -amount);
                 m_AccountsTable.Add(receiver, amount);
+
+                int senderFunds = GetAgentFunds(sender);
+                int receiverFunds = GetAgentFunds(receiver);
+                int senderAvailableFunds = GetAvailableAgentFunds(sender);
+                int receiverAvailableFunds = GetAvailableAgentFunds(receiver);
+
                 MakeLedgerEntry(sender, receiver, amount,
-                        transactiontype, text, scene);
+                        transactiontype, text, scene,
+                        senderAvailableFunds,
+                        senderFunds - senderAvailableFunds,
+                        receiverAvailableFunds,
+                        receiverFunds - receiverAvailableFunds);
             }
 
             // If the amount is 0, suppress annoying popups
