@@ -1142,6 +1142,12 @@ namespace Careminster.Modules.Currency
                 }
             }
         }
+
+        public void MoveMoney(UUID fromAgentID, UUID toAgentID, int amount, string text)
+        {
+            MoveMoney(fromAgentID, toAgentID, amount, 5001, text,
+                    String.Empty, String.Empty, null);
+        }
     }
 
     public class MySQLAccountsTableHandler : MySQLGenericTableHandler<AccountData>

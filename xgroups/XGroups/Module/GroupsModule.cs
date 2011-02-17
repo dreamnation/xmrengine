@@ -826,8 +826,39 @@ namespace Careminster.Modules.Groups
                             return;
                         }
 
-                        money.ApplyCharge(client.AgentId, g.MembershipFee,
-                                "Group join fee");
+                        List<GroupRoleMembersData> roleMembers = GroupRoleMembersRequest(null, GroupID);
+                        List<UUID> owners = new List<UUID>();
+
+                        foreach (GroupRoleMembersData rm in roleMembers)
+                        {
+                            if (rm.RoleID == g.OwnerRoleID)
+                            {
+                                if (!owners.Contains(rm.MemberID))
+                                    owners.Add(rm.MemberID);
+                            }
+                        }
+
+                        if (owners.Count < 1)
+                        {
+                            money.ApplyCharge(client.AgentId, g.MembershipFee,
+                                    "Group join fee");
+                        }
+                        else
+                        {
+                            int f = g.MembershipFee;
+                            int sh = f / owners.Count;
+
+                            foreach (UUID o in owners)
+                            {
+                                if (sh > 0)
+                                    money.MoveMoney(client.AgentId, o, sh, "Group join fee");
+                                f -= sh;
+                            }
+                            if (f > 0)
+                            {
+                                money.MoveMoney(client.AgentId, owners[0], f, "Group join fee");
+                            }
+                        }
                     }
                 }
 
@@ -1065,28 +1096,19 @@ namespace Careminster.Modules.Groups
                 }
             }
 
+            GroupRecord r = GetGroupRecord(name);
+            if (r != null)
+            {
+                remoteClient.SendCreateGroupReply(UUID.Zero, false, "The selected group name already exists");
+                return UUID.Zero;
+            }
+
             using (MySqlConnection conn = new MySqlConnection(m_ConnectionString))
             {
                 conn.Open();
 
                 using (MySqlCommand cmd = conn.CreateCommand())
                 {
-                    cmd.CommandText = "select * from groups where GroupName=?GroupName'";
-                    cmd.Parameters.AddWithValue("?GroupName", name);
-
-                    using (IDataReader r = cmd.ExecuteReader())
-                    {
-                        if (r.Read())
-                        {
-                            r.Close();
-
-                            remoteClient.SendCreateGroupReply(UUID.Zero, false, "The selected group name already exists");
-                            return UUID.Zero;
-                        }
-                    }
-
-                    cmd.Parameters.Clear();
-
                     cmd.CommandText = "insert ignore into groups (GroupID, GroupName, "+
                             "Charter, GroupPicture, MembershipFee, OpenEnrollment, "+
                             "AllowPublish, MaturePublish, FounderID, ShowInList, "+
