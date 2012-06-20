@@ -821,23 +821,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             if (m_Part != null)
             {
+                bool found;
                 int permsMask;
                 UUID permsGranter;
-                m_Part.TaskInventory.LockItemsForRead(true);
-                if (!m_Part.TaskInventory.ContainsKey(m_ItemID))
-                {
-                    m_Part.TaskInventory.LockItemsForRead(false);
-                    return;
-                }
-                permsGranter = m_Part.TaskInventory[m_ItemID].PermsGranter;
-                permsMask = m_Part.TaskInventory[m_ItemID].PermsMask;
-                m_Part.TaskInventory.LockItemsForRead(false);
 
-                if ((permsMask & ScriptBaseClass.PERMISSION_TAKE_CONTROLS) != 0)
-                {
+                try {
+                    permsGranter = m_Part.TaskInventory[m_ItemID].PermsGranter;
+                    permsMask = m_Part.TaskInventory[m_ItemID].PermsMask;
+                    found = true;
+                } catch {
+                    permsGranter = UUID.Zero;
+                    permsMask = 0;
+                    found = false;
+                }
+
+                if (found && ((permsMask & ScriptBaseClass.PERMISSION_TAKE_CONTROLS) != 0)) {
                     ScenePresence presence = m_Engine.World.GetScenePresence(permsGranter);
-                    if (presence != null)
-                    {
+                    if (presence != null) {
                         presence.UnRegisterControlEventsToScript(m_LocalID, m_ItemID);
                     }
                 }

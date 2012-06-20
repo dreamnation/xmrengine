@@ -81,6 +81,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
         }
 
+        /* Can't override in latest OpenSim ---
         public override LSL_Integer llGetFreeMemory()
         {
             if (m_ScriptEngine is XMREngine)
@@ -93,7 +94,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             {
                 return base.llGetFreeMemory();
             }
-        }
+        }*/
     }
 
     public partial class XMRInstance
@@ -141,8 +142,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public void Die()
         {
             // llDie doesn't work in attachments!
-            if (m_Part.ParentGroup.RootPart.IsAttachment || m_DetachQuantum > 0)
-                return;
+///???            if (m_Part.ParentGroup.RootPart.IsAttachment || m_DetachQuantum > 0)
+///???                return;
 
             m_Die = true;
             throw new XMRScriptResetException();
@@ -472,7 +473,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public void StateChange()
         {
-            AsyncCommandManager.StateChange(m_Engine, m_LocalID, m_ItemID);
+///???            AsyncCommandManager.StateChange(m_Engine, m_LocalID, m_ItemID);
             m_Part.SetScriptEvents(m_ItemID, 
                                    GetStateEventFlags(stateCode));
         }

@@ -6,6 +6,8 @@
 // All rights reserved
 //
 
+#define DBP m_log.DebugFormat
+#define TCP if (m_TraceCalls) m_log.DebugFormat
 
 using System;
 using System.Xml;
@@ -21,13 +23,13 @@ using System.Collections;
 using System.Security.Policy;
 using OpenSim.Framework;
 using OpenSim.Framework.Console;
+using OpenSim.Region.ClientStack.Linden;
 using OpenSim.Region.Framework.Scenes;
 using OpenSim.Region.Framework.Interfaces;
 using OpenSim.Region.ScriptEngine.Interfaces;
 using OpenSim.Region.ScriptEngine.Shared;
 using OpenSim.Region.ScriptEngine.Shared.Api;
 using OpenMetaverse.StructuredData;
-using OpenSim.Region.CoreModules.Framework.EventQueue;
 using Nini.Config;
 using Mono.Addins;
 using Mono.Tasklets;
@@ -102,14 +104,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public  XMRInstQueue m_YieldQueue = new XMRInstQueue();
         public  XMRInstQueue m_SleepQueue = new XMRInstQueue();
         private string m_LockedDict = "nobody";
-        // Initialisation call for SNMP
-        // Trap sent using : s_snmp.trapDebug("ModuleName","test here ",scene);
-        private ISnmpModule s_snmp=null;
 
         public XMREngine()
         {
             string envar = Environment.GetEnvironmentVariable("XMREngineTraceCalls");
             m_TraceCalls = (envar != null) && ((envar[0] & 1) != 0);
+            m_log.DebugFormat("[XMREngine]: m_TraceCalls={0}", m_TraceCalls);
         }
 
         public string Name
@@ -129,6 +129,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void Initialise(IConfigSource config)
         {
+            TCP("[XMREngine]: Initialize entry");
             m_ConfigSource = config;
 
             if (config.Configs["XMREngine"] == null)
@@ -141,6 +142,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if ((envar != null) && ((envar[0] & 1) != 0)) {
                 m_Enabled = false;
             }
+            TCP("[XMREngine]: Initialize enabled={0}", m_Enabled);
 
             if (!m_Enabled)
                 return;
@@ -197,6 +199,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     "xmr test [backup|cvv|gc|ls|mvv|reset|resume|suspend|top|traceheapuse]",
                     "Run current xmr test",
                     RunTest);
+
+            TCP("[XMREngine]: Initialize successful");
         }
 
         public void AddRegion(Scene scene)
@@ -204,10 +208,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (!m_Enabled)
                 return;
 
-            if (m_TraceCalls)
-            {
-                m_log.DebugFormat("[XMREngine]: XMREngine.AddRegion({0})", scene.RegionInfo.RegionName);
-            }
+            TCP("[XMREngine]: XMREngine.AddRegion({0})", scene.RegionInfo.RegionName);
 
             m_Scene = scene;
 
@@ -225,14 +226,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             Directory.CreateDirectory(m_ScriptBasePath);
 
-            // Snmp Initialisation 
-        
-            s_snmp =m_Scene.RequestModuleInterface<ISnmpModule>();
-            if (s_snmp != null ) {
-                m_log.Info("[XMRE-SNMP] module initisalised");
-                s_snmp.trapDebug("XMRE","XMREngine initialised",scene);
-            }
-
             m_Scene.EventManager.OnRezScript += OnRezScript;
         }
 
@@ -245,10 +238,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (!m_Enabled)
                 return;
 
-            if (m_TraceCalls)
-            {
-                m_log.DebugFormat("[XMREngine]: XMREngine.RemoveRegion({0})", scene.RegionInfo.RegionName);
-            }
+            TCP("[XMREngine]: XMREngine.RemoveRegion({0})", scene.RegionInfo.RegionName);
 
             /*
              * Write script states out to .state files so it will be
@@ -290,10 +280,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (!m_Enabled)
                 return;
 
-            if (m_TraceCalls)
-            {
-                m_log.DebugFormat("[XMREngine]: XMREngine.RegionLoaded({0})", scene.RegionInfo.RegionName);
-            }
+            TCP("[XMREngine]: XMREngine.RegionLoaded({0})", scene.RegionInfo.RegionName);
 
             m_Scene.EventManager.OnRemoveScript += OnRemoveScript;
             m_Scene.EventManager.OnScriptReset += OnScriptReset;
@@ -307,18 +294,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_ScriptThread = new Thread(RunScriptThread);
             m_SliceThread  = new Thread(RunSliceThread);
             m_ScriptThread.Priority = ThreadPriority.BelowNormal;
-            m_ScriptThread.Start();
-            m_SliceThread.Start();
 
             /////////////// Test
         }
 
+        public void StartProcessing()
+        {
+            m_ScriptThread.Start();
+            m_SliceThread.Start();
+        }
+
         public void Close()
         {
-            if (m_TraceCalls)
-            {
-                m_log.DebugFormat("[XMREngine]: XMREngine.Close()");
-            }
+            TCP("[XMREngine]: XMREngine.Close()");
         }
 
         private void RunTest(string module, string[] args)
@@ -428,6 +416,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             get { return this; }
         }
 
+        public void SaveAllState()
+        {
+            m_log.Error("[XMREngine]: XMREngine.SaveAllState() called!!");
+        }
+
         public event ScriptRemoved OnScriptRemoved;
         public event ObjectRemoved OnObjectRemoved;
 
@@ -446,10 +439,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
             }
 
-            if (m_TraceCalls)
-            {
-                m_log.DebugFormat("[XMREngine]: XMREngine.PostScriptEvent({0},{1})", itemID.ToString(), parms.EventName);
-            }
+            TCP("[XMREngine]: XMREngine.PostScriptEvent({0},{1})", itemID.ToString(), parms.EventName);
 
             instance.PostEvent(parms);
 
@@ -467,10 +457,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (part == null)
                 return false;
 
-            if (m_TraceCalls)
-            {
-                m_log.DebugFormat("[XMREngine]: XMREngine.PostObjectEvent({0},{1})", localID.ToString(), parms.EventName);
-            }
+            TCP("[XMREngine]: XMREngine.PostObjectEvent({0},{1})", localID.ToString(), parms.EventName);
 
             List<UUID> list = null;
             lock (m_InstancesDict) {
@@ -545,10 +532,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
             }
 
-            if (m_TraceCalls)
-            {
-                m_log.DebugFormat("[XMREngine]: XMREngine.SetScriptState({0},{1})", itemID.ToString(), state.ToString());
-            }
+            TCP("[XMREngine]: XMREngine.SetScriptState({0},{1})", itemID.ToString(), state.ToString());
 
             instance.Running = state;
         }
@@ -572,10 +556,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void SetState(UUID itemID, string newState)
         {
-            if (m_TraceCalls)
-            {
-                m_log.DebugFormat("[XMREngine]: XMREngine.SetState({0},{1})", itemID.ToString(), newState);
-            }
+            TCP("[XMREngine]: XMREngine.SetState({0},{1})", itemID.ToString(), newState);
         }
 
         public void ApiResetScript(UUID itemID)
@@ -590,10 +571,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
             }
 
-            if (m_TraceCalls)
-            {
-                m_log.DebugFormat("[XMREngine]: XMREngine.ApiResetScript({0})", itemID.ToString());
-            }
+            TCP("[XMREngine]: XMREngine.ApiResetScript({0})", itemID.ToString());
 
             instance.ApiReset();
         }
@@ -610,10 +588,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
             }
 
-            if (m_TraceCalls)
-            {
-                m_log.DebugFormat("[XMREngine]: XMREngine.ResetScript({0})", itemID.ToString());
-            }
+            TCP("[XMREngine]: XMREngine.ResetScript({0})", itemID.ToString());
 
             instance.Reset();
         }
@@ -654,10 +629,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     return String.Empty;
                 }
             }
-            if (m_TraceCalls)
-            {
-                m_log.DebugFormat("[XMREngine]: XMREngine.GetXMLState({0})", itemID.ToString());
-            }
+            TCP("[XMREngine]: XMREngine.GetXMLState({0})", itemID.ToString());
 
             if (!instance.m_HasRun)
                 return String.Empty;
@@ -739,10 +711,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             {
                 return false;
             }
-            if (m_TraceCalls)
-            {
-                m_log.DebugFormat("[XMREngine]: XMREngine.SetXMLState({0})", itemID.ToString());
-            }
+            TCP("[XMREngine]: XMREngine.SetXMLState({0})", itemID.ToString());
 
             // Make sure <State Engine="XMREngine"> so we know it is in our
             // format.
@@ -802,10 +771,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (!m_Enabled)
                 return false;
 
-            if (m_TraceCalls)
-            {
-                m_log.DebugFormat("[XMREngine]: XMREngine.PostScriptEvent({0},{1})", itemID.ToString(), name);
-            }
+            TCP("[XMREngine]: XMREngine.PostScriptEvent({0},{1})", itemID.ToString(), name);
 
             Object[] lsl_p = new Object[p.Length];
             for (int i = 0; i < p.Length ; i++)
@@ -826,10 +792,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (!m_Enabled)
                 return false;
 
-            if (m_TraceCalls)
-            {
-                m_log.DebugFormat("[XMREngine]: XMREngine.PostObjectEvent({0},{1})", itemID.ToString(), name);
-            }
+            TCP("[XMREngine]: XMREngine.PostObjectEvent({0},{1})", itemID.ToString(), name);
 
             SceneObjectPart part = m_Scene.GetSceneObjectPart(itemID);
             if (part == null)
@@ -866,10 +829,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             SceneObjectPart part = m_Scene.GetSceneObjectPart(localID);
             TaskInventoryItem item = part.Inventory.GetInventoryItem(itemID);
 
-            if (m_TraceCalls)
-            {
-                m_log.DebugFormat("[XMREngine]: OnRezScript(...,{0},...)", itemID.ToString());
-            }
+            TCP("[XMREngine]: OnRezScript(...,{0},...)", itemID.ToString());
 
             if (script.StartsWith("//MRM:"))
             {
@@ -919,8 +879,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                          */
                         if (engine == ScriptEngineName)
                         {
-                            ScenePresence presence =
-                                    m_Scene.GetScenePresence(item.OwnerID);
+///???                            ScenePresence presence =
+///???                                    m_Scene.GetScenePresence(item.OwnerID);
 
 //                            if (presence != null)
 //                            {
@@ -1031,10 +991,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_Scene.GetSceneObjectPart(localID);
             XMRInstance instance = null;
 
-            if (m_TraceCalls)
-            {
-                m_log.DebugFormat("[XMREngine]: OnRemoveScript(...,{0})", itemID.ToString());
-            }
+            TCP("[XMREngine]: OnRemoveScript(...,{0})", itemID.ToString());
 
             /*
              * Remove from our list of known scripts.
@@ -1097,10 +1054,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void OnScriptReset(uint localID, UUID itemID)
         {
-            if (m_TraceCalls)
-            {
-                m_log.DebugFormat("[XMREngine]: XMREngine.OnScriptReset({0},{1})", localID.ToString(), itemID.ToString());
-            }
+            TCP("[XMREngine]: XMREngine.OnScriptReset({0},{1})", localID.ToString(), itemID.ToString());
             ResetScript(itemID);
         }
 
@@ -1115,10 +1069,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     return;
                 }
             }
-            if (m_TraceCalls)
-            {
-                m_log.DebugFormat("[XMREngine]: XMREngine.OnStartScript({0},{1})", localID.ToString(), itemID.ToString());
-            }
+            TCP("[XMREngine]: XMREngine.OnStartScript({0},{1})", localID.ToString(), itemID.ToString());
 
             instance.Running = true;
         }
@@ -1134,10 +1085,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     return;
                 }
             }
-            if (m_TraceCalls)
-            {
-                m_log.DebugFormat("[XMREngine]: XMREngine.OnStopScript({0},{1})", localID.ToString(), itemID.ToString());
-            }
+            TCP("[XMREngine]: XMREngine.OnStopScript({0},{1})", localID.ToString(), itemID.ToString());
 
             instance.Running = false;
         }
@@ -1154,10 +1102,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     return;
                 }
             }
-            if (m_TraceCalls)
-            {
-                m_log.DebugFormat("[XMREngine]: XMREngine.OnGetScriptRunning({0},{1})", objectID.ToString(), itemID.ToString());
-            }
+            TCP("[XMREngine]: XMREngine.OnGetScriptRunning({0},{1})", objectID.ToString(), itemID.ToString());
 
             IEventQueue eq = World.RequestModuleInterface<IEventQueue>();
             if (eq == null)
@@ -1197,10 +1142,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public void OnShutdown()
         {
-            if (m_TraceCalls)
-            {
-                m_log.DebugFormat("[XMREngine]: XMREngine.OnShutdown()");
-            }
+            TCP("[XMREngine]: XMREngine.OnShutdown()");
         }
 
         /**
@@ -1581,10 +1523,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if (!m_InstancesDict.TryGetValue(itemID, out instance))
                     return;
             }
-            if (m_TraceCalls)
-            {
-                m_log.DebugFormat("[XMREngine]: XMREngine.Die({0})", itemID.ToString());
-            }
+            TCP("[XMREngine]: XMREngine.Die({0})", itemID.ToString());
             instance.Die();
         }
 
@@ -1609,8 +1548,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             foreach (XMRInstance ins in instanceArray)
             {
                 // Don't save attachments
-                if (ins.m_Part.ParentGroup.RootPart.IsAttachment)
-                    continue;
+///             if (ins.m_Part.ParentGroup.RootPart.IsAttachment)
+///                 continue;
                 ins.GetExecutionState(new XmlDocument());
             }
         }
@@ -1650,10 +1589,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
             }
 
-            if (m_TraceCalls)
-            {
-                m_log.DebugFormat("[XMREngine]: XMREngine.SuspendScript({0})", itemID.ToString());
-            }
+            TCP("[XMREngine]: XMREngine.SuspendScript({0})", itemID.ToString());
 
             instance.Suspend();
         }
@@ -1671,10 +1607,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
             }
 
-            if (m_TraceCalls)
-            {
-                m_log.DebugFormat("[XMREngine]: XMREngine.ResumeScript({0})", itemID.ToString());
-            }
+            TCP("[XMREngine]: XMREngine.ResumeScript({0})", itemID.ToString());
 
             instance.Resume();
         }

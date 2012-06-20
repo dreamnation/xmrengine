@@ -293,13 +293,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                 if (m_StateSource == StateSource.AttachedRez)
                 {
-                    // HACK
-                    m_Part.ParentGroup.RootPart.AttachedAvatar = m_Part.OwnerID;
-                    m_Part.ParentGroup.RootPart.IsAttachment = true;
-
-                    PostEvent(new EventParams("attach",
-                            new object[] { m_Part.AttachedAvatar.ToString() }, 
-                            zeroDetectParams));
+///???                  // HACK
+///???                  m_Part.ParentGroup.RootPart.AttachedAvatar = m_Part.OwnerID;
+///???                  m_Part.ParentGroup.RootPart.IsAttachment = true;
+///???
+///???                  PostEvent(new EventParams("attach",
+///???                          new object[] { m_Part.AttachedAvatar.ToString() }, 
+///???                          zeroDetectParams));
                 }
                 else if (m_StateSource == StateSource.PrimCrossing)
                 {
@@ -561,13 +561,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             // Maybe an 'attach' event too
             if (m_StateSource == StateSource.AttachedRez)
             {
-                // HACK
-                m_Part.ParentGroup.RootPart.AttachedAvatar = m_Part.OwnerID;
-                m_Part.ParentGroup.RootPart.IsAttachment = true;
-
-                PostEvent(new EventParams("attach",
-                        new object[] { m_Part.AttachedAvatar.ToString() }, 
-                        zeroDetectParams));
+///???              // HACK
+///???              m_Part.ParentGroup.RootPart.AttachedAvatar = m_Part.OwnerID;
+///???              m_Part.ParentGroup.RootPart.IsAttachment = true;
+///???
+///???              PostEvent(new EventParams("attach",
+///???                      new object[] { m_Part.AttachedAvatar.ToString() }, 
+///???                      zeroDetectParams));
             }
         }
 
@@ -682,7 +682,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 d.Rotation = d_rotation;
                 d.Type = d_type;
                 d.Velocity = d_velocity;
-                d.Country = d_country;
+///???              d.Country = d_country;
 
                 detected.Add(d);
             }
