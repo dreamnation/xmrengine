@@ -1,0 +1,12 @@
+bin
+xmrengine/XMREngine/Compiler/xmrengcomp.zip
+xmrengine/XMREngine/Compiler/*.cs
+xmrengine/XMREngine/Engine/*.cs
+*~
+*.exe
+*.exe.mdb
+*.o
+*.xmrasm
+*.xmrbin
+*.xmrobj
+*.xmrsrc
