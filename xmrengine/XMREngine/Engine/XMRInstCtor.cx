@@ -186,7 +186,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * - either preserved in a .state file
                  * - or initial default state_entry() event
                  */
-                TryToLoad(objCode);
+                LoadInitialState();
                 m_log.DebugFormat("[XMREngine]: load successful {0}", m_DescName);
 
                 /*
@@ -257,117 +257,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return objCode;
         }
 
-        //  TryToLoad()
-        //      create script instance
-        //      if no state XML file exists for the asset,
-        //          post initial default state events
-        //      else
-        //          try to restore from .state file
-        //  If any error, throw exception
-        //
-        private void TryToLoad(ScriptObjCode objCode)
-        {
-
-            // If no .state file exists, start from default state
-            if (m_ForceReset) {
-                File.Delete(m_StateFileName);
-            }
-            if (!File.Exists(m_StateFileName))
-            {
-                m_Running = true;                  // event processing is enabled
-                eventCode = ScriptEventCode.None;  // not processing any event
-
-                // default state_entry() must initialize global variables
-                doGblInit = true;
-                stateCode = 0;
-                PostEvent(new EventParams("state_entry", 
-                                          zeroObjectArray,
-                                          zeroDetectParams));
-
-                if (m_PostOnRez)
-                {
-                    PostEvent(new EventParams("on_rez",
-                            new Object[] { m_StartParam }, 
-                            zeroDetectParams));
-                }
-
-                if (m_StateSource == StateSource.AttachedRez)
-                {
-///???                  // HACK
-///???                  m_Part.ParentGroup.RootPart.AttachedAvatar = m_Part.OwnerID;
-///???                  m_Part.ParentGroup.RootPart.IsAttachment = true;
-///???
-///???                  PostEvent(new EventParams("attach",
-///???                          new object[] { m_Part.AttachedAvatar.ToString() }, 
-///???                          zeroDetectParams));
-                }
-                else if (m_StateSource == StateSource.PrimCrossing)
-                {
-                    PostEvent(new EventParams("changed",
-                            new Object[] { ScriptBaseClass.CHANGED_REGION }, 
-                            zeroDetectParams));
-                }
-                else if (m_StateSource == StateSource.Teleporting)
-                {
-                    PostEvent(new EventParams("changed",
-                            new Object[] { ScriptBaseClass.CHANGED_REGION }, 
-                            zeroDetectParams));
-                    PostEvent(new EventParams("changed",
-                            new Object[] { ScriptBaseClass.CHANGED_TELEPORT }, 
-                            zeroDetectParams));
-                }
-                else if (m_StateSource == StateSource.RegionStart)
-                {
-                    PostEvent(new EventParams("changed",
-                            new Object[] { ScriptBaseClass.CHANGED_REGION_START }, 
-                            zeroDetectParams));
-                }
-            } else {
-
-                // Got a .state file, try to read .state file into script instance
-                // If any error, throw an exception
-                FileStream fs = File.Open(m_StateFileName, 
-                                          FileMode.Open, 
-                                          FileAccess.Read);
-                StreamReader ss = new StreamReader(fs);
-                string xml = ss.ReadToEnd();
-                ss.Close();
-                fs.Close();
-
-                XmlDocument doc = new XmlDocument();
-                doc.LoadXml(xml);
-                LoadScriptState(doc);
-
-                if (m_StateSource == StateSource.PrimCrossing)
-                {
-                    PostEvent(new EventParams("changed",
-                            new Object[] { ScriptBaseClass.CHANGED_REGION }, 
-                            zeroDetectParams));
-                }
-                else if (m_StateSource == StateSource.Teleporting)
-                {
-                    PostEvent(new EventParams("changed",
-                            new Object[] { ScriptBaseClass.CHANGED_REGION }, 
-                            zeroDetectParams));
-                    PostEvent(new EventParams("changed",
-                            new Object[] { ScriptBaseClass.CHANGED_TELEPORT }, 
-                            zeroDetectParams));
-                }
-                else if (m_StateSource == StateSource.RegionStart)
-                {
-                    PostEvent(new EventParams("changed",
-                            new Object[] { ScriptBaseClass.CHANGED_REGION_START }, 
-                            zeroDetectParams));
-                }
-            }
-        }
-
         /*
          * Fill in script object initial contents.
          * Set the initial state to "default".
-         *
-         * Caller should call StartEventHandler() or MigrateInEventHandler() next.
-         * If calling StartEventHandler(), use ScriptEventCode.state_entry with no args.
          */
         private void LoadObjCode (ScriptObjCode objCode)
         {
@@ -439,6 +331,95 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             this.dllsArray[1] = MMRCont.GetDLLName (typeof (MMRCont));      // ...Mono.Tasklets.dll
             this.dllsArray[2] = MMRCont.GetDLLName (typeof (LSL_Vector));   // ...ScriptEngine.Shared.dll
         }
+
+        //  LoadInitialState()
+        //      if no state XML file exists for the asset,
+        //          post initial default state events
+        //      else
+        //          try to restore from .state file
+        //  If any error, throw exception
+        //
+        private void LoadInitialState()
+        {
+            if (m_ForceReset) {
+                File.Delete(m_StateFileName);
+            }
+
+            /*
+             * If no .state file exists, start from default state
+             * Otherwise, read initial state from the .state file
+             */
+            if (!File.Exists(m_StateFileName)) {
+                m_Running = true;                  // event processing is enabled
+                eventCode = ScriptEventCode.None;  // not processing any event
+
+                // default state_entry() must initialize global variables
+                doGblInit = true;
+                stateCode = 0;
+
+                PostEvent(new EventParams("state_entry", 
+                                          zeroObjectArray,
+                                          zeroDetectParams));
+            } else {
+                FileStream fs = File.Open(m_StateFileName, 
+                                          FileMode.Open, 
+                                          FileAccess.Read);
+                StreamReader ss = new StreamReader(fs);
+                string xml = ss.ReadToEnd();
+                ss.Close();
+                fs.Close();
+
+                XmlDocument doc = new XmlDocument();
+                doc.LoadXml(xml);
+                LoadScriptState(doc);
+            }
+
+            /*
+             * Post event(s) saying what caused the script to start.
+             */
+            if (m_PostOnRez) {
+                PostEvent(new EventParams("on_rez",
+                          new Object[] { m_StartParam }, 
+                          zeroDetectParams));
+            }
+
+            switch (m_StateSource) {
+                case StateSource.AttachedRez: {
+                    PostEvent(new EventParams("attach",
+                              new object[] { m_Part.ParentGroup.AttachedAvatar.ToString() }, 
+                              zeroDetectParams));
+                    break;
+                }
+
+                case StateSource.PrimCrossing: {
+                    PostEvent(new EventParams("changed",
+                              sbcCR, 
+                              zeroDetectParams));
+                    break;
+                }
+
+                case StateSource.Teleporting: {
+                    PostEvent(new EventParams("changed",
+                              sbcCR, 
+                              zeroDetectParams));
+                    PostEvent(new EventParams("changed",
+                              sbcCT, 
+                              zeroDetectParams));
+                    break;
+                }
+
+                case StateSource.RegionStart: {
+                    PostEvent(new EventParams("changed",
+                              sbcCRS, 
+                              zeroDetectParams));
+                    break;
+                }
+            }
+        }
+
+        private static Object[] sbcCRS = new Object[] { ScriptBaseClass.CHANGED_REGION_START };
+        private static Object[] sbcCR  = new Object[] { ScriptBaseClass.CHANGED_REGION };
+        private static Object[] sbcCT  = new Object[] { ScriptBaseClass.CHANGED_TELEPORT };
 
         /**
          * @brief Save compilation error messages for later retrieval
@@ -550,25 +531,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                                                                          evt.EventName);
                 m_EventCounts[(int)eventCode] ++;
             }
-
-            // See if we are supposed to send an 'on_rez' event
-            if (m_PostOnRez)
-            {
-                PostEvent(new EventParams("on_rez",
-                        new Object[] { m_StartParam }, zeroDetectParams));
-            }
- 
-            // Maybe an 'attach' event too
-            if (m_StateSource == StateSource.AttachedRez)
-            {
-///???              // HACK
-///???              m_Part.ParentGroup.RootPart.AttachedAvatar = m_Part.OwnerID;
-///???              m_Part.ParentGroup.RootPart.IsAttachment = true;
-///???
-///???              PostEvent(new EventParams("attach",
-///???                      new object[] { m_Part.AttachedAvatar.ToString() }, 
-///???                      zeroDetectParams));
-            }
         }
 
         /**
@@ -612,80 +574,37 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         private DetectParams[] RestoreDetectParams(XmlNode detectedN)
         {
-            if (detectedN == null)
-            {
-                return null;
-            }
+            if (detectedN == null) return null;
 
             List<DetectParams> detected = new List<DetectParams>();
-
             XmlNodeList detectL = detectedN.SelectNodes("DetectParams");
-            foreach (XmlNode det in detectL)
-            {
-                string vect =
-                        det.Attributes.GetNamedItem(
-                        "pos").Value;
-                LSL_Types.Vector3 v =
-                        new LSL_Types.Vector3(vect);
 
-                int d_linkNum=0;
-                UUID d_group = UUID.Zero;
-                string d_name = String.Empty;
-                UUID d_owner = UUID.Zero;
-                LSL_Types.Vector3 d_position =
-                    new LSL_Types.Vector3();
-                LSL_Types.Quaternion d_rotation =
-                    new LSL_Types.Quaternion();
-                int d_type = 0;
-                LSL_Types.Vector3 d_velocity =
-                    new LSL_Types.Vector3();
-                string d_country = String.Empty;
+            DetectParams detprm = new DetectParams();
+            foreach (XmlNode detxml in detectL) {
+                try {
+                    detprm.Group     = new UUID(detxml.Attributes.GetNamedItem("group").Value);
+                    detprm.Key       = new UUID(detxml.Attributes.GetNamedItem("key").Value);
+                    detprm.Owner     = new UUID(detxml.Attributes.GetNamedItem("owner").Value);
 
-                string tmp;
+                    detprm.LinkNum   = Int32.Parse(detxml.Attributes.GetNamedItem("linkNum").Value);
+                    detprm.Type      = Int32.Parse(detxml.Attributes.GetNamedItem("type").Value);
 
-                tmp = det.Attributes.GetNamedItem("linkNum").Value;
-                int.TryParse(tmp, out d_linkNum);
+                    detprm.Name      = detxml.Attributes.GetNamedItem("name").Value;
 
-                tmp = det.Attributes.GetNamedItem("group").Value;
-                UUID.TryParse(tmp, out d_group);
+                    detprm.OffsetPos = new LSL_Types.Vector3(detxml.Attributes.GetNamedItem("pos").Value);
+                    detprm.Position  = new LSL_Types.Vector3(detxml.Attributes.GetNamedItem("position").Value);
+                    detprm.Velocity  = new LSL_Types.Vector3(detxml.Attributes.GetNamedItem("velocity").Value);
 
-                d_name = det.Attributes.GetNamedItem("name").Value;
+                    detprm.Rotation  = new LSL_Types.Quaternion(detxml.Attributes.GetNamedItem("rotation").Value);
 
-                tmp = det.Attributes.GetNamedItem("owner").Value;
-                UUID.TryParse(tmp, out d_owner);
-
-                tmp = det.Attributes.GetNamedItem("position").Value;
-                d_position = new LSL_Types.Vector3(tmp);
-
-                tmp = det.Attributes.GetNamedItem("rotation").Value;
-                d_rotation = new LSL_Types.Quaternion(tmp);
-
-                tmp = det.Attributes.GetNamedItem("type").Value;
-                int.TryParse(tmp, out d_type);
-
-                tmp = det.Attributes.GetNamedItem("velocity").Value;
-                d_velocity = new LSL_Types.Vector3(tmp);
-
-                d_country = det.Attributes.GetNamedItem("country").Value;
-
-                UUID uuid = new UUID();
-                UUID.TryParse(det.InnerText, out uuid);
-
-                DetectParams d = new DetectParams();
-                d.Key = uuid;
-                d.OffsetPos = v;
-                d.LinkNum = d_linkNum;
-                d.Group = d_group;
-                d.Name = d_name;
-                d.Owner = d_owner;
-                d.Position = d_position;
-                d.Rotation = d_rotation;
-                d.Type = d_type;
-                d.Velocity = d_velocity;
-///???              d.Country = d_country;
-
-                detected.Add(d);
+                    detected.Add(detprm);
+                    detprm = new DetectParams();
+                } catch (Exception e) {
+                    m_log.Warn("[XMREngine]: RestoreDetectParams bad XML: " + detxml.ToString());
+                    m_log.Warn("[XMREngine]: ... " + e.ToString());
+                }
             }
+
             return detected.ToArray();
         }
 

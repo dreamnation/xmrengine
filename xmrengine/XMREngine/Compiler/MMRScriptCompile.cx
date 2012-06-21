@@ -698,10 +698,7 @@ version:
         {
             bool error = false;
             bool nocache = false;
-            byte[] buffer = new byte[4096];
-            FileStream fileStream = null;
             WebResponse response = null;
-            int length;
             Stream webStream = null;
             string url = null;
             TokenStr urlToken = null;

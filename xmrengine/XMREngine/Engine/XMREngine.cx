@@ -819,11 +819,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         //  script      = script source
         //  startParam  = value passed to 'on_rez' event handler
         //  postOnRez   = true to post an 'on_rez' event to script on load
-        //  engine      = ??? default script engine ???
+        //  defEngine   = default script engine
         //  stateSource = post this event to script on load
 
         public void OnRezScript(uint localID, UUID itemID, string script,
-                int startParam, bool postOnRez, string engine, int stateSource)
+                int startParam, bool postOnRez, string defEngine, int stateSource)
         {
             XMRInstance instance;
             SceneObjectPart part = m_Scene.GetSceneObjectPart(localID);
@@ -831,83 +831,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             TCP("[XMREngine]: OnRezScript(...,{0},...)", itemID.ToString());
 
-            if (script.StartsWith("//MRM:"))
-            {
-                return;
-            }
+            /*
+             * Assume script uses the default engine, whatever that is.
+             */
+            string engineName = defEngine;
 
             /*
-             * Get list of available script engines.
-             * (Yes, each and every time we get a new script...).
+             * Very first line might contain "//" scriptengine ":".
              */
-            List<IScriptModule> engines =
-                    new List<IScriptModule>(
-                    m_Scene.RequestModuleInterfaces<IScriptModule>());
-
-            List<string> names = new List<string>();
-            foreach (IScriptModule m in engines)
-                names.Add(m.ScriptEngineName);
-
-            /*
-             * Very first line might contain "//" scriptengine ":"
-             */
-            int lineEnd = script.IndexOf('\n');
-            if (lineEnd > 1)
-            {
-                string firstline = script.Substring(0, lineEnd).Trim();
-
+            if (script.StartsWith("//")) {
+                string firstline = "";
+                int lineEnd = script.IndexOf('\n');
+                if (lineEnd > 1) firstline = script.Substring(0, lineEnd).Trim();
                 int colon = firstline.IndexOf(':');
-                if ((colon > 2) && 
-                    (firstline.Substring(0, 2) == "//"))
-                {
-                    string engineName = firstline.Substring(2, colon - 2).Trim();
-
-                    if (names.Contains(engineName))
-                    {
-                        /*
-                         * It's a known engine, get the given name and strip the
-                         * name from the script text.
-                         */
-                        engine = engineName;
-                        script = "//" + script.Substring(script.IndexOf(':') + 1);
-                    }
-                    else
-                    {
-                        /*
-                         * Engine unknown.  If we are the default script engine,
-                         * output an alert message then try to handle the script.
-                         */
-                        if (engine == ScriptEngineName)
-                        {
-///???                            ScenePresence presence =
-///???                                    m_Scene.GetScenePresence(item.OwnerID);
-
-//                            if (presence != null)
-//                            {
-//                                StringBuilder sb = new StringBuilder();
-//                                sb.Append("Selected engine (");
-//                                sb.Append(engineName);
-//                                sb.Append(") unavailable.  Have");
-//                                foreach (string n in names)
-//                                {
-//                                    sb.Append(" ");
-//                                    sb.Append(n);
-//                                }
-//                                sb.Append(".  Running script on ");
-//                                sb.Append(ScriptEngineName);
-//                                sb.Append(".");
-//                                presence.ControllingClient.SendAgentAlertMessage(sb.ToString(), false);
-//                            }
-                        }
-                    }
-                }
+                if (colon > 2) engineName = firstline.Substring(2, colon - 2).Trim();
             }
 
-            if (engine != ScriptEngineName)
+            /*
+             * Make sure the default or requested engine is us.
+             */
+            if (engineName != ScriptEngineName) {
                 return;
-
-            //m_log.DebugFormat("[XMREngine]: loading script {0}, asset {1}, param {2}",
-             //       item.Name, item.AssetID, startParam.ToString());
+            }
 
             /*
              * Compile and load the script in memory.

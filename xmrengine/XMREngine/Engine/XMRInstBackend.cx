@@ -82,6 +82,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         /* Can't override in latest OpenSim ---
+         * Scripts can use xmrHeapLeft() and xmrStackLeft() if they want
         public override LSL_Integer llGetFreeMemory()
         {
             if (m_ScriptEngine is XMREngine)

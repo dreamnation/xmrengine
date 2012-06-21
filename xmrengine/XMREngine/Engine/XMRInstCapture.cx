@@ -434,57 +434,46 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private static XmlElement GetXMLDetect(XmlDocument doc, DetectParams d)
         {
             XmlElement detectParamsN = doc.CreateElement("", "DetectParams", "");
+
+            XmlAttribute d_key = doc.CreateAttribute("", "key", "");
+            d_key.Value = d.Key.ToString();
+            detectParamsN.Attributes.Append(d_key);
+
             XmlAttribute pos = doc.CreateAttribute("", "pos", "");
             pos.Value = d.OffsetPos.ToString();
             detectParamsN.Attributes.Append(pos);
 
-            XmlAttribute d_linkNum = doc.CreateAttribute("",
-                    "linkNum", "");
+            XmlAttribute d_linkNum = doc.CreateAttribute("", "linkNum", "");
             d_linkNum.Value = d.LinkNum.ToString();
             detectParamsN.Attributes.Append(d_linkNum);
 
-            XmlAttribute d_group = doc.CreateAttribute("",
-                    "group", "");
+            XmlAttribute d_group = doc.CreateAttribute("", "group", "");
             d_group.Value = d.Group.ToString();
             detectParamsN.Attributes.Append(d_group);
 
-            XmlAttribute d_name = doc.CreateAttribute("",
-                    "name", "");
+            XmlAttribute d_name = doc.CreateAttribute("", "name", "");
             d_name.Value = d.Name.ToString();
             detectParamsN.Attributes.Append(d_name);
 
-            XmlAttribute d_owner = doc.CreateAttribute("",
-                    "owner", "");
+            XmlAttribute d_owner = doc.CreateAttribute("", "owner", "");
             d_owner.Value = d.Owner.ToString();
             detectParamsN.Attributes.Append(d_owner);
 
-            XmlAttribute d_position = doc.CreateAttribute("",
-                    "position", "");
+            XmlAttribute d_position = doc.CreateAttribute("", "position", "");
             d_position.Value = d.Position.ToString();
             detectParamsN.Attributes.Append(d_position);
 
-            XmlAttribute d_rotation = doc.CreateAttribute("",
-                    "rotation", "");
+            XmlAttribute d_rotation = doc.CreateAttribute("", "rotation", "");
             d_rotation.Value = d.Rotation.ToString();
             detectParamsN.Attributes.Append(d_rotation);
 
-            XmlAttribute d_type = doc.CreateAttribute("",
-                    "type", "");
+            XmlAttribute d_type = doc.CreateAttribute("", "type", "");
             d_type.Value = d.Type.ToString();
             detectParamsN.Attributes.Append(d_type);
 
-            XmlAttribute d_velocity = doc.CreateAttribute("",
-                    "velocity", "");
+            XmlAttribute d_velocity = doc.CreateAttribute("", "velocity", "");
             d_velocity.Value = d.Velocity.ToString();
             detectParamsN.Attributes.Append(d_velocity);
-
-///???          XmlAttribute d_country = doc.CreateAttribute("",
-///???                  "country", "");
-///???          d_country.Value = d.Country;
-///???          detectParamsN.Attributes.Append(d_country);
-
-            detectParamsN.AppendChild(
-                doc.CreateTextNode(d.Key.ToString()));
 
             return detectParamsN;
         }
