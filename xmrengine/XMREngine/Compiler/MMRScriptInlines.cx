@@ -9,6 +9,7 @@ using System.Reflection;
 using System.Reflection.Emit;
 using System.Text;
 
+using OpenSim.Region.ScriptEngine.Shared.Api.Interfaces;
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 
 #include "lsltypes.h"
@@ -34,14 +35,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public bool changesState;     // false: this function cannot change state
 		                              //  true: this function might change state
 
+		private static Type[] oneDoub  = new Type[] { typeof (double) };
+		private static Type[] twoDoubs = new Type[] { typeof (double), typeof (double) };
+
 		private static TokenTypeFloat tokenTypeFloat  = new TokenTypeFloat (null);
 		private static TokenTypeInt   tokenTypeInt    = new TokenTypeInt (null);
-///		private static TokenTypeStr   tokenTypeString = new TokenTypeStr (null);
+		private static TokenTypeStr   tokenTypeString = new TokenTypeStr (null);
 
 ///		private static MethodInfo consoleWrite = ScriptCodeGen.GetStaticMethod (typeof (XMRInstAbstract), "ConsoleWrite",
 ///				new Type[] { typeof (XMRInstAbstract), typeof (string) });
 		private static MethodInfo roundMethInfo = ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Round", 
 				new Type[] { typeof (double), typeof (MidpointRounding) });
+
 		private static MethodInfo xmrEventCallHandler = typeof (XMRInstAbstract).GetMethod ("XMREventCallHandler",
 				new Type[] { typeof (LSL_List) });
 		private static MethodInfo xmrEventDequeue  = typeof (XMRInstAbstract).GetMethod ("XMREventDequeue",
@@ -52,6 +57,50 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				new Type[] { typeof (LSL_List) });
 		private static MethodInfo xmrEventSaveDets = typeof (XMRInstAbstract).GetMethod ("XMREventSaveDets",
 				new Type[] { });
+		private static MethodInfo xmrOSParseJSON = typeof (XMRInstAbstract).GetMethod ("XMRosParseJSON", 
+				new Type[] { typeof (string) });
+
+		/*
+		 * For those listed in noCheckRun, we just generate the call (simple computations).
+		 * For all others, we generate the call then a call to wrapper.continuation.CheckRun().
+		 */
+		private static string[] noCheckRun = new string[] {
+			"llBase64ToString",
+			"llCSV2List",
+			"llDeleteSubList",
+			"llDeleteSubString",
+			"llDumpList2String",
+			"llEscapeURL",
+			"llEuler2Rot",
+			"llGetListEntryType",
+			"llGetListLength",
+			"llGetSubString",
+			"llGetUnixTime",
+			"llInsertString",
+			"llList2CSV",
+			"llList2Float",
+			"llList2Integer",
+			"llList2Key",
+			"llList2List",
+			"llList2ListStrided",
+			"llList2Rot",
+			"llList2String",
+			"llList2Vector",
+			"llListFindList",
+			"llListInsertList",
+			"llListRandomize",
+			"llListReplaceList",
+			"llListSort",
+			"llListStatistics",
+			"llMD5String",
+			"llParseString2List",
+			"llParseStringKeepNulls",
+			"llStringLength",
+			"llStringToBase64",
+			"llStringTrim",
+			"llSubStringIndex",
+			"llUnescapeURL"
+		};
 
 		/**
 		 * @brief Create a dictionary of inline backend API functions.
@@ -111,9 +160,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			Dictionary<string, InlineFunction> ifd = new Dictionary<string, InlineFunction> ();
 			InlineFunction inf;
 
-			Type[] oneDoub  = new Type[] { typeof (double) };
-			Type[] twoDoubs = new Type[] { typeof (double), typeof (double) };
-
 			/*
 			 * Mono generates an FPU instruction for many math calls.
 			 */
@@ -121,10 +167,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			inf = new InlineFunction (ifd, "llAcos(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Acos",    oneDoub));  inf.codeGen = inf.CodeGenStatic;
 			inf = new InlineFunction (ifd, "llAsin(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Asin",    oneDoub));  inf.codeGen = inf.CodeGenStatic;
 			inf = new InlineFunction (ifd, "llAtan2(float,float)", typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Atan2",   twoDoubs)); inf.codeGen = inf.CodeGenStatic;
-//			inf = new InlineFunction (ifd, "llCeil(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Ceiling", oneDoub));  inf.codeGen = inf.CodeGenStatic;
+		///	inf = new InlineFunction (ifd, "llCeil(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Ceiling", oneDoub));  inf.codeGen = inf.CodeGenStatic;
 			inf = new InlineFunction (ifd, "llCos(float)",         typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Cos",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
 			inf = new InlineFunction (ifd, "llFabs(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Abs",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
-//			inf = new InlineFunction (ifd, "llFloor(float)",       typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Floor",   oneDoub));  inf.codeGen = inf.CodeGenStatic;
+		///	inf = new InlineFunction (ifd, "llFloor(float)",       typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Floor",   oneDoub));  inf.codeGen = inf.CodeGenStatic;
 			inf = new InlineFunction (ifd, "llLog(float)",         typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Log",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
 			inf = new InlineFunction (ifd, "llLog10(float)",       typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Log10",   oneDoub));  inf.codeGen = inf.CodeGenStatic;
 			inf = new InlineFunction (ifd, "llPow(float,float)",   typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Pow",     twoDoubs)); inf.codeGen = inf.CodeGenStatic;
@@ -136,61 +182,33 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Our internally defined functions.
 			 */
-///			inf = new InlineFunction (ifd, "consoleWrite(string)",                                   typeof (void),     null); inf.codeGen = inf.CodeGenConsoleWrite;
-			inf = new InlineFunction (ifd, "xmrEventCallHandler(list)",                              typeof (void),     null); inf.codeGen = inf.CodeGenXMREventCallHandler; inf.changesState = true;
-			inf = new InlineFunction (ifd, "xmrEventDequeue(float,integer,integer,integer,integer)", typeof (LSL_List), null); inf.codeGen = inf.CodeGenXMREventDequeue;     inf.changesState = true;
-			inf = new InlineFunction (ifd, "xmrEventEnqueue(list)",                                  typeof (void),     null); inf.codeGen = inf.CodeGenXMREventEnqueue;
-			inf = new InlineFunction (ifd, "xmrEventLoadDets(list)",                                 typeof (void),     null); inf.codeGen = inf.CodeGenXMREventLoadDets;
-			inf = new InlineFunction (ifd, "xmrEventSaveDets()",                                     typeof (LSL_List), null); inf.codeGen = inf.CodeGenXMREventSaveDets;
-			inf = new InlineFunction (ifd, "xmrHeapLeft()",                                          typeof (int),      null); inf.codeGen = inf.CodeGenXMRHeapLeft;
-			inf = new InlineFunction (ifd, "xmrStackLeft()",                                         typeof (int),      null); inf.codeGen = inf.CodeGenXMRStackLeft;
+		///	inf = new InlineFunction (ifd, "consoleWrite(string)",                                   typeof (void),      null); inf.codeGen = inf.CodeGenConsoleWrite;
+			inf = new InlineFunction (ifd, "xmrEventCallHandler(list)",                              typeof (void),      null); inf.codeGen = inf.CodeGenXMREventCallHandler; inf.changesState = true;
+			inf = new InlineFunction (ifd, "xmrEventDequeue(float,integer,integer,integer,integer)", typeof (LSL_List),  null); inf.codeGen = inf.CodeGenXMREventDequeue;     inf.changesState = true;
+			inf = new InlineFunction (ifd, "xmrEventEnqueue(list)",                                  typeof (void),      null); inf.codeGen = inf.CodeGenXMREventEnqueue;
+			inf = new InlineFunction (ifd, "xmrEventLoadDets(list)",                                 typeof (void),      null); inf.codeGen = inf.CodeGenXMREventLoadDets;
+			inf = new InlineFunction (ifd, "xmrEventSaveDets()",                                     typeof (LSL_List),  null); inf.codeGen = inf.CodeGenXMREventSaveDets;
+			inf = new InlineFunction (ifd, "xmrHeapLeft()",                                          typeof (int),       null); inf.codeGen = inf.CodeGenXMRHeapLeft;
+			inf = new InlineFunction (ifd, "xmrStackLeft()",                                         typeof (int),       null); inf.codeGen = inf.CodeGenXMRStackLeft;
+
+			/*
+			 * Jack-assed os...() functions that use screwy types.
+			 */
+			inf = new InlineFunction (ifd, "osParseJSON(string)",                                    typeof (XMR_Array), null); inf.codeGen = inf.CodeGenOSParseJSON;
 
 			/*
 			 * Finally for any API functions defined by ScriptBaseClass that are not overridden 
 			 * by anything already defined above, create an inline definition to call it.
-			 *
-			 * For those listed in noCheckRun, we just generate the call (simple computations).
-			 * For all others, we generate the call then a call to wrapper.continuation.CheckRun().
 			 */
-			string[] noCheckRun = new string[] {
-				"llBase64ToString",
-				"llCSV2List",
-				"llDeleteSubList",
-				"llDeleteSubString",
-				"llDumpList2String",
-				"llEscapeURL",
-				"llEuler2Rot",
-				"llGetListEntryType",
-				"llGetListLength",
-				"llGetSubString",
-				"llGetUnixTime",
-				"llInsertString",
-				"llList2CSV",
-				"llList2Float",
-				"llList2Integer",
-				"llList2Key",
-				"llList2List",
-				"llList2ListStrided",
-				"llList2Rot",
-				"llList2String",
-				"llList2Vector",
-				"llListFindList",
-				"llListInsertList",
-				"llListRandomize",
-				"llListReplaceList",
-				"llListSort",
-				"llListStatistics",
-				"llMD5String",
-				"llParseString2List",
-				"llParseStringKeepNulls",
-				"llStringLength",
-				"llStringToBase64",
-				"llStringTrim",
-				"llSubStringIndex",
-				"llUnescapeURL"
-			};
+			AddInterfaceMethods (ifd, typeof (ScriptBaseClass));
+			AddInterfaceMethods (ifd, typeof (IOSSL_Api));
 
-			MethodInfo[] ifaceMethods = typeof (ScriptBaseClass).GetMethods ();
+			return ifd;
+		}
+
+		private static void AddInterfaceMethods (Dictionary<string, InlineFunction> ifd, Type ifaceType)
+		{
+			MethodInfo[] ifaceMethods = ifaceType.GetMethods ();
 			foreach (MethodInfo ifaceMethod in ifaceMethods) {
 				string key = ifaceMethod.Name;
 
@@ -244,8 +262,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					///???                          and OVERLOADED NAMES ???///
 				}
 			}
-
-			return ifd;
 		}
 
 		/**
@@ -413,6 +429,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			result.PopPre (scg);
 			scg.ilGen.Emit (OpCodes.Ldarg_0);
 			scg.ilGen.Emit (OpCodes.Call, stackLeftMethodInfo);
+			result.PopPost (scg, retType);
+		}
+
+		/**
+		 * @brief Generate code to parse a JSON string
+		 *        Script-level prototype:  array osParseJSON(string)
+		 */
+		private void CodeGenOSParseJSON (ScriptCodeGen scg, Token token, CompValu result, CompValu[] args)
+		{
+			result.PopPre (scg);
+			scg.ilGen.Emit (OpCodes.Ldarg_0);
+			args[0].PushVal (scg, tokenTypeString);
+			scg.ilGen.Emit (OpCodes.Call, xmrOSParseJSON);
 			result.PopPost (scg, retType);
 		}
 
