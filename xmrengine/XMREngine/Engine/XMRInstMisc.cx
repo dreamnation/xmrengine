@@ -45,7 +45,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         /**
          * @brief Clean up stuff.
-         *        We specifically leave m_DescName intact for 'xmr test ls' command.
+         *        We specifically leave m_DescName intact for 'xmr ls' command.
          */
         public void Dispose()
         {
@@ -104,7 +104,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
         }
 
-        // Called by 'xmr test top' console command
+        // Called by 'xmr top' console command
         // to dump this script's state to console
         //  Sacha 
         public void RunTestTop()
@@ -130,7 +130,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
           }
         }
 
-        // Called by 'xmr test ls' console command
+        // Called by 'xmr ls' console command
         // to dump this script's state to console
         public string RunTestLs(bool flagFull)
         {

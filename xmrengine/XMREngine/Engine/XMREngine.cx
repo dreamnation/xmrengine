@@ -195,9 +195,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             MainConsole.Instance.Commands.AddCommand("xmr", false,
-                    "xmr test",
-                    "xmr test [backup|cvv|gc|ls|mvv|reset|resume|suspend|top|traceheapuse]",
-                    "Run current xmr test",
+                    "xmr",
+                    "xmr [backup|cvv|gc|ls|mvv|reset|resume|suspend|top|traceheapuse]",
+                    "Run xmr script engine commands",
                     RunTest);
 
             TCP("[XMREngine]: Initialize successful");
@@ -334,7 +334,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         } catch {
                         }
                     }
-                    m_log.Error("[XMREngine]: xmr test cvv [<new_compiled_version_value>]");
+                    m_log.Error("[XMREngine]: xmr cvv [<new_compiled_version_value>]");
                     break;
                 }
                 case "gc": {
@@ -357,7 +357,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         } catch {
                         }
                     }
-                    m_log.Error("[XMREngine]: xmr test mvv [<new_migration_version_value>]");
+                    m_log.Error("[XMREngine]: xmr mvv [<new_migration_version_value>]");
                     break;
                 }
                 case "reset": {
@@ -389,7 +389,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         m_traceHeapUse = args[3];
                         break;
                     }
-                    m_log.Debug("[XMREngine]: usage: xmr test traceheapuse [<scriptname>]");
+                    m_log.Debug("[XMREngine]: usage: xmr traceheapuse [<scriptname>]");
                     break;
                 }
                 default: {
@@ -1212,7 +1212,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             while (!m_Exiting)
             {
                 /*
-                 * Handle 'xmr test resume/suspend' commands.
+                 * Handle 'xmr resume/suspend' commands.
                  */
                 if (m_SuspendScriptThreadFlag) {
                     m_log.Debug ("[XMREngine]: scripts suspended");
