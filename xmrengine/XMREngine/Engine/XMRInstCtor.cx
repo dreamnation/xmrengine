@@ -87,8 +87,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Set up a descriptive name string for debug messages.
              */
-            m_DescName  = MMRCont.HexString(MMRCont.ObjAddr(this)).PadLeft(8, '0') + " ";
-            m_DescName += part.Name + ":" + item.Name;
+            m_DescName = part.Name + ":" + item.Name;
 
             /*
              * Maybe trace heap usage.

@@ -26,8 +26,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		EmitNull, EmitField, EmitLocal, EmitType, EmitLabel, EmitMethodExt, 
 		EmitMethodInt, EmitCtor, EmitDouble, EmitFloat, EmitInteger, EmitString,
 		EmitLabels,
-		BegExcBlk, BegCatBlk, BegFinBlk, EndExcBlk,
-		PushThisMethInfo
+		BegExcBlk, BegCatBlk, BegFinBlk, EndExcBlk
 	}
 
 	public delegate void ScriptMyILGenEndMethod (DynamicMethod method);
@@ -306,14 +305,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		/**
 		 * @brief Write end-of-file marker to binary file.
 		 */
-		public void PushThisMethInfo ()
-		{
-			objWriter.Write ((byte)ScriptMyILGenCode.PushThisMethInfo);
-		}
-
-		/**
-		 * @brief Write end-of-file marker to binary file.
-		 */
 		public static void TheEnd (BinaryWriter objWriter)
 		{
 			objWriter.Write ((byte)ScriptMyILGenCode.TheEnd);
@@ -386,16 +377,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 						dbg.Append (methName);
 						dbg.Append ("(...) {");
-						break;
-					}
-
-					/*
-					 * Push pointer to current method's info on stack.
-					 */
-					case ScriptMyILGenCode.PushThisMethInfo: {
-						ilGen.Emit (OpCodes.Ldtoken, method);
-						LinePrefix (offset, dbg, ilGenArg, OpCodes.Ldtoken);
-						dbg.Append ("push this method info runtime handle");
 						break;
 					}
 
