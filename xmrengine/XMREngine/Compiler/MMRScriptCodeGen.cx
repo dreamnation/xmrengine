@@ -60,8 +60,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static FieldInfo ehArgsFieldInfo       = typeof (XMRInstAbstract).GetField ("ehArgs");
 		public  static FieldInfo heapLeftFieldInfo     = typeof (XMRInstAbstract).GetField ("heapLeft");
 		private static FieldInfo heapLimitFieldInfo    = typeof (XMRInstAbstract).GetField ("heapLimit");
-		private static FieldInfo migrateInReaderFieldInfo  = typeof (XMRInstAbstract).GetField ("migrateInReader");
-		private static FieldInfo migrateOutWriterFieldInfo = typeof (XMRInstAbstract).GetField ("migrateOutWriter");
 		private static FieldInfo rotationXFieldInfo    = typeof (LSL_Rotation).GetField ("x");
 		private static FieldInfo rotationYFieldInfo    = typeof (LSL_Rotation).GetField ("y");
 		private static FieldInfo rotationZFieldInfo    = typeof (LSL_Rotation).GetField ("z");
@@ -81,10 +79,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		                                                                               new Type[] { typeof (int),
 		                                                                                            typeof (object).MakeByRefType (),
 		                                                                                            typeof (object).MakeByRefType () });
-		private static MethodInfo popStkFrameMethodInfo    = typeof (XMRInstAbstract).GetMethod ("PopStackFrame", new Type[] { });
-		private static MethodInfo pushStkFrameMethodInfo   = typeof (XMRInstAbstract).GetMethod ("PushStackFrame", new Type[] { typeof (string) });
-		private static MethodInfo recvObjValueMethodInfo   = typeof (XMRInstAbstract).GetMethod ("RecvObjValue", new Type[] { });
-		private static MethodInfo sendObjValueMethodInfo   = typeof (XMRInstAbstract).GetMethod ("SendObjValue", new Type[] { typeof (object) });
+		private static MethodInfo popStackFrameMethodInfo  = typeof (XMRInstAbstract).GetMethod ("PopStackFrame", new Type[] { typeof (string), typeof (int).MakeByRefType () });
+		private static MethodInfo pushStackFrameMethodInfo = typeof (XMRInstAbstract).GetMethod ("PushStackFrame", new Type[] { typeof (string), typeof (int), typeof (int) });
 		private static MethodInfo updateHeapLeftMethodInfo = GetStaticMethod (typeof (ScriptCodeGen), 
 		                                                                      "UpdateHeapLeft", 
 		                                                                      new Type[] { typeof (XMRInstAbstract),
@@ -711,27 +707,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Output:
 			 *    int callNo;
-			 *    switch (instance.callMode) {
-			 *       case 0: goto __cmNormal;
-			 *       case 1: goto __cmSave;
-			 *       case 2: goto __cmRestore;
-			 *    }
-			 * __cmNormal:
-			 *    instance.PushStackFrame(thisFuncName);
+			 *    if (instance.callMode != CALLMODE_NORMAL) goto __cmRestore;
 			 */
 			callNo = ilGen.DeclareLocal (typeof (int), "__callNo");
-			ScriptMyLabel[] cmLabels = {
-				ilGen.DefineLabel ("__cmNormal"), 
-				ilGen.DefineLabel ("__cmSave"), 
-				ilGen.DefineLabel ("__cmRestore")
-			};
+			ScriptMyLabel cmRestore = ilGen.DefineLabel ("__cmRestore");
 			ilGen.Emit (OpCodes.Ldarg_0);
+			if (XMRInstAbstract.CALLMODE_NORMAL != 0) throw new Exception ();
 			ilGen.Emit (OpCodes.Ldfld, ScriptCodeGen.callModeFieldInfo);
-			ilGen.Emit (OpCodes.Switch, cmLabels);
-			ilGen.MarkLabel (cmLabels[0]);  // __cmNormal:
-			ilGen.Emit (OpCodes.Ldarg_0);
-			ilGen.Emit (OpCodes.Ldstr, ilGen.methName);
-			ilGen.Emit (OpCodes.Callvirt, pushStkFrameMethodInfo);
+			ilGen.Emit (OpCodes.Brtrue, cmRestore);
 
 			/*
 			 * See if time to suspend in case they are doing a loop with recursion.
@@ -758,12 +741,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Output epilog that subtracts heap usage by local vars.
-			 * We also pop the save/restore stack frame stuff.
+			 *
+			 *   finally {
+			 *      if (instance.callMode ! 0) goto __cmSave;
+			 *      CreditAllLocalsHeapLeft();
+			 *      goto __endFin;
+			 *   __cmSave:
+			 *      GenerateFrameSaveCode();
+			 *   __endFin:
+			 *   }
 			 */
 			ilGen.BeginFinallyBlock ();
-			CreditAllLocalsHeapLeft ();
+			ScriptMyLabel cmSave = ilGen.DefineLabel ("__cmSave");
+			ScriptMyLabel endFin = ilGen.DefineLabel ("__endFin");
 			ilGen.Emit (OpCodes.Ldarg_0);
-			ilGen.Emit (OpCodes.Callvirt, popStkFrameMethodInfo);
+			ilGen.Emit (OpCodes.Ldfld, callModeFieldInfo);
+			if (XMRInstAbstract.CALLMODE_NORMAL != 0) throw new Exception ();
+			ilGen.Emit (OpCodes.Brtrue, cmSave);
+			CreditAllLocalsHeapLeft ();
+			ilGen.Emit (OpCodes.Br, endFin);
+			ilGen.MarkLabel (cmSave);
+			GenerateFrameSaveCode(declFunc);
+			ilGen.MarkLabel (endFin);
 			ilGen.Emit (OpCodes.Endfinally);
 			ilGen.EndExceptionBlock ();
 			localHeapTrackers = null;
@@ -778,21 +777,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ilGen.Emit (OpCodes.Ret);
 			retLabel = null;
 			retValue = null;
-
-			/*
-			 * Output code to save stack frame to stream.
-			 * __cmSave:
-			 *    instance.callWriter.Write(arg1);
-			 *    instance.callWriter.Write(arg2);
-			 *    ...
-			 *    instance.callWriter.Write(lcl1);
-			 *    instance.callWriter.Write(lcl2);
-			 *    ...
-			 *    instance.callWriter.Write(callNo);
-			 *    return;
-			 */
-			ilGen.MarkLabel (cmLabels[1]);  // __cmSave:
-			GenerateFrameSaveCode(declFunc);
 
 			/*
 			 * Output code to save stack frame to stream.
@@ -811,7 +795,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 *    }
 			 *    return;  // should never get here
 			 */
-			ilGen.MarkLabel (cmLabels[2]);  // __cmRestore:
+			ilGen.MarkLabel (cmRestore);
 			GenerateFrameRestoreCode(declFunc);
 
 			/*
@@ -862,68 +846,88 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		/**
-		 * @brief Generate code to write all arguments and locals to the save stack frame stream.
+		 * @brief Generate code to write all arguments and locals to the save stack frame.
 		 *        This includes heap-tracker variables.
 		 */
 		private void GenerateFrameSaveCode (TokenDeclFunc declFunc)
 		{
-			foreach (CompValu argLoc in declFunc.argDecl.locns) {
-				ilGen.Emit (OpCodes.Ldarg_0);
-				argLoc.PushVal (this, tokenTypeObj);
-				ilGen.Emit (OpCodes.Call, sendObjValueMethodInfo);
-			}
+			int nSaves = declFunc.argDecl.locns.Length +  declFunc.localVars.Count;
 
-			foreach (TokenDeclVar localVar in declFunc.localVars) {
-				CompValu localLoc = localVar.location;
-				ilGen.Emit (OpCodes.Ldarg_0);
-				localLoc.PushVal (this, tokenTypeObj);
-				ilGen.Emit (OpCodes.Call, sendObjValueMethodInfo);
-			}
-
-			ilGen.Emit (OpCodes.Ldarg_0);                     // instance
-			ilGen.Emit (OpCodes.Ldfld, migrateOutWriterFieldInfo);  // instance.migrateOutWriter
+			/*
+			 * Output code to allocate a stack frame object with an object array.
+			 * This also pushes the stack frame object on the instance.stackFrames list.
+			 * It returns a pointer to the object array it allocated.
+			 */
+			ilGen.Emit (OpCodes.Ldarg_0);
+			ilGen.Emit (OpCodes.Ldstr, ilGen.methName);
 			ilGen.Emit (OpCodes.Ldloc, callNo);
-			MethodInfo mi = migrateOutWriterFieldInfo.FieldType.GetMethod ("Write", intArgTypes);
-			ilGen.Emit (OpCodes.Callvirt, mi);                // instance.migrateOutWriter.Write(int)
+			PushConstantI4 (nSaves);
+			ilGen.Emit (OpCodes.Call, pushStackFrameMethodInfo);
 
-			PushDefaultValue (declFunc.retType);
-			ilGen.Emit (OpCodes.Ret);
+			/*
+			 * Copy arg values to object array, boxing as needed.
+			 */
+			int i = 0;
+			foreach (CompValu argLoc in declFunc.argDecl.locns) {
+				ilGen.Emit (OpCodes.Dup);
+				PushConstantI4 (i ++);
+				argLoc.PushVal (this, tokenTypeObj);
+				ilGen.Emit (OpCodes.Stelem_Ref);
+			}
+
+			/*
+			 * Copy local values to object array, boxing as needed.
+			 */
+			foreach (TokenDeclVar localVar in declFunc.localVars) {
+				ilGen.Emit (OpCodes.Dup);
+				PushConstantI4 (i ++);
+				CompValu localLoc = localVar.location;
+				localLoc.PushVal (this, tokenTypeObj);
+				ilGen.Emit (OpCodes.Stelem_Ref);
+			}
+			ilGen.Emit (OpCodes.Pop);
 		}
 
 		/**
-		 * @brief Generate code to restore all arguments and locals from the restore stack frame stream.
+		 * @brief Generate code to restore all arguments and locals from the restore stack frame.
 		 */
 		private void GenerateFrameRestoreCode (TokenDeclFunc declFunc)
 		{
+			ScriptMyLocal objArray = ilGen.DeclareLocal (typeof (object[]), "__restObjArray");
+
+			/*
+			 * Output code to pop stack frame from instance.stackFrames.
+			 * It returns a pointer to the object array that contains values to be restored.
+			 */
+			ilGen.Emit (OpCodes.Ldarg_0);
+			ilGen.Emit (OpCodes.Ldstr, ilGen.methName);
+			ilGen.Emit (OpCodes.Ldloca, callNo);
+			ilGen.Emit (OpCodes.Call, popStackFrameMethodInfo);
+			ilGen.Emit (OpCodes.Stloc, objArray);
+
+			/*
+			 * Restore argument values from object array, unboxing as needed.
+			 */
+			int i = 0;
 			foreach (CompValu argLoc in declFunc.argDecl.locns) {
 				argLoc.PopPre (this);
-				ilGen.Emit (OpCodes.Ldarg_0);
-				ilGen.Emit (OpCodes.Call, recvObjValueMethodInfo);
+				ilGen.Emit (OpCodes.Ldloc, objArray);
+				PushConstantI4 (i ++);
+				ilGen.Emit (OpCodes.Ldelem_Ref);
 				argLoc.PopPost (this, tokenTypeObj);
 			}
 
+			/*
+			 * Restore local values from object array, unboxing as needed.
+			 */
 			foreach (TokenDeclVar localVar in declFunc.localVars) {
 				CompValu localLoc = localVar.location;
 				localLoc.PopPre (this);
-				ilGen.Emit (OpCodes.Ldarg_0);
-				ilGen.Emit (OpCodes.Call, recvObjValueMethodInfo);
+				ilGen.Emit (OpCodes.Ldloc, objArray);
+				PushConstantI4 (i ++);
+				ilGen.Emit (OpCodes.Ldelem_Ref);
 				localLoc.PopPost (this, tokenTypeObj);
 			}
-
-			/*
-			 * All calls that we restore to have the XMRInstance pointer as their first arg.
-			 */
-			ilGen.Emit (OpCodes.Ldarg_0);
-
-			/*
-			 * Restore 'callNo' from the stream and leave copy on stack.
-			 */
-			ilGen.Emit (OpCodes.Dup);                              // instance
-			ilGen.Emit (OpCodes.Ldfld, migrateInReaderFieldInfo);  // instance.migrateInReader
-			MethodInfo mi = migrateInReaderFieldInfo.FieldType.GetMethod ("ReadInt32", noArgsTypes);
-			ilGen.Emit (OpCodes.Callvirt, mi);                     // instance.migrageInReader.ReadInt32()
-			ilGen.Emit (OpCodes.Dup);
-			ilGen.Emit (OpCodes.Stloc, callNo);
 
 			/*
 			 * Output a switch statement with a case for each possible value of callNo.
@@ -937,16 +941,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			int          numCallLabels = allCallLabels.Count;
 			ScriptMyLabel[] restLabels = new ScriptMyLabel[numCallLabels];
 			foreach (CallLabel cl in allCallLabels) {
-				if ((cl.argTypes == null) || (cl.argTypes.Length == 0)) {
-					 restLabels[cl.index] = cl.callLabel;
-				} else {
-					restLabels[cl.index] = ilGen.DefineLabel ("__rest_" + cl.index);
-				}
+				restLabels[cl.index] = ilGen.DefineLabel ("__rest_" + cl.index);
 			}
+			ilGen.Emit (OpCodes.Ldloc, callNo);
 			ilGen.Emit (OpCodes.Switch, restLabels);
-			ilGen.Emit (OpCodes.Pop);
-			PushDefaultValue (declFunc.retType);
-			ilGen.Emit (OpCodes.Ret);
 
 			/*
 			 * For each case, output code to push dummy args then jump to the original call instruction.
@@ -965,16 +963,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 *   ...
 			 */
 			foreach (CallLabel cl in allCallLabels) {
-				if ((cl.argTypes != null) && (cl.argTypes.Length > 0)) {
-					ilGen.MarkLabel (restLabels[cl.index]);
-					if (cl.argTypes != null) {
-						int nargs = cl.argTypes.Length;
-						for (int j = 0; j < nargs; j ++) {
-							PushDefaultValue (cl.argTypes[j]);
-						}
+				ilGen.MarkLabel (restLabels[cl.index]);
+
+				/*
+				 * All calls that we restore to have the XMRInstance pointer as their first hidden arg.
+				 */
+				ilGen.Emit (OpCodes.Ldarg_0);
+
+				/*
+				 * Push all the other args, if any.  Just use dummy values as the function will 
+				 * restore its args, overwriting whatever we pass it here.
+				 */
+				if (cl.argTypes != null) {
+					int nargs = cl.argTypes.Length;
+					for (int j = 0; j < nargs; j ++) {
+						PushDefaultValue (cl.argTypes[j]);
 					}
-					ilGen.Emit (OpCodes.Br, cl.callLabel);
 				}
+
+				/*
+				 * Jump to the original call instruction.
+				 */
+				ilGen.Emit (OpCodes.Br, cl.callLabel);
 			}
 		}
 
@@ -3137,14 +3147,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public void EmitCallCheckRun (int line)
 		{
 			/*
-			 * Stick in a label here that stack frame restore code can jump to.
-			 */
-			new CallLabel (this);
-
-			/*
 			 * Now output the args and the call itself.
 			 */
 			ilGen.Emit (OpCodes.Ldarg_0);                   // instance
+			new CallLabel (this);
 			PushConstantI4 (line);                          // source line number
 			ilGen.Emit (OpCodes.Call, checkRunMethodInfo);  // instance.CheckRun()
 		}
@@ -3506,46 +3512,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				 * so we can restore them from stack dump.
 				 */
 				scriptObjCode.dynamicMethods.Add (methName, method);
-
-				/*
-				 * We also create and catalog a wrapper method that has null argument values.
-				 * It also discards any return value.
-				 */
-				string saveName = methName + "$save$";
-				DynamicMethod saveMeth = new DynamicMethod (saveName, null, instanceTypeArg);
-				ILGenerator saveILGen = saveMeth.GetILGenerator ();
-				ParameterInfo[] pis = method.GetParameters ();
-				foreach (ParameterInfo pi in pis) {
-					Type pit = pi.ParameterType;
-					if (pit == typeof (XMRInstAbstract)) {
-						saveILGen.Emit (OpCodes.Ldarg_0);
-					} else if (pit.IsClass) {
-						saveILGen.Emit (OpCodes.Ldnull);
-					} else if (pit == typeof (int)) {
-						saveILGen.Emit (OpCodes.Ldc_I4_0);
-					} else if (pit == typeof (float)) {
-						saveILGen.Emit (OpCodes.Ldc_R4, 0.0f);
-					} else if (pit == typeof (LSL_Rotation)) {
-						saveILGen.Emit (OpCodes.Ldc_R8, ScriptBaseClass.ZERO_ROTATION.x);
-						saveILGen.Emit (OpCodes.Ldc_R8, ScriptBaseClass.ZERO_ROTATION.y);
-						saveILGen.Emit (OpCodes.Ldc_R8, ScriptBaseClass.ZERO_ROTATION.z);
-						saveILGen.Emit (OpCodes.Ldc_R8, ScriptBaseClass.ZERO_ROTATION.s);
-						saveILGen.Emit (OpCodes.Newobj, lslRotationConstructorInfo);
-					} else if (pit == typeof (LSL_Vector)) {
-						saveILGen.Emit (OpCodes.Ldc_R8, ScriptBaseClass.ZERO_VECTOR.x);
-						saveILGen.Emit (OpCodes.Ldc_R8, ScriptBaseClass.ZERO_VECTOR.y);
-						saveILGen.Emit (OpCodes.Ldc_R8, ScriptBaseClass.ZERO_VECTOR.z);
-						saveILGen.Emit (OpCodes.Newobj, lslVectorConstructorInfo);
-					} else {
-						throw new Exception ("unknown type " + pit.ToString ());
-					}
-				}
-				saveILGen.Emit (OpCodes.Call, method);
-				if ((method.ReturnType != null) && (method.ReturnType != typeof (void))) {
-					saveILGen.Emit (OpCodes.Pop);
-				}
-				saveILGen.Emit (OpCodes.Ret);
-				scriptObjCode.dynamicMethods.Add (saveName, saveMeth);
 
 				/*
 				 * We enter all script event handler methods in the ScriptEventHandler table.

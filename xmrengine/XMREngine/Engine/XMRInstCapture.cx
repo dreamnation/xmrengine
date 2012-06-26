@@ -43,7 +43,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /**
          * @brief Create an XML element that gives the current state of the script.
          *   <ScriptState Asset=m_AssetID>
-         *     <Snapshot>stackdump</Snapshot>
+         *     <Snapshot>globalsandstackdump</Snapshot>
          *     <Running>m_Running</Running>
          *     <DetectArray ...
          *     <EventQueue ...
@@ -78,7 +78,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 CheckRunLockInvariants(true);
 
                 /*
-                 * Get copy of script stack in relocateable form.
+                 * Get copy of script globals and stack in relocateable form.
                  */
                 MemoryStream snapshotStream = new MemoryStream();
                 MigrateOutEventHandler(snapshotStream);
@@ -194,6 +194,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         /**
          * @brief Write script state to output stream.
+         *        The script microthread is at same state on return,
+         *        ie, either inactive or suspended inside CheckRun().
          *
          * Input:
          *  stream = stream to write event handler state information to
@@ -221,22 +223,70 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             this.SendObjValue (this.eventCode);
             this.SendObjValue (this.heapLimit - this.heapLeft);
             this.SendObjValue (this.ehArgs);
-            this.MigrateScriptOut ();
+
+            this.SendObjArray (this.gblArrays);
+            this.SendObjArray (this.gblFloats);
+            this.SendObjArray (this.gblIntegers);
+            this.SendObjArray (this.gblLists);
+            this.SendObjArray (this.gblObjects);
+            this.SendObjArray (this.gblRotations);
+            this.SendObjArray (this.gblStrings);
+            this.SendObjArray (this.gblVectors);
 
             /*
-             * Resume the microthread to actually write the network stream.
-             * When it finishes it will suspend, causing the microthreading
-             * to return here.
+             * Resume the microthread and it will throw a StackSaveException()
+             * with the stack frames saved to this.stackFrames.
+             * Then write the saved stack frames to the output stream.
              *
              * There is a stack only if the event code is not None.
              */
             if (this.eventCode != ScriptEventCode.None) {
-                this.migrateComplete = false;
+
+                // tell microthread to continue
+                // it should see migrateOutWriter != null and throw StackSaveException()
+                // ...generating XMRStackFrames as it unwinds
+                m_log.Debug("[XMREngine]: MigrateOutEventHandler*: fixin to save stack");
+                this.callMode = CALLMODE_SAVE;
                 Exception except = this.microthread.ResumeEx (null);
+                if (except == null) {
+                    m_log.Debug("[XMREngine]: MigrateOutEventHandler*: returned null");
+                    throw new Exception ("stack save did not complete");
+                }
+                m_log.Debug("[XMREngine]: MigrateOutEventHandler*: returned " + except.ToString ());
+                if (!(except is StackSaveException)) {
+                    throw except;
+                }
+
+                // first frame we see is the event handler's frame
+                // last frame we see is whatever called CheckRun()
+                for (XMRStackFrame sf = this.stackFrames; sf != null; sf = sf.nextSF) {
+                    m_log.Debug("[XMREngine]: MigrateOutEventHandler*: writing " + sf.funcName + ", callNo " + sf.callNo);
+                    int i = 0;
+                    foreach (object o in sf.objArray) {
+                        m_log.Debug("[XMREngine]: MigrateOutEventHandler*:   [" + i + "]=" + o.ToString());
+                        i ++;
+                    }
+                    this.migrateOutWriter.Write (sf.callNo);  // what it was calling when suspended
+                    this.migrateOutWriter.Write (sf.funcName);
+                    this.SendObjArray (sf.objArray);          // it's args and locals at time of suspension
+                }
+
+                // no more stack frames
+                this.migrateOutWriter.Write (-1);
+
+                // now restore script stack
+                // microthread will suspend when restore is complete
+                m_log.Debug("[XMREngine]: MigrateOutEventHandler*: stack save complete, restoring...");
+                this.callMode = CALLMODE_RESTORE;
+                this.migrateComplete = false;
+                except = this.microthread.StartEx ();
                 if (except != null) {
                     throw except;
                 }
-                if (!this.migrateComplete) throw new Exception ("migrate out did not complete");
+                if (!this.migrateComplete) {
+                    throw new Exception ("restore after save did not complete");
+                }
+                m_log.Debug("[XMREngine]: MigrateOutEventHandler*: stack restore complete");
             }
 
             /*
@@ -248,20 +298,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         /**
-         * @brief Write script global variables to the output stream.
+         * @brief Write an array to the output stream.
          */
-        private void MigrateScriptOut ()
-        {
-            SendObjArray (this.gblArrays);
-            SendObjArray (this.gblFloats);
-            SendObjArray (this.gblIntegers);
-            SendObjArray (this.gblLists);
-            SendObjArray (this.gblObjects);
-            SendObjArray (this.gblRotations);
-            SendObjArray (this.gblStrings);
-            SendObjArray (this.gblVectors);
-        }
-
         private void SendObjArray (Array array)
         {
             SendObjValue ((object)(int)array.Length);
@@ -271,11 +309,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         /**
-         * @brief Called by stack frame save code for every object to
-         *        be sent over the network.
+         * @brief Write an object to the output stream.
          * @param graph = object to send
          */
-        public override void SendObjValue (object graph)
+        private void SendObjValue (object graph)
         {
             if (this.migrateOutStream == null) throw new ArgumentNullException ("migrateOutStream");
             if (this.migrateOutWriter == null) throw new ArgumentNullException ("migrateOutWriter");

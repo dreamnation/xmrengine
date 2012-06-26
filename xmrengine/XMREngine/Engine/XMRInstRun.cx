@@ -32,6 +32,9 @@ using log4net;
 
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
+    public class StackSaveException : Exception {
+    }
+
     public partial class XMRInstance
     {
         /************************************************************************************\
@@ -265,6 +268,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_LastRanAt = now;
                     m_CheckRunStressOdd   = !m_CheckRunStressOdd;
                     m_CheckRunStressStack = m_CheckRunStressOdd ? 1 : 2;
+                    callMode = CALLMODE_NORMAL;
                     e = microthread.StartEx ();  // calls Main() on microthread stack
                 }
 
@@ -288,6 +292,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_RunOnePhase = "resume old event handler";
                     m_LastRanAt   = now;
                     m_InstEHSlice ++;
+                    callMode = CALLMODE_NORMAL;
                     e = microthread.ResumeEx (null);
                 }
 
@@ -512,9 +517,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             this.migrateOutStream = null;
 
             /*
-             * This calls ScriptUThread.Main() directly, and returns when Main() calls Suspend()
-             * or when Main() returns, whichever occurs first.
+             * This calls ScriptUThread.Main() directly, and returns when Main() [indirectly]
+             * calls Suspend() or when Main() returns, whichever occurs first.
              */
+            this.callMode = CALLMODE_NORMAL;
             return microthread.StartEx ();
         }
 
@@ -845,23 +851,40 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         /**
-         * @brief Called on the normal entry to each function.
+         * @brief Called when saving a function's stack contents.
+         * @param funcName = function the frame pertains to, ie, who is doing the pushing
+         * @param callNo = call within that function that was executing when save is being done
+         * @param nSaves = number of arguments & locals that the function wants to save
+         * @returns pointer to object[] array so function can save its arguments & locals
          */
-        public override void PushStackFrame (string funcName)
+        public override object[] PushStackFrame (string funcName, int callNo, int nSaves)
         {
-            this.outerStackFrame = this.innerStackFrame;
-            this.innerStackFrame = new XMRStackFrame ();
-            this.innerStackFrame.nextOuter = this.outerStackFrame;
-            this.innerStackFrame.funcName  = funcName;
+            m_log.Debug ("[XMREngine]: PushStackFrame*: " + funcName);
+            XMRStackFrame sf = new XMRStackFrame ();
+            sf.nextSF   = this.stackFrames;
+            sf.funcName = funcName;
+            sf.callNo   = callNo;
+            sf.objArray = new object[nSaves];
+            this.stackFrames = sf;
+            return sf.objArray;
         }
 
         /**
-         * @brief Called on the normal exit from each function.
+         * @brief Called when restoring a function's stack contents.
+         * @param funcName = function the frame pertains to, ie, who is doing the popping
+         * @param callNo = where to return the restored call number
+         * @returns pointer to object[] array so function can restore its arguments & locals
          */
-        public override void PopStackFrame ()
+        public override object[] PopStackFrame (string funcName, out int callNo)
         {
-            this.innerStackFrame = this.outerStackFrame;
-            this.outerStackFrame = this.innerStackFrame.nextOuter;
+            m_log.Debug ("[XMREngine]: PopStackFrame*: " + funcName);
+            XMRStackFrame sf = this.stackFrames;
+            if (sf.funcName != funcName) {
+                throw new Exception ("stack frame mismatch, expected " + funcName + ", have " + sf.funcName);
+            }
+            this.stackFrames = sf.nextSF;
+            callNo = sf.callNo;
+            return sf.objArray;
         }
 
         /**
@@ -892,40 +915,36 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 throw ScriptCodeGen.outOfStackException;
             }
 
+            /*
+             * Stay stuck in this loop as long as something wants us suspended.
+             */
             while (suspendOnCheckRunHold || suspendOnCheckRunTemp) {
                 m_CheckRunPhase = "top of while";
+                m_log.Debug("[XMREngine]: CheckRun*: suspend requested");
 
                 /*
                  * See if MigrateOutEventHandler() has been called.
-                 * If so, dump our stack to the stream then suspend.
+                 * If so, dump our stack to the stream and unwind.
                  */
-                if ((migrateOutStream != null) && !migrateComplete) {
+                if (this.callMode == CALLMODE_SAVE) {
 
                     /*
                      * Puque our stack to the output stream.
                      * But otherwise, our state remains intact.
                      */
                     m_CheckRunPhase = "saving";
-                    XMRStackFrame sf = this.innerStackFrame;         // whatever func called us
-                    while (sf.nextOuter != null) sf = sf.nextOuter;  // gets the event handler function
-                    this.callMode = 1;  // save mode
-                    while (sf != null) {
-                        DynamicMethod meth = m_ObjCode.dynamicMethods[sf.funcName+"$save$"];
-                        meth.Invoke (this, null);                    // event handler, ..., whatever called us
-                        sf = sf.nextInner;
-                    }
-                    m_CheckRunPhase = "saved";
+                    m_log.Debug("[XMREngine]: CheckRun*: throwing StackSaveException()");
+                    throw new StackSaveException ();
                 }
 
                 /*
-                 * We get here under two circumstances:
-                 *  1) the script state has been written out to the migrateOutStream
-                 *     (callMode 1)
-                 *  2) the script state has been read in from the migrateOutStream
-                 *     (callMode 2)
+                 * We get here when the script state has been read in 
+                 * from the migrateInStream.
                  */
-                this.callMode = 0;  // normal mode
-                migrateComplete = true;
+                if (this.callMode == CALLMODE_RESTORE) {
+                    m_log.Debug("[XMREngine]: CheckRun*: restore complete");
+                    migrateComplete = true;
+                }
 
                 /*
                  * Now we are ready to suspend the microthread.
@@ -936,6 +955,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 suspendOnCheckRunTemp = false;
                 MMRUThread.Suspend ();
                 m_CheckRunPhase = "resumed";
+                m_log.Debug("[XMREngine]: CheckRun*: returned from suspend");
             }
 
             /*

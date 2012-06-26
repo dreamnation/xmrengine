@@ -37,64 +37,34 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
     public class XMRLSL_Api : LSL_Api
     {
-        protected override void ScriptSleep(int delay)
+        protected override void ScriptSleep(int ms)
         {
-            if (m_ScriptEngine is XMREngine)
-            {
-                XMREngine e = (XMREngine)m_ScriptEngine;
-
-                XMRInstance inst = e.GetInstance(m_itemID);
-                if (inst != null)
-                    inst.Sleep(delay);
-            }
-            else
-            {
-                base.ScriptSleep(delay);
-            }
+            XMREngine e = (XMREngine)m_ScriptEngine;
+            XMRInstance inst = e.GetInstance(m_itemID);
+            inst.Sleep(ms);
         }
 
         public override void llSleep(double sec)
         {
-            if (m_ScriptEngine is XMREngine)
-            {
-                XMREngine e = (XMREngine)m_ScriptEngine;
-
-                e.GetInstance(m_itemID).Sleep((int)(sec * 1000.0));
-            }
-            else
-            {
-                base.llSleep(sec);
-            }
+            XMREngine e = (XMREngine)m_ScriptEngine;
+            XMRInstance inst = e.GetInstance(m_itemID);
+            inst.Sleep((int)(sec * 1000.0));
         }
 
         public override void llDie()
         {
-            if (m_ScriptEngine is XMREngine)
-            {
-                XMREngine e = (XMREngine)m_ScriptEngine;
-
-                e.GetInstance(m_itemID).Die();
-            }
-            else
-            {
-                base.llDie();
-            }
+            XMREngine e = (XMREngine)m_ScriptEngine;
+            XMRInstance inst = e.GetInstance(m_itemID);
+            inst.Die();
         }
 
         /* Can't override in latest OpenSim ---
          * Scripts can use xmrHeapLeft() and xmrStackLeft() if they want
         public override LSL_Integer llGetFreeMemory()
         {
-            if (m_ScriptEngine is XMREngine)
-            {
-                XMREngine e = (XMREngine)m_ScriptEngine;
-
-                return new LSL_Integer(e.GetInstance(m_itemID).heapLeft);
-            }
-            else
-            {
-                return base.llGetFreeMemory();
-            }
+            XMREngine e = (XMREngine)m_ScriptEngine;
+            XMRInstance inst = e.GetInstance(m_itemID);
+            return new LSL_Integer(inst.heapLeft);
         }*/
     }
 

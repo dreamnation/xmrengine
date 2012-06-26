@@ -74,7 +74,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public static readonly DetectParams[] zeroDetectParams = new DetectParams[0];
         public static readonly object[] zeroObjectArray = new object[0];
 
-        private static readonly ILog m_log =
+        public static readonly ILog m_log =
             LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
         // For a given m_AssetID, do we have the compiled object code and where
@@ -179,10 +179,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /*
          * Set to perform migration.
          */
+        public bool         migrateComplete; // false: migration in progress; true: migration complete
         public Stream       migrateInStream;
+        public BinaryReader migrateInReader;
         public Dictionary<int, object> migrateInObjects;
         public Stream       migrateOutStream;
-        public bool         migrateComplete;   // false: migration in progress; true: migration complete
+        public BinaryWriter migrateOutWriter;
         public Dictionary<object, int> migrateOutObjects;
 
         /*

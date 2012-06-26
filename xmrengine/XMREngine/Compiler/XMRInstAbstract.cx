@@ -12,9 +12,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 {
     public class XMRStackFrame
     {
-        public XMRStackFrame nextOuter;
-        public XMRStackFrame nextInner;
+        public XMRStackFrame nextSF;
         public string funcName;
+        public int callNo;
+        public object[] objArray;
     }
 
     /*
@@ -23,6 +24,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
      */
     public abstract class XMRInstAbstract
     {
+        public const int CALLMODE_NORMAL  = 0;  // when function is called, it proceeds normally
+        public const int CALLMODE_SAVE    = 1;  // StackSaveException() was thrown, push args/locals to stackFrames
+        public const int CALLMODE_RESTORE = 2;  // when function is called, it pops state from stackFrames
+
         public ScriptBaseClass beAPI;       // passed as 'this' to methods such as llSay()
         public object[] ehArgs;             // event handler argument array
         public bool stateChanged = false;   // script sets this if/when it executes a 'state' statement
@@ -35,13 +40,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public string traceHeapUse = null;  // null: quiet; else: name of script
         public int stateCode = 0;           // state the script is in (0 = 'default')
 
-        public int callMode = 0;            // 0: normal
-                                            // 1: saving stack frames
-                                            // 2: restoring stack frames
-        public XMRStackFrame outerStackFrame;
-        public XMRStackFrame innerStackFrame;
-        public BinaryWriter migrateOutWriter;
-        public BinaryReader migrateInReader;
+        public int callMode = CALLMODE_NORMAL;
+        public XMRStackFrame stackFrames;   // stack frames being saved/restored
 
         /*
          * These arrays hold the global variable values for the script instance.
@@ -60,10 +60,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /*
          * Function prototypes.
          */
-        public abstract void PushStackFrame (string funcName);
-        public abstract void PopStackFrame ();
-    public abstract void SendObjValue (object o);
-    public abstract object RecvObjValue ();
+        public abstract object[] PushStackFrame (string funcName, int callNo, int nSaves);
+        public abstract object[] PopStackFrame (string funcName, out int callNo);
 
         public abstract void ConsoleWrite (string s);
         public abstract void CheckRun (int line);

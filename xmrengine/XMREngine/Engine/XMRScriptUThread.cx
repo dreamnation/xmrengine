@@ -20,10 +20,10 @@ using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
  *  XMRInstance.StartEventHandler()
  *    MMRUThread.StartEx()
  *      ScriptUThread.MainEx()
- *        ScriptUThread.RunCont()
+ *        ScriptUThread.CallSEH()
  *          scriptHandlerEventTable[state,event]()
  *             XMRInstance.CheckRun()
- *                <dump stack>
+ *                throw StackSaveException()
  *                MMRUThread.Suspend()
  */
 
@@ -69,41 +69,59 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
             /*
              * The normal case is this script event handler is just being
-             * called directly at its entrypoint.  The RunItEx() method
-             * calls RunCont() below.  Any exceptions thrown by RunCont()
-             * are returned by RunItEx().
+             * called directly at its entrypoint.
              */
-            else if (instance.migrateInStream == null) {
-                instance.callMode = 0;  // normal
+            else if (instance.callMode == XMRInstAbstract.CALLMODE_NORMAL) {
+                instance.callMode = XMRInstAbstract.CALLMODE_NORMAL;
                 try {
-                    RunCont ();
+                    CallSEH ();
+                    XMRInstance.m_log.Debug("[XMREngine]: MainEx*: CallSEH() normal returned");
                 } catch (Exception e) {
                     except = e;
+                    XMRInstance.m_log.Debug("[XMREngine]: MainEx*: CallSEH() normal threw " + e.ToString ());
                 }
             }
 
             /*
              * The other case is that we want to resume execution of
              * a script from its migration data.  So this reads the
-             * data from the stream to recreate wherever RunCont()
-             * called Save() from, then it jumps to that point.
+             * data from the instance.stackFrames list and eventually
+             * ends up calling CheckRun().
              *
-             * In our case, that point is always within our CheckRun()
-             * method, which immediately suspends when the restore is
-             * complete, which causes LoadEx() to return at that time.
+             * CheckRun() immediately suspends when the restore is
+             * complete, which causes StartEx() to return at that time.
              */
             else {
-                instance.callMode = 2;  // restore
+                if (instance.callMode != XMRInstAbstract.CALLMODE_RESTORE) {
+                    throw new Exception ("bad callMode " + instance.callMode);
+                }
                 try {
-                    RunCont ();
+                    CallSEH ();
+                    XMRInstance.m_log.Debug("[XMREngine]: MainEx*: CallSEH() restore returned");
                 } catch (Exception e) {
                     except = e;
+                    string s = e.ToString ();
+                    int j;
+                    for (int i = 0; i < s.Length; i = ++ j) {
+                        j = s.IndexOf ('\n', i);
+                        if (j < 0) j = s.Length;
+                        XMRInstance.m_log.Debug("[XMREngine]: MainEx*: CallSEH() restore threw " + s.Substring (i, j - i));
+                    }
                 }
+                // returns here ONLY after restore has complete AND script
+                // has been resumed AND event handler has run to completion
             }
             return except;
         }
 
-        public void RunCont ()
+        /**
+         * @brief Call script's event handler function from the very beginning.
+         * @param instance.stateCode = which state the event is happening in
+         * @param instance.eventCode = which event is happening in that state
+         * @returns when event handler has completed or throws an exception
+         *          with instance.eventCode = ScriptEventCode.None
+         */
+        private void CallSEH ()
         {
             int newStateCode, oldStateCode;
             ScriptEventHandler seh;
