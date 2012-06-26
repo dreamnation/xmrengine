@@ -712,7 +712,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_log.Debug("[XMREngine]: MigrateInEventHandler*: restoring " + sf.funcName + ", callNo " + sf.callNo);
                     int i = 0;
                     foreach (object o in sf.objArray) {
-                        m_log.Debug("[XMREngine]: MigrateInEventHandler*:   [" + i + "]=" + o.ToString());
+                        m_log.Debug("[XMREngine]: MigrateInEventHandler*:   [" + i + "]=" + 
+                                (o == null ? "null" : "'" + o.ToString() + "'"));
                         i ++;
                     }
                     if (lastSF == null) this.stackFrames = sf;

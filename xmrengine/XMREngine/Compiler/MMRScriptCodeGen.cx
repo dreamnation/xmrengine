@@ -145,6 +145,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private ScriptMyLocal retValue = null;
 		private ScriptMyLocal callNo   = null;
 		private LinkedList<CallLabel> allCallLabels = new LinkedList<CallLabel> ();
+		public  LinkedList<CompValuTemp> activeTemps = new LinkedList<CompValuTemp> ();
 		private Dictionary<CompValu, CompValu> localHeapTrackers = null;
 		                                        // given a script-visible local variable (or argument variable),
 		                                        // ... return the corresponding heapTracker variable, if any.
@@ -692,7 +693,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void GenerateFuncBody (TokenDeclFunc declFunc)
 		{
-			allCallLabels.Clear();
+			/*
+			 * Clear list of all call labels.
+			 * A call label is inserted just before every call that can possibly
+			 * call CheckRun(), including any direct calls to CheckRun().
+			 * Then, when restoring stack, we can just switch to this label to
+			 * resume at the correct spot.
+			 */
+			allCallLabels.Clear ();
+
+			/*
+			 * Clear list of active CompValuTemps.
+			 */
+			activeTemps.Clear ();
 
 			/*
 			 * Any return statements inside function body jump to this label
@@ -851,7 +864,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void GenerateFrameSaveCode (TokenDeclFunc declFunc)
 		{
-			int nSaves = declFunc.argDecl.locns.Length +  declFunc.localVars.Count;
+			int nSaves = declFunc.argDecl.locns.Length + declFunc.localVars.Count + activeTemps.Count;
 
 			/*
 			 * Output code to allocate a stack frame object with an object array.
@@ -885,6 +898,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				localLoc.PushVal (this, tokenTypeObj);
 				ilGen.Emit (OpCodes.Stelem_Ref);
 			}
+
+			/*
+			 * Copy temp values to object array, boxing as needed.
+			 */
+			foreach (CompValu temp in activeTemps) {
+				ilGen.Emit (OpCodes.Dup);
+				PushConstantI4 (i ++);
+				temp.PushVal (this, tokenTypeObj);
+				ilGen.Emit (OpCodes.Stelem_Ref);
+			}
+
 			ilGen.Emit (OpCodes.Pop);
 		}
 
@@ -927,6 +951,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				PushConstantI4 (i ++);
 				ilGen.Emit (OpCodes.Ldelem_Ref);
 				localLoc.PopPost (this, tokenTypeObj);
+			}
+
+			/*
+			 * Restore temp values from object array, unboxing as needed.
+			 */
+			foreach (CompValu temp in activeTemps) {
+				temp.PopPre (this);
+				ilGen.Emit (OpCodes.Ldloc, objArray);
+				PushConstantI4 (i ++);
+				ilGen.Emit (OpCodes.Ldelem_Ref);
+				temp.PopPost (this, tokenTypeObj);
 			}
 
 			/*
@@ -988,10 +1023,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 		}
 
+		/**
+		 * @brief There is one of these per call that can possibly call CheckRun(),
+		 *        including direct calls to CheckRun().
+		 */
 		private class CallLabel {
-			public ScriptMyLabel callLabel;
-			public TokenType[] argTypes;
-			public int index;
+			public int           index;       // sequential integer, starting at 0
+			public ScriptMyLabel callLabel;   // the actual label token
+			public TokenType[]   argTypes;    // types of args for the call we ar labelling
 
 			public CallLabel (ScriptCodeGen scg)
 			{
@@ -1848,7 +1887,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				tryStmt.catchStmt.isCatch = true;		// jumps out of catch require Leave opcode
 										// rethrow allowed
 										// return statements not allowed
-				CompValu catchVarLoc = new CompValuTemp (tokenTypeStr, tryStmt.catchVar.val, this);
+				CompValuTemp catchVarLoc = new CompValuTemp (tokenTypeStr, tryStmt.catchVar.val, this);
 				Dictionary<string, CompValu> frame = PushVarDefnBlock ();
 				frame.Add (tryStmt.catchVar.val, catchVarLoc);
 				ScriptMyLabel catchLabel = ilGen.DefineLabel ("catchlbl_" + tryStmt.Unique);

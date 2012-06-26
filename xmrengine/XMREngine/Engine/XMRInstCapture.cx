@@ -263,7 +263,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_log.Debug("[XMREngine]: MigrateOutEventHandler*: writing " + sf.funcName + ", callNo " + sf.callNo);
                     int i = 0;
                     foreach (object o in sf.objArray) {
-                        m_log.Debug("[XMREngine]: MigrateOutEventHandler*:   [" + i + "]=" + o.ToString());
+                        m_log.Debug("[XMREngine]: MigrateOutEventHandler*:   [" + i + "]=" + 
+                                (o == null ? "null" : "'" + o.ToString() + "'"));
                         i ++;
                     }
                     this.migrateOutWriter.Write (sf.callNo);  // what it was calling when suspended
