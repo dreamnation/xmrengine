@@ -11,6 +11,7 @@ using System.Threading;
 using System.Reflection;
 using System.Collections;
 using System.Collections.Generic;
+using System.Reflection.Emit;
 using System.Runtime.Remoting.Lifetime;
 using System.Security.Policy;
 using System.IO;
@@ -598,7 +599,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 string line = lines[i];
                 if (line != "") {
                     msg.Append('\n');
-                    msg.Append(line.Replace("$MMRContableAttribute$", "$"));
                 }
             }
 
@@ -845,12 +845,31 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         /**
+         * @brief Called on the normal entry to each function.
+         */
+        public override void PushStackFrame (string funcName)
+        {
+            this.outerStackFrame = this.innerStackFrame;
+            this.innerStackFrame = new XMRStackFrame ();
+            this.innerStackFrame.nextOuter = this.outerStackFrame;
+            this.innerStackFrame.funcName  = funcName;
+        }
+
+        /**
+         * @brief Called on the normal exit from each function.
+         */
+        public override void PopStackFrame ()
+        {
+            this.innerStackFrame = this.outerStackFrame;
+            this.outerStackFrame = this.innerStackFrame.nextOuter;
+        }
+
+        /**
          * @brief The script code should call this routine whenever it is
          *        convenient to perform a migation or switch microthreads.
          *
          * @param line = script source line number (for debugging)
          */
-        [MMRContableAttribute ()]
         public override void CheckRun (int line)
         {
             m_CheckRunPhase = "entered";
@@ -887,17 +906,26 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      * But otherwise, our state remains intact.
                      */
                     m_CheckRunPhase = "saving";
-                    subsArray[(int)SubsArray.BEAPI] = beAPI;
-                    continuation.Save (migrateOutStream, subsArray, dllsArray);
+                    XMRStackFrame sf = this.innerStackFrame;         // whatever func called us
+                    while (sf.nextOuter != null) sf = sf.nextOuter;  // gets the event handler function
+                    this.callMode = 1;  // save mode
+                    while (sf != null) {
+                        DynamicMethod meth = m_ObjCode.dynamicMethods[sf.funcName+"$save$"];
+                        meth.Invoke (this, null);                    // event handler, ..., whatever called us
+                        sf = sf.nextInner;
+                    }
                     m_CheckRunPhase = "saved";
-
-                    /*
-                     * We return here under two circumstances:
-                     *  1) the script state has been written out to the migrateOutStream
-                     *  2) the script state has been read in from the migrateOutStream
-                     */
-                    migrateComplete = true;
                 }
+
+                /*
+                 * We get here under two circumstances:
+                 *  1) the script state has been written out to the migrateOutStream
+                 *     (callMode 1)
+                 *  2) the script state has been read in from the migrateOutStream
+                 *     (callMode 2)
+                 */
+                this.callMode = 0;  // normal mode
+                migrateComplete = true;
 
                 /*
                  * Now we are ready to suspend the microthread.
@@ -914,17 +942,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * For extreme stress test, checkpoint/restart every step.
              */
             if (m_CheckRunStressStream != null) {
-                m_CheckRunPhase = "stressing";
-                m_CheckRunStressWrite = true;
-                m_CheckRunStressStream.Seek (0, SeekOrigin.Begin);
-                subsArray[(int)SubsArray.BEAPI] = beAPI;
-                migrateOutWriter = new BinaryWriter (m_CheckRunStressStream);
-                continuation.Save (m_CheckRunStressStream, subsArray, null);
-                migrateInReader  = null;
-                migrateOutWriter = null;
-                if (m_CheckRunStressWrite) {
-                    MMRUThread.Suspend ();
-                }
+                ///???
             }
 
             m_CheckRunPhase = "returning";

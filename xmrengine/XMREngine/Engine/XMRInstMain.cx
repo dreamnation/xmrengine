@@ -33,12 +33,6 @@ using log4net;
 //
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
-    public enum SubsArray {
-        SCRIPT = 0,
-        BEAPI,
-        SIZE
-    };
-
     /**
      * @brief Which queue it is in as far as running is concerned,
      *        ie, m_StartQueue, m_YieldQueue, m_SleepQueue, etc.
@@ -176,11 +170,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private ScriptUThread microthread;
 
         /*
-         * Continuation layer to serialize/deserialize script stack.
-         */
-        public ScriptContinuation continuation;
-
-        /*
          * Set to suspend microthread at next CheckRun() call.
          */
         public bool suspendOnCheckRunHold;
@@ -190,54 +179,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /*
          * Set to perform migration.
          */
-        public BinaryReader migrateInReader;   // used to read script state from a file
         public Stream       migrateInStream;
         public Dictionary<int, object> migrateInObjects;
-        public BinaryWriter migrateOutWriter;  // used to write script state to a file
         public Stream       migrateOutStream;
         public bool         migrateComplete;   // false: migration in progress; true: migration complete
         public Dictionary<object, int> migrateOutObjects;
 
         /*
-         * The subsArray[] is used by continuations to say which object references
-         * it must translate between sender and receiver.
-         *
-         * Save()/Load() are 'smart' enough to translate any references it finds on
-         * the stack to these objects on the receiving end without being explicitly 
-         * told:
-         *
-         *   1) continuation object itself
-         *   2) writer stream object references are translated to null
-         *   3) subsArray object itself
-         *   4) dllsArray object itself
-         *
-         * So any additional object references on the stack we want translated must 
-         * be placed in subsArray[].
-         *
-         * Finally, any objects not in the list of (3) or in subsArray are passed to
-         * the general serialize/deserialize routines and thus get reconstructed by
-         * value.  This is how things like vectors and strings get sent.
-         *
-         * Bottom line is this array contains references to objects that can be active
-         * when Save() is called, other than objects that are to be reconstructed by
-         * serialization/deserialization.
-         */
-        public object[] subsArray = new object[(int)SubsArray.SIZE];
-
-        /*
-         * The dllsArray[] tells the continuations what DLL filename translation must
-         * be done between the sender and receiver.
-         *
-         * Basically, unless the DLL has the same exact path on sending and receiving
-         * systems, this must include all DLLs that have MMRContableAttribute() routines
-         * in them.
-         */
-        public string[] dllsArray;
-
-        /*
          * Makes sure migration data version is same on both ends.
          */
-        public static byte migrationVersion = 8;
+        public static byte migrationVersion = 9;
 
         /**
          * @brief types of data we serialize

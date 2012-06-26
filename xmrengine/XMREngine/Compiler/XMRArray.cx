@@ -198,8 +198,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * @brief Transmit array out in such a way that it can be reconstructed,
          *        including any in-progress ForEach() enumerations.
          */
-        public delegate void SendArrayObjDelegate (Stream stream, object graph);
-        public void SendArrayObj (SendArrayObjDelegate sendObj, Stream stream)
+        public delegate void SendArrayObjDelegate (object graph);
+        public void SendArrayObj (SendArrayObjDelegate sendObj)
         {
             int index = arrayValid;
             object key = null;
@@ -218,10 +218,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Set the count then the elements themselves.
              */
-            sendObj (stream, (object)arrayValid);
+            sendObj ((object)arrayValid);
             for (index = 0; index < arrayValid; index ++) {
-                sendObj (stream, UnfixKey (array[index].Key));
-                sendObj (stream, array[index].Value);
+                sendObj (UnfixKey (array[index].Key));
+                sendObj (array[index].Value);
             }
         }
 
@@ -231,8 +231,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          *        at the exact spot and in the exact same order as they
          *        were in on the sending side.
          */
-        public delegate object RecvArrayObjDelegate (Stream stream);
-        public void RecvArrayObj (RecvArrayObjDelegate recvObj, Stream stream)
+        public delegate object RecvArrayObjDelegate ();
+        public void RecvArrayObj (RecvArrayObjDelegate recvObj)
         {
             int index;
 
@@ -254,7 +254,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * for any enumerations in progress, and will have elements
              * in order as given by previous calls to those enumerations.
              */
-            arrayValid = (int)recvObj (stream);
+            arrayValid = (int)recvObj ();
             array = new KeyValuePair<object, object>[arrayValid];
 
             /*
@@ -264,8 +264,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * modified).
              */
             for (index = 0; index < arrayValid; index ++) {
-                object key = FixKey (recvObj (stream));
-                object val = recvObj (stream);
+                object key = FixKey (recvObj ());
+                object val = recvObj ();
                 array[index] = new KeyValuePair<object, object> (key, val);
                 dnary.Add (key, val);
             }

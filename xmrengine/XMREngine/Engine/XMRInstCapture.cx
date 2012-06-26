@@ -217,11 +217,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
             stream.WriteByte (migrationVersion);
             stream.WriteByte ((byte)ScriptCodeGen.COMPILED_VERSION_VALUE);
-            this.SendObjValue (stream, this.stateCode);
-            this.SendObjValue (stream, this.eventCode);
-            this.SendObjValue (stream, this.heapLimit - this.heapLeft);
-            this.SendObjValue (stream, this.ehArgs);
-            this.MigrateScriptOut (stream, this.SendObjValue);
+            this.SendObjValue (this.stateCode);
+            this.SendObjValue (this.eventCode);
+            this.SendObjValue (this.heapLimit - this.heapLeft);
+            this.SendObjValue (this.ehArgs);
+            this.MigrateScriptOut ();
 
             /*
              * Resume the microthread to actually write the network stream.
@@ -250,35 +250,34 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /**
          * @brief Write script global variables to the output stream.
          */
-        private void MigrateScriptOut (System.IO.Stream stream, MMRContSendObj sendObj)
+        private void MigrateScriptOut ()
         {
-            SendObjArray (stream, sendObj, this.gblArrays);
-            SendObjArray (stream, sendObj, this.gblFloats);
-            SendObjArray (stream, sendObj, this.gblIntegers);
-            SendObjArray (stream, sendObj, this.gblLists);
-            SendObjArray (stream, sendObj, this.gblObjects);
-            SendObjArray (stream, sendObj, this.gblRotations);
-            SendObjArray (stream, sendObj, this.gblStrings);
-            SendObjArray (stream, sendObj, this.gblVectors);
+            SendObjArray (this.gblArrays);
+            SendObjArray (this.gblFloats);
+            SendObjArray (this.gblIntegers);
+            SendObjArray (this.gblLists);
+            SendObjArray (this.gblObjects);
+            SendObjArray (this.gblRotations);
+            SendObjArray (this.gblStrings);
+            SendObjArray (this.gblVectors);
         }
 
-        private void SendObjArray (System.IO.Stream stream, MMRContSendObj sendObj, Array array)
+        private void SendObjArray (Array array)
         {
-            sendObj (stream, (object)(int)array.Length);
+            SendObjValue ((object)(int)array.Length);
             for (int i = 0; i < array.Length; i ++) {
-                sendObj (stream, array.GetValue (i));
+                SendObjValue (array.GetValue (i));
             }
         }
 
         /**
-         * @brief called by continuation.Save() for every object to
+         * @brief Called by stack frame save code for every object to
          *        be sent over the network.
-         * @param stream = network stream to send it over
          * @param graph = object to send
          */
-        public void SendObjValue (Stream stream, object graph)
+        public override void SendObjValue (object graph)
         {
-            if (stream != this.migrateOutStream) throw new ArgumentNullException ("stream");
+            if (this.migrateOutStream == null) throw new ArgumentNullException ("migrateOutStream");
             if (this.migrateOutWriter == null) throw new ArgumentNullException ("migrateOutWriter");
 
             /*
@@ -306,7 +305,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (graph is LSL_Key) {
                 this.migrateOutWriter.Write ((byte)Ser.LSLKEY);
                 LSL_Key key = (LSL_Key)graph;
-                SendObjValue (stream, key.m_string);  // m_string can be null
+                SendObjValue (key.m_string);  // m_string can be null
                 return;
             }
             if (graph is LSL_Rotation) {
@@ -320,7 +319,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (graph is LSL_String) {
                 this.migrateOutWriter.Write ((byte)Ser.LSLSTR);
                 LSL_String str = (LSL_String)graph;
-                SendObjValue (stream, str.m_string);  // m_string can be null
+                SendObjValue (str.m_string);  // m_string can be null
                 return;
             }
             if (graph is LSL_Vector) {
@@ -378,17 +377,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (graph is LSL_List) {
                 this.migrateOutWriter.Write ((byte)Ser.LSLLIST);
                 LSL_List list = (LSL_List)graph;
-                SendObjValue (stream, list.Data);
+                SendObjValue (list.Data);
             } else if (graph is XMR_Array) {
                 this.migrateOutWriter.Write ((byte)Ser.XMRARRAY);
-                ((XMR_Array)graph).SendArrayObj (this.SendObjValue, stream);
+                ((XMR_Array)graph).SendArrayObj (this.SendObjValue);
             } else if (graph is object[]) {
                 this.migrateOutWriter.Write ((byte)Ser.OBJARRAY);
                 object[] array = (object[])graph;
                 int len = array.Length;
                 this.migrateOutWriter.Write (len);
                 for (int i = 0; i < len; i ++) {
-                    SendObjValue (stream, array[i]);
+                    SendObjValue (array[i]);
                 }
             } else if (graph is string) {
                 this.migrateOutWriter.Write ((byte)Ser.SYSSTR);
@@ -397,20 +396,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 DetectParams dp = (DetectParams)graph;
                 this.migrateOutWriter.Write ((byte)Ser.DETPRMS);
                 this.migrateOutWriter.Write (dp.Key.ToString());    // UUID
-                SendObjValue (stream, dp.OffsetPos);                // vector
+                SendObjValue (dp.OffsetPos);                // vector
                 this.migrateOutWriter.Write (dp.LinkNum);           // integer
                 this.migrateOutWriter.Write (dp.Group.ToString());  // UUID
                 this.migrateOutWriter.Write (dp.Name);              // string
                 this.migrateOutWriter.Write (dp.Owner.ToString());  // UUID
-                SendObjValue (stream, dp.Position);                 // vector
-                SendObjValue (stream, dp.Rotation);                 // rotation
+                SendObjValue (dp.Position);                 // vector
+                SendObjValue (dp.Rotation);                 // rotation
                 this.migrateOutWriter.Write (dp.Type);              // integer
-                SendObjValue (stream, dp.Velocity);                 // vector
-                SendObjValue (stream, dp.TouchST);                  // vector
-                SendObjValue (stream, dp.TouchNormal);              // vector
-                SendObjValue (stream, dp.TouchBinormal);            // vector
-                SendObjValue (stream, dp.TouchPos);                 // vector
-                SendObjValue (stream, dp.TouchUV);                  // vector
+                SendObjValue (dp.Velocity);                 // vector
+                SendObjValue (dp.TouchST);                  // vector
+                SendObjValue (dp.TouchNormal);              // vector
+                SendObjValue (dp.TouchBinormal);            // vector
+                SendObjValue (dp.TouchPos);                 // vector
+                SendObjValue (dp.TouchUV);                  // vector
                 this.migrateOutWriter.Write (dp.TouchFace);         // integer
             } else {
                 throw new Exception ("unhandled class " + graph.GetType().ToString());

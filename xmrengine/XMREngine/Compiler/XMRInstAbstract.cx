@@ -6,12 +6,20 @@
 #include "lsltypes.h"
 
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
+using System.IO;
 
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
+    public class XMRStackFrame
+    {
+        public XMRStackFrame nextOuter;
+        public XMRStackFrame nextInner;
+        public string funcName;
+    }
+
     /*
      * Contains only items required by the stand-alone compiler
-     * so it doesn't need to pull in all of OpenSim.
+     * so the compiler doesn't need to pull in all of OpenSim.
      */
     public abstract class XMRInstAbstract
     {
@@ -26,6 +34,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public int heapLeft;                // how much of heapLimit remains available
         public string traceHeapUse = null;  // null: quiet; else: name of script
         public int stateCode = 0;           // state the script is in (0 = 'default')
+
+        public int callMode = 0;            // 0: normal
+                                            // 1: saving stack frames
+                                            // 2: restoring stack frames
+        public XMRStackFrame outerStackFrame;
+        public XMRStackFrame innerStackFrame;
+        public BinaryWriter migrateOutWriter;
+        public BinaryReader migrateInReader;
 
         /*
          * These arrays hold the global variable values for the script instance.
@@ -44,6 +60,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /*
          * Function prototypes.
          */
+        public abstract void PushStackFrame (string funcName);
+        public abstract void PopStackFrame ();
+    public abstract void SendObjValue (object o);
+    public abstract object RecvObjValue ();
+
         public abstract void ConsoleWrite (string s);
         public abstract void CheckRun (int line);
         public abstract int  StackLeft ();

@@ -20,19 +20,18 @@ using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
  *  XMRInstance.StartEventHandler()
  *    MMRUThread.StartEx()
  *      ScriptUThread.MainEx()
- *        MMRCont.RunItEx()
- *          ScriptCont.RunCont()
- *            scriptHandlerEventTable[state,event]()
- *               XMRInstance.CheckRun()
- *                  MMRCont.Save()
- *                  MMRUThread.Suspend()
+ *        ScriptUThread.RunCont()
+ *          scriptHandlerEventTable[state,event]()
+ *             XMRInstance.CheckRun()
+ *                <dump stack>
+ *                MMRUThread.Suspend()
  */
 
 namespace OpenSim.Region.ScriptEngine.XMREngine {
 
-    /*****************************************************************\
-     *  Wrapper around continuation to enclose it in a microthread.  *
-    \*****************************************************************/
+    /*************************************************************\
+     *  Wrapper around instance to enclose it in a microthread.  *
+    \*************************************************************/
 
     public class ScriptUThread : MMRUThread {
 
@@ -50,7 +49,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
          */
         public override Exception MainEx ()
         {
-            Exception except;
+            Exception except = null;
 
             /*
              * Restoring the stress test trumps any other state.
@@ -64,22 +63,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                     except = MainEx();
                     instance.m_CheckRunStressStack ++; // prevent TCO of MainEx() call
                 } else {
-
-                    /*
-                     * Do a longjmp() to where the Save() call was made at bottom of
-                     * CheckRun() from a slightly different stack position.
-                     *
-                     * We have to clear m_CheckRunStressWrite so CheckRun() will know
-                     * we are doing the restart and not still doing the checkpoint.
-                     */
-                    instance.m_CheckRunStressWrite = false;
-                    instance.m_CheckRunStressStream.Seek (0, SeekOrigin.Begin);
-                    instance.subsArray[(int)SubsArray.BEAPI] = instance.beAPI;
-                    instance.continuation = new ScriptContinuation (instance);
-                    instance.migrateInReader = new BinaryReader (instance.m_CheckRunStressStream);
-                    except = instance.continuation.LoadEx (instance.m_CheckRunStressStream, 
-                                                           instance.subsArray, 
-                                                           null);
+                    ///???
                 }
             }
 
@@ -90,7 +74,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
              * are returned by RunItEx().
              */
             else if (instance.migrateInStream == null) {
-                except = instance.continuation.RunItEx ();
+                instance.callMode = 0;  // normal
+                try {
+                    RunCont ();
+                } catch (Exception e) {
+                    except = e;
+                }
             }
 
             /*
@@ -104,42 +93,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
              * complete, which causes LoadEx() to return at that time.
              */
             else {
-                instance.subsArray[(int)SubsArray.BEAPI] = instance.beAPI;
-                except = instance.continuation.LoadEx (instance.migrateInStream, 
-                                                       instance.subsArray,
-                                                       instance.dllsArray);
+                instance.callMode = 2;  // restore
+                try {
+                    RunCont ();
+                } catch (Exception e) {
+                    except = e;
+                }
             }
             return except;
         }
-    }
 
-    /****************************************************************\
-     *  Wrapper around script event handler so it can be migrated.  *
-    \****************************************************************/
-
-    public class ScriptContinuation : MMRCont {
-
-        public XMRInstance instance;
-
-        public ScriptContinuation (XMRInstance instance)
-        {
-            this.instance = instance;
-
-            /*
-             * We do our own object serialization.
-             * It avoids null pointer refs and is much more efficient because we
-             * have a limited number of types to deal with.
-             */
-            this.sendObj = instance.SendObjValue;
-            this.recvObj = instance.RecvObjValue;
-        }
-
-        /*
-         * Called by RunItEx() to start the event handler at its entrypoint.
-         * Any exception thrown by RunCont() is returned by RunItEx().
-         */
-        [MMRContableAttribute ()]
-        public override void RunCont ()
+        public void RunCont ()
         {
             int newStateCode, oldStateCode;
             ScriptEventHandler seh;
@@ -159,12 +123,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
             sw.ehArgs = null;  // we are done with them and no args for
                                // exit_state()/enter_state() anyway
-
-            /*
-             * Note that 'seh' is now invalid, as the continuation restore cannot restore it.
-             * But mono should see that 'seh' is no longer needed and so Save() shouldn't try
-             * to save it, theoretically.  Likewise for the other uses of 'seh' below.
-             */
 
             /*
              * If event handler changed state, call exit_state() on the old state,
@@ -214,31 +172,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
              * Event no longer being processed.
              */
             sw.eventCode = ScriptEventCode.None;
-        }
-
-        /**
-         * @brief Called by internals of Load() to see if we know where the new method is
-         *        for a given old method.
-         * @param methName = method name, eg, "Save"
-         * @param sigDesc = signature, eg, "object,System.IO.BinaryWriter"
-         * @param className = class, eg, "Continuation"
-         * @param classNameSpace = name space, eg, "Mono.Tasklets"
-         * @param imageName = image name, eg, ".../gac/Mono.Tasklets/2.0.0.0__0738eb9f132ed756/Mono.Tasklets.dll"
-         * @returns 0: not known, go find it in DLL somewhere
-         *       else: methodInfo.MethodHandle.Value of corresponding method = MonoMethod struct pointer
-         */
-        public IntPtr LoadFindMethod (string methName, string sigDesc, string className, string classNameSpace, string imageName)
-        {
-            DynamicMethod methodInfo;
-
-            /*
-             * All our names are superfunky with $MMRContableAttribute$ and the asset ID, so
-             * all we do is catalog them by function name which is always going to be unique.
-             */
-            if (instance.objCode.dynamicMethods.TryGetValue (methName, out methodInfo)) {
-                return methodInfo.MethodHandle.Value;
-            }
-            return (IntPtr)0;
         }
     }
 }

@@ -1029,6 +1029,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 			tokenArgDecl.types = System.Linq.Enumerable.ToArray (typeList);
 			tokenArgDecl.names = System.Linq.Enumerable.ToArray (nameList);
+			tokenArgDecl.locns = new CompValu[nArgs];
 			return tokenArgDecl;
 		}
 
@@ -1816,6 +1817,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	{
 		public TokenType[] types;
 		public TokenName[] names;
+		public CompValu[]  locns;  // used by codegen to keep track of locations
 
 		public TokenArgDecl (Token original) : base (original) { }
 

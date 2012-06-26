@@ -311,25 +311,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * Set up sub-objects and cross-polinate so everything can access everything.
              */
             this.microthread  = new ScriptUThread (this);
-            this.continuation = new ScriptContinuation (this);
-
-            /*
-             * Constant subsArray values...
-             */
-            this.subsArray[(int)SubsArray.SCRIPT] = this;
-
-            /*
-             * All the DLL filenames should be known at this point,
-             * so fill in the entries needed.
-             *
-             * These have to be the exact string returned by mono_image_get_filename().
-             * To find out which DLLs are needed, set envar MMRCONTSAVEDEBUG=1 and observe
-             * debug output to see which DLLs are referenced.
-             */
-            this.dllsArray = new string[3];
-            this.dllsArray[0] = MMRCont.GetDLLName (typeof (XMRInstance));  // ...XMREngine.dll
-            this.dllsArray[1] = MMRCont.GetDLLName (typeof (MMRCont));      // ...Mono.Tasklets.dll
-            this.dllsArray[2] = MMRCont.GetDLLName (typeof (LSL_Vector));   // ...ScriptEngine.Shared.dll
         }
 
         //  LoadInitialState()
@@ -690,10 +671,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (cv != ScriptCodeGen.COMPILED_VERSION_VALUE) {
                 throw new Exception ("incoming compilation version " + cv + " but accept only " + ScriptCodeGen.COMPILED_VERSION_VALUE);
             }
-            this.stateCode = (int)RecvObjValue (stream);
-            this.eventCode = (ScriptEventCode)RecvObjValue (stream);
-            this.heapLeft  = this.heapLimit - (int)RecvObjValue (stream);
-            this.ehArgs    = (object[])RecvObjValue (stream);
+            this.stateCode = (int)RecvObjValue ();
+            this.eventCode = (ScriptEventCode)RecvObjValue ();
+            this.heapLeft  = this.heapLimit - (int)RecvObjValue ();
+            this.ehArgs    = (object[])RecvObjValue ();
 
             /*
              * Read script globals in.
@@ -748,20 +729,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         private Array RecvObjArray (System.IO.Stream stream, Type eleType)
         {
-            int length = (int)RecvObjValue (stream);
+            int length = (int)RecvObjValue ();
             Array array = Array.CreateInstance (eleType, length);
             for (int i = 0; i < length; i ++) {
-                array.SetValue (RecvObjValue (stream), i);
+                array.SetValue (RecvObjValue (), i);
             }
             return array;
         }
 
         /**
          * @brief Read a single value from the stream.
-         * @param stream = stream to read the value from
          * @returns value (boxed as needed)
          */
-        public object RecvObjValue (Stream stream)
+        public override object RecvObjValue ()
         {
             int ident = this.migrateInObjects.Count;
             Ser code = (Ser)this.migrateInReader.ReadByte ();
@@ -779,12 +759,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     return new LSL_Integer (this.migrateInReader.ReadInt32 ());
                 }
                 case Ser.LSLKEY: {
-                    return new LSL_Key ((string)RecvObjValue (stream));
+                    return new LSL_Key ((string)RecvObjValue ());
                 }
                 case Ser.LSLLIST: {
                     LSL_List list =  new LSL_List (null);
                     this.migrateInObjects.Add (ident, list);
-                    list.Data = (object[])RecvObjValue (stream);
+                    list.Data = (object[])RecvObjValue ();
                     return list;
                 }
                 case Ser.LSLROT: {
@@ -795,7 +775,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     return new LSL_Rotation (x, y, z, s);
                 }
                 case Ser.LSLSTR: {
-                    return new LSL_String ((string)RecvObjValue (stream));
+                    return new LSL_String ((string)RecvObjValue ());
                 }
                 case Ser.LSLVEC: {
                     double x = this.migrateInReader.ReadDouble ();
@@ -808,7 +788,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     object[] array = new object[len];
                     this.migrateInObjects.Add (ident, array);
                     for (int i = 0; i < len; i ++) {
-                        array[i] = RecvObjValue (stream);
+                        array[i] = RecvObjValue ();
                     }
                     return array;
                 }
@@ -829,7 +809,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 case Ser.XMRARRAY: {
                     XMR_Array array = new XMR_Array ();
                     this.migrateInObjects.Add (ident, array);
-                    array.RecvArrayObj (this.RecvObjValue, stream);
+                    array.RecvArrayObj (this.RecvObjValue);
                     return array;
                 }
                 case Ser.DETPRMS: {
@@ -838,21 +818,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     this.migrateInObjects.Add (ident, dp);
 
                     dp.Key         = new UUID (this.migrateInReader.ReadString ());
-                    dp.OffsetPos   = (LSL_Vector)RecvObjValue (stream);
+                    dp.OffsetPos   = (LSL_Vector)RecvObjValue ();
                     dp.LinkNum     = this.migrateInReader.ReadInt32 ();
                     dp.Group       = new UUID (this.migrateInReader.ReadString ());
                     dp.Name        = this.migrateInReader.ReadString ();
                     dp.Owner       = new UUID (this.migrateInReader.ReadString ());
-                    dp.Position    = (LSL_Vector)RecvObjValue (stream);
-                    dp.Rotation    = (LSL_Rotation)RecvObjValue (stream);
+                    dp.Position    = (LSL_Vector)RecvObjValue ();
+                    dp.Rotation    = (LSL_Rotation)RecvObjValue ();
                     dp.Type        = this.migrateInReader.ReadInt32 ();
-                    dp.Velocity    = (LSL_Vector)RecvObjValue (stream);
+                    dp.Velocity    = (LSL_Vector)RecvObjValue ();
 
-                    stea.STCoord   = LSLVec2OMVec ((LSL_Vector)RecvObjValue (stream));
-                    stea.Normal    = LSLVec2OMVec ((LSL_Vector)RecvObjValue (stream));
-                    stea.Binormal  = LSLVec2OMVec ((LSL_Vector)RecvObjValue (stream));
-                    stea.Position  = LSLVec2OMVec ((LSL_Vector)RecvObjValue (stream));
-                    stea.UVCoord   = LSLVec2OMVec ((LSL_Vector)RecvObjValue (stream));
+                    stea.STCoord   = LSLVec2OMVec ((LSL_Vector)RecvObjValue ());
+                    stea.Normal    = LSLVec2OMVec ((LSL_Vector)RecvObjValue ());
+                    stea.Binormal  = LSLVec2OMVec ((LSL_Vector)RecvObjValue ());
+                    stea.Position  = LSLVec2OMVec ((LSL_Vector)RecvObjValue ());
+                    stea.UVCoord   = LSLVec2OMVec ((LSL_Vector)RecvObjValue ());
                     stea.FaceIndex = this.migrateInReader.ReadInt32 ();
 
                     dp.SurfaceTouchArgs = stea;

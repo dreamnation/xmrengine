@@ -56,8 +56,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             /*
              * Wait for it to stop executing and prevent it from starting again
-             * as it can't run without a microthread.  Take its continuation
-             * away from it too while we're at it.
+             * as it can't run without a microthread.
              */
             lock (m_RunLock)
             {
@@ -68,7 +67,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     microthread.Dispose ();
                     microthread = null;
                 }
-                continuation = null;
             }
 
             /*

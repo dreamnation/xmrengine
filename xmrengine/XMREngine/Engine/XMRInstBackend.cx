@@ -217,7 +217,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         private static LSL_List emptyList = new LSL_List (new object[0]);
 
-        [MMRContableAttribute ()]
         public override LSL_List XMREventDequeue (SCRIPTFLOAT timeout, int returnMask1, int returnMask2, 
                                                   int backgroundMask1, int backgroundMask2, int line)
         {
@@ -355,7 +354,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          *             are as currently set for the script (use xmrEventLoadDets to set how
          *             you want them to be different).
          */
-        [MMRContableAttribute ()]
         public override void XMREventCallHandler (LSL_List ev)
         {
             object[] data = ev.Data;
