@@ -263,8 +263,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		public override void PushVal (ScriptCodeGen scg)
 		{
-			scg.ilGen.Emit (OpCodes.Ldarg_0);            // scriptWrapper
-			scg.ilGen.Emit (OpCodes.Ldfld, field);       // scriptWrapper.gbl<Type>s
+			scg.ilGen.Emit (OpCodes.Ldarg_0);            // xmrinstance
+			scg.ilGen.Emit (OpCodes.Ldfld, field);       // xmrinstance.gbl<Type>s
 			scg.PushConstantI4 (index);
 			if (type is TokenTypeFloat) {
 				if (typeof (SCRIPTFLOAT) == typeof (float)) {
@@ -282,15 +282,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		public override void PushByRef (ScriptCodeGen scg)
 		{
-			scg.ilGen.Emit (OpCodes.Ldarg_0);            // scriptWrapper
-			scg.ilGen.Emit (OpCodes.Ldfld, field);       // scriptWrapper.gbl<Type>s
+			scg.ilGen.Emit (OpCodes.Ldarg_0);            // xmrinstance
+			scg.ilGen.Emit (OpCodes.Ldfld, field);       // xmrinstance.gbl<Type>s
 			scg.PushConstantI4 (index);
 			scg.ilGen.Emit (OpCodes.Ldelema, SysType());
 		}
 		public override void PopPre (ScriptCodeGen scg)
 		{
-			scg.ilGen.Emit (OpCodes.Ldarg_0);            // scriptWrapper
-			scg.ilGen.Emit (OpCodes.Ldfld, field);       // scriptWrapper.gbl<Type>s
+			scg.ilGen.Emit (OpCodes.Ldarg_0);            // xmrinstance
+			scg.ilGen.Emit (OpCodes.Ldfld, field);       // xmrinstance.gbl<Type>s
 			scg.PushConstantI4 (index);
 		}
 		public override void PopPost (ScriptCodeGen scg)

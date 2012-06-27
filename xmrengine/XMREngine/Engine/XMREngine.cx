@@ -679,7 +679,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             stateN.Attributes.Append(uuidA);
 
             XmlAttribute assetA = doc.CreateAttribute("", "Asset", "");
-            string assetID = instance.m_AssetID.ToString();
+            string assetID = instance.AssetID.ToString();
             assetA.Value = assetID;
             stateN.Attributes.Append(assetA);
 

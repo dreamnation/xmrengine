@@ -21,14 +21,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     /*
      * Contains only items required by the stand-alone compiler
      * so the compiler doesn't need to pull in all of OpenSim.
+     *
+     * Inherit from ScriptBaseClass so we can be used as 'this'
+     * parameter for backend-API calls, eg llSay().
      */
-    public abstract class XMRInstAbstract
+    public abstract class XMRInstAbstract : ScriptBaseClass
     {
         public const int CALLMODE_NORMAL  = 0;  // when function is called, it proceeds normally
         public const int CALLMODE_SAVE    = 1;  // StackSaveException() was thrown, push args/locals to stackFrames
         public const int CALLMODE_RESTORE = 2;  // when function is called, it pops state from stackFrames
 
-        public ScriptBaseClass beAPI;       // passed as 'this' to methods such as llSay()
         public object[] ehArgs;             // event handler argument array
         public bool stateChanged = false;   // script sets this if/when it executes a 'state' statement
         public bool doGblInit = true;       // default state_entry() needs to initialize global variables

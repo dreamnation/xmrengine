@@ -54,7 +54,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public  static ConstructorInfo lslVectorConstructorInfo = typeof (LSL_Vector).GetConstructor (new Type[] { typeof (double), typeof (double), typeof (double) });
 		private static ConstructorInfo scriptUndefinedStateExceptionConstructorInfo = typeof (ScriptUndefinedStateException).GetConstructor (new Type[] { typeof (string) });
 		private static ConstructorInfo xmrArrayConstructorInfo = typeof (XMR_Array).GetConstructor (new Type[0]);
-		public  static FieldInfo beAPIFieldInfo        = typeof (XMRInstAbstract).GetField ("beAPI");
 		private static FieldInfo callModeFieldInfo     = typeof (XMRInstAbstract).GetField ("callMode");
 		private static FieldInfo doGblInitFieldInfo    = typeof (XMRInstAbstract).GetField ("doGblInit");
 		private static FieldInfo ehArgsFieldInfo       = typeof (XMRInstAbstract).GetField ("ehArgs");
@@ -410,7 +409,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 *
 		 *   private static void __seh_<statecode>_<eventcode>_<statename>_<eventname>(XMRInstance __sw)
 		 *   {
-		 *      ScriptBaseClass __be  = __sw.beAPI;
 		 *      <typeArg0> <nameArg0> = (<typeArg0>)__sw.ehArgs[0];
 		 *      <typeArg1> <nameArg1> = (<typeArg1>)__sw.ehArgs[1];
 		 *

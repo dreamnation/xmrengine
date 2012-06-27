@@ -446,7 +446,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		/**
-		 * @brief Generate call to backend API function with a call to CheckRun() as well.
+		 * @brief Generate call to backend API function (eg llSay()) followed by a call to CheckRun().
 		 * @param scg = script being compiled
 		 * @param result = where to place result (might be void)
 		 * @param args = arguments to pass to API function
@@ -454,15 +454,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void CodeGenBEApi (ScriptCodeGen scg, Token token, CompValu result, CompValu[] args)
 		{
 			result.PopPre (scg);
-			scg.ilGen.Emit (OpCodes.Ldarg_0);                              // scriptWrapper
-			scg.ilGen.Emit (OpCodes.Ldfld, ScriptCodeGen.beAPIFieldInfo);  // scriptWrapper.beAPI = 'this' for the API function
-			for (int i = 0; i < args.Length; i ++) {                       // push arguments
-				args[i].PushVal (scg, argTypes[i]);                    // .. boxing/unboxing as needed
+			scg.ilGen.Emit (OpCodes.Ldarg_0);            // xmrinstance = 'this' for the API function
+			for (int i = 0; i < args.Length; i ++) {     // push arguments
+				args[i].PushVal (scg, argTypes[i]);  // .. boxing/unboxing as needed
 			}
-			scg.ilGen.Emit (OpCodes.Call, methInfo);                       // call API function
-			result.PopPost (scg, retType);                                 // pop result, boxing/unboxing as needed
+			scg.ilGen.Emit (OpCodes.Call, methInfo);     // call API function
+			result.PopPost (scg, retType);               // pop result, boxing/unboxing as needed
 			if (doCheckRun) {
-				scg.EmitCallCheckRun (token.line);                     // maybe call CheckRun()
+				scg.EmitCallCheckRun (token.line);   // maybe call CheckRun()
 			}
 		}
 	}

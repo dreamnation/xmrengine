@@ -91,8 +91,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public  SceneObjectPart m_Part = null;
         public  uint m_LocalID = 0;
         public  TaskInventoryItem m_Item = null;
-        public  UUID m_ItemID;
-        public  UUID m_AssetID;
+        private UUID m_ItemID;
+        private UUID m_AssetID;
 
         private XMREngine m_Engine = null;
         private string m_ScriptBasePath;
@@ -245,5 +245,5 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         // It's born ready, but will be reset when the detach is posted.
         // It will then be set again on suspend/completion
         private ManualResetEvent m_DetachReady = new ManualResetEvent(true);
-    }
+   }
 }

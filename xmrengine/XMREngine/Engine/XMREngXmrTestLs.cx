@@ -141,7 +141,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     XMRInstance rins = m_RunInstance;
                     if (rins != null) {
                         outFile.WriteLine("running {0} {1}",
-                                rins.m_ItemID.ToString(),
+                                rins.ItemID.ToString(),
                                 rins.m_DescName);
                     }
                     DateTime suntil = m_SleepUntil;
@@ -238,14 +238,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                          * Try to print instance name.
                          */
                         if (InstanceMatchesArgs(inst, args, indx)) {
-                            outFile.WriteLine("   " + inst.m_ItemID.ToString() + " " + inst.m_DescName);
+                            outFile.WriteLine("   " + inst.ItemID.ToString() + " " + inst.m_DescName);
                         }
                     } catch (Exception e) {
 
                         /*
                          * Sometimes there are instances in the queue that are disposed.
                          */
-                        outFile.WriteLine("   " + inst.m_ItemID.ToString() + " " + inst.m_DescName + ": " + e.Message);
+                        outFile.WriteLine("   " + inst.ItemID.ToString() + " " + inst.m_DescName + ": " + e.Message);
                     }
                 }
             }
@@ -260,8 +260,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if (args[i][0] != '-') {
                     hadSomethingToCompare = true;
                     if (ins.m_DescName.Contains(args[i])) return true;
-                    if (ins.m_ItemID.ToString().Contains(args[i])) return true;
-                    if (ins.m_AssetID.ToString().Contains(args[i])) return true;
+                    if (ins.ItemID.ToString().Contains(args[i])) return true;
+                    if (ins.AssetID.ToString().Contains(args[i])) return true;
                 }
             }
             return !hadSomethingToCompare;

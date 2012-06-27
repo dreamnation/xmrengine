@@ -447,9 +447,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * Start event handler.
          *
          * Input:
-         *  eventCode  = code of event to be processed
-         *  ehArgs     = arguments for the event handler
-         *  this.beAPI = 'this' pointer passed to things like llSay()
+         *  eventCode = code of event to be processed
+         *  ehArgs    = arguments for the event handler
          *
          * Caution:
          *  It is up to the caller to make sure ehArgs[] is correct for
@@ -599,7 +598,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Send sanitized error message to owner.
              */
-            beAPI.llOwnerSay(msg.ToString());
+            this.llOwnerSay(msg.ToString());
 
             /*
              * Say script is sleeping for a very long time.
