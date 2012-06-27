@@ -15,7 +15,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 {
     public partial class XMREngine {
 
-        private void XmrTestLs(string[] args)
+        private void XmrTestLs (string[] args, int indx)
         {
             bool flagFull   = false;
             bool flagQueues = false;
@@ -28,10 +28,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Decode command line options.
              */
-            for (int i = 0; i < args.Length; i ++) {
+            for (int i = indx; i < args.Length; i ++) {
                 if (args[i] == "-full") {
                     flagFull = true;
                     continue;
+                }
+                if (args[i] == "-help") {
+                    m_log.Info ("[XMREngine]: xmr ls -full -max=<number> -out=<filename> -queues -topcpu");
+                    return;
                 }
                 if (args[i].StartsWith("-max=")) {
                     try {
@@ -55,8 +59,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     continue;
                 }
                 if (args[i][0] == '-') {
-                    m_log.Error("[XMREngine]: unknown option " + args[i]);
-                    m_log.Info("[XMREngine]: options: -full -max=<number> -out=<filename> -queues -topcpu");
+                    m_log.Error("[XMREngine]: unknown option " + args[i] + ", try 'xmr ls -help'");
                     return;
                 }
             }
@@ -103,7 +106,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     instances = new XMRInstance[m_InstancesDict.Count];
                     foreach (XMRInstance ins in m_InstancesDict.Values)
                     {
-                        if (InstanceMatchesArgs(ins, args)) {
+                        if (InstanceMatchesArgs(ins, args, indx)) {
                             instances[numScripts++] = ins;
                         }
                     }
@@ -146,22 +149,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         outFile.WriteLine("sleeping until {0}", suntil.ToString());
                     }
                     outFile.WriteLine("last ran at {0}", m_LastRanAt.ToString());
-                    LsQueue(outFile, "start", m_StartQueue, args);
-                    LsQueue(outFile, "sleep", m_SleepQueue, args);
-                    LsQueue(outFile, "yield", m_YieldQueue, args);
+                    LsQueue(outFile, "start", m_StartQueue, args, indx);
+                    LsQueue(outFile, "sleep", m_SleepQueue, args, indx);
+                    LsQueue(outFile, "yield", m_YieldQueue, args, indx);
                 }
             } finally {
                 outFile.Close();
             }
         }
 
-        private void XmrTestReset(string[] args)
+        private void XmrTestReset (string[] args, int indx)
         {
             bool flagAll = false;
             int numScripts = 0;
             XMRInstance[] instances;
 
-            if (args.Length == 0) {
+            if (args.Length <= indx) {
                 m_log.Error("[XMREngine]: must specify part of script name or -all for all scripts");
                 return;
             }
@@ -169,14 +172,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Decode command line options.
              */
-            for (int i = 0; i < args.Length; i ++) {
+            for (int i = indx; i < args.Length; i ++) {
                 if (args[i] == "-all") {
                     flagAll = true;
                     continue;
                 }
+                if (args[i] == "-help") {
+                    m_log.Info ("[XMREngine]: xmr reset -all | <part-of-script-name>");
+                    return;
+                }
                 if (args[i][0] == '-') {
-                    m_log.Error("[XMREngine]: unknown option " + args[i]);
-                    m_log.Info("[XMREngine]: options: -all");
+                    m_log.Error ("[XMREngine]: unknown option " + args[i] + ", try 'xmr reset -help'");
                     return;
                 }
             }
@@ -188,12 +194,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 m_log.Error("[XMREngine]: deadlock m_LockedDict=" + m_LockedDict);
                 return;
             }
-            try
-            {
+
+            try {
                 instances = new XMRInstance[m_InstancesDict.Count];
-                foreach (XMRInstance ins in m_InstancesDict.Values)
-                {
-                    if (flagAll || InstanceMatchesArgs(ins, args)) {
+                foreach (XMRInstance ins in m_InstancesDict.Values) {
+                    if (flagAll || InstanceMatchesArgs (ins, args, indx)) {
                         instances[numScripts++] = ins;
                     }
                 }
@@ -222,7 +227,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return b.m_CPUTime - a.m_CPUTime;
         }
 
-        private void LsQueue(TextWriter outFile, string name, XMRInstQueue queue, string[] args)
+        private void LsQueue(TextWriter outFile, string name, XMRInstQueue queue, string[] args, int indx)
         {
             outFile.WriteLine("Queue " + name + ":");
             lock (queue) {
@@ -232,7 +237,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         /*
                          * Try to print instance name.
                          */
-                        if (InstanceMatchesArgs(inst, args)) {
+                        if (InstanceMatchesArgs(inst, args, indx)) {
                             outFile.WriteLine("   " + inst.m_ItemID.ToString() + " " + inst.m_DescName);
                         }
                     } catch (Exception e) {
@@ -246,11 +251,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
         }
 
-        private bool InstanceMatchesArgs(XMRInstance ins, string[] args)
+        private bool InstanceMatchesArgs(XMRInstance ins, string[] args, int indx)
         {
             bool hadSomethingToCompare = false;
 
-            for (int i = 0; i < args.Length; i ++)
+            for (int i = indx; i < args.Length; i ++)
             {
                 if (args[i][0] != '-') {
                     hadSomethingToCompare = true;

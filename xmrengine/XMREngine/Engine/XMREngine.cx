@@ -196,7 +196,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             MainConsole.Instance.Commands.AddCommand("xmr", false,
                     "xmr",
-                    "xmr [backup|cvv|gc|ls|mvv|reset|resume|suspend|top|traceheapuse]",
+                    "xmr [...|help|...] ...",
                     "Run xmr script engine commands",
                     RunTest);
 
@@ -309,63 +309,86 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             TCP("[XMREngine]: XMREngine.Close()");
         }
 
-        private void RunTest(string module, string[] args)
+        private void RunTest (string module, string[] args)
         {
-            string[] rest;
-            if (args.Length < 3)
+            if (args.Length < 2) {
+                m_log.Info ("[XMREngine]: missing command, try 'xmr help'");
                 return;
-
-            rest = new string[args.Length-3];
-            for (int i = 3; i < args.Length; i ++) {
-                rest[i-3] = args[i];
             }
 
-            switch(args[2])
-            {
+            switch (args[1]) {
                 case "cvv": {
-                    if (args.Length == 3) {
-                        m_log.InfoFormat("[XMREngine]: compiled version value = {0}", ScriptCodeGen.COMPILED_VERSION_VALUE);
-                        break;
-                    }
-                    if (args.Length == 4) {
-                        try {
-                            ScriptCodeGen.COMPILED_VERSION_VALUE = Convert.ToInt32(args[3]);
+                    switch (args.Length) {
+                        case 2: {
+                            m_log.InfoFormat ("[XMREngine]: compiled version value = {0}", 
+                                    ScriptCodeGen.COMPILED_VERSION_VALUE);
                             break;
-                        } catch {
+                        }
+                        case 3: {
+                            try {
+                                ScriptCodeGen.COMPILED_VERSION_VALUE = Convert.ToInt32 (args[2]);
+                            } catch {
+                                m_log.Error ("[XMREngine]: bad/missing version number");
+                            }
+                            break;
+                        }
+                        default: {
+                            m_log.Error ("[XMREngine]: xmr cvv [<new_compiled_version_value>]");
+                            break;
                         }
                     }
-                    m_log.Error("[XMREngine]: xmr cvv [<new_compiled_version_value>]");
                     break;
                 }
                 case "gc": {
                     GC.Collect();
                     break;
                 }
+                case "help":
+                case "?": {
+                    m_log.Info ("[XMREngine]: xmr cvv [<newvalue>] - show/set compiled version value");
+                    m_log.Info ("[XMREngine]: xmr gc");
+                    m_log.Info ("[XMREngine]: xmr ls [-help ...]");
+                    m_log.Info ("[XMREngine]: xmr mvv [<newvalue>] - show/set migration version value");
+                    m_log.Info ("[XMREngine]: xmr reset [-help ...]");
+                    m_log.Info ("[XMREngine]: xmr resume - resume script processing");
+                    m_log.Info ("[XMREngine]: xmr suspend - suspend script processing");
+                    m_log.Info ("[XMREngine]: xmr traceheapuse [<scriptname>] - trace heap usage");
+                    break;
+                }
                 case "ls": {
-                    XmrTestLs(rest);
+                    XmrTestLs (args, 2);
                     break;
                 }
                 case "mvv": {
-                    if (args.Length == 3) {
-                        m_log.InfoFormat("[XMREngine]: migration version value = {0}", XMRInstance.migrationVersion);
-                        break;
-                    }
-                    if (args.Length == 4) {
-                        try {
-                            XMRInstance.migrationVersion = Convert.ToByte(args[3]);
+                    switch (args.Length) {
+                        case 2: {
+                            m_log.InfoFormat ("[XMREngine]: compiled version value = {0}", 
+                                    XMRInstance.migrationVersion);
                             break;
-                        } catch {
+                        }
+                        case 3: {
+                            try {
+                                int mvv = Convert.ToInt32 (args[2]);
+                                if ((mvv < 0) || (mvv > 255)) throw new Exception ("out of range");
+                                XMRInstance.migrationVersion = (byte) mvv;
+                            } catch (Exception e) {
+                                m_log.Error ("[XMREngine]: bad/missing version number (" + e.Message + ")");
+                            }
+                            break;
+                        }
+                        default: {
+                            m_log.Error ("[XMREngine]: xmr mvv [<new_migration_version_value>]");
+                            break;
                         }
                     }
-                    m_log.Error("[XMREngine]: xmr mvv [<new_migration_version_value>]");
                     break;
                 }
                 case "reset": {
-                    XmrTestReset(rest);
+                    XmrTestReset (args, 2);
                     break;
                 }
                 case "resume": {
-                    m_log.Debug("[XMREngine]: resuming scripts");
+                    m_log.Info ("[XMREngine]: resuming scripts");
                     m_SuspendScriptThreadFlag = false;
                     Monitor.Enter (m_SuspendScriptThreadLock);
                     Monitor.PulseAll (m_SuspendScriptThreadLock);
@@ -373,7 +396,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     break;
                 }
                 case "suspend": {
-                    m_log.Debug("[XMREngine]: suspending scripts");
+                    m_log.Info ("[XMREngine]: suspending scripts");
                     m_SuspendScriptThreadFlag = true;
                     Monitor.Enter (m_WakeUpLock);
                     Monitor.PulseAll (m_WakeUpLock);
@@ -381,19 +404,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     break;
                 }
                 case "traceheapuse": {
-                    if (args.Length == 3) {
-                        m_traceHeapUse = null;
-                        break;
+                    switch (args.Length) {
+                        case 3: {
+                            m_traceHeapUse = null;
+                            break;
+                        }
+                        case 4: {
+                            m_traceHeapUse = args[3];
+                            break;
+                        }
+                        default: {
+                            m_log.Error ("[XMREngine]: usage: xmr traceheapuse [<scriptname>]");
+                            break;
+                        }
                     }
-                    if (args.Length == 4) {
-                        m_traceHeapUse = args[3];
-                        break;
-                    }
-                    m_log.Debug("[XMREngine]: usage: xmr traceheapuse [<scriptname>]");
                     break;
                 }
                 default: {
-                    m_log.Error("[XMREngine]: unknown command " + args[2]);
+                    m_log.Error ("[XMREngine]: unknown command " + args[1] + ", try 'xmr help'");
                     break;
                 }
             }
