@@ -135,36 +135,39 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (flagFull) {
                 StringBuilder sb = new StringBuilder();
                 sb.AppendLine(m_DescName);
-                sb.AppendLine("    m_LocalID       = " + m_LocalID);
-                sb.AppendLine("    m_ItemID        = " + m_ItemID);
-                sb.AppendLine("    m_AssetID       = " + m_AssetID);
-                sb.AppendLine("    m_StartParam    = " + m_StartParam);
-                sb.AppendLine("    m_PostOnRez     = " + m_PostOnRez);
-                sb.AppendLine("    m_StateSource   = " + m_StateSource);
-                sb.AppendLine("    m_SuspendCount  = " + m_SuspendCount);
-                sb.AppendLine("    m_SleepUntil    = " + m_SleepUntil);
-                sb.AppendLine("    m_SleepEvMask1  = 0x" + m_SleepEventMask1.ToString("X"));
-                sb.AppendLine("    m_SleepEvMask2  = 0x" + m_SleepEventMask2.ToString("X"));
-                sb.AppendLine("    m_IState        = " + m_IState.ToString());
-                sb.AppendLine("    m_Die           = " + m_Die);
-                sb.AppendLine("    m_StateCode     = " + GetStateName(stateCode));
-                sb.AppendLine("    eventCode       = " + eventCode.ToString());
-                sb.AppendLine("    m_LastRanAt     = " + m_LastRanAt.ToString());
-                sb.AppendLine("    m_RunOnePhase   = " + m_RunOnePhase);
-                sb.AppendLine("    m_CheckRunLine  = " + m_CheckRunLine.ToString());
-                sb.AppendLine("    suspOnCkRunHold = " + suspendOnCheckRunHold);
-                sb.AppendLine("    suspOnCkRunTemp = " + suspendOnCheckRunTemp);
-                sb.AppendLine("    m_CheckRunPhase = " + m_CheckRunPhase);
-                sb.AppendLine("    heapLeft/Limit  = " + heapLeft + "/" + heapLimit);
-                sb.AppendLine("    m_InstEHEvent   = " + m_InstEHEvent.ToString());
-                sb.AppendLine("    m_InstEHSlice   = " + m_InstEHSlice.ToString());
-                sb.AppendLine("    m_CPUTime       = " + m_CPUTime);
+                sb.AppendLine("    m_LocalID           = " + m_LocalID);
+                sb.AppendLine("    m_ItemID            = " + m_ItemID  + "  (.state file)");
+                sb.AppendLine("    m_AssetID           = " + m_AssetID + "  (.xmrobj file)");
+                sb.AppendLine("    m_StartParam        = " + m_StartParam);
+                sb.AppendLine("    m_PostOnRez         = " + m_PostOnRez);
+                sb.AppendLine("    m_StateSource       = " + m_StateSource);
+                sb.AppendLine("    m_SuspendCount      = " + m_SuspendCount);
+                sb.AppendLine("    m_SleepUntil        = " + m_SleepUntil);
+                sb.AppendLine("    m_SleepEvMask1      = 0x" + m_SleepEventMask1.ToString("X"));
+                sb.AppendLine("    m_SleepEvMask2      = 0x" + m_SleepEventMask2.ToString("X"));
+                sb.AppendLine("    m_IState            = " + m_IState.ToString());
+                sb.AppendLine("    m_Die               = " + m_Die);
+                sb.AppendLine("    m_StateCode         = " + GetStateName(stateCode));
+                sb.AppendLine("    eventCode           = " + eventCode.ToString());
+                sb.AppendLine("    m_LastRanAt         = " + m_LastRanAt.ToString());
+                sb.AppendLine("    m_RunOnePhase       = " + m_RunOnePhase);
+                sb.AppendLine("    m_CheckRunLine      = " + m_CheckRunLine.ToString());
+                sb.AppendLine("    suspOnCkRunHold     = " + suspendOnCheckRunHold);
+                sb.AppendLine("    suspOnCkRunTemp     = " + suspendOnCheckRunTemp);
+                sb.AppendLine("    m_CheckRunPhase     = " + m_CheckRunPhase);
+                sb.AppendLine("    heapLeft/Limit      = " + heapLeft + "/" + heapLimit);
+                sb.AppendLine("    m_InstEHEvent       = " + m_InstEHEvent.ToString());
+                sb.AppendLine("    m_InstEHSlice       = " + m_InstEHSlice.ToString());
+                sb.AppendLine("    m_CPUTime           = " + m_CPUTime);
+                sb.AppendLine("    callMode            = " + callMode);
+                sb.AppendLine("    captureStackFrames  = " + captureStackFrames);
+                sb.AppendLine("    stackFramesRestored = " + stackFramesRestored);
                 lock (m_QueueLock)
                 {
-                    sb.AppendLine("    m_Running       = " + m_Running);
+                    sb.AppendLine("    m_Running           = " + m_Running);
                     foreach (EventParams evt in m_EventQueue)
                     {
-                        sb.AppendLine("        evt.EventName   = " + evt.EventName);
+                        sb.AppendLine("        evt.EventName       = " + evt.EventName);
                     }
                 }
                 return sb.ToString();

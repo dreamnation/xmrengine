@@ -142,15 +142,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             suspendOnCheckRunTemp = false;
 
             /*
-             * Maybe we are doing checkpoint/restart stress test.
-             * Filling in m_CheckRunStressStream non-null is sufficient to enable test.
-             */
-            string envar = Environment.GetEnvironmentVariable("XMRCheckRunStressTest");
-            if ((envar != null) && ((envar[0] & 1) != 0)) {
-                m_CheckRunStressStream = new MemoryStream(4000);
-            }
-
-            /*
              * Declare which events the script's current state can handle.
              */
             m_Part.SetScriptEvents(m_ItemID, GetStateEventFlags(stateCode));
@@ -728,12 +719,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * sees this.stackFrames and restores its args and locals, and so on...
                  * Eventually it gets to the point of calling CheckRun() which sees we are
                  * doing a restore and it suspends, returning here with the microthread
-                 * stack all restored.
+                 * stack all restored.  It shouldn't ever throw an exception.
                  */
-                this.callMode = CALLMODE_RESTORE;
-                this.migrateComplete = false;
+                this.stackFramesRestored = false;
                 microthread.Start ();
-                if (!this.migrateComplete) throw new Exception ("migrate in did not complete");
+                if (!this.stackFramesRestored) throw new Exception ("migrate in did not complete");
             }
 
             /*

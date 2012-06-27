@@ -362,7 +362,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 case "mvv": {
                     switch (args.Length) {
                         case 2: {
-                            m_log.InfoFormat ("[XMREngine]: compiled version value = {0}", 
+                            m_log.InfoFormat ("[XMREngine]: migration version value = {0}", 
                                     XMRInstance.migrationVersion);
                             break;
                         }
@@ -405,12 +405,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
                 case "traceheapuse": {
                     switch (args.Length) {
-                        case 3: {
+                        case 2: {
                             m_traceHeapUse = null;
                             break;
                         }
-                        case 4: {
-                            m_traceHeapUse = args[3];
+                        case 3: {
+                            m_traceHeapUse = args[2];
                             break;
                         }
                         default: {

@@ -116,11 +116,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public  int m_InstEHSlice  = 0;  // number of times handler timesliced (ResumeEx called)
         public  int m_CPUTime      = 0;  // accumulated CPU time (milliseconds)
 
-        public bool   m_CheckRunStressOdd;     // use odd number of stack frames to offset stack this time
-        public bool   m_CheckRunStressWrite;   // true: microthread suspended because it wrote stress; false: normal suspend
-        public int    m_CheckRunStressStack;   // number of stack frames remaingin to offset this time
-        public Stream m_CheckRunStressStream;  // null: normal mode; else: stream to write stress data to / read stress data from
-        public bool   m_ForceReset;
+        public bool m_ForceReset;
 
         // If code needs to have both m_QueueLock and m_RunLock,
         // be sure to lock m_RunLock first then m_QueueLock, as
@@ -179,7 +175,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /*
          * Set to perform migration.
          */
-        public bool         migrateComplete; // false: migration in progress; true: migration complete
+        public bool         stackFramesRestored; // set true by CheckRun() when stack has been 
+                                                 // restored and is about to suspend the microthread
+        public bool         captureStackFrames;  // set true to tell CheckRun() to throw a
+                                                 // StackCaptureException() causing it to capture a
+                                                 // snapshot of the script's stack
         public Stream       migrateInStream;
         public BinaryReader migrateInReader;
         public Dictionary<int, object> migrateInObjects;

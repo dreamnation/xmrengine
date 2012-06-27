@@ -32,8 +32,7 @@ using log4net;
 
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
-    public class StackSaveException : Exception {
-    }
+    public class StackCaptureException : Exception { }
 
     public partial class XMRInstance
     {
@@ -257,19 +256,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 {
                     m_RunOnePhase = "return disposed";
                     return XMRInstState.DISPOSED;
-                }
-
-                /*
-                 * Maybe we are stress-testing the checkpoint/restart stuff.
-                 */
-                if (m_CheckRunStressWrite)
-                {
-                    m_RunOnePhase = "restart stress test";
-                    m_LastRanAt = now;
-                    m_CheckRunStressOdd   = !m_CheckRunStressOdd;
-                    m_CheckRunStressStack = m_CheckRunStressOdd ? 1 : 2;
-                    callMode = CALLMODE_NORMAL;
-                    e = microthread.StartEx ();  // calls Main() on microthread stack
                 }
 
                 /*
@@ -519,8 +505,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * This calls ScriptUThread.Main() directly, and returns when Main() [indirectly]
              * calls Suspend() or when Main() returns, whichever occurs first.
+             * Setting stackFrames = null means run the event handler from the beginning
+             * without doing any stack frame restores first.
              */
-            this.callMode = CALLMODE_NORMAL;
+            this.stackFrames = null;
             return microthread.StartEx ();
         }
 
@@ -851,15 +839,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         /**
-         * @brief Called when saving a function's stack contents.
+         * @brief Called when capturing a function's stack contents.
          * @param funcName = function the frame pertains to, ie, who is doing the pushing
-         * @param callNo = call within that function that was executing when save is being done
-         * @param nSaves = number of arguments & locals that the function wants to save
+         * @param callNo = call within that function that was executing when capture is being done
+         * @param nSaves = number of arguments & locals that the function wants to capture
          * @returns pointer to object[] array so function can save its arguments & locals
          */
-        public override object[] PushStackFrame (string funcName, int callNo, int nSaves)
+        public override object[] CaptureStackFrame (string funcName, int callNo, int nSaves)
         {
-            m_log.Debug ("[XMREngine]: PushStackFrame*: " + funcName);
             XMRStackFrame sf = new XMRStackFrame ();
             sf.nextSF   = this.stackFrames;
             sf.funcName = funcName;
@@ -875,9 +862,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * @param callNo = where to return the restored call number
          * @returns pointer to object[] array so function can restore its arguments & locals
          */
-        public override object[] PopStackFrame (string funcName, out int callNo)
+        public override object[] RestoreStackFrame (string funcName, out int callNo)
         {
-            m_log.Debug ("[XMREngine]: PopStackFrame*: " + funcName);
             XMRStackFrame sf = this.stackFrames;
             if (sf.funcName != funcName) {
                 throw new Exception ("stack frame mismatch, expected " + funcName + ", have " + sf.funcName);
@@ -920,30 +906,32 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
             while (suspendOnCheckRunHold || suspendOnCheckRunTemp) {
                 m_CheckRunPhase = "top of while";
-                m_log.Debug("[XMREngine]: CheckRun*: suspend requested");
 
                 /*
                  * See if MigrateOutEventHandler() has been called.
-                 * If so, dump our stack to the stream and unwind.
+                 * If so, dump our stack to stackFrames and unwind.
                  */
-                if (this.callMode == CALLMODE_SAVE) {
+                if (this.captureStackFrames) {
 
                     /*
                      * Puque our stack to the output stream.
                      * But otherwise, our state remains intact.
                      */
                     m_CheckRunPhase = "saving";
-                    m_log.Debug("[XMREngine]: CheckRun*: throwing StackSaveException()");
-                    throw new StackSaveException ();
+                    this.callMode = CALLMODE_SAVE;
+                    this.stackFrames = null;
+                    throw new StackCaptureException ();
                 }
 
                 /*
-                 * We get here when the script state has been read in 
-                 * from the migrateInStream.
+                 * We get here when the script state has been read in from the migrateInStream.
+                 * Since the stack is completely restored at this point, any subsequent calls
+                 * withing the functions should do their normal processing instead of trying
+                 * to restore their state.
                  */
                 if (this.callMode == CALLMODE_RESTORE) {
-                    m_log.Debug("[XMREngine]: CheckRun*: restore complete");
-                    migrateComplete = true;
+                    stackFramesRestored = true;
+                    this.callMode = CALLMODE_NORMAL;
                 }
 
                 /*
@@ -955,17 +943,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 suspendOnCheckRunTemp = false;
                 MMRUThread.Suspend ();
                 m_CheckRunPhase = "resumed";
-                m_log.Debug("[XMREngine]: CheckRun*: returned from suspend");
-            }
-
-            /*
-             * For extreme stress test, checkpoint/restart every step.
-             */
-            if (m_CheckRunStressStream != null) {
-                ///???
             }
 
             m_CheckRunPhase = "returning";
+
+            /*
+             * Upon return from CheckRun() it should always be the case that the script is
+             * going to process calls normally, neither saving nor restoring stack frame state.
+             */
+            if (callMode != CALLMODE_NORMAL) throw new Exception ("bad callMode " + callMode);
         }
 
         public void Resume()

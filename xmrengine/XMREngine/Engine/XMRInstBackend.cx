@@ -192,96 +192,120 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             DateTime sleepUntil = DateTime.UtcNow + TimeSpan.FromMilliseconds (timeout * 1000.0);
             EventParams evt = null;
-            int evc1, evc2;
+            int callNo, evc1, evc2;
             int mask1 = returnMask1 | backgroundMask1;  // codes 00..31
             int mask2 = returnMask2 | backgroundMask2;  // codes 32..63
             LinkedListNode<EventParams> lln = null;
+            object[] sv;
             ScriptEventCode evc;
 
-            do {
+            if (callMode == 0) goto findevent;
+            sv          = RestoreStackFrame ("XMREventDequeue", out callNo);
+            sleepUntil  = (DateTime)sv[0];
+            returnMask1 = (int)sv[1];
+            returnMask2 = (int)sv[2];
+            mask1       = (int)sv[3];
+            mask2       = (int)sv[4];
+            line        = (int)sv[5];
+            goto __call0;
 
-                /*
-                 * Find first event that matches either the return or background masks.
-                 */
-                Monitor.Enter (m_QueueLock);
-                for (lln = m_EventQueue.First; lln != null; lln = lln.Next) {
-                    evt  = lln.Value;
-                    evc  = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), evt.EventName);
-                    evc1 = (int)evc;
-                    evc2 = evc1 - 32;
-                    if ((((uint)evc1 < (uint)32) && (((mask1 >> evc1) & 1) != 0)) ||
-                        (((uint)evc2 < (uint)32) && (((mask2 >> evc2) & 1) != 0))) goto remfromq;
-                }
+            /*
+             * Find first event that matches either the return or background masks.
+             */
+        findevent:
+            Monitor.Enter (m_QueueLock);
+            for (lln = m_EventQueue.First; lln != null; lln = lln.Next) {
+                evt  = lln.Value;
+                evc  = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), evt.EventName);
+                evc1 = (int)evc;
+                evc2 = evc1 - 32;
+                if ((((uint)evc1 < (uint)32) && (((mask1 >> evc1) & 1) != 0)) ||
+                    (((uint)evc2 < (uint)32) && (((mask2 >> evc2) & 1) != 0))) goto remfromq;
+            }
 
-                /*
-                 * Nothing found, sleep while one comes in.
-                 */
-                m_SleepUntil = sleepUntil;
-                m_SleepEventMask1 = mask1;
-                m_SleepEventMask2 = mask2;
-                Monitor.Exit (m_QueueLock);
-                suspendOnCheckRunTemp = true;
+            /*
+             * Nothing found, sleep while one comes in.
+             */
+            m_SleepUntil = sleepUntil;
+            m_SleepEventMask1 = mask1;
+            m_SleepEventMask2 = mask2;
+            Monitor.Exit (m_QueueLock);
+            suspendOnCheckRunTemp = true;
+        __call0:
+            try {
                 CheckRun (line);
-                continue;
-
-                /*
-                 * Found one, remove it from queue.
-                 */
-            remfromq:
-                m_EventQueue.Remove (lln);
-                m_EventCounts[evc1] --;
-                Monitor.Exit (m_QueueLock);
-
-                /*
-                 * See if returnable or background event.
-                 */
-                if ((((uint)evc1 < (uint)32) && (((returnMask1 >> evc1) & 1) != 0)) ||
-                    (((uint)evc2 < (uint)32) && (((returnMask2 >> evc2) & 1) != 0))) {
-
-                    /*
-                     * Returnable event, return its parameters in a list.
-                     * Also set the detect parameters to what the event has.
-                     */
-                    int plen = evt.Params.Length;
-                    object[] plist = new object[plen+1];
-                    plist[0] = (LSL_Integer)evc1;
-                    for (int i = 0; i < plen;) {
-                        object ob = evt.Params[i];
-                             if (ob is int)         ob = (LSL_Integer)(int)ob;
-                        else if (ob is SCRIPTFLOAT) ob = (LSL_Float)(SCRIPTFLOAT)ob;
-                        else if (ob is string)      ob = (LSL_String)(string)ob;
-                        plist[++i] = ob;
-                    }
-                    m_DetectParams = evt.DetectParams;
-                    return new LSL_List (plist);
+            } finally {
+                if (callMode != 0) {
+                    sv    = CaptureStackFrame ("XMREventDequeue", 0, 6);
+                    sv[0] = sleepUntil;
+                    sv[1] = returnMask1;
+                    sv[2] = returnMask2;
+                    sv[3] = mask1;
+                    sv[4] = mask2;
+                    sv[5] = line;
                 }
+            }
+            goto checktmo;
+
+            /*
+             * Found one, remove it from queue.
+             */
+        remfromq:
+            m_EventQueue.Remove (lln);
+            m_EventCounts[evc1] --;
+            Monitor.Exit (m_QueueLock);
+
+            /*
+             * See if returnable or background event.
+             */
+            if ((((uint)evc1 < (uint)32) && (((returnMask1 >> evc1) & 1) != 0)) ||
+                (((uint)evc2 < (uint)32) && (((returnMask2 >> evc2) & 1) != 0))) {
 
                 /*
-                 * It is a background event, simply call its event handler,
-                 * then check event queue again.
+                 * Returnable event, return its parameters in a list.
+                 * Also set the detect parameters to what the event has.
                  */
-                ScriptEventHandler seh = objCode.scriptEventHandlerTable[stateCode,evc1];
-                if (seh != null) {
-                    DetectParams[]  saveDetParams = this.m_DetectParams;
-                    object[]        saveEHArgs    = this.ehArgs;
-                    ScriptEventCode saveEventCode = this.eventCode;
-
-                    this.m_DetectParams = evt.DetectParams;
-                    this.ehArgs         = evt.Params;
-                    this.eventCode      = evc;
-
-                    seh (this);
-
-                    this.m_DetectParams = saveDetParams;
-                    this.ehArgs         = saveEHArgs;
-                    this.eventCode      = saveEventCode;
+                int plen = evt.Params.Length;
+                object[] plist = new object[plen+1];
+                plist[0] = (LSL_Integer)evc1;
+                for (int i = 0; i < plen;) {
+                    object ob = evt.Params[i];
+                         if (ob is int)         ob = (LSL_Integer)(int)ob;
+                    else if (ob is SCRIPTFLOAT) ob = (LSL_Float)(SCRIPTFLOAT)ob;
+                    else if (ob is string)      ob = (LSL_String)(string)ob;
+                    plist[++i] = ob;
                 }
+                m_DetectParams = evt.DetectParams;
+                return new LSL_List (plist);
+            }
 
-                /*
-                 * Keep waiting until we find a returnable event or timeout.
-                 * Also stop waiting if a background event handler changed state.
-                 */
-            } while (!stateChanged && (DateTime.UtcNow < sleepUntil));
+            /*
+             * It is a background event, simply call its event handler,
+             * then check event queue again.
+             */
+            ScriptEventHandler seh = objCode.scriptEventHandlerTable[stateCode,evc1];
+            if (seh != null) {
+                DetectParams[]  saveDetParams = this.m_DetectParams;
+                object[]        saveEHArgs    = this.ehArgs;
+                ScriptEventCode saveEventCode = this.eventCode;
+
+                this.m_DetectParams = evt.DetectParams;
+                this.ehArgs         = evt.Params;
+                this.eventCode      = evc;
+
+                seh (this);
+
+                this.m_DetectParams = saveDetParams;
+                this.ehArgs         = saveEHArgs;
+                this.eventCode      = saveEventCode;
+            }
+
+            /*
+             * Keep waiting until we find a returnable event or timeout.
+             * Also stop waiting if a background event handler changed state.
+             */
+        checktmo:
+            if (!stateChanged && (DateTime.UtcNow < sleepUntil)) goto findevent;
 
             /*
              * We timed out or background event handler changed state, return an empty list.

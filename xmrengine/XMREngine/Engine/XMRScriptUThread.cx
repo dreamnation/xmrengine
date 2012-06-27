@@ -23,7 +23,7 @@ using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
  *        ScriptUThread.CallSEH()
  *          scriptHandlerEventTable[state,event]()
  *             XMRInstance.CheckRun()
- *                throw StackSaveException()
+ *                throw StackCaptureException()
  *                MMRUThread.Suspend()
  */
 
@@ -49,69 +49,25 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
          */
         public override Exception MainEx ()
         {
-            Exception except = null;
+            /*
+             * CALLMODE_NORMAL:  run event handler from the beginning normally
+             * CALLMODE_RESTORE: restore event handler stack from stackFrames
+             */
+            instance.callMode = (instance.stackFrames == null) ? XMRInstAbstract.CALLMODE_NORMAL :
+                                                                 XMRInstAbstract.CALLMODE_RESTORE;
 
             /*
-             * Restoring the stress test trumps any other state.
+             * Run event handler according to callMode.
+             * In either case it is assumed that instance.stateCode and instance.eventCode
+             * indicate which event handler is to be called and that instance.ehArgs
+             * points to the event handler argument list.
              */
-            if (instance.m_CheckRunStressWrite) {
-
-                /*
-                 * Use a different stack position each time.
-                 */
-                if (-- instance.m_CheckRunStressStack >= 0) {
-                    except = MainEx();
-                    instance.m_CheckRunStressStack ++; // prevent TCO of MainEx() call
-                } else {
-                    ///???
-                }
+            try {
+                CallSEH ();
+                return null;
+            } catch (Exception e) {
+                return e;
             }
-
-            /*
-             * The normal case is this script event handler is just being
-             * called directly at its entrypoint.
-             */
-            else if (instance.callMode == XMRInstAbstract.CALLMODE_NORMAL) {
-                instance.callMode = XMRInstAbstract.CALLMODE_NORMAL;
-                try {
-                    CallSEH ();
-                    XMRInstance.m_log.Debug("[XMREngine]: MainEx*: CallSEH() normal returned");
-                } catch (Exception e) {
-                    except = e;
-                    XMRInstance.m_log.Debug("[XMREngine]: MainEx*: CallSEH() normal threw " + e.ToString ());
-                }
-            }
-
-            /*
-             * The other case is that we want to resume execution of
-             * a script from its migration data.  So this reads the
-             * data from the instance.stackFrames list and eventually
-             * ends up calling CheckRun().
-             *
-             * CheckRun() immediately suspends when the restore is
-             * complete, which causes StartEx() to return at that time.
-             */
-            else {
-                if (instance.callMode != XMRInstAbstract.CALLMODE_RESTORE) {
-                    throw new Exception ("bad callMode " + instance.callMode);
-                }
-                try {
-                    CallSEH ();
-                    XMRInstance.m_log.Debug("[XMREngine]: MainEx*: CallSEH() restore returned");
-                } catch (Exception e) {
-                    except = e;
-                    string s = e.ToString ();
-                    int j;
-                    for (int i = 0; i < s.Length; i = ++ j) {
-                        j = s.IndexOf ('\n', i);
-                        if (j < 0) j = s.Length;
-                        XMRInstance.m_log.Debug("[XMREngine]: MainEx*: CallSEH() restore threw " + s.Substring (i, j - i));
-                    }
-                }
-                // returns here ONLY after restore has complete AND script
-                // has been resumed AND event handler has run to completion
-            }
-            return except;
         }
 
         /**

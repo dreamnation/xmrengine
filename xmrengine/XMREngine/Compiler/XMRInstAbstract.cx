@@ -41,6 +41,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public int stateCode = 0;           // state the script is in (0 = 'default')
 
         public int callMode = CALLMODE_NORMAL;
+                                            // to capture stack frames on stackFrames:
+                                            //    set to CALLMODE_SAVE just before throwing StackSaveException()
+                                            //    from within CheckRun() and cleared to CALLMODE_NORMAL when
+                                            //    the exception is caught
+                                            // to restore stack frames from stackFrames:
+                                            //    set to CALLMODE_RESTORE just before calling CallSEH() and 
+                                            //    cleared to CALLMODE_NORMAL by CheckRun()
         public XMRStackFrame stackFrames;   // stack frames being saved/restored
 
         /*
@@ -60,8 +67,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /*
          * Function prototypes.
          */
-        public abstract object[] PushStackFrame (string funcName, int callNo, int nSaves);
-        public abstract object[] PopStackFrame (string funcName, out int callNo);
+        public abstract object[] CaptureStackFrame (string funcName, int callNo, int nSaves);
+        public abstract object[] RestoreStackFrame (string funcName, out int callNo);
 
         public abstract void ConsoleWrite (string s);
         public abstract void CheckRun (int line);

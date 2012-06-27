@@ -79,8 +79,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		                                                                               new Type[] { typeof (int),
 		                                                                                            typeof (object).MakeByRefType (),
 		                                                                                            typeof (object).MakeByRefType () });
-		private static MethodInfo popStackFrameMethodInfo  = typeof (XMRInstAbstract).GetMethod ("PopStackFrame", new Type[] { typeof (string), typeof (int).MakeByRefType () });
-		private static MethodInfo pushStackFrameMethodInfo = typeof (XMRInstAbstract).GetMethod ("PushStackFrame", new Type[] { typeof (string), typeof (int), typeof (int) });
+		private static MethodInfo captureStackFrameMethodInfo = typeof (XMRInstAbstract).GetMethod ("CaptureStackFrame", new Type[] { typeof (string), typeof (int), typeof (int) });
+		private static MethodInfo restoreStackFrameMethodInfo = typeof (XMRInstAbstract).GetMethod ("RestoreStackFrame", new Type[] { typeof (string), typeof (int).MakeByRefType () });
 		private static MethodInfo updateHeapLeftMethodInfo = GetStaticMethod (typeof (ScriptCodeGen), 
 		                                                                      "UpdateHeapLeft", 
 		                                                                      new Type[] { typeof (XMRInstAbstract),
@@ -408,7 +408,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 *
 		 * So we end up generating something like this:
 		 *
-		 *   private static void __seh_<statename>_<eventname>(XMRInstance __sw)
+		 *   private static void __seh_<statecode>_<eventcode>_<statename>_<eventname>(XMRInstance __sw)
 		 *   {
 		 *      ScriptBaseClass __be  = __sw.beAPI;
 		 *      <typeArg0> <nameArg0> = (<typeArg0>)__sw.ehArgs[0];
@@ -499,43 +499,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			localHeapTrackers = new Dictionary<CompValu, CompValu> ();
 
 			/*
-			 * If this is the default state_entry() handler, output code to set all global
-			 * variables to their initial values.  Note that every script must have a
-			 * default state_entry() handler, we provide one if the script doesn't explicitly
-			 * define one.
-			 */
-			if ((statename == "default") && (eventname == "state_entry")) {
-				ScriptMyLabel skipGblInitLabel = ilGen.DefineLabel ("__skipGblInit");
-				ilGen.Emit (OpCodes.Ldarg_0);                    // instance
-				ilGen.Emit (OpCodes.Ldfld, doGblInitFieldInfo);  // instance.doGblInit
-				ilGen.Emit (OpCodes.Brfalse, skipGblInitLabel);
-				ilGen.Emit (OpCodes.Ldarg_0);                    // instance
-				ilGen.Emit (OpCodes.Dup);
-				ilGen.Emit (OpCodes.Ldfld, heapLimitFieldInfo);  // instance.heapLimit
-				ilGen.Emit (OpCodes.Stfld, heapLeftFieldInfo);   // instance.heapLeft
-				foreach (KeyValuePair<string, TokenDeclVar> kvp in tokenScript.vars) {
-					TokenDeclVar gblDeclVar = kvp.Value;
-
-					if (gblDeclVar.constant) continue;
-					CompValu var = scriptInstanceVariables[gblDeclVar.name.val];
-					var.PopPre (this);
-					if (gblDeclVar.init != null) {
-						CompValu rVal = GenerateFromRVal (gblDeclVar.init);
-						rVal.PushVal (this, gblDeclVar.type);
-					} else {
-						PushDefaultValue (gblDeclVar.type);
-					}
-					var.PopPost (this);
-
-					DebitHeapLeft (var, false, gblDeclVar);
-				}
-				ilGen.Emit (OpCodes.Ldarg_0);                    // instance
-				PushConstantI4 (0);
-				ilGen.Emit (OpCodes.Stfld, doGblInitFieldInfo);  // instance.doGblInit
-				ilGen.MarkLabel (skipGblInitLabel);
-			}
-
-			/*
 			 * Output args as variable definitions and initialize each from __sw.ehArgs[].
 			 * If the script writer goofed, the typecast will complain.
 			 */
@@ -568,11 +531,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					AddVarDefinition (argDecl.names[i], local);
 				}
 			}
-
-			/*
-			 * Alloc stack space for local vars.
-			 */
-			AllocLocalVarStackSpace (declFunc);
 
 			/*
 			 * Output code for the statements and clean up.
@@ -673,11 +631,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
-			 * Alloc stack space for local vars.
-			 */
-			AllocLocalVarStackSpace (declFunc);
-
-			/*
 			 * Output code for the statements and clean up.
 			 */
 			GenerateFuncBody (declFunc);
@@ -708,6 +661,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			activeTemps.Clear ();
 
 			/*
+			 * Alloc stack space for local vars.
+			 */
+			AllocLocalVarStackSpace (declFunc);
+
+			/*
 			 * Any return statements inside function body jump to this label
 			 * after putting return value in __retval.
 			 */
@@ -736,6 +694,43 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			EmitCallCheckRun (declFunc.line);
 
 			/*
+			 * If this is the default state_entry() handler, output code to set all global
+			 * variables to their initial values.  Note that every script must have a
+			 * default state_entry() handler, we provide one if the script doesn't explicitly
+			 * define one.
+			 */
+			if (ilGen.methName.StartsWith ("__seh_") && ilGen.methName.EndsWith ("_default_state_entry")) {
+				ScriptMyLabel skipGblInitLabel = ilGen.DefineLabel ("__skipGblInit");
+				ilGen.Emit (OpCodes.Ldarg_0);                    // instance
+				ilGen.Emit (OpCodes.Ldfld, doGblInitFieldInfo);  // instance.doGblInit
+				ilGen.Emit (OpCodes.Brfalse, skipGblInitLabel);
+				ilGen.Emit (OpCodes.Ldarg_0);                    // instance
+				ilGen.Emit (OpCodes.Dup);
+				ilGen.Emit (OpCodes.Ldfld, heapLimitFieldInfo);  // instance.heapLimit
+				ilGen.Emit (OpCodes.Stfld, heapLeftFieldInfo);   // instance.heapLeft
+				foreach (KeyValuePair<string, TokenDeclVar> kvp in tokenScript.vars) {
+					TokenDeclVar gblDeclVar = kvp.Value;
+
+					if (gblDeclVar.constant) continue;
+					CompValu var = scriptInstanceVariables[gblDeclVar.name.val];
+					var.PopPre (this);
+					if (gblDeclVar.init != null) {
+						CompValu rVal = GenerateFromRVal (gblDeclVar.init);
+						rVal.PushVal (this, gblDeclVar.type);
+					} else {
+						PushDefaultValue (gblDeclVar.type);
+					}
+					var.PopPost (this);
+
+					DebitHeapLeft (var, false, gblDeclVar);
+				}
+				ilGen.Emit (OpCodes.Ldarg_0);                    // instance
+				PushConstantI4 (0);
+				ilGen.Emit (OpCodes.Stfld, doGblInitFieldInfo);  // instance.doGblInit
+				ilGen.MarkLabel (skipGblInitLabel);
+			}
+
+			/*
 			 * Output code body.
 			 */
 			GenerateStmtBlock (declFunc.body);
@@ -760,7 +755,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 *      CreditAllLocalsHeapLeft();
 			 *      goto __endFin;
 			 *   __cmSave:
-			 *      GenerateFrameSaveCode();
+			 *      GenerateFrameCaptureCode();
 			 *   __endFin:
 			 *   }
 			 */
@@ -774,7 +769,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			CreditAllLocalsHeapLeft ();
 			ilGen.Emit (OpCodes.Br, endFin);
 			ilGen.MarkLabel (cmSave);
-			GenerateFrameSaveCode(declFunc);
+			GenerateFrameCaptureCode(declFunc);
 			ilGen.MarkLabel (endFin);
 			ilGen.Emit (OpCodes.Endfinally);
 			ilGen.EndExceptionBlock ();
@@ -792,21 +787,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			retValue = null;
 
 			/*
-			 * Output code to save stack frame to stream.
-			 * __cmRestore:
-			 *    arg1 = instance.callReader.Read???();
-			 *    arg2 = instance.callReader.Read???();
-			 *    ...
-			 *    lcl1 = instance.callReader.Read???();
-			 *    lcl2 = instance.callReader.Read???();
-			 *    ...
-			 *    callNo = instance.callWriter.ReadInt32();
-			 *    switch (callNo) {
-			 *       case 0: goto __call_0;
-			 *       case 1: goto __call 1;
-			 *       ...
-			 *    }
-			 *    return;  // should never get here
+			 * Output code to restore stack frame from stream.
 			 */
 			ilGen.MarkLabel (cmRestore);
 			GenerateFrameRestoreCode(declFunc);
@@ -859,10 +840,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		/**
-		 * @brief Generate code to write all arguments and locals to the save stack frame.
-		 *        This includes heap-tracker variables.
+		 * @brief Generate code to write all arguments and locals to the capture stack frame.
+		 *        This includes heap-tracker and temp variables.
 		 */
-		private void GenerateFrameSaveCode (TokenDeclFunc declFunc)
+		private void GenerateFrameCaptureCode (TokenDeclFunc declFunc)
 		{
 			int nSaves = declFunc.argDecl.locns.Length + declFunc.localVars.Count + activeTemps.Count;
 
@@ -875,7 +856,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ilGen.Emit (OpCodes.Ldstr, ilGen.methName);
 			ilGen.Emit (OpCodes.Ldloc, callNo);
 			PushConstantI4 (nSaves);
-			ilGen.Emit (OpCodes.Call, pushStackFrameMethodInfo);
+			ilGen.Emit (OpCodes.Call, captureStackFrameMethodInfo);
 
 			/*
 			 * Copy arg values to object array, boxing as needed.
@@ -914,6 +895,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		/**
 		 * @brief Generate code to restore all arguments and locals from the restore stack frame.
+		 *        This includes heap-tracker and temp variables.
 		 */
 		private void GenerateFrameRestoreCode (TokenDeclFunc declFunc)
 		{
@@ -926,7 +908,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ilGen.Emit (OpCodes.Ldarg_0);
 			ilGen.Emit (OpCodes.Ldstr, ilGen.methName);
 			ilGen.Emit (OpCodes.Ldloca, callNo);
-			ilGen.Emit (OpCodes.Call, popStackFrameMethodInfo);
+			ilGen.Emit (OpCodes.Call, restoreStackFrameMethodInfo);
 			ilGen.Emit (OpCodes.Stloc, objArray);
 
 			/*
