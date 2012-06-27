@@ -65,6 +65,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ltc.Add ("array object",    TypeCastArray2Object);
 				ltc.Add ("bool float",      TypeCastBool2Float);
 				ltc.Add ("bool integer",    TypeCastBool2Integer);
+				ltc.Add ("bool object",     TypeCastBool2Object);
 				ltc.Add ("bool string",     TypeCastBool2String);
 				ltc.Add ("float bool",      TypeCastFloat2Bool);
 				ltc.Add ("float integer",   TypeCastFloat2Integer);
@@ -79,6 +80,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ltc.Add ("list object",     TypeCastList2Object);
 				ltc.Add ("list*string",     TypeCastList2String);
 				ltc.Add ("object array",    TypeCastObject2Array);
+				ltc.Add ("object bool",     TypeCastObject2Bool);
 				ltc.Add ("object float",    TypeCastObject2Float);
 				ltc.Add ("object integer",  TypeCastObject2Integer);
 				ltc.Add ("object list",     TypeCastObject2List);
@@ -212,6 +214,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static void TypeCastBool2Integer (ScriptMyILGen ilGen)
 		{
 		}
+		private static void TypeCastBool2Object (ScriptMyILGen ilGen)
+		{
+			ilGen.Emit (OpCodes.Box, typeof (bool));
+		}
 		private static void TypeCastFloat2Bool (ScriptMyILGen ilGen)
 		{
 			ilGen.Emit (OpCodes.Ldc_R4, 0.0f);
@@ -254,6 +260,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static void TypeCastObject2Array (ScriptMyILGen ilGen)
 		{
 			ilGen.Emit (OpCodes.Castclass, typeof (XMR_Array));
+		}
+		private static void TypeCastObject2Bool (ScriptMyILGen ilGen)
+		{
+			ilGen.Emit (OpCodes.Unbox_Any, typeof (bool));
 		}
 		private static void TypeCastObject2Float (ScriptMyILGen ilGen)
 		{
@@ -382,7 +392,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public static string   FloatToString    (SCRIPTFLOAT x)  { return x.ToString ("0.000000"); }
 		public static string   IntegerToString  (int x)          { return x.ToString (); }
 		public static string   ListToString     (LSL_List x)     { return x.ToString (); }
-		public static string   ObjectToString   (object x)       { return x.ToString (); }
+		public static string   ObjectToString   (object x)       { return (x == null) ? null : x.ToString (); }
 		public static string   RotationToString (LSL_Rotation x) { return x.ToString (); }
 		public static string   VectorToString   (LSL_Vector x)   { return x.ToString (); }
 		public static LSL_List ListOfOneObj     (object x)       { return new LSL_List (new object[1] { x }); }

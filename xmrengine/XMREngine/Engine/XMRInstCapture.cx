@@ -369,6 +369,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 this.migrateOutWriter.Write ((double)((LSL_Vector)graph).z);
                 return;
             }
+            if (graph is bool) {
+                this.migrateOutWriter.Write ((byte)Ser.SYSBOOL);
+                this.migrateOutWriter.Write ((bool)graph);
+                return;
+            }
             if (graph is double) {
                 this.migrateOutWriter.Write ((byte)Ser.SYSDOUB);
                 this.migrateOutWriter.Write ((double)graph);

@@ -802,6 +802,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     }
                     return array;
                 }
+                case Ser.SYSBOOL: {
+                    return this.migrateInReader.ReadBoolean ();
+                }
                 case Ser.SYSDOUB: {
                     return this.migrateInReader.ReadDouble ();
                 }

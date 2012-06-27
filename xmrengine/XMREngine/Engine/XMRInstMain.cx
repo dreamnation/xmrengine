@@ -212,7 +212,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             SYSSTR,
             XMRARRAY,
             DETPRMS,
-            DUPREF
+            DUPREF,
+            SYSBOOL
         }
 
         // Scripts start suspended now. This means that event queues will
