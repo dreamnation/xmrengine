@@ -132,6 +132,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 Environment.Exit (1);
             }
 
+#ifdef SECRET_STUFF
+            /*
+             * Maybe they want reconstructed source from tokens.
+             */
+            if (srcFileName != null) {
+                Console.WriteLine ("Reconstructing source to " + srcFileName);
+                StreamWriter reconstStream = File.CreateText (srcFileName);
+                try {
+                    ScriptReconst.Reconst (tokenScript, reconstStream);
+                } finally {
+                    reconstStream.Close ();
+                }
+            }
+#endif
+
             /*
              * Serialize the AST out to the object file.
              * Compress and encrypt while we are at it.
