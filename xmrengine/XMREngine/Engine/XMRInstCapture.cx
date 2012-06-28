@@ -245,16 +245,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 // tell microthread to continue
                 // it should see captureStackFrames and throw StackCaptureException()
                 // ...generating XMRStackFrames as it unwinds
-                m_log.Debug("[XMREngine]: MigrateOutEventHandler*: fixin to save stack");
                 this.captureStackFrames = true;
                 Exception except = this.microthread.ResumeEx (null);
                 this.captureStackFrames = false;
                 this.callMode = CALLMODE_NORMAL;
                 if (except == null) {
-                    m_log.Debug("[XMREngine]: MigrateOutEventHandler*: returned null");
                     throw new Exception ("stack save did not complete");
                 }
-                m_log.Debug("[XMREngine]: MigrateOutEventHandler*: returned " + except.ToString ());
                 if (!(except is StackCaptureException)) {
                     throw except;
                 }
@@ -262,13 +259,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 // first frame we see is the event handler's frame
                 // last frame we see is whatever called CheckRun()
                 for (XMRStackFrame sf = this.stackFrames; sf != null; sf = sf.nextSF) {
-                    m_log.Debug("[XMREngine]: MigrateOutEventHandler*: writing " + sf.funcName + ", callNo " + sf.callNo);
-                    int i = 0;
-                    foreach (object o in sf.objArray) {
-                        m_log.Debug("[XMREngine]: MigrateOutEventHandler*:   [" + i + "]=" + 
-                                (o == null ? "null" : "'" + o.ToString() + "'"));
-                        i ++;
-                    }
                     this.migrateOutWriter.Write (sf.callNo);  // what it was calling when suspended
                     this.migrateOutWriter.Write (sf.funcName);
                     this.SendObjArray (sf.objArray);          // it's args and locals at time of suspension
@@ -279,7 +269,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                 // now restore script stack
                 // microthread will suspend inside CheckRun() when restore is complete
-                m_log.Debug("[XMREngine]: MigrateOutEventHandler*: stack save complete, restoring...");
                 this.callMode = CALLMODE_RESTORE;
                 this.stackFramesRestored = false;
                 except = this.microthread.StartEx ();
@@ -289,7 +278,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if (!this.stackFramesRestored) {
                     throw new Exception ("restore after save did not complete");
                 }
-                m_log.Debug("[XMREngine]: MigrateOutEventHandler*: stack restore complete");
             }
 
             /*
