@@ -45,7 +45,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		private int tokenDepth    = 0;
 		private int tokenIndex    = 0;
 		private int tokenLastLine = 0;
-		private int tokenLastPosn = 0;
 		private int typeIndex     = 0;
 		private string tokenLastFile = "";
 
@@ -204,7 +203,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		private List<MethodInfo>      readInArray = new List<MethodInfo> ();
 		private List<string>          stringArray = new List<string> ();
 		private List<Token>           tokenArray  = new List<Token> ();
-		private object[] readInArgs;
 		private string lastFile = "";
 		private TokenCode peekCode;
 		private TokenErrorMessage emsg;
@@ -218,7 +216,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			this.reader   = reader;
 			this.emsg     = emsg;
-			readInArgs    = new object[] { this };
 			ctorArray.Add   (null);
 			readInArray.Add (null);
 			stringArray.Add (null);
