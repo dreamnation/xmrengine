@@ -191,13 +191,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		public override void PushVal (ScriptCodeGen scg)
 		{
-			if (x is float) {
-				scg.ilGen.Emit (OpCodes.Ldc_R4, x);
-			} else if (x is double) {
-				scg.ilGen.Emit (OpCodes.Ldc_R8, x);
-			} else {
-				throw new Exception ("unknown type");
-			}
+#define double OpCodes.Ldc_R8
+#define float  OpCodes.Ldc_R4
+			scg.ilGen.Emit (SCRIPTFLOAT, x);
+#undef double
+#undef float
 		}
 		public override void PushByRef (ScriptCodeGen scg)
 		{
