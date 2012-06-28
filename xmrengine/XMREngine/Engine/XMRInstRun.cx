@@ -58,21 +58,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             /*
-             * Strip off any LSL type wrappers.
-             */
-            for (int i = 0 ; i < evt.Params.Length ; i++)
-            {
-                if (evt.Params[i] is LSL_Integer)
-                    evt.Params[i] = (int)((LSL_Integer)evt.Params[i]);
-                else if (evt.Params[i] is LSL_Float)
-                    evt.Params[i] = (SCRIPTFLOAT)((LSL_Float)evt.Params[i]);
-                else if (evt.Params[i] is LSL_String)
-                    evt.Params[i] = (string)((LSL_String)evt.Params[i]);
-                else if (evt.Params[i] is LSL_Key)
-                    evt.Params[i] = (string)((LSL_Key)evt.Params[i]);
-            }
-
-            /*
              * Put event on end of event queue.
              */
             bool startIt = false;

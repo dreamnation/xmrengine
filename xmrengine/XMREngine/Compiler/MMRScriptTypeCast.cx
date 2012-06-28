@@ -396,5 +396,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public static string   RotationToString (LSL_Rotation x) { return x.ToString (); }
 		public static string   VectorToString   (LSL_Vector x)   { return x.ToString (); }
 		public static LSL_List ListOfOneObj     (object x)       { return new LSL_List (new object[1] { x }); }
+
+		public static SCRIPTFLOAT EHArgUnwrapFloat (object x)
+		{
+			if (x is LSL_Float) return (SCRIPTFLOAT)(LSL_Float)x;
+			return (SCRIPTFLOAT)x;
+		}
+
+		public static int EHArgUnwrapInteger (object x)
+		{
+			if (x is LSL_Integer) return (int)(LSL_Integer)x;
+			return (int)x;
+		}
+
+		public static string EHArgUnwrapString (object x)
+		{
+			if (x is LSL_Key)    return (string)(LSL_Key)x;
+			if (x is LSL_String) return (string)(LSL_String)x;
+			return (string)x;
+		}
 	}
 }

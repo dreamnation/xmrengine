@@ -328,15 +328,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             int nargs = data.Length - 1;
             object[] args = new object[nargs];
-
-            for (int i = 0; i < nargs; i ++) {
-                object ob = data[i+1];
-                     if (ob is LSL_Integer) ob = (int)(LSL_Integer)ob;
-                else if (ob is LSL_Float)   ob = (SCRIPTFLOAT)(LSL_Float)ob;
-                else if (ob is LSL_String)  ob = (string)(LSL_String)ob;
-                else if (ob is LSL_Key)     ob = (string)(LSL_Key)ob;
-                args[i] = ob;
-            }
+            Array.Copy (data, 1, args, 0, nargs);
 
             PostEvent (new EventParams (evc.ToString (), args, m_DetectParams));
         }
@@ -356,15 +348,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (seh != null) {
                 int nargs = data.Length - 1;
                 object[] args = new object[nargs];
-
-                for (int i = 0; i < nargs; i ++) {
-                    object ob = data[i+1];
-                         if (ob is LSL_Integer) ob = (int)(LSL_Integer)ob;
-                    else if (ob is LSL_Float)   ob = (SCRIPTFLOAT)(LSL_Float)ob;
-                    else if (ob is LSL_String)  ob = (string)(LSL_String)ob;
-                    else if (ob is LSL_Key)     ob = (string)(LSL_Key)ob;
-                    args[i] = ob;
-                }
+                Array.Copy (data, 1, args, 0, nargs);
 
                 object[]        saveEHArgs    = this.ehArgs;
                 ScriptEventCode saveEventCode = this.eventCode;

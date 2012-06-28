@@ -39,12 +39,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static Dictionary<string, InlineFunction> inlineFunctions = InlineFunction.CreateDictionary ();
 		private static Dictionary<string, TokenDeclFunc> legalEventHandlers = CreateLegalEventHandlers ();
 		private static TokenTypeBool   tokenTypeBool = new TokenTypeBool   (null);
+		private static TokenTypeFloat  tokenTypeFlt  = new TokenTypeFloat  (null);
 		private static TokenTypeInt    tokenTypeInt  = new TokenTypeInt    (null);
 		private static TokenTypeObject tokenTypeObj  = new TokenTypeObject (null);
 		private static TokenTypeStr    tokenTypeStr  = new TokenTypeStr    (null);
 		private static Type[] instanceTypeArg = new Type[] { typeof (XMRInstAbstract) };
-		private static Type[] intArgTypes = new Type[] { typeof (int) };
-		private static Type[] noArgsTypes = new Type[] { };
 
 		private static ConstructorInfo lslFloatConstructorInfo = typeof (LSL_Float).GetConstructor (new Type[] { typeof (SCRIPTFLOAT) });
 		private static ConstructorInfo lslIntegerConstructorInfo = typeof (LSL_Integer).GetConstructor (new Type[] { typeof (int) });
@@ -74,6 +73,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static MethodInfo arrayIndexMethodInfo = typeof (XMR_Array).GetMethod ("__pub_index", new Type[] { typeof (int) });
 		private static MethodInfo arrayValueMethodInfo = typeof (XMR_Array).GetMethod ("__pub_value", new Type[] { typeof (int) });
 		private static MethodInfo checkRunMethodInfo   = typeof (XMRInstAbstract).GetMethod ("CheckRun", new Type[] { typeof (int) });
+		private static MethodInfo ehArgUnwrapFloat     = GetStaticMethod (typeof (TypeCast), "EHArgUnwrapFloat",   new Type[] { typeof (object) });
+		private static MethodInfo ehArgUnwrapInteger   = GetStaticMethod (typeof (TypeCast), "EHArgUnwrapInteger", new Type[] { typeof (object) });
+		private static MethodInfo ehArgUnwrapString    = GetStaticMethod (typeof (TypeCast), "EHArgUnwrapString",  new Type[] { typeof (object) });
 		private static MethodInfo forEachMethodInfo    = typeof (XMR_Array).GetMethod ("ForEach", 
 		                                                                               new Type[] { typeof (int),
 		                                                                                            typeof (object).MakeByRefType (),
@@ -510,13 +512,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				for (int i = 0; i < nargs; i ++) {
 
 					// <argtype> __lcl_<argname> = (<argtype>)__sw.ehArgs[i];
-					CompValu local = new CompValuTemp (argDecl.types[i], argDecl.names[i].val, this);
+					TokenType argTokType = argDecl.types[i];
+					Type argSysType = argTokType.typ;
+					CompValu local = new CompValuTemp (argTokType, argDecl.names[i].val, this);
 					argDecl.locns[i] = local;
 					local.PopPre (this);
 					ilGen.Emit (OpCodes.Ldloc, swehArgs);          // __sw.ehArgs
 					PushConstantI4 (i);                            // array index = i
 					ilGen.Emit (OpCodes.Ldelem, typeof (object));  // it is an array of objects
-					local.PopPost (this, new TokenTypeObject (argDecl.names[i]));
+					TokenType stkTokType = tokenTypeObj;           // stack has a type 'object' on it now
+					if (argSysType == typeof (SCRIPTFLOAT)) {      // LSL_Float/SCRIPTFLOAT -> SCRIPTFLOAT
+						ilGen.Emit (OpCodes.Call, ehArgUnwrapFloat);
+						stkTokType = tokenTypeFlt;             // stack has a type 'SCRIPTFLOAT' on it now
+					}
+					if (argSysType == typeof (int)) {              // LSL_Integer/int -> int
+						ilGen.Emit (OpCodes.Call, ehArgUnwrapInteger);
+						stkTokType = tokenTypeInt;             // stack has a type 'int' on it now
+					}
+					if (argSysType == typeof (string)) {           // LSL_Key/LSL_String/string -> string
+						ilGen.Emit (OpCodes.Call, ehArgUnwrapString);
+						stkTokType = tokenTypeStr;             // stack has a type 'string' on it now
+					}
+					local.PopPost (this, stkTokType);              // pop stack type into argtype
 
 					/*
 					 * Account for any heap usage by this local variable from now on to end of function.
