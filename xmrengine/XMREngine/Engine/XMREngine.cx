@@ -795,18 +795,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             TCP("[XMREngine]: XMREngine.PostScriptEvent({0},{1})", itemID.ToString(), name);
 
-            Object[] lsl_p = new Object[p.Length];
-            for (int i = 0; i < p.Length ; i++)
-            {
-                if (p[i] is Vector3)
-                    lsl_p[i] = new LSL_Types.Vector3(((Vector3)p[i]).X, ((Vector3)p[i]).Y, ((Vector3)p[i]).Z);
-                else if (p[i] is Quaternion)
-                    lsl_p[i] = new LSL_Types.Quaternion(((Quaternion)p[i]).X, ((Quaternion)p[i]).Y, ((Quaternion)p[i]).Z, ((Quaternion)p[i]).W);
-                else
-                    lsl_p[i] = p[i];
-            }
-
-            return PostScriptEvent(itemID, new EventParams(name, lsl_p, zeroDetectParams));
+            return PostScriptEvent(itemID, new EventParams(name, p, zeroDetectParams));
         }
 
         public bool PostObjectEvent(UUID itemID, string name, Object[] p)
@@ -820,18 +809,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (part == null)
                 return false;
 
-            Object[] lsl_p = new Object[p.Length];
-            for (int i = 0; i < p.Length ; i++)
-            {
-                if (p[i] is Vector3)
-                    lsl_p[i] = new LSL_Types.Vector3(((Vector3)p[i]).X, ((Vector3)p[i]).Y, ((Vector3)p[i]).Z);
-                else if (p[i] is Quaternion)
-                    lsl_p[i] = new LSL_Types.Quaternion(((Quaternion)p[i]).X, ((Quaternion)p[i]).Y, ((Quaternion)p[i]).Z, ((Quaternion)p[i]).W);
-                else
-                    lsl_p[i] = p[i];
-            }
-
-            return PostObjectEvent(part.LocalId, new EventParams(name, lsl_p, zeroDetectParams));
+            return PostObjectEvent(part.LocalId, new EventParams(name, p, zeroDetectParams));
         }
 
         // Get a script instance loaded, compiling it if necessary

@@ -42,7 +42,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static TokenTypeFloat  tokenTypeFlt  = new TokenTypeFloat  (null);
 		private static TokenTypeInt    tokenTypeInt  = new TokenTypeInt    (null);
 		private static TokenTypeObject tokenTypeObj  = new TokenTypeObject (null);
+		private static TokenTypeRot    tokenTypeRot  = new TokenTypeRot    (null);
 		private static TokenTypeStr    tokenTypeStr  = new TokenTypeStr    (null);
+		private static TokenTypeVec    tokenTypeVec  = new TokenTypeVec    (null);
 		private static Type[] instanceTypeArg = new Type[] { typeof (XMRInstAbstract) };
 
 		private static ConstructorInfo lslFloatConstructorInfo = typeof (LSL_Float).GetConstructor (new Type[] { typeof (SCRIPTFLOAT) });
@@ -73,9 +75,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static MethodInfo arrayIndexMethodInfo = typeof (XMR_Array).GetMethod ("__pub_index", new Type[] { typeof (int) });
 		private static MethodInfo arrayValueMethodInfo = typeof (XMR_Array).GetMethod ("__pub_value", new Type[] { typeof (int) });
 		private static MethodInfo checkRunMethodInfo   = typeof (XMRInstAbstract).GetMethod ("CheckRun", new Type[] { typeof (int) });
-		private static MethodInfo ehArgUnwrapFloat     = GetStaticMethod (typeof (TypeCast), "EHArgUnwrapFloat",   new Type[] { typeof (object) });
-		private static MethodInfo ehArgUnwrapInteger   = GetStaticMethod (typeof (TypeCast), "EHArgUnwrapInteger", new Type[] { typeof (object) });
-		private static MethodInfo ehArgUnwrapString    = GetStaticMethod (typeof (TypeCast), "EHArgUnwrapString",  new Type[] { typeof (object) });
+		private static MethodInfo ehArgUnwrapFloat     = GetStaticMethod (typeof (TypeCast), "EHArgUnwrapFloat",    new Type[] { typeof (object) });
+		private static MethodInfo ehArgUnwrapInteger   = GetStaticMethod (typeof (TypeCast), "EHArgUnwrapInteger",  new Type[] { typeof (object) });
+		private static MethodInfo ehArgUnwrapRotation  = GetStaticMethod (typeof (TypeCast), "EHArgUnwrapRotation", new Type[] { typeof (object) });
+		private static MethodInfo ehArgUnwrapString    = GetStaticMethod (typeof (TypeCast), "EHArgUnwrapString",   new Type[] { typeof (object) });
+		private static MethodInfo ehArgUnwrapVector    = GetStaticMethod (typeof (TypeCast), "EHArgUnwrapVector",   new Type[] { typeof (object) });
 		private static MethodInfo forEachMethodInfo    = typeof (XMR_Array).GetMethod ("ForEach", 
 		                                                                               new Type[] { typeof (int),
 		                                                                                            typeof (object).MakeByRefType (),
@@ -529,9 +533,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						ilGen.Emit (OpCodes.Call, ehArgUnwrapInteger);
 						stkTokType = tokenTypeInt;             // stack has a type 'int' on it now
 					}
+					if (argSysType == typeof (LSL_Rotation)) {     // OpenMetaverse.Quaternion/LSL_Rotation -> LSL_Rotation
+						ilGen.Emit (OpCodes.Call, ehArgUnwrapRotation);
+						stkTokType = tokenTypeRot;             // stack has a type 'LSL_Rotation' on it now
+					}
 					if (argSysType == typeof (string)) {           // LSL_Key/LSL_String/string -> string
 						ilGen.Emit (OpCodes.Call, ehArgUnwrapString);
 						stkTokType = tokenTypeStr;             // stack has a type 'string' on it now
+					}
+					if (argSysType == typeof (LSL_Vector)) {       // OpenMetaverse.Vector3/LSL_Vector -> LSL_Vector
+						ilGen.Emit (OpCodes.Call, ehArgUnwrapVector);
+						stkTokType = tokenTypeVec;             // stack has a type 'LSL_Vector' on it now
 					}
 					local.PopPost (this, stkTokType);              // pop stack type into argtype
 

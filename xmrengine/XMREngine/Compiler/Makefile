@@ -19,6 +19,7 @@ SADLLFILES = \
 OPENSIMDLLDIR ?= ../../../bin
 SAOPENSIMDLLS = \
 	xmrengshare.dll \
+	OpenMetaverseTypes.dll \
 	OpenSim.Region.ScriptEngine.Shared.dll \
 	OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll
 

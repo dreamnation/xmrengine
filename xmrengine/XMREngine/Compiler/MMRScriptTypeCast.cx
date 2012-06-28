@@ -408,12 +408,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (x is LSL_Integer) return (int)(LSL_Integer)x;
 			return (int)x;
 		}
+ 
+		public static LSL_Rotation EHArgUnwrapRotation (object x)
+		{
+			if (x is OpenMetaverse.Quaternion) {
+				OpenMetaverse.Quaternion q = (OpenMetaverse.Quaternion)x;
+				return new LSL_Rotation(q.X, q.Y, q.Z, q.W);
+			}
+			return (LSL_Rotation)x;
+		}
 
 		public static string EHArgUnwrapString (object x)
 		{
 			if (x is LSL_Key)    return (string)(LSL_Key)x;
 			if (x is LSL_String) return (string)(LSL_String)x;
 			return (string)x;
+		}
+ 
+		public static LSL_Vector EHArgUnwrapVector (object x)
+		{
+			if (x is OpenMetaverse.Vector3) {
+				OpenMetaverse.Vector3 v = (OpenMetaverse.Vector3)x;
+				return new LSL_Vector(v.X, v.Y, v.Z);
+			}
+			return (LSL_Vector)x;
 		}
 	}
 }
