@@ -61,7 +61,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private IConfig m_Config;
         private string m_ScriptBasePath;
         private bool m_Enabled = false;
-        public  AssemblyResolver m_AssemblyResolver = null;
         private Dictionary<UUID, ArrayList> m_ScriptErrors =
                 new Dictionary<UUID, ArrayList>();
         private bool m_WakeUpFlag = false;
@@ -214,15 +213,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             m_Scene.RegisterModuleInterface<IScriptModule>(this);
 
-            AppDomain.CurrentDomain.AssemblyResolve +=
-                    m_AssemblyResolver.OnAssemblyResolve;
-
             m_ScriptBasePath = m_Config.GetString("ScriptBasePath",
                     Path.Combine(".", "ScriptData"));
             m_ScriptBasePath = Path.Combine(m_ScriptBasePath,
                     scene.RegionInfo.RegionID.ToString());
-
-            m_AssemblyResolver = new AssemblyResolver(m_ScriptBasePath);
 
             Directory.CreateDirectory(m_ScriptBasePath);
 
@@ -1614,41 +1608,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 m_Partmap[itemID] = part.UUID;
                 m_LockedDict = "~OnRezScript";
             }
-        }
-    }
-
-    [Serializable]
-    public class AssemblyResolver
-    {
-        private string m_ScriptBasePath;
-
-        public AssemblyResolver(string path)
-        {
-            m_ScriptBasePath = path;
-        }
-
-        public Assembly OnAssemblyResolve(object sender,
-                                          ResolveEventArgs args)
-        {
-            if (!(sender is System.AppDomain))
-                return null;
-
-            string[] pathList = new string[] {"bin", m_ScriptBasePath};
-
-            string assemblyName = args.Name;
-            if (assemblyName.IndexOf(",") != -1)
-                assemblyName = args.Name.Substring(0, args.Name.IndexOf(","));
-
-            foreach (string s in pathList)
-            {
-                string path = Path.Combine(Directory.GetCurrentDirectory(),
-                                           Path.Combine(s, assemblyName))+".dll";
-
-                if (File.Exists(path))
-                    return Assembly.LoadFrom(path);
-            }
-
-            return null;
         }
     }
 }
