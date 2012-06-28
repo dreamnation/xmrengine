@@ -109,105 +109,49 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public void touch_start(uint localID, uint originalID, Vector3 offsetPos,
                 IClientAPI remoteClient, SurfaceTouchEventArgs surfaceArgs)
         {
-            // Add to queue for all scripts in ObjectID object
-            DetectParams[] det = new DetectParams[1];
-            det[0] = new DetectParams();
-            det[0].Key = remoteClient.AgentId;
-            det[0].Populate(myScriptEngine.World);
-
-            if (originalID == 0)
-            {
-                SceneObjectPart part = myScriptEngine.World.GetSceneObjectPart(localID);
-                if (part == null)
-                    return;
-
-                det[0].LinkNum = part.LinkNum;
-            }
-            else
-            {
-                SceneObjectPart originalPart = myScriptEngine.World.GetSceneObjectPart(originalID);
-                if (originalPart == null)
-                    return;
-
-                det[0].LinkNum = originalPart.LinkNum;
-            }
-
-            if (surfaceArgs != null)
-            {
-                det[0].SurfaceTouchArgs = surfaceArgs;
-            }
-
-            myScriptEngine.PostObjectEvent(localID, new EventParams(
-                    "touch_start", oneObjectArrayOne,
-                    det));
+            touches(localID, originalID, offsetPos, remoteClient, surfaceArgs, "touch_start");
         }
 
         public void touch(uint localID, uint originalID, Vector3 offsetPos,
                 IClientAPI remoteClient, SurfaceTouchEventArgs surfaceArgs)
         {
-            // Add to queue for all scripts in ObjectID object
-            DetectParams[] det = new DetectParams[1];
-            det[0] = new DetectParams();
-            det[0].Key = remoteClient.AgentId;
-            det[0].Populate(myScriptEngine.World);
-            det[0].OffsetPos = new LSL_Types.Vector3(offsetPos.X,
-                                                     offsetPos.Y,
-                                                     offsetPos.Z);
-
-            if (originalID == 0)
-            {
-                SceneObjectPart part = myScriptEngine.World.GetSceneObjectPart(localID);
-                if (part == null)
-                    return;
-
-                det[0].LinkNum = part.LinkNum;
-            }
-            else
-            {
-                SceneObjectPart originalPart = myScriptEngine.World.GetSceneObjectPart(originalID);
-                det[0].LinkNum = originalPart.LinkNum;
-            }
-            if (surfaceArgs != null)
-            {
-                det[0].SurfaceTouchArgs = surfaceArgs;
-            }
-
-            myScriptEngine.PostObjectEvent(localID, new EventParams(
-                    "touch", oneObjectArrayOne,
-                    det));
+            touches(localID, originalID, offsetPos, remoteClient, surfaceArgs, "touch");
         }
 
+        private static Vector3 zeroVec3 = new Vector3(0,0,0);
         public void touch_end(uint localID, uint originalID, IClientAPI remoteClient,
                               SurfaceTouchEventArgs surfaceArgs)
         {
+            touches(localID, originalID, zeroVec3, remoteClient, surfaceArgs, "touch_end");
+        }
+
+        private void touches(uint localID, uint originalID, Vector3 offsetPos,
+                IClientAPI remoteClient, SurfaceTouchEventArgs surfaceArgs, string eventname)
+        {
+            SceneObjectPart part;
+            if (originalID == 0) {
+                part = myScriptEngine.World.GetSceneObjectPart(localID);
+                if (part == null) return;
+            } else {
+                part = myScriptEngine.World.GetSceneObjectPart(originalID);
+            }
+
+            DetectParams det = new DetectParams();
+            det.Key = remoteClient.AgentId;
+            det.Populate(myScriptEngine.World);
+            det.OffsetPos = new LSL_Vector(offsetPos.X,
+                                           offsetPos.Y,
+                                           offsetPos.Z);
+            det.LinkNum = part.LinkNum;
+
+            if (surfaceArgs != null) {
+                det.SurfaceTouchArgs = surfaceArgs;
+            }
+
             // Add to queue for all scripts in ObjectID object
-            DetectParams[] det = new DetectParams[1];
-            det[0] = new DetectParams();
-            det[0].Key = remoteClient.AgentId;
-            det[0].Populate(myScriptEngine.World);
-
-            if (originalID == 0)
-            {
-                SceneObjectPart part = myScriptEngine.World.GetSceneObjectPart(localID);
-                if (part == null)
-                    return;
-
-                det[0].LinkNum = part.LinkNum;
-            }
-            else
-            {
-                SceneObjectPart originalPart = myScriptEngine.World.GetSceneObjectPart(originalID);
-                det[0].LinkNum = originalPart.LinkNum;
-            }
-
-            if (surfaceArgs != null)
-            {
-                det[0].SurfaceTouchArgs = surfaceArgs;
-            }
-
             myScriptEngine.PostObjectEvent(localID, new EventParams(
-                    "touch_end", oneObjectArrayOne,
-                    det));
+                    eventname, oneObjectArrayOne,
+                    new DetectParams[] { det }));
         }
 
         public void changed(uint localID, uint change)
@@ -233,122 +177,66 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void collision_start(uint localID, ColliderArgs col)
         {
-            // Add to queue for all scripts in ObjectID object
-            List<DetectParams> det = new List<DetectParams>();
-
-            foreach (DetectedObject detobj in col.Colliders)
-            {
-                DetectParams d = new DetectParams();
-                d.Key =detobj.keyUUID;
-                d.Populate(myScriptEngine.World);
-                det.Add(d);
-            }
-
-            int dc = det.Count;
-            if (dc > 0)
-                myScriptEngine.PostObjectEvent(localID, new EventParams(
-                        "collision_start",
-                        new Object[] { dc },
-                        det.ToArray()));
+            collisions(localID, col, "collision_start");
         }
 
         public void collision(uint localID, ColliderArgs col)
         {
-            // Add to queue for all scripts in ObjectID object
-            List<DetectParams> det = new List<DetectParams>();
-
-            foreach (DetectedObject detobj in col.Colliders)
-            {
-                DetectParams d = new DetectParams();
-                d.Key =detobj.keyUUID;
-                d.Populate(myScriptEngine.World);
-                det.Add(d);
-            }
-
-            int dc = det.Count;
-            if (dc > 0)
-                myScriptEngine.PostObjectEvent(localID, new EventParams(
-                        "collision", new Object[] { dc },
-                        det.ToArray()));
+            collisions(localID, col, "collision");
         }
 
         public void collision_end(uint localID, ColliderArgs col)
         {
-            // Add to queue for all scripts in ObjectID object
-            List<DetectParams> det = new List<DetectParams>();
+            collisions(localID, col, "collision_end");
+        }
 
-            foreach (DetectedObject detobj in col.Colliders)
-            {
-                DetectParams d = new DetectParams();
-                d.Key =detobj.keyUUID;
-                d.Populate(myScriptEngine.World);
-                det.Add(d);
-            }
+        private void collisions(uint localID, ColliderArgs col, string eventname)
+        {
+            int dc = col.Colliders.Count;
+            if (dc > 0) {
+                DetectParams[] det = new DetectParams[dc];
+                int i = 0;
+                foreach (DetectedObject detobj in col.Colliders) {
+                    DetectParams d = new DetectParams();
+                    d.Key =detobj.keyUUID;
+                    d.Populate(myScriptEngine.World);
+                    det[i++] = d;
+                }
 
-            int dc = det.Count;
-            if (dc > 0)
                 myScriptEngine.PostObjectEvent(localID, new EventParams(
-                        "collision_end",
+                        eventname,
                         new Object[] { dc },
-                        det.ToArray()));
+                        det));
+            }
         }
 
         public void land_collision_start(uint localID, ColliderArgs col)
         {
-            List<DetectParams> det = new List<DetectParams>();
-
-            foreach (DetectedObject detobj in col.Colliders)
-            {
-                DetectParams d = new DetectParams();
-                d.Position = new LSL_Types.Vector3(detobj.posVector.X,
-                    detobj.posVector.Y,
-                    detobj.posVector.Z);
-                d.Populate(myScriptEngine.World);
-                det.Add(d);
-                myScriptEngine.PostObjectEvent(localID, new EventParams(
-                        "land_collision_start",
-                        new Object[] { new LSL_Types.Vector3(d.Position) },
-                        det.ToArray()));
-            }
+            land_collisions(localID, col, "land_collision_start");
         }
 
         public void land_collision(uint localID, ColliderArgs col)
         {
-            List<DetectParams> det = new List<DetectParams>();
-
-            foreach (DetectedObject detobj in col.Colliders)
-            {
-                DetectParams d = new DetectParams();
-                d.Position = new LSL_Types.Vector3(detobj.posVector.X,
-                    detobj.posVector.Y,
-                    detobj.posVector.Z);
-                d.Populate(myScriptEngine.World);
-                det.Add(d);
-                myScriptEngine.PostObjectEvent(localID, new EventParams(
-                        "land_collision",
-                        new Object[] { new LSL_Types.Vector3(d.Position) },
-                        det.ToArray()));
-            }
+            land_collisions(localID, col, "land_collision");
         }
 
         public void land_collision_end(uint localID, ColliderArgs col)
         {
-            List<DetectParams> det = new List<DetectParams>();
+            land_collisions(localID, col, "land_collision_end");
+        }
 
-            foreach (DetectedObject detobj in col.Colliders)
-            {
-                DetectParams d = new DetectParams();
-                d.Position = new LSL_Types.Vector3(detobj.posVector.X,
-                    detobj.posVector.Y,
-                    detobj.posVector.Z);
-                d.Populate(myScriptEngine.World);
-                det.Add(d);
-                myScriptEngine.PostObjectEvent(localID, new EventParams(
-                        "land_collision_end",
-                        new Object[] { new LSL_Types.Vector3(d.Position) },
-                        det.ToArray()));
+        private void land_collisions(uint localID, ColliderArgs col, string eventname)
+        {
+            foreach (DetectedObject detobj in col.Colliders) {
+                LSL_Vector vec = new LSL_Vector(detobj.posVector.X,
+                                                detobj.posVector.Y,
+                                                detobj.posVector.Z);
+                EventParams eps = new EventParams(eventname, 
+                                                  new Object[] { vec }, 
+                                                  zeroDetectParams);
+                myScriptEngine.PostObjectEvent(localID, eps);
             }
-         }
+        }
 
         // timer: not handled here
         // listen: not handled here
@@ -382,8 +270,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             myScriptEngine.PostObjectEvent(localID, new EventParams(
                     "at_target", new object[] {
                     (int)handle,
-                    new LSL_Types.Vector3(targetpos.X,targetpos.Y,targetpos.Z),
-                    new LSL_Types.Vector3(atpos.X,atpos.Y,atpos.Z) },
+                    new LSL_Vector(targetpos.X,targetpos.Y,targetpos.Z),
+                    new LSL_Vector(atpos.X,atpos.Y,atpos.Z) },
                     zeroDetectParams));
         }
 
