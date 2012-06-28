@@ -78,8 +78,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public void ApiReset()
         {
-            m_Die = false;
-            throw new XMRScriptResetException();
+            throw new ScriptResetException();
         }
 
         /**
@@ -116,8 +115,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 ///???            if (m_Part.ParentGroup.RootPart.IsAttachment || m_DetachQuantum > 0)
 ///???                return;
 
-            m_Die = true;
-            throw new XMRScriptResetException();
+            throw new ScriptDieException();
         }
 
         /**
@@ -677,5 +675,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
     }
 
-    public class XMRScriptResetException : Exception { }
+    /**
+     * @brief Thrown by things like llResetScript() to unconditionally
+     *        unwind as script and reset it to the default state_entry
+     *        handler.  We don't want script-level try/catch to intercept
+     *        these so scripts can't interfere with the behavior.
+     */
+    public class ScriptResetException : Exception, IXMRUncatchable { }
+
+    /**
+     * @brief Thrown by things like llDie() to unconditionally unwind as 
+     *        script.  We don't want script-level try/catch to intercept
+     *        these so scripts can't interfere with the behavior.
+     */
+    public class ScriptDieException : Exception, IXMRUncatchable { }
 }

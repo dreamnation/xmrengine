@@ -32,8 +32,6 @@ using log4net;
 
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
-    public class StackCaptureException : Exception { }
-
     public partial class XMRInstance
     {
         /************************************************************************************\
@@ -504,7 +502,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private void HandleScriptException(Exception e)
         {
             /*
-             * It threw some kind of exception, so it's no longer running an event handler.
+             * The script threw some kind of exception that was not caught at
+             * script level, so the script is no longer running an event handler.
              */
             eventCode = ScriptEventCode.None;
 
@@ -518,19 +517,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 m_log.DebugFormat("[XMREngine]: script self-delete {0}", m_ItemID);
                 m_Part.Inventory.RemoveInventoryItem(m_ItemID);
             }
-            else if (e is XMRScriptResetException)
+            else if (e is ScriptDieException)
             {
                 /*
-                 * Script did an llDie() or llResetScript().
+                 * Script did an llDie()
                  */
-                if (m_Die) {
-                    m_RunOnePhase = "dying...";
-                    m_SleepUntil = DateTime.MaxValue;
-                    m_Engine.World.DeleteSceneObject(m_Part.ParentGroup, false);
-                } else {
-                    m_RunOnePhase = "resetting...";
-                    ResetLocked("HandleScriptException");
-                }
+                m_RunOnePhase = "dying...";
+                m_SleepUntil = DateTime.MaxValue;
+                m_Engine.World.DeleteSceneObject(m_Part.ParentGroup, false);
+            }
+            else if (e is ScriptResetException)
+            {
+                /*
+                 * Script did an llResetScript().
+                 */
+                m_RunOnePhase = "resetting...";
+                ResetLocked("HandleScriptResetException");
             }
             else
             {
@@ -959,4 +961,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
         }
     }
+
+    /**
+     * @brief Thrown by CheckRun() to unwind the script stack, capturing frames to
+     *        instance.stackFrames as it unwinds.  We don't want scripts to be able
+     *        to intercept this exception as it would block the stack capture
+     *        functionality.
+     */
+    public class StackCaptureException : Exception, IXMRUncatchable { }
 }

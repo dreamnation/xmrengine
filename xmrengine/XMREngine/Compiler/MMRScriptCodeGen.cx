@@ -3417,6 +3417,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		public static string CatchExcToStr (Exception exc)
 		{
+			if (exc is IXMRUncatchable) return null;
 			return exc.ToString ();
 		}
 
@@ -3576,6 +3577,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 		}
 	}
+
+	/**
+	 * @brief Marker interface indicates an exception that can't be caught by a script-level try/catch.
+	 */
+	public interface IXMRUncatchable { }
 
 	/**
 	 * @brief Thrown by a script when it attempts to change to an undefined state.
