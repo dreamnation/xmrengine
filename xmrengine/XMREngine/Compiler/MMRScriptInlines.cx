@@ -251,7 +251,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 							}
 						}
 					}
-				} catch (Exception except) {
+				} catch {
 
 					///??? string msg = except.ToString ();
 					///??? int i = msg.IndexOf ("\n");
