@@ -1,0 +1,161 @@
+
+Arrays are associative in that the index can be any immutable type, and any 
+given array can have a mix of index types and a mix of value types.  In 
+particular, the index of an array can be a list to provide multiple-dimension 
+array functionality.
+
+Unlike other LSL script types, arrays are mutable.  So, unlike lists, arrays 
+can be passed to a function, the function can modify the array, and the caller 
+will see the changes made by the function.
+
+Enabled by 'XMROption' 'arrays' ';'
+
+Keywords:
+
+    array       declare variable to be an array, and make it initially empty
+    foreach     iterate through all elements in an array
+    in          keyword part of foreach statement
+    is          test array element to be a particular type
+    object      declare variable that can hold any type
+    undef       test object or array element to hold undefined element
+
+Declare an array:
+
+    'array' name ';'
+
+    Example:
+
+        array ar;
+
+Insert element:
+
+    name '[' index ']' '=' value ';'
+
+        name  : was declared with 'array' statement
+        index : lsl value of any type other than array
+        value : lsl value of any type
+
+    Examples:
+
+        ar[3] = "abcdef";
+        ar["five"] = [ "one", "two", "three" ];
+        ar[5.0,"six"] = 7;
+
+Delete element:
+
+    name '[' index ']' '=' undef ';'
+
+        it is not an error to delete an element that does not exist
+
+    Example:
+
+        ar["five"] = undef;
+
+Retrieve element:
+
+    name '[' index ']'
+
+        if element not defined, return value is 'undef'
+
+    Example:
+
+        llSay(0, (string)ar[3]);
+
+Test type of object:
+
+    <object> is <type>  =>  integer 0 or 1
+    <object> is undef   =>  integer 0 or 1
+
+    object o;
+    if (o is integer) ...
+    if (o is string) ... etc
+
+Misc functions:
+
+    ar.clear    // empty array, returns type void
+    ar.count    // get number of elements in array, returns type integer
+    ar.index(i) // get index of i'th (zero based) element, returns type object
+    ar.value(i) // get value of i'th (zero based) element, returns type object
+
+Iterate through all elements:
+
+    array ar;
+    object k, v;
+    foreach (k,v in ar) {
+        k holds the index
+        v holds the value
+        llSay(0, "ar[" + (string)k + "]=" + (string)v);
+    }
+
+    // alternatively:
+
+    object k, v;
+    integer n = ar.count;
+    for (integer i = 0; i < n; i ++) {
+        k = ar.index(i);
+        v = ar.value(i);
+        llSay(0, (string)i + ": ar[" + (string)k + "]=" + (string)v);
+    }
+
+
+
+Provide advanced flow-control statements similar to other programming 
+languages.
+
+Enabled by 'XMROption' 'advFlowCtl' ';'
+
+Keywords:
+
+    break
+    case
+    constant
+    continue
+    switch
+    ...
+    :
+
+'break'    : valid in 'do', 'for', 'foreach', 'switch', 'while'
+'continue' : valid in 'do', 'for', 'foreach', 'while'
+
+'constant' usage as follows:
+
+    'constant' name '=' constantexpr ';'
+
+    constantexpr := floatconstant | integerconstant | stringconstant | constantexpr constbinop constantexpr | constunop constantexpr
+    constbinop   := '+' | '-' | '*' | '/' | '%' | '&' | '|' | '^'
+    constunop    := '-' | '~'
+
+    name is defined to be the same type as constantexpr
+
+    Note: & | ^ ~ require all integer operands
+          - * / % require either integer or float operands
+          only + is valid for strings
+
+'switch' usage as follows :
+
+    'switch' '(' integerexpression ')' '{'
+        [ 'case' integerconstantexpression [ '...' integerconstantexpression ']' ':' singlestatement ]*
+        [ 'default' ':' singlestatement ]
+    '}'
+
+
+
+Provide a mechanism for catching exceptions.
+
+Enabled by 'XMROption' 'tryCatch' ';'
+
+Keywords:
+
+    catch
+    finally
+    throw
+    try
+
+    'try' '{' statements ... '}'
+    [ 'catch' '(' 'string' name ')' '{' statements ... '}' ]
+    [ 'finally' '{' statements ... '}' ]
+
+    'throw' stringexpr ';'
+
+    'throw' ';'     // rethrow from within a 'catch' statement block
+
