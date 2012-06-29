@@ -1160,9 +1160,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             XMRInstance inst;
             XMRInstState newIState;
 
-            GetTid getTid = (GetTid) MMRDLOpen.GetDelegate ("./xmrhelpers.so", "GetTid", typeof (GetTid), null);
-            GetSetAffinity getAffinity = (GetSetAffinity) MMRDLOpen.GetDelegate ("./xmrhelpers.so", "GetAffinity", typeof (GetSetAffinity), null);
-            GetSetAffinity setAffinity = (GetSetAffinity) MMRDLOpen.GetDelegate ("./xmrhelpers.so", "SetAffinity", typeof (GetSetAffinity), null);
+            GetTid getTid = MMRDLOpen.GetDelegate<GetTid> ("./xmrhelpers.so", "GetTid", null);
+            GetSetAffinity getAffinity = MMRDLOpen.GetDelegate<GetSetAffinity> ("./xmrhelpers.so", "GetAffinity", null);
+            GetSetAffinity setAffinity = MMRDLOpen.GetDelegate<GetSetAffinity> ("./xmrhelpers.so", "SetAffinity", null);
 
             m_ScriptThreadTID = getTid();
             m_ScriptExecTime -= (long)(DateTime.UtcNow - DateTime.MinValue).TotalMilliseconds;

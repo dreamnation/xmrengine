@@ -248,7 +248,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 this.captureStackFrames = true;
                 Exception except = this.microthread.ResumeEx (null);
                 this.captureStackFrames = false;
-                this.callMode = CALLMODE_NORMAL;
                 if (except == null) {
                     throw new Exception ("stack save did not complete");
                 }
@@ -269,7 +268,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                 // now restore script stack
                 // microthread will suspend inside CheckRun() when restore is complete
-                this.callMode = CALLMODE_RESTORE;
                 this.stackFramesRestored = false;
                 except = this.microthread.StartEx ();
                 if (except != null) {

@@ -33,7 +33,7 @@ REFERENCED = $(OPENSIMDLLDIR)/xmrengshare.dll \
              $(OPENSIMDLLDIR)/OpenSim.Region.ScriptEngine.Shared.dll \
              $(OPENSIMDLLDIR)/OpenSim.Region.ScriptEngine.Shared.Api.dll \
              $(OPENSIMDLLDIR)/OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll \
-             /home/kunta/mono32/lib/mono/2.0/Mono.Tasklets.dll
+             /home/kunta/mono32.267/lib/mono/2.0/Mono.Tasklets.dll
 
 default: \
 	$(OPENSIMDLLDIR)/xmrengshare.dll \
