@@ -37,7 +37,8 @@ REFERENCED = $(OPENSIMDLLDIR)/xmrengshare.dll \
 
 default: \
 	$(OPENSIMDLLDIR)/xmrengshare.dll \
-	$(OPENSIMDLLDIR)/xmrhelpers.so \
+	$(OPENSIMDLLDIR)/xmrhelpers32.so \
+	$(OPENSIMDLLDIR)/xmrhelpers64.so \
 	$(OPENSIMDLLDIR)/OpenSim.Region.ScriptEngine.XMREngine.dll
 
 # ------------------------------------------------------------------------------
@@ -45,7 +46,7 @@ default: \
 # Create files needed for OpenSim
 #
 $(OPENSIMDLLDIR)/OpenSim.Region.ScriptEngine.XMREngine.dll: $(ENGINECSFILES) $(REFERENCED)
-	/home/kunta/mono32/bin/gmcs -debug -target:library \
+	gmcs -debug -target:library \
 		-out:$@ \
 		$(ENGINECSFILES) \
 		$(patsubst %.dll,-reference:%.dll,$(REFERENCED))
@@ -61,13 +62,20 @@ MMRScriptCompile.cs: ../Compiler/MMRScriptCompile.cx
 
 # ------------------------------------------------------------------------------
 
-xmrhelpers: $(OPENSIMDLLDIR)/xmrhelpers.so
+.PHONY: xmrhelpers
+xmrhelpers: $(OPENSIMDLLDIR)/xmrhelpers32.so $(OPENSIMDLLDIR)/xmrhelpers64.so
 
-$(OPENSIMDLLDIR)/xmrhelpers.so: xmrhelpers.o
-	ld -m elf_i386 -share -g -o $(OPENSIMDLLDIR)/xmrhelpers.so xmrhelpers.o
+$(OPENSIMDLLDIR)/xmrhelpers32.so: xmrhelpers32.o
+	ld -m elf_i386 -share -g -o $(OPENSIMDLLDIR)/xmrhelpers32.so xmrhelpers32.o
 
-xmrhelpers.o: xmrhelpers.c
-	$(GCC) -m32 -c -o xmrhelpers.o xmrhelpers.c
+xmrhelpers32.o: xmrhelpers.c
+	$(GCC) -m32 -c -o xmrhelpers32.o xmrhelpers.c
+
+$(OPENSIMDLLDIR)/xmrhelpers64.so: xmrhelpers64.o
+	ld -m elf_x86_64 -share -g -o $(OPENSIMDLLDIR)/xmrhelpers64.so xmrhelpers64.o
+
+xmrhelpers64.o: xmrhelpers.c
+	$(GCC) -m64 -fPIC -c -o xmrhelpers64.o xmrhelpers.c
 
 # ------------------------------------------------------------------------------
 
