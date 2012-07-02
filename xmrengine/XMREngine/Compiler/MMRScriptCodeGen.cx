@@ -53,6 +53,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public  static ConstructorInfo lslRotationConstructorInfo = typeof (LSL_Rotation).GetConstructor (new Type[] { typeof (double), typeof (double), typeof (double), typeof (double) });
 		private static ConstructorInfo lslStringConstructorInfo = typeof (LSL_String).GetConstructor (new Type[] { typeof (string) });
 		public  static ConstructorInfo lslVectorConstructorInfo = typeof (LSL_Vector).GetConstructor (new Type[] { typeof (double), typeof (double), typeof (double) });
+		private static ConstructorInfo scriptBadCallNoExceptionConstructorInfo = typeof (ScriptBadCallNoException).GetConstructor (new Type[] { typeof (int) });
 		private static ConstructorInfo scriptUndefinedStateExceptionConstructorInfo = typeof (ScriptUndefinedStateException).GetConstructor (new Type[] { typeof (string) });
 		private static ConstructorInfo xmrArrayConstructorInfo = typeof (XMR_Array).GetConstructor (new Type[0]);
 		private static FieldInfo callModeFieldInfo     = typeof (XMRInstAbstract).GetField ("callMode");
@@ -940,6 +941,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Restore argument values from object array, unboxing as needed.
+			 * Although the caller has restored them to what it called us with, it's possible that this 
+			 * function has modified them since, so we need to do our own restore.
 			 */
 			int i = 0;
 			foreach (CompValu argLoc in declFunc.argDecl.locns) {
@@ -977,59 +980,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Output a switch statement with a case for each possible value of callNo.
 			 *
 			 *   switch (callNo) {
-			 *      case 0: goto __rest_0;
-			 *      case 1: goto __rest_1;
+			 *      case 0: goto __call_0;
+			 *      case 1: goto __call_1;
 			 *      ...
 			 *   }
+			 *   throw new ScriptBadCallNoException (callNo);
 			 */
-			int          numCallLabels = allCallLabels.Count;
-			ScriptMyLabel[] restLabels = new ScriptMyLabel[numCallLabels];
+			ScriptMyLabel[] callLabels = new ScriptMyLabel[allCallLabels.Count];
 			foreach (CallLabel cl in allCallLabels) {
-				restLabels[cl.index] = ilGen.DefineLabel ("__rest_" + cl.index);
+				callLabels[cl.index] = cl.callLabel;
 			}
 			ilGen.Emit (OpCodes.Ldloc, callNo);
-			ilGen.Emit (OpCodes.Switch, restLabels);
+			ilGen.Emit (OpCodes.Switch, callLabels);
 
-			/*
-			 * For each case, output code to push dummy args then jump to the original call instruction.
-			 * The called function will restore the actual argument values.
-			 *
-			 *   __rest_0:
-			 *      push instance
-			 *      push <dummy arg values>
-			 *      goto __call_0;
-			 *
-			 *   __rest_1:
-			 *      push instance
-			 *      push <dummy arg values>
-			 *      goto __call_1;
-			 *
-			 *   ...
-			 */
-			foreach (CallLabel cl in allCallLabels) {
-				ilGen.MarkLabel (restLabels[cl.index]);
-
-				/*
-				 * All calls that we restore to have the XMRInstance pointer as their first hidden arg.
-				 */
-				ilGen.Emit (OpCodes.Ldarg_0);
-
-				/*
-				 * Push all the other args, if any.  Just use dummy values as the function will 
-				 * restore its args, overwriting whatever we pass it here.
-				 */
-				if (cl.argTypes != null) {
-					int nargs = cl.argTypes.Length;
-					for (int j = 0; j < nargs; j ++) {
-						PushDefaultValue (cl.argTypes[j]);
-					}
-				}
-
-				/*
-				 * Jump to the original call instruction.
-				 */
-				ilGen.Emit (OpCodes.Br, cl.callLabel);
-			}
+			ilGen.Emit (OpCodes.Ldloc, callNo);
+			ilGen.Emit (OpCodes.Newobj, scriptBadCallNoExceptionConstructorInfo);
+			ilGen.Emit (OpCodes.Throw);
 		}
 
 		/**
@@ -2481,6 +2447,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private CompValu GenerateFromRValCallField (TokenRValCall call)
 		{
+			CompValu[] argRVals;
 			int i, nargs;
 			TokenLValField meth = (TokenLValField)call.meth;
 
@@ -2504,6 +2471,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			TokenDeclFunc declFunc = ((TokenTypeMeth)method.type).funcs[0];
 
 			/*
+			 * Compute the values of all the function's call arguments.
+			 */
+			nargs = call.nArgs;
+			if (nargs != declFunc.argDecl.types.Length) {
+				ErrorMsg (call, "method has " + declFunc.argDecl.types.Length.ToString () + " param(s), but call has " + nargs.ToString ());
+				if (nargs > declFunc.argDecl.types.Length) nargs = declFunc.argDecl.types.Length;
+			}
+			argRVals = new CompValu[nargs];
+			TokenRVal arg = call.args;
+			for (i = 0; i < nargs; i ++) {
+				argRVals[i] = GenerateFromRVal (arg);
+				arg = (TokenRVal)arg.nextToken;
+			}
+
+			/*
+			 * Stick in a label here that stack frame restore code can jump to.
+			 */
+			CallLabel cl = new CallLabel (this);
+			cl.argTypes  = declFunc.argDecl.types;
+
+			/*
 			 * Make sure we have a place to put return value and prepare to pop return value into it.
 			 * The PopPre() call must be done before pushing anything else so PopPost() will work.
 			 */
@@ -2515,25 +2503,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			((CompValuMethod)method).obj.PushVal (this);
 
 			/*
-			 * Compute and push the values of all the function's call arguments, left-to-right.
+			 * Push the values of all the function's call arguments, left-to-right.
 			 */
-			nargs = call.nArgs;
-			if (nargs != declFunc.argDecl.types.Length) {
-				ErrorMsg (call, "method has " + declFunc.argDecl.types.Length.ToString () + " param(s), but call has " + nargs.ToString ());
-				if (nargs > declFunc.argDecl.types.Length) nargs = declFunc.argDecl.types.Length;
-			}
-			TokenRVal arg = call.args;
 			for (i = 0; i < nargs; i ++) {
-				CompValu argVal = GenerateFromRVal (arg);
-				argVal.PushVal (this, declFunc.argDecl.types[i]);
-				arg = (TokenRVal)arg.nextToken;
+				argRVals[i].PushVal (this, declFunc.argDecl.types[i]);
 			}
-
-			/*
-			 * Stick in a label here that stack frame restore code can jump to.
-			 */
-			CallLabel cl = new CallLabel (this);
-			cl.argTypes  = declFunc.argDecl.types;
 
 			/*
 			 * Generate call, leaving the return value (if any) on the stack.
@@ -2554,7 +2528,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private CompValu GenerateFromRValCallName (TokenRValCall call)
 		{
-			CompValu[] argRVals = null;
+			CompValu[] argRVals;
 			int i, nargs;
 			string name;
 			StringBuilder signature;
@@ -2636,6 +2610,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
+			 * Stick in a label here that stack frame restore code can jump to.
+			 */
+			CallLabel cl = new CallLabel (this);
+			cl.argTypes  = declFunc.argDecl.types;
+
+			/*
 			 * Make sure we have a place to put return value and prepare to pop return value into it.
 			 * The PopPre() call must be done before pushing anything else so PopPost() will work.
 			 */
@@ -2653,13 +2633,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					argRVals[i].PushVal (this, declFunc.argDecl.types[i]);
 				}
 			}
-
-
-			/*
-			 * Stick in a label here that stack frame restore code can jump to.
-			 */
-			CallLabel cl = new CallLabel (this);
-			cl.argTypes  = declFunc.argDecl.types;
 
 			/*
 			 * Now output call instruction.
@@ -3194,11 +3167,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		public void EmitCallCheckRun (int line)
 		{
-			/*
-			 * Now output the args and the call itself.
-			 */
+			new CallLabel (this);                           // jump here when stack restored
 			ilGen.Emit (OpCodes.Ldarg_0);                   // instance
-			new CallLabel (this);
 			PushConstantI4 (line);                          // source line number
 			ilGen.Emit (OpCodes.Call, checkRunMethodInfo);  // instance.CheckRun()
 		}
@@ -3604,4 +3574,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 	public class OutOfHeapException : Exception { }
 	public class OutOfStackException : Exception { }
+
+	public class ScriptBadCallNoException : Exception {
+		public ScriptBadCallNoException (int callNo) : base ("bad callNo " + callNo) { }
+	}
 }
