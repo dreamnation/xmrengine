@@ -316,7 +316,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @param endMethod = called for each method defined
 		 * @param debWriter = debug file writer (or null if not wanted)
 		 */
-		public static void CreateObjCode (BinaryReader objReader, ScriptMyILGenEndMethod endMethod, StreamWriter debWriter)
+		public static void CreateObjCode (BinaryReader objReader, ScriptMyILGenEndMethod endMethod, TextWriter debWriter)
 		{
 			Dictionary<string, DynamicMethod> methods = new Dictionary<string, DynamicMethod> ();
 			DynamicMethod method = null;

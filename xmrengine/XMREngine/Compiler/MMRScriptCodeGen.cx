@@ -3443,7 +3443,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		public static ScriptObjCode PerformGeneration (string descName,
 		                                               BinaryReader objFileReader, 
-		                                               StreamWriter asmFileWriter)
+		                                               TextWriter asmFileWriter)
 		{
 			/*
 			 * Check version number to make sure we know how to process file contents.

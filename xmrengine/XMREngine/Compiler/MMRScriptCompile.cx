@@ -182,7 +182,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 memFileWriter.Flush ();
                 memFileStream.Seek (0, SeekOrigin.Begin);
                 BinaryReader objFileReader = new BinaryReader (memFileStream);
-                StreamWriter asmFileWriter = File.CreateText (asmFileName);
+                TextWriter asmFileWriter = (asmFileName != "-") ? File.CreateText (asmFileName) : Console.Out;
 
                 try {
                     ScriptCodeGen.PerformGeneration ("", objFileReader, asmFileWriter);
@@ -314,10 +314,10 @@ version:
              * In any case, at this point, decodeFileStream = CIL object file.
              * If given an asmFileName, disassemble it.
              */
-            StreamWriter asmFileWriter = null;
+            TextWriter asmFileWriter = null;
             if (asmFileName != null) {
                 Console.WriteLine("Creating disassembly file " + asmFileName);
-                asmFileWriter = File.CreateText (asmFileName);
+                asmFileWriter = (asmFileName != "-") ? File.CreateText (asmFileName) : Console.Out;
             }
 
             /*
