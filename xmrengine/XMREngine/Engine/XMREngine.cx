@@ -50,9 +50,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     {
         public const int NUMSCRIPTHREADCPUS = 2;
 
-        public static readonly DetectParams[] zeroDetectParams = new DetectParams[0];
+        public  static readonly DetectParams[] zeroDetectParams = new DetectParams[0];
         private static ArrayList noScriptErrors = new ArrayList();
-        private static readonly ILog m_log =
+        public  static readonly ILog m_log =
             LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
         private bool m_TraceCalls;
@@ -131,20 +131,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             TCP("[XMREngine]: Initialize entry");
             m_ConfigSource = config;
 
-            if (config.Configs["XMREngine"] == null)
-                m_Config = config.AddConfig("XMREngine");
-            else
-                m_Config = config.Configs["XMREngine"];
+            ////foreach (IConfig icfg in config.Configs) {
+            ////    m_log.Debug("[XMREngine]: Initialise: configs[" + icfg.Name + "]");
+            ////    foreach (string key in icfg.GetKeys ()) {
+            ////        m_log.Debug("[XMREngine]: Initialise:     " + key + "=" + icfg.GetExpanded (key));
+            ////    }
+            ////}
 
-            m_Enabled = m_Config.GetBoolean("Enabled", false);
-            string envar = Environment.GetEnvironmentVariable("XMREngineDisable");
-            if ((envar != null) && ((envar[0] & 1) != 0)) {
-                m_Enabled = false;
-            }
-            TCP("[XMREngine]: Initialize enabled={0}", m_Enabled);
-
-            if (!m_Enabled)
+            m_Enabled = false;
+            m_Config = config.Configs["XMREngine"];
+            if (m_Config == null) {
+                m_log.Info("[XMREngine]: no config, assuming disabled");
                 return;
+            }
+            m_Enabled = m_Config.GetBoolean("Enabled", false);
+            m_log.InfoFormat("[XMREngine]: config enabled={0}", m_Enabled);
+            if (!m_Enabled) {
+                return;
+            }
 
             /*
              * Verify that our ScriptEventCode's match OpenSim's scriptEvent's.
@@ -684,34 +688,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             XmlElement scriptStateN = instance.GetExecutionState(doc);
             stateN.AppendChild(scriptStateN);
 
-            /*
-             * Set up <Assembly>...</Assembly> item that has script's object code.
-             */
-            string assemblyPath = ScriptCompile.GetObjFileName(assetID, m_ScriptBasePath);
-            if (File.Exists(assemblyPath))
-            {
-                FileInfo fi = new FileInfo(assemblyPath);
-                if (fi != null)
-                {
-                    Byte[] assemblyData = new Byte[fi.Length];
-                    try
-                    {
-                        FileStream fs = File.Open(assemblyPath, FileMode.Open,
-                                                  FileAccess.Read);
-                        fs.Read(assemblyData, 0, assemblyData.Length);
-                        fs.Close();
-                        XmlElement assemN = doc.CreateElement("", "Assembly", "");
-                        assemN.AppendChild(doc.CreateTextNode(Convert.ToBase64String(assemblyData)));
-                        stateN.AppendChild(assemN);
-                    }
-                    catch (Exception e)
-                    {
-                        m_log.Debug("[XMREngine]: Unable to open script assembly: " + 
-                                e.ToString());
-                    }
-                }
-            }
-
             return doc.OuterXml;
         }
 
@@ -753,8 +729,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             {
                 // <ScriptState>...</ScriptState> contains contents of .state file.
                 XmlElement scriptStateN = (XmlElement)stateN.SelectSingleNode("ScriptState");
-                if (scriptStateN == null)
+                if (scriptStateN == null) {
                     return false;
+                }
+                string sen = stateN.GetAttribute("Engine");
+                if ((sen == null) || (sen != ScriptEngineName)) {
+                    return false;
+                }
 
                 XmlAttribute assetA = doc.CreateAttribute("", "Asset", "");
                 assetA.Value = stateN.GetAttribute("Asset");
@@ -767,23 +748,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 sw.Close();
                 ss.Close();
 
-                // <Assembly>...</Assembly> contains .xmrobj file contents
-                UUID assetID = new UUID(stateN.GetAttribute("Asset"));
-
-                string assemblyPath = ScriptCompile.GetObjFileName(assetID.ToString(), m_ScriptBasePath);
-
-                if (!File.Exists(assemblyPath))
-                {
-                    XmlElement assemN = (XmlElement)stateN.SelectSingleNode("Assembly");
-                    if (assemN != null)
-                    {
-                        Byte[] assemData = Convert.FromBase64String(assemN.InnerText);
-
-                        FileStream fs = File.Create(assemblyPath);
-                        fs.Write(assemData, 0, assemData.Length);
-                        fs.Close();
-                    }
-                }
             }
             return true;
         }
