@@ -137,7 +137,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 sb.AppendLine(m_DescName);
                 sb.AppendLine("    m_LocalID           = " + m_LocalID);
                 sb.AppendLine("    m_ItemID            = " + m_ItemID  + "  (.state file)");
-                sb.AppendLine("    m_AssetID           = " + m_AssetID + "  (.xmrobj file)");
+                sb.AppendLine("    m_AssetID           = " + m_AssetID + "  (source text)");
                 sb.AppendLine("    m_StartParam        = " + m_StartParam);
                 sb.AppendLine("    m_PostOnRez         = " + m_PostOnRez);
                 sb.AppendLine("    m_StateSource       = " + m_StateSource);

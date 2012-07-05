@@ -12,8 +12,8 @@ Significant entrypoints:
     engine.SetScriptState()                        // set instance.Running = true/false (unlocked)
     engine.ApiResetScript()                        // call instance.ApiReset()
     engine.ResetScript() = engine.OnScriptReset()  // call instance.Reset()
-    engine.GetXMLState()                           // snapshot of script state via instance.GetExecutionState() + object code
-    engine.SetXMLState()                           // write .state and .xmrobj files from xml (called before OnRezScript()) (uses XMRInstance.m_CompileLock)
+    engine.GetXMLState()                           // snapshot of script state via instance.GetExecutionState()
+    engine.SetXMLState()                           // write .state file from xml (called before OnRezScript())
     engine.OnRezScript()                           // create script instance, compiling if necessary, via new XMRInstance() and engine.QueueToStart()
     engine.OnRemoveScript()                        // delete script instance, via instance.suspendOnCheckRunHold = true, delete .state file and instance.Dispose()
     engine.OnStartScript()                         // instance.Running = true

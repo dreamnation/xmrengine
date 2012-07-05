@@ -640,7 +640,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /**
          * @brief Get script's current state as an XML string
          *        - called by "Take", "Take Copy" and when object deleted (ie, moved to Trash)
-         *        This includes both the .state file and the .xmrobj file contents
+         *        This includes the .state file
          */
         public string GetXMLState(UUID itemID)
         {
@@ -691,10 +691,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         // Set script's current state from an XML string
         // - called just before a script is instantiated
-        // So we write the .state file so the .state file  will be seen when 
-        // the script is instantiated.  We also write the .xmrobj file if it
-        // doesn't exist to save us from compiling it.  If the .xmrobj is an old
-        // version, the loader will discard it and recreate it.
+        // So we write the .state file so the .state file will be seen when 
+        // the script is instantiated.
         public bool SetXMLState(UUID itemID, string xml)
         {
             XmlDocument doc = new XmlDocument();
@@ -718,35 +716,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (stateN.GetAttribute("Engine") != ScriptEngineName)
                 return false;
 
-            /*
-             * Lock to prevent XMRInstance from trying to compile the same script
-             * at the same time we are writing the .xmrobj file (in case there are
-             * more than one instance referencing the same script).
-             */
-            lock (XMRInstance.m_CompileLock)
-            {
-                // <ScriptState>...</ScriptState> contains contents of .state file.
-                XmlElement scriptStateN = (XmlElement)stateN.SelectSingleNode("ScriptState");
-                if (scriptStateN == null) {
-                    return false;
-                }
-                string sen = stateN.GetAttribute("Engine");
-                if ((sen == null) || (sen != ScriptEngineName)) {
-                    return false;
-                }
-
-                XmlAttribute assetA = doc.CreateAttribute("", "Asset", "");
-                assetA.Value = stateN.GetAttribute("Asset");
-                scriptStateN.Attributes.Append(assetA);
-
-                string statePath = XMRInstance.GetStateFileName(m_ScriptBasePath, itemID);
-                FileStream ss = File.Create(statePath);
-                StreamWriter sw = new StreamWriter(ss);
-                sw.Write(scriptStateN.OuterXml);
-                sw.Close();
-                ss.Close();
-
+            // <ScriptState>...</ScriptState> contains contents of .state file.
+            XmlElement scriptStateN = (XmlElement)stateN.SelectSingleNode("ScriptState");
+            if (scriptStateN == null) {
+                return false;
             }
+            string sen = stateN.GetAttribute("Engine");
+            if ((sen == null) || (sen != ScriptEngineName)) {
+                return false;
+            }
+
+            XmlAttribute assetA = doc.CreateAttribute("", "Asset", "");
+            assetA.Value = stateN.GetAttribute("Asset");
+            scriptStateN.Attributes.Append(assetA);
+
+            // Write out the .state file with the <ScriptState ...>...</ScriptState> XML text
+            string statePath = XMRInstance.GetStateFileName(m_ScriptBasePath, itemID);
+            FileStream ss = File.Create(statePath);
+            StreamWriter sw = new StreamWriter(ss);
+            sw.Write(scriptStateN.OuterXml);
+            sw.Close();
+            ss.Close();
+
             return true;
         }
 

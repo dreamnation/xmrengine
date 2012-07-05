@@ -148,7 +148,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_Part.SetScriptEvents(m_ItemID, GetStateEventFlags(stateCode));
         }
 
-        // Get script DLL loaded in memory and all ready to run,
+        // Get script object code loaded in memory and all ready to run,
         // ready to resume it from where the .state file says it was last
         private void InstantiateScript()
         {
@@ -169,13 +169,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                 /*
                  * Fill in script instance from object code
-                 * Script instance is now in a "never-ever-has-run-before" state.
+                 * Script instance is put in a "never-ever-has-run-before" state.
                  */
                 LoadObjCode(objCode);
 
                 /*
                  * Fill in script intial state
-                 * - either preserved in a .state file
+                 * - either as loaded from a .state file
                  * - or initial default state_entry() event
                  */
                 LoadInitialState();
@@ -202,30 +202,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         // If error, just throw exception
         private ScriptObjCode TryToCompile()
         {
-            string objName = ScriptCompile.GetObjFileName(m_AssetID.ToString(),
-                                                          m_ScriptBasePath);
-
             m_CompilerErrors.Clear();
-
-            /*
-             * If told to force compilation (presumably because object file 
-             * is old version or corrupt), delete the object file which will 
-             * make ScriptCompile.Compile() create a new one from the source.
-             */
-            if ((m_SourceCode != String.Empty) && m_ForceReset) {
-                File.Delete(objName);
-            }
 
             /*
              * If we have neither the source nor the object file, not much we
              * can do to create the ScriptObjCode object.
              */
-            if ((m_SourceCode == String.Empty) && !File.Exists(objName))
-            {
-                throw new Exception("Compile of asset " +
-                                    m_AssetID.ToString() +
-                                    " was requested but source text is not " +
-                                    "present and no assembly was found");
+            if (m_SourceCode == String.Empty) {
+                throw new Exception("source file empty");
             }
 
             /*
