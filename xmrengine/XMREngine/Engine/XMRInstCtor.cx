@@ -284,9 +284,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             this.heapLimit -= 12 * objCode.numGblVectors;
 
             /*
-             * Set up sub-objects and cross-polinate so everything can access everything.
+             * Set up microthread object which actually calls the script event handler functions.
              */
-            this.microthread  = new ScriptUThread (this);
+            this.microthread = new ScriptUThread (this);
         }
 
         //  LoadInitialState()
