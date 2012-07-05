@@ -143,6 +143,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Declare which events the script's current state can handle.
              */
+            int eventMask = GetStateEventFlags(stateCode);
+            m_log.Debug("[XMREngine]: state=" + stateCode + ", event mask=0x" + eventMask.ToString("X"));
             m_Part.SetScriptEvents(m_ItemID, GetStateEventFlags(stateCode));
         }
 
@@ -313,6 +315,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private void LoadInitialState()
         {
             if (m_ForceReset) {
+                m_log.Debug("[XMREngine]: deleting " + m_StateFileName);
                 File.Delete(m_StateFileName);
             }
 
@@ -321,6 +324,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * Otherwise, read initial state from the .state file
              */
             if (!File.Exists(m_StateFileName)) {
+                m_log.Debug("[XMREngine]: starting with reset state");
                 m_Running = true;                  // event processing is enabled
                 eventCode = ScriptEventCode.None;  // not processing any event
 
@@ -332,6 +336,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                                           zeroObjectArray,
                                           zeroDetectParams));
             } else {
+                m_log.Debug("[XMREngine]: restoring state from " + m_StateFileName);
                 FileStream fs = File.Open(m_StateFileName, 
                                           FileMode.Open, 
                                           FileAccess.Read);
@@ -416,7 +421,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         /**
          * @brief Load script state from the given XML doc into the script memory
-         *  <ScriptState Asset=...>
+         *  <ScriptState Engine="XMREngine" Asset=...>
          *      <Running>...</Running>
          *      <DoGblInit>...</DoGblInit>
          *      <Permissions granted=... mask=... />
@@ -436,9 +441,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             // Everything we know is enclosed in <ScriptState>...</ScriptState>
             XmlElement scriptStateN = (XmlElement)doc.SelectSingleNode("ScriptState");
-            if (scriptStateN == null)
-            {
+            if (scriptStateN == null) {
                 throw new Exception("no <ScriptState> tag");
+            }
+            string sen = scriptStateN.GetAttribute("Engine");
+            if ((sen == null) || (sen != m_Engine.ScriptEngineName)) {
+                throw new Exception("<ScriptState> missing Engine=\"XMREngine\" attribute");
             }
 
             // AssetID is unique for the script source text so make sure the
@@ -446,7 +454,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             string assetID = scriptStateN.GetAttribute("Asset");
             if (assetID != m_Item.AssetID.ToString())
             {
-                throw new Exception("assetID mismatch");
+                throw new Exception("<ScriptState> assetID mismatch");
             }
 
             // Get various attributes

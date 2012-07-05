@@ -64,6 +64,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_DetachReady.WaitOne(5000);
 
             XmlElement scriptStateN = doc.CreateElement("", "ScriptState", "");
+            scriptStateN.SetAttribute("Engine", m_Engine.ScriptEngineName);
             scriptStateN.SetAttribute("Asset", m_AssetID.ToString());
 
             /*
