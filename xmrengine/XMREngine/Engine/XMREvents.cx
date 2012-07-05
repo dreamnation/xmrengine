@@ -24,37 +24,31 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     /// <summary>
     /// Prepares events so they can be directly executed upon a script by EventQueueManager, then queues it.
     /// </summary>
-    public class XMREvents
+    public partial class XMREngine
     {
-        public static readonly DetectParams[] zeroDetectParams = new DetectParams[0];
         public static readonly object[] zeroObjectArray = new object[0];
         public static readonly object[] oneObjectArrayOne = new object[1] { 1 };
-        private static readonly ILog m_log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
-        private XMREngine myScriptEngine;
-
-        public XMREvents(XMREngine _ScriptEngine)
+        private void InitEvents()
         {
-            myScriptEngine = _ScriptEngine;
-
             m_log.Info("[XMREngine] Hooking up to server events");
-            myScriptEngine.World.EventManager.OnAttach                    += attach;
-            myScriptEngine.World.EventManager.OnObjectGrab                += touch_start;
-            myScriptEngine.World.EventManager.OnObjectGrabbing            += touch;
-            myScriptEngine.World.EventManager.OnObjectDeGrab              += touch_end;
-            myScriptEngine.World.EventManager.OnScriptChangedEvent        += changed;
-            myScriptEngine.World.EventManager.OnScriptAtTargetEvent       += at_target;
-            myScriptEngine.World.EventManager.OnScriptNotAtTargetEvent    += not_at_target;
-            myScriptEngine.World.EventManager.OnScriptAtRotTargetEvent    += at_rot_target;
-            myScriptEngine.World.EventManager.OnScriptNotAtRotTargetEvent += not_at_rot_target;
-            myScriptEngine.World.EventManager.OnScriptControlEvent        += control;
-            myScriptEngine.World.EventManager.OnScriptColliderStart       += collision_start;
-            myScriptEngine.World.EventManager.OnScriptColliding           += collision;
-            myScriptEngine.World.EventManager.OnScriptCollidingEnd        += collision_end;
-            myScriptEngine.World.EventManager.OnScriptLandColliderStart   += land_collision_start;
-            myScriptEngine.World.EventManager.OnScriptLandColliding       += land_collision;
-            myScriptEngine.World.EventManager.OnScriptLandColliderEnd     += land_collision_end;
-            IMoneyModule money=myScriptEngine.World.RequestModuleInterface<IMoneyModule>();
+            this.World.EventManager.OnAttach                    += attach;
+            this.World.EventManager.OnObjectGrab                += touch_start;
+            this.World.EventManager.OnObjectGrabbing            += touch;
+            this.World.EventManager.OnObjectDeGrab              += touch_end;
+            this.World.EventManager.OnScriptChangedEvent        += changed;
+            this.World.EventManager.OnScriptAtTargetEvent       += at_target;
+            this.World.EventManager.OnScriptNotAtTargetEvent    += not_at_target;
+            this.World.EventManager.OnScriptAtRotTargetEvent    += at_rot_target;
+            this.World.EventManager.OnScriptNotAtRotTargetEvent += not_at_rot_target;
+            this.World.EventManager.OnScriptControlEvent        += control;
+            this.World.EventManager.OnScriptColliderStart       += collision_start;
+            this.World.EventManager.OnScriptColliding           += collision;
+            this.World.EventManager.OnScriptCollidingEnd        += collision_end;
+            this.World.EventManager.OnScriptLandColliderStart   += land_collision_start;
+            this.World.EventManager.OnScriptLandColliding       += land_collision;
+            this.World.EventManager.OnScriptLandColliderEnd     += land_collision_end;
+            IMoneyModule money=this.World.RequestModuleInterface<IMoneyModule>();
             if (money != null)
             {
                 money.OnObjectPaid+=HandleObjectPaid;
@@ -75,14 +69,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             DetectParams[] det = new DetectParams[1];
             det[0] = new DetectParams();
             det[0].Key = agentID;
-            det[0].Populate(myScriptEngine.World);
+            det[0].Populate(this.World);
 
             // Since this is an event from a shared module, all scenes will
             // get it. But only one has the object in question. The others
             // just ignore it.
             //
             SceneObjectPart part =
-                    myScriptEngine.World.GetSceneObjectPart(objectID);
+                    this.World.GetSceneObjectPart(objectID);
 
             if (part == null)
                 return;
@@ -130,15 +124,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             SceneObjectPart part;
             if (originalID == 0) {
-                part = myScriptEngine.World.GetSceneObjectPart(localID);
+                part = this.World.GetSceneObjectPart(localID);
                 if (part == null) return;
             } else {
-                part = myScriptEngine.World.GetSceneObjectPart(originalID);
+                part = this.World.GetSceneObjectPart(originalID);
             }
 
             DetectParams det = new DetectParams();
             det.Key = remoteClient.AgentId;
-            det.Populate(myScriptEngine.World);
+            det.Populate(this.World);
             det.OffsetPos = new LSL_Vector(offsetPos.X,
                                            offsetPos.Y,
                                            offsetPos.Z);
@@ -149,7 +143,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             // Add to queue for all scripts in ObjectID object
-            myScriptEngine.PostObjectEvent(localID, new EventParams(
+            this.PostObjectEvent(localID, new EventParams(
                     eventname, oneObjectArrayOne,
                     new DetectParams[] { det }));
         }
@@ -158,7 +152,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             int ch = (int)change;
             // Add to queue for all scripts in localID, Object pass change.
-            myScriptEngine.PostObjectEvent(localID, new EventParams(
+            this.PostObjectEvent(localID, new EventParams(
                     "changed",new object[] { ch },
                     zeroDetectParams));
         }
@@ -168,7 +162,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void money(uint localID, UUID agentID, int amount, DetectParams[] det)
         {
-            myScriptEngine.PostObjectEvent(localID, new EventParams(
+            this.PostObjectEvent(localID, new EventParams(
                     "money", new object[] {
                     agentID.ToString(),
                     amount },
@@ -199,11 +193,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 foreach (DetectedObject detobj in col.Colliders) {
                     DetectParams d = new DetectParams();
                     d.Key =detobj.keyUUID;
-                    d.Populate(myScriptEngine.World);
+                    d.Populate(this.World);
                     det[i++] = d;
                 }
 
-                myScriptEngine.PostObjectEvent(localID, new EventParams(
+                this.PostObjectEvent(localID, new EventParams(
                         eventname,
                         new Object[] { dc },
                         det));
@@ -234,7 +228,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 EventParams eps = new EventParams(eventname, 
                                                   new Object[] { vec }, 
                                                   zeroDetectParams);
-                myScriptEngine.PostObjectEvent(localID, eps);
+                this.PostObjectEvent(localID, eps);
             }
         }
 
@@ -243,7 +237,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void control(UUID itemID, UUID agentID, uint held, uint change)
         {
-            myScriptEngine.PostScriptEvent(itemID, new EventParams(
+            this.PostScriptEvent(itemID, new EventParams(
                     "control",new object[] {
                     agentID.ToString(),
                     (int)held,
@@ -254,7 +248,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public void email(uint localID, UUID itemID, string timeSent,
                 string address, string subject, string message, int numLeft)
         {
-            myScriptEngine.PostObjectEvent(localID, new EventParams(
+            this.PostObjectEvent(localID, new EventParams(
                     "email",new object[] {
                     timeSent,
                     address,
@@ -267,7 +261,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public void at_target(uint localID, uint handle, Vector3 targetpos,
                 Vector3 atpos)
         {
-            myScriptEngine.PostObjectEvent(localID, new EventParams(
+            this.PostObjectEvent(localID, new EventParams(
                     "at_target", new object[] {
                     (int)handle,
                     new LSL_Vector(targetpos.X,targetpos.Y,targetpos.Z),
@@ -277,14 +271,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void not_at_target(uint localID)
         {
-            myScriptEngine.PostObjectEvent(localID, new EventParams(
+            this.PostObjectEvent(localID, new EventParams(
                     "not_at_target",zeroObjectArray,
                     zeroDetectParams));
         }
 
         public void at_rot_target(uint localID, uint handle, OpenMetaverse.Quaternion targetrot, OpenMetaverse.Quaternion atrot)
         {
-            myScriptEngine.PostObjectEvent(
+            this.PostObjectEvent(
                 localID, 
                 new EventParams(
                     "at_rot_target",
@@ -300,7 +294,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void not_at_rot_target(uint localID)
         {
-            myScriptEngine.PostObjectEvent(localID, new EventParams(
+            this.PostObjectEvent(localID, new EventParams(
                     "not_at_rot_target",zeroObjectArray,
                     zeroDetectParams));
         }
@@ -309,7 +303,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void attach(uint localID, UUID itemID, UUID avatar)
         {
-            myScriptEngine.PostObjectEvent(localID, new EventParams(
+            this.PostObjectEvent(localID, new EventParams(
                     "attach",new object[] {
                     avatar.ToString() },
                     zeroDetectParams));
@@ -320,14 +314,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void moving_start(uint localID, UUID itemID)
         {
-            myScriptEngine.PostObjectEvent(localID, new EventParams(
+            this.PostObjectEvent(localID, new EventParams(
                     "moving_start",zeroObjectArray,
                     zeroDetectParams));
         }
 
         public void moving_end(uint localID, UUID itemID)
         {
-            myScriptEngine.PostObjectEvent(localID, new EventParams(
+            this.PostObjectEvent(localID, new EventParams(
                     "moving_end",zeroObjectArray,
                     zeroDetectParams));
         }

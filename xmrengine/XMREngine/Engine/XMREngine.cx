@@ -287,13 +287,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_Scene.EventManager.OnGetScriptRunning += OnGetScriptRunning;
             m_Scene.EventManager.OnShutdown += OnShutdown;
 
-            new XMREvents(this);
+            InitEvents();
 
             m_ScriptThread = new Thread(RunScriptThread);
             m_SliceThread  = new Thread(RunSliceThread);
             m_ScriptThread.Priority = ThreadPriority.BelowNormal;
-
-            /////////////// Test
         }
 
         public void StartProcessing()
