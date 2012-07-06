@@ -205,14 +205,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_CompilerErrors.Clear();
 
             /*
-             * If we have neither the source nor the object file, not much we
-             * can do to create the ScriptObjCode object.
-             */
-            if (m_SourceCode == String.Empty) {
-                throw new Exception("source file empty");
-            }
-
-            /*
              * If object file exists, create ScriptObjCode directly from that.
              * Otherwise, compile the source to create object file then create
              * ScriptObjCode from that.
@@ -220,6 +212,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             ScriptObjCode objCode = ScriptCompile.Compile(m_SourceCode, 
                                                           m_AssetID.ToString(), 
                                                           m_ScriptBasePath, 
+                                                          m_ForceReset, 
                                                           ErrorHandler);
             if (m_CompilerErrors.Count != 0)
             {

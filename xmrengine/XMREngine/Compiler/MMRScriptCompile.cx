@@ -404,12 +404,15 @@ version:
          * @param source = 'source' contains the whole script source
          * @param assetID = the script asset ID, unique per script source file
          * @param scriptBasePath = where to put files (a directory)
+         * @param forceRecompile = false: use existing object file if any
+         *                          true: ignore existing object file
          * @param errorMessage = where to write error messages to
          * @returns object code pointer or null if compile error
          */
         public static ScriptObjCode Compile (string source, 
                                              string assetID,
                                              string scriptBasePath,
+                                             bool forceRecompile,
                                              TokenErrorMessage errorMessage)
         {
             Stream objFileStream = null;
@@ -421,8 +424,10 @@ version:
             /*
              * If we already have an object file, don't bother compiling.
              */
-            if (File.Exists (objFileName)) {
+            if (!forceRecompile && File.Exists (objFileName)) {
                 objFileStream = File.OpenRead (objFileName);
+            } else if (source == "") {
+                throw new Exception("source file empty");
             } else {
 
                 /*
