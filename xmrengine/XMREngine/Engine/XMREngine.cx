@@ -778,7 +778,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public void OnRezScript(uint localID, UUID itemID, string script,
                 int startParam, bool postOnRez, string defEngine, int stateSource)
         {
-            XMRInstance instance;
             SceneObjectPart part = m_Scene.GetSceneObjectPart(localID);
             TaskInventoryItem item = part.Inventory.GetInventoryItem(itemID);
 
@@ -811,30 +810,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * Compile and load the script in memory.
              */
             ArrayList errors = new ArrayList();
-            try
-            {
-                instance = new XMRInstance(localID, itemID, script,
-                                           startParam, postOnRez, stateSource,
-                                           this, part, item, m_ScriptBasePath,
-                                           m_StackSize, errors, false);
-            }
-            catch (Exception e1)
-            {
+            XMRInstance instance = new XMRInstance();
+            try {
+                instance.Initialize(localID, itemID, script,
+                                    startParam, postOnRez, stateSource,
+                                    this, part, item, m_ScriptBasePath,
+                                    m_StackSize, errors, false);
+            } catch (Exception e1) {
                 m_log.DebugFormat("[XMREngine]: {0} first load failed ({1}), retrying after reset", itemID.ToString(), e1.Message);
                 errors = new ArrayList();
-                try
-                {
-                    instance = new XMRInstance(localID, itemID, script,
-                                               startParam, postOnRez, stateSource,
-                                               this, part, item, m_ScriptBasePath,
-                                               m_StackSize, errors, true);
-                }
-                catch (Exception e2)
-                {
+                try {
+                    instance.Initialize(localID, itemID, script,
+                                        startParam, postOnRez, stateSource,
+                                        this, part, item, m_ScriptBasePath,
+                                        m_StackSize, errors, true);
+                } catch (Exception e2) {
                     m_log.DebugFormat("[XMREngine]: Error starting script {0}: {1}",
                                       itemID.ToString(), e2.Message);
-                    if (e2.Message != "compilation errors")
-                    {
+                    if (e2.Message != "compilation errors") {
                         m_log.DebugFormat("[XMREngine]:   exception:\n{0}", e2.ToString());
                     }
 

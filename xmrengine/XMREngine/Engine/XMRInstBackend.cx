@@ -58,12 +58,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             inst.Die();
         }
 
-        public override void llSay(int channelID, string text)
-        {
-            XMREngine.m_log.Debug("[XMREngine]: llSay(" + channelID + ", " + text + ")");
-            base.llSay(channelID, text);
-        }
-
         /* Can't override in latest OpenSim ---
          * Scripts can use xmrHeapLeft() and xmrStackLeft() if they want
         public override LSL_Integer llGetFreeMemory()

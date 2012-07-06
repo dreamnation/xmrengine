@@ -132,11 +132,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private bool m_Running = true;
 
         // queue of events that haven't been acted upon yet
-        public LinkedList<EventParams> m_EventQueue = new LinkedList<EventParams>();
+        public LinkedList<EventParams> m_EventQueue;
 
         // number of events of each code currently in m_EventQueue.
-        private int[] m_EventCounts = new int[(int)ScriptEventCode.Size];
-
+        private int[] m_EventCounts;
 
         // locked whilst running on the microthread stack (or about to run on it or just ran on it)
         private Object m_RunLock = new Object();
@@ -150,8 +149,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public int m_SleepEventMask1 = 0;
         public int m_SleepEventMask2 = 0;
 
-        private Dictionary<string,IScriptApi> m_Apis =
-                new Dictionary<string,IScriptApi>();
+        private Dictionary<string,IScriptApi> m_Apis;
 
         public ScriptEventCode eventCode = ScriptEventCode.None;
                                                   // event handler being executed (None when idle)
