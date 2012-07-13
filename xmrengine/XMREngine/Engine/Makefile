@@ -14,6 +14,7 @@ ENGINECSFILES = XMREngine.cs \
                 XMRInstMisc.cs \
                 XMRInstQueue.cs \
                 XMRInstRun.cs \
+                XMRScriptThread.cs \
                 XMRScriptUThread.cs \
                 XMREngXmrTestLs.cs \
                 MMRScriptCompile.cs

@@ -4,7 +4,6 @@
 \***************************************************/
 
 using log4net;
-using OpenSim.Region.ScriptEngine.XMREngine;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -77,28 +76,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             try {
-                outFile.WriteLine("Script thread ID: " + m_ScriptThreadTID);
-                long execTime = m_ScriptExecTime;
-                if (execTime < 0) {
-                    execTime += (long)(DateTime.UtcNow - DateTime.MinValue).TotalMilliseconds;
+                for (int i = 0; i < NUMSCRIPTHREADWKRS; i ++) {
+                    XMRScriptThread th = m_ScriptThreads[i];
+                    outFile.WriteLine("Script thread ID: " + th.m_ScriptThreadTID);
+                    long execTime = th.m_ScriptExecTime;
+                    if (execTime < 0) {
+                        execTime += (long)(DateTime.UtcNow - DateTime.MinValue).TotalMilliseconds;
+                    }
+                    outFile.WriteLine("  execution time: " + execTime + " mS");
+                    XMRInstance rins = th.m_RunInstance;
+                    if (rins != null) {
+                        outFile.WriteLine("running {0} {1}",
+                                rins.ItemID.ToString(),
+                                rins.m_DescName);
+                    }
+                    outFile.WriteLine("     last ran at: " + th.m_LastRanAt.ToString());
                 }
-                outFile.WriteLine("  execution time: " + execTime + " mS");
 
                 /*
                  * Scan instance list to find those that match selection criteria.
                  */
                 if (!Monitor.TryEnter(m_InstancesDict, 100)) {
                     m_log.Error("[XMREngine]: deadlock m_LockedDict=" + m_LockedDict);
-                    XMRInstance ins = m_RunInstance;
-                    if (ins != null) {
-                        m_log.Info("[XMREngine]: running...");
-                        Console.WriteLine(ins.RunTestLs(true));
-                    }
-                    ins = m_RemovingInstance;
-                    if (ins != null) {
-                        m_log.Info("[XMREngine]: removing...");
-                        Console.WriteLine(ins.RunTestLs(true));
-                    }
                     return;
                 }
                 try
@@ -138,17 +137,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * If -queues given, print out queue contents too.
                  */
                 if (flagQueues) {
-                    XMRInstance rins = m_RunInstance;
-                    if (rins != null) {
-                        outFile.WriteLine("running {0} {1}",
-                                rins.ItemID.ToString(),
-                                rins.m_DescName);
-                    }
-                    DateTime suntil = m_SleepUntil;
-                    if (suntil > DateTime.MinValue) {
-                        outFile.WriteLine("sleeping until {0}", suntil.ToString());
-                    }
-                    outFile.WriteLine("last ran at {0}", m_LastRanAt.ToString());
                     LsQueue(outFile, "start", m_StartQueue, args, indx);
                     LsQueue(outFile, "sleep", m_SleepQueue, args, indx);
                     LsQueue(outFile, "yield", m_YieldQueue, args, indx);

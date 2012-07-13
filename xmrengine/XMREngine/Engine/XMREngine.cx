@@ -9,35 +9,26 @@
 #define DBP m_log.DebugFormat
 #define TCP if (m_TraceCalls) m_log.DebugFormat
 
-using System;
-using System.Xml;
-using System.Text;
-using System.Timers;
-using System.IO;
-using System.Runtime.Remoting;
-using System.Runtime.Remoting.Lifetime;
-using System.Reflection;
-using System.Threading;
-using System.Collections.Generic;
-using System.Collections;
-using System.Security.Policy;
+using log4net;
+using Mono.Addins;
+using Mono.Tasklets;
+using Nini.Config;
 using OpenSim.Framework;
 using OpenSim.Framework.Console;
 using OpenSim.Region.ClientStack.Linden;
-using OpenSim.Region.Framework.Scenes;
 using OpenSim.Region.Framework.Interfaces;
+using OpenSim.Region.Framework.Scenes;
 using OpenSim.Region.ScriptEngine.Interfaces;
 using OpenSim.Region.ScriptEngine.Shared;
-using OpenSim.Region.ScriptEngine.Shared.Api;
-using OpenMetaverse.StructuredData;
-using Nini.Config;
-using Mono.Addins;
-using Mono.Tasklets;
 using OpenMetaverse;
-using log4net;
-using OpenSim.Region.ScriptEngine.XMREngine;
-
-#include "lsltypes.h"
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
+using System.Threading;
+using System.Timers;
+using System.Xml;
 
 [assembly: Addin("XMREngine", "0.1")]
 [assembly: AddinDependency("OpenSim", "0.5")]
@@ -49,6 +40,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             IScriptModule
     {
         public const int NUMSCRIPTHREADCPUS = 2;
+        public const int NUMSCRIPTHREADWKRS = 1;
 
         public  static readonly DetectParams[] zeroDetectParams = new DetectParams[0];
         private static ArrayList noScriptErrors = new ArrayList();
@@ -63,22 +55,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private bool m_Enabled = false;
         private Dictionary<UUID, ArrayList> m_ScriptErrors =
                 new Dictionary<UUID, ArrayList>();
-        private bool m_WakeUpFlag = false;
-        private object m_WakeUpLock = new object();
         private Dictionary<UUID, List<UUID>> m_Objects =
                 new Dictionary<UUID, List<UUID>>();
         private Dictionary<UUID, UUID> m_Partmap =
                 new Dictionary<UUID, UUID>();
         private UIntPtr m_StackSize;
-        private object m_SuspendScriptThreadLock = new object();
-        private bool m_SuspendScriptThreadFlag = false;
-        public  XMRInstance m_RunInstance = null;
-        public  XMRInstance m_RemovingInstance = null;
-        private DateTime m_SleepUntil = DateTime.MinValue;
-        public  DateTime m_LastRanAt = DateTime.MinValue;
-        private Thread m_ScriptThread = null;
-        public  int m_ScriptThreadTID = 0;
-        public  long m_ScriptExecTime = 0;
+        private XMRScriptThread[] m_ScriptThreads = new XMRScriptThread[NUMSCRIPTHREADWKRS];
+        private Thread m_SleepThread = null;
         private Thread m_SliceThread = null;
         private bool m_Exiting = false;
 
@@ -249,14 +232,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * one to finish (ie, script gets to CheckRun() call).
              */
             m_Exiting = true;
-            if (m_ScriptThread != null)
-            {
-                WakeUpScriptThread();
-                m_ScriptThread.Join();
-                m_ScriptThread = null;
+            for (int i = 0; i < NUMSCRIPTHREADWKRS; i ++) {
+                XMRScriptThread scriptThread = m_ScriptThreads[i];
+                if (scriptThread != null) {
+                    scriptThread.Terminate();
+                    m_ScriptThreads[i] = null;
+                }
             }
-            if (m_SliceThread != null)
-            {
+            if (m_SleepThread != null) {
+                lock (m_SleepQueue) {
+                    Monitor.PulseAll (m_SleepQueue);
+                }
+                m_SleepThread.Join();
+                m_SleepThread = null;
+            }
+            if (m_SliceThread != null) {
                 m_SliceThread.Join();
                 m_SliceThread = null;
             }
@@ -288,15 +278,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_Scene.EventManager.OnShutdown += OnShutdown;
 
             InitEvents();
-
-            m_ScriptThread = new Thread(RunScriptThread);
-            m_SliceThread  = new Thread(RunSliceThread);
-            m_ScriptThread.Priority = ThreadPriority.BelowNormal;
         }
 
         public void StartProcessing()
         {
-            m_ScriptThread.Start();
+            for (int i = 0; i < NUMSCRIPTHREADWKRS; i ++) {
+                m_ScriptThreads[i] = new XMRScriptThread(this);
+            }
+            m_SleepThread = new Thread(RunSleepThread);
+            m_SliceThread = new Thread(RunSliceThread);
+            m_SleepThread.Start();
             m_SliceThread.Start();
         }
 
@@ -385,18 +376,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
                 case "resume": {
                     m_log.Info ("[XMREngine]: resuming scripts");
-                    m_SuspendScriptThreadFlag = false;
-                    Monitor.Enter (m_SuspendScriptThreadLock);
-                    Monitor.PulseAll (m_SuspendScriptThreadLock);
-                    Monitor.Exit (m_SuspendScriptThreadLock);
+                    for (int i = 0; i < NUMSCRIPTHREADWKRS; i ++) {
+                        m_ScriptThreads[i].ResumeThread();
+                    }
                     break;
                 }
                 case "suspend": {
                     m_log.Info ("[XMREngine]: suspending scripts");
-                    m_SuspendScriptThreadFlag = true;
-                    Monitor.Enter (m_WakeUpLock);
-                    Monitor.PulseAll (m_WakeUpLock);
-                    Monitor.Exit (m_WakeUpLock);
+                    for (int i = 0; i < NUMSCRIPTHREADWKRS; i ++) {
+                        m_ScriptThreads[i].SuspendThread();
+                    }
                     break;
                 }
                 case "traceheapuse": {
@@ -901,7 +890,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_LockedDict = "~OnRemoveScript";
                     return;
                 }
-                m_RemovingInstance = instance;
 
                 /*
                  * Tell it to stop executing anything.
@@ -939,8 +927,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * If it is running, abort it.
              */
             instance.Dispose();
-
-            m_RemovingInstance = null;
         }
 
         public void OnScriptReset(uint localID, UUID itemID)
@@ -1051,7 +1037,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if (inst.m_IState != XMRInstState.ONSTARTQ) throw new Exception("bad state");
                 m_StartQueue.InsertTail(inst);
             }
-            WakeUpScriptThread();
+            XMRScriptThread.WakeUpOne();
         }
 
         /**
@@ -1080,197 +1066,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Make sure the OS thread is running so it will see the script.
              */
-            WakeUpScriptThread();
-        }
-
-        /**
-         * @brief Wake up RunScriptThread() as there is more work for it to do now.
-         */
-        private void WakeUpScriptThread()
-        {
-            lock (m_WakeUpLock)
-            {
-                m_WakeUpFlag = true;
-                System.Threading.Monitor.PulseAll(m_WakeUpLock);
-            }
-        }
-
-        /**
-         * @brief Thread that runs the scripts.
-         */
-        delegate int GetTid();
-        delegate int GetSetAffinity(int tid, byte[] maskArray);
-        private void RunScriptThread()
-        {
-            DateTime now, sleepUntil;
-            XMRInstance inst;
-            XMRInstState newIState;
-
-            string soName = (IntPtr.Size == 8) ? "./xmrhelpers64.so" : "./xmrhelpers32.so";
-
-            GetTid getTid = MMRDLOpen.GetDelegate<GetTid> (soName, "GetTid", null);
-            GetSetAffinity getAffinity = MMRDLOpen.GetDelegate<GetSetAffinity> (soName, "GetAffinity", null);
-            GetSetAffinity setAffinity = MMRDLOpen.GetDelegate<GetSetAffinity> (soName, "SetAffinity", null);
-
-            m_ScriptThreadTID = getTid();
-            m_ScriptExecTime -= (long)(DateTime.UtcNow - DateTime.MinValue).TotalMilliseconds;
-            m_log.DebugFormat("[XMREngine]: RunScriptThread tid: {0}", m_ScriptThreadTID);
-            do {
-                int rc = getAffinity (m_ScriptThreadTID, null);
-                if (rc < 0) {
-                    m_log.ErrorFormat("[XMREngine]: failed to get thread affinity size: errno={0}", rc);
-                    break;
-                }
-                byte[] affinity = new byte[rc];
-                rc = getAffinity (m_ScriptThreadTID, affinity);
-                if (rc != affinity.Length) {
-                    m_log.ErrorFormat("[XMREngine]: failed to get thread affinity mask: errno={0}", rc);
-                    break;
-                }
-                int n = NUMSCRIPTHREADCPUS;
-                for (int i = rc; -- i >= 0;) {
-                    for (byte j = 0x80; j != 0; j /= 2) {
-                        if (((affinity[i] & j) != 0) && (-- n < 0)) {
-                            affinity[i] -= j;
-                        }
-                    }
-                }
-                rc = setAffinity (m_ScriptThreadTID, affinity);
-                if (rc != affinity.Length) {
-                    m_log.ErrorFormat("[XMREngine]: failed to set thread affinity mask: errno={0}", rc);
-                    break;
-                }
-                rc = getAffinity (m_ScriptThreadTID, affinity);
-                if (rc != affinity.Length) {
-                    m_log.ErrorFormat("[XMREngine]: failed to get thread affinity mask: errno={0}", rc);
-                    break;
-                }
-                string mask = "";
-                for (int i = 0; i < rc; i ++) {
-                    for (int j = 0; j < 8; j ++) {
-                        if (((affinity[i] >> j) & 1) != 0) {
-                            if (mask != "") mask += ",";
-                            mask += (i * 8 + j).ToString();
-                        }
-                    }
-                }
-                m_log.DebugFormat("[XMREngine]: RunScriptThread affinity mask: {0}", mask);
-            } while (false);
-
-            while (!m_Exiting)
-            {
-                /*
-                 * Handle 'xmr resume/suspend' commands.
-                 */
-                if (m_SuspendScriptThreadFlag) {
-                    m_log.Debug ("[XMREngine]: scripts suspended");
-                    Monitor.Enter (m_SuspendScriptThreadLock);
-                    while (m_SuspendScriptThreadFlag) {
-                        Monitor.Wait (m_SuspendScriptThreadLock);
-                    }
-                    Monitor.Exit (m_SuspendScriptThreadLock);
-                    m_log.Debug ("[XMREngine]: scripts resumed");
-                }
-
-                /*
-                 * Anything that changes any of the conditions
-                 * below should set m_WakeUpFlag and pulse anything
-                 * sleeping on m_WakeUpLock().
-                 */
-                m_WakeUpFlag = false;
-
-                /*
-                 * If event just queued to any idle scripts
-                 * start them right away.  But only start so
-                 * many so we can make some progress on sleep
-                 * and yield queues.
-                 */
-                int numStarts;
-                for (numStarts = 5; -- numStarts >= 0;) {
-                    lock (m_StartQueue) {
-                        inst = m_StartQueue.RemoveHead();
-                    }
-                    if (inst == null) break;
-                    if (inst.m_IState != XMRInstState.ONSTARTQ) throw new Exception("bad state");
-                    inst.m_IState = XMRInstState.RUNNING;
-                    m_RunInstance = inst;
-                    newIState = inst.RunOne();
-                    m_RunInstance = null;
-                    HandleNewIState(inst, newIState);
-                }
-
-                /*
-                 * Move any expired timers to the end of the
-                 * yield queue so they will run.
-                 */
-                m_LastRanAt = now = DateTime.UtcNow;
-                while (true) {
-                    sleepUntil = DateTime.MaxValue;
-                    lock (m_SleepQueue) {
-                        inst = m_SleepQueue.PeekHead();
-                        if (inst == null) break;
-                        if (inst.m_IState != XMRInstState.ONSLEEPQ) throw new Exception("bad state");
-                        sleepUntil = inst.m_SleepUntil;
-                        if (sleepUntil > now) break;
-                        m_SleepQueue.RemoveHead();
-                    }
-                    lock (m_YieldQueue) {
-                        inst.m_IState = XMRInstState.ONYIELDQ;
-                        m_YieldQueue.InsertTail(inst);
-                    }
-                }
-
-                /*
-                 * If there is something to run, run it
-                 * then rescan from the beginning in case
-                 * a lot of things have changed meanwhile.
-                 *
-                 * These are considered lower priority than
-                 * m_StartQueue as they have been taking at
-                 * least one quantum of CPU time and event
-                 * handlers are supposed to be quick.
-                 */
-                lock (m_YieldQueue) {
-                    inst = m_YieldQueue.RemoveHead();
-                }
-                if (inst != null) {
-                    if (inst.m_IState != XMRInstState.ONYIELDQ) throw new Exception("bad state");
-                    inst.m_IState = XMRInstState.RUNNING;
-                    m_RunInstance = inst;
-                    newIState = inst.RunOne();
-                    m_RunInstance = null;
-                    HandleNewIState(inst, newIState);
-                    continue;
-                }
-
-                /*
-                 * If we left something dangling in the m_StartQueue, go back to check it.
-                 */
-                if (numStarts < 0) continue;
-
-                /*
-                 * Nothing to do, sleep.
-                 * Note that at this point, we know sleepUntil > now.
-                 */
-                lock (m_WakeUpLock) {
-                    if (!m_WakeUpFlag) {
-                        now = DateTime.UtcNow;
-                        if (sleepUntil > now) {
-                            double deltaTS = (sleepUntil - now).TotalMilliseconds;
-                            int deltaMS = Int32.MaxValue;
-                            if (deltaTS < Int32.MaxValue)
-                            {
-                                deltaMS = (int)deltaTS;
-                            }
-                            m_ScriptExecTime += (long)(now - DateTime.MinValue).TotalMilliseconds;
-                            m_SleepUntil      = sleepUntil;
-                            System.Threading.Monitor.Wait(m_WakeUpLock, deltaMS);
-                            m_SleepUntil      = DateTime.MinValue;
-                            m_ScriptExecTime -= (long)(DateTime.UtcNow - DateTime.MinValue).TotalMilliseconds;
-                        }
-                    }
-                }
-            }
+            XMRScriptThread.WakeUpOne();
         }
 
         /**
@@ -1280,7 +1076,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * @param newIState = its new state
          * @returns with instance inserted onto proper queue (if any)
          */
-        private void HandleNewIState(XMRInstance inst, XMRInstState newIState)
+        public void HandleNewIState(XMRInstance inst, XMRInstState newIState)
         {
             /*
              * RunOne() should have left the instance in RUNNING state.
@@ -1295,6 +1091,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 /*
                  * Instance has set m_SleepUntil to when it wants to sleep until.
                  * So insert instance in sleep queue by ascending wake time.
+                 * Then wake the timer thread if this is the new first entry
+                 * so it will reset its timer.
                  */
                 case XMRInstState.ONSLEEPQ: {
                     lock (m_SleepQueue) {
@@ -1305,6 +1103,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                             if (after.m_SleepUntil > inst.m_SleepUntil) break;
                         }
                         m_SleepQueue.InsertBefore(inst, after);
+                        if (m_SleepQueue.PeekHead() == inst) {
+                            Monitor.Pulse (m_SleepQueue);
+                        }
                     }
                     break;
                 }
@@ -1371,6 +1172,53 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         /**
+         * @brief Thread that moves instances from the Sleep queue to the Yield queue.
+         */
+        private void RunSleepThread()
+        {
+            double deltaTS;
+            int deltaMS;
+            XMRInstance inst;
+
+            while (true) {
+                lock (m_SleepQueue) {
+
+                    /*
+                     * Wait here until there is a script on the timer queue that has expired.
+                     */
+                    while (true) {
+                        if (m_Exiting) return;
+                        inst = m_SleepQueue.PeekHead();
+                        if (inst == null) {
+                            Monitor.Wait (m_SleepQueue);
+                            continue;
+                        }
+                        if (inst.m_IState != XMRInstState.ONSLEEPQ) throw new Exception("bad state");
+                        deltaTS = (inst.m_SleepUntil - DateTime.UtcNow).TotalMilliseconds;
+                        if (deltaTS <= 0.0) break;
+                        deltaMS = Int32.MaxValue;
+                        if (deltaTS < Int32.MaxValue) deltaMS = (int)deltaTS;
+                        Monitor.Wait (m_SleepQueue, deltaMS);
+                    }
+
+                    /*
+                     * Remove the expired entry from the timer queue.
+                     */
+                    m_SleepQueue.RemoveHead();
+                }
+
+                /*
+                 * Post the script to the yield queue so it will run and wake a script thread to run it.
+                 */
+                lock (m_YieldQueue) {
+                    inst.m_IState = XMRInstState.ONYIELDQ;
+                    m_YieldQueue.InsertTail(inst);
+                }
+                XMRScriptThread.WakeUpOne ();
+            }
+        }
+
+        /**
          * @brief Thread that runs a time slicer.
          */
         private void RunSliceThread()
@@ -1386,10 +1234,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * If some script is running, flag it to suspend
                  * next time it calls CheckRun().
                  */
-                XMRInstance instance = m_RunInstance;
-                if (instance != null)
-                {
-                    instance.suspendOnCheckRunTemp = true;
+                for (int i = 0; i < NUMSCRIPTHREADWKRS; i ++) {
+                    XMRScriptThread st = m_ScriptThreads[i];
+                    if (st != null) st.TimeSlice();
                 }
             }
         }
