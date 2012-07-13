@@ -199,7 +199,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             if (callMode == 0) goto findevent;
             sv          = RestoreStackFrame ("XMREventDequeue", out callNo);
-            sleepUntil  = (DateTime)sv[0];
+            sleepUntil  = DateTime.Parse ((string)sv[0]);
             returnMask1 = (int)sv[1];
             returnMask2 = (int)sv[2];
             mask1       = (int)sv[3];
@@ -235,7 +235,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             } finally {
                 if (callMode != 0) {
                     sv    = CaptureStackFrame ("XMREventDequeue", 0, 6);
-                    sv[0] = sleepUntil;
+                    sv[0] = sleepUntil.ToString ();
                     sv[1] = returnMask1;
                     sv[2] = returnMask2;
                     sv[3] = mask1;
