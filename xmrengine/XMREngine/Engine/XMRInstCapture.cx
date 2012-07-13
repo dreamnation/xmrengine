@@ -203,88 +203,100 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         private void MigrateOutEventHandler (Stream stream)
         {
-            /*
-             * The script microthread should be at its Suspend() call within
-             * CheckRun(), unless it has exited.  Tell CheckRun() that it 
-             * should migrate the script out then suspend.
-             */
-            this.migrateInReader   = null;
-            this.migrateInStream   = null;
-            this.migrateOutWriter  = new BinaryWriter (stream);
-            this.migrateOutStream  = stream;
-            this.migrateOutObjects = new Dictionary<object, int> ();
+            try {
 
-            /*
-             * Write the basic information out to the stream:
-             *    state, event, eventhandler args, script's globals.
-             */
-            stream.WriteByte (migrationVersion);
-            stream.WriteByte ((byte)ScriptCodeGen.COMPILED_VERSION_VALUE);
-            this.SendObjValue (this.stateCode);
-            this.SendObjValue (this.eventCode);
-            this.SendObjValue (this.heapLimit - this.heapLeft);
-            this.SendObjValue (this.ehArgs);
+                /*
+                 * The script microthread should be at its Suspend() call within
+                 * CheckRun(), unless it has exited.  Tell CheckRun() that it 
+                 * should migrate the script out then suspend.
+                 */
+                this.migrateInReader   = null;
+                this.migrateInStream   = null;
+                this.migrateOutWriter  = new BinaryWriter (stream);
+                this.migrateOutStream  = stream;
+                this.migrateOutObjects = new Dictionary<object, int> ();
 
-            this.SendObjArray (this.gblArrays);
-            this.SendObjArray (this.gblFloats);
-            this.SendObjArray (this.gblIntegers);
-            this.SendObjArray (this.gblLists);
-            this.SendObjArray (this.gblObjects);
-            this.SendObjArray (this.gblRotations);
-            this.SendObjArray (this.gblStrings);
-            this.SendObjArray (this.gblVectors);
+                /*
+                 * Write the basic information out to the stream:
+                 *    state, event, eventhandler args, script's globals.
+                 */
+                stream.WriteByte (migrationVersion);
+                stream.WriteByte ((byte)ScriptCodeGen.COMPILED_VERSION_VALUE);
+                this.SendObjValue (this.stateCode);
+                this.SendObjValue (this.eventCode);
+                this.SendObjValue (this.heapLimit - this.heapLeft);
+                this.SendObjValue (this.ehArgs);
 
-            /*
-             * Resume the microthread and it will throw a StackCaptureException()
-             * with the stack frames saved to this.stackFrames.
-             * Then write the saved stack frames to the output stream.
-             *
-             * There is a stack only if the event code is not None.
-             */
-            if (this.eventCode != ScriptEventCode.None) {
+                this.SendObjArray (this.gblArrays);
+                this.SendObjArray (this.gblFloats);
+                this.SendObjArray (this.gblIntegers);
+                this.SendObjArray (this.gblLists);
+                this.SendObjArray (this.gblObjects);
+                this.SendObjArray (this.gblRotations);
+                this.SendObjArray (this.gblStrings);
+                this.SendObjArray (this.gblVectors);
 
-                // tell microthread to continue
-                // it should see captureStackFrames and throw StackCaptureException()
-                // ...generating XMRStackFrames as it unwinds
-                this.captureStackFrames = true;
-                Exception except = this.microthread.ResumeEx (null);
-                this.captureStackFrames = false;
-                if (except == null) {
-                    throw new Exception ("stack save did not complete");
+                /*
+                 * Resume the microthread and it will throw a StackCaptureException()
+                 * with the stack frames saved to this.stackFrames.
+                 * Then write the saved stack frames to the output stream.
+                 *
+                 * There is a stack only if the event code is not None.
+                 */
+                if (this.eventCode != ScriptEventCode.None) {
+
+                    try {
+                        // tell microthread to continue
+                        // it should see captureStackFrames and throw StackCaptureException()
+                        // ...generating XMRStackFrames as it unwinds
+                        this.captureStackFrames = true;
+                        Exception except = this.microthread.ResumeEx (null);
+                        this.captureStackFrames = false;
+                        if (except == null) {
+                            throw new Exception ("stack save did not complete");
+                        }
+                        if (!(except is StackCaptureException)) {
+                            throw except;
+                        }
+
+                        // first frame we see is the event handler's frame
+                        // last frame we see is whatever called CheckRun()
+                        for (XMRStackFrame sf = this.stackFrames; sf != null; sf = sf.nextSF) {
+                            this.migrateOutWriter.Write (sf.callNo);  // what it was calling when suspended
+                            this.migrateOutWriter.Write (sf.funcName);
+                            this.SendObjArray (sf.objArray);          // it's args and locals at time of suspension
+                        }
+
+                        // no more stack frames
+                        this.migrateOutWriter.Write (-1);
+
+                        // now restore script stack
+                        // microthread will suspend inside CheckRun() when restore is complete
+                        this.stackFramesRestored = false;
+                        except = this.microthread.StartEx ();
+                        if (except != null) {
+                            throw except;
+                        }
+                        if (!this.stackFramesRestored) {
+                            throw new Exception ("restore after save did not complete");
+                        }
+                    } finally {
+
+                        // make sure CheckRunLockInvariants() won't puque
+                        if (this.microthread.Active () == 0) {
+                            this.eventCode = ScriptEventCode.None;
+                        }
+                    }
                 }
-                if (!(except is StackCaptureException)) {
-                    throw except;
-                }
+            } finally {
 
-                // first frame we see is the event handler's frame
-                // last frame we see is whatever called CheckRun()
-                for (XMRStackFrame sf = this.stackFrames; sf != null; sf = sf.nextSF) {
-                    this.migrateOutWriter.Write (sf.callNo);  // what it was calling when suspended
-                    this.migrateOutWriter.Write (sf.funcName);
-                    this.SendObjArray (sf.objArray);          // it's args and locals at time of suspension
-                }
-
-                // no more stack frames
-                this.migrateOutWriter.Write (-1);
-
-                // now restore script stack
-                // microthread will suspend inside CheckRun() when restore is complete
-                this.stackFramesRestored = false;
-                except = this.microthread.StartEx ();
-                if (except != null) {
-                    throw except;
-                }
-                if (!this.stackFramesRestored) {
-                    throw new Exception ("restore after save did not complete");
-                }
+                /*
+                 * No longer migrating.
+                 */
+                this.migrateOutWriter  = null;
+                this.migrateOutStream  = null;
+                this.migrateOutObjects = null;
             }
-
-            /*
-             * No longer migrating.
-             */
-            this.migrateOutWriter  = null;
-            this.migrateOutStream  = null;
-            this.migrateOutObjects = null;
         }
 
         /**
