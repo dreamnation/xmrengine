@@ -73,15 +73,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 	// The value is kept in an (XMR_Array) array element
 	public class CompValuArEle : CompValu {
-		CompValu arr;
-		CompValu idx;
-		TokenTypeObject tto;
+		public  CompValu arr;
+		private CompValu idx;
+		private TokenTypeObject tto;
 
 		private static readonly MethodInfo getByKeyMethodInfo = typeof (XMR_Array).GetMethod ("GetByKey", 
 		                                                                                      new Type[] { typeof (object) });
 		private static readonly MethodInfo setByKeyMethodInfo = typeof (XMR_Array).GetMethod ("SetByKey", 
 		                                                                                      new Type[] { typeof (object),
-		                                                                                                   typeof (object) });
+		                                                                                                   typeof (object), 
+		                                                                                                   typeof (int), 
+		                                                                                                   typeof (int) });
 
 		// type = TokenTypeObject always, as our array elements are always of type 'object'
 		// arr  = where the array object itself is stored
@@ -110,6 +112,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		public override void PopPost (ScriptCodeGen scg)
 		{
+			scg.PushConstantI4 (type.line);
+			scg.PushConstantI4 (type.posn);
 			scg.ilGen.Emit (OpCodes.Call, setByKeyMethodInfo);
 		}
 	}

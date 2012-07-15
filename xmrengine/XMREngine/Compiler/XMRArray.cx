@@ -18,13 +18,41 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     /**
      * @brief Array objects.
      */
-    public class XMR_Array {
+    public class XMR_Array : IDisposable {
+        private const int EMPTYHEAP = 64;
+
         private bool enumrValid;                              // true: enumr set to return array[arrayValid]
                                                               // false: array[0..arrayValid-1] is all there is
         private Dictionary<object, object> dnary = new Dictionary<object, object> ();
         private Dictionary<object, object>.Enumerator enumr;  // enumerator used to fill 'array' past arrayValid to end of dictionary
         private int arrayValid;                               // number of elements in 'array' that have been filled in
+        private int heapUse = EMPTYHEAP;                      // approx number of bytes of heap used by all dnary elements
         private KeyValuePair<object, object>[] array;         // list of kvp's that have been returned by ForEach() since last modification
+        private XMRInstAbstract inst;                         // script instance debited with heap use
+
+        public XMR_Array () { }
+        public XMR_Array (XMRInstAbstract inst, int line, int posn)
+        {
+            this.inst = inst;
+            ScriptCodeGen.UpdateHeapLeft (inst, this, 0, line, posn);
+        }
+
+        ~XMR_Array ()
+        {
+            Dispose ();
+        }
+
+        public void Dispose ()
+        {
+            if (inst != null) {
+                int oldHeapUse = heapUse;
+                heapUse = 0;
+                dnary   = null;
+                array   = null;
+                ScriptCodeGen.UpdateHeapLeft (inst, this, oldHeapUse, 0, 0);
+                inst    = null;
+            }
+        }
 
         /**
          * @brief Handle 'array[index]' syntax to get or set an element of the dictionary.
@@ -41,7 +69,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void SetByKey(object key, object value)
         {
+            SetByKey (key, value, 0, 0);
+        }
+
+        public void SetByKey(object key, object value, int line, int posn)
+        {
             key = FixKey (key);
+
+            /*
+             * Update heap use based on old vs new value.
+             * Might throw an OutOfHeapException.
+             */
+            if (inst != null) {
+                int oldHeapUse = heapUse;
+                object oldValue;
+                if (dnary.TryGetValue (key, out oldValue)) {
+                    heapUse -= HeapUseOfObj (key);
+                    heapUse -= HeapUseOfObj (oldValue);
+                }
+                if (value != null) {
+                    heapUse += HeapUseOfObj (key);
+                    heapUse += HeapUseOfObj (value);
+                }
+                ScriptCodeGen.UpdateHeapLeft (inst, this, oldHeapUse, line, posn);
+            }
 
             /*
              * Save new value in array, replacing one of same key if there.
@@ -101,10 +152,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public void __pub_clear ()
         {
+            int oldHeapUse = heapUse;
             dnary.Clear ();
+            heapUse    = EMPTYHEAP;
             enumrValid = false;
             arrayValid = 0;
             array = null;
+            ScriptCodeGen.UpdateHeapLeft (inst, this, oldHeapUse, 0, 0);
         }
 
         /**
@@ -235,11 +289,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public void RecvArrayObj (RecvArrayObjDelegate recvObj)
         {
             int index;
+            int oldHeapUse = heapUse;
 
             /*
              * Empty the dictionary.
              */
             dnary.Clear ();
+            heapUse = EMPTYHEAP;
 
             /*
              * Any enumerator in progress is now invalid, and all elements
@@ -268,7 +324,41 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 object val = recvObj ();
                 array[index] = new KeyValuePair<object, object> (key, val);
                 dnary.Add (key, val);
+                heapUse += HeapUseOfObj (key);
+                heapUse += HeapUseOfObj (val);
             }
+            ScriptCodeGen.UpdateHeapLeft (inst, this, oldHeapUse, 0, 0);
+        }
+
+        /**
+         * Retrieve total approximate heap use by the array.
+         */
+        public int Size {
+            get {
+                return heapUse;
+            }
+        }
+        private static int HeapUseOfObj (object o)
+        {
+            if (o == null) return 0;
+            if (o is int)          return 4;
+            if (o is LSL_Integer)  return 4;
+            if (o is LSL_Float)    return 8;
+            if (o is LSL_Key)      return 16 + 2 * ((string)(LSL_Key)o).Length;
+            if (o is LSL_String)   return 16 + 2 * ((string)(LSL_String)o).Length;
+            if (o is LSL_List)     return ((LSL_List)o).Size;
+            if (o is LSL_Vector)   return 24;
+            if (o is LSL_Rotation) return 32;
+            if (o is object[]) {
+                object[] a = (object[])o;
+                int s = a.Length * 4;
+                foreach (object oo in a) {
+                    s += HeapUseOfObj (oo);
+                }
+                return s;
+            }
+            if (o is SCRIPTFLOAT)  return 8;
+            return 0;
         }
 
         /**

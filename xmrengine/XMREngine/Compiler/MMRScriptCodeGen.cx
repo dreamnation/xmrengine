@@ -11,6 +11,7 @@ using System.IO;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Text;
+using System.Threading;
 
 #include "lsltypes.h"
 
@@ -55,7 +56,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public  static ConstructorInfo lslVectorConstructorInfo = typeof (LSL_Vector).GetConstructor (new Type[] { typeof (double), typeof (double), typeof (double) });
 		private static ConstructorInfo scriptBadCallNoExceptionConstructorInfo = typeof (ScriptBadCallNoException).GetConstructor (new Type[] { typeof (int) });
 		private static ConstructorInfo scriptUndefinedStateExceptionConstructorInfo = typeof (ScriptUndefinedStateException).GetConstructor (new Type[] { typeof (string) });
-		private static ConstructorInfo xmrArrayConstructorInfo = typeof (XMR_Array).GetConstructor (new Type[0]);
+		private static ConstructorInfo xmrArrayConstructorInfo = typeof (XMR_Array).GetConstructor (new Type[] { typeof (XMRInstAbstract), typeof (int), typeof (int) });
 		private static FieldInfo callModeFieldInfo     = typeof (XMRInstAbstract).GetField ("callMode");
 		private static FieldInfo doGblInitFieldInfo    = typeof (XMRInstAbstract).GetField ("doGblInit");
 		private static FieldInfo ehArgsFieldInfo       = typeof (XMRInstAbstract).GetField ("ehArgs");
@@ -87,6 +88,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		                                                                                            typeof (object).MakeByRefType () });
 		private static MethodInfo captureStackFrameMethodInfo = typeof (XMRInstAbstract).GetMethod ("CaptureStackFrame", new Type[] { typeof (string), typeof (int), typeof (int) });
 		private static MethodInfo restoreStackFrameMethodInfo = typeof (XMRInstAbstract).GetMethod ("RestoreStackFrame", new Type[] { typeof (string), typeof (int).MakeByRefType () });
+		private static MethodInfo interlockedAddMethodInfo    = GetStaticMethod (typeof (Interlocked), "Add", new Type[] { typeof (int).MakeByRefType (), typeof (int) });
 		private static MethodInfo updateHeapLeftMethodInfo = GetStaticMethod (typeof (ScriptCodeGen), 
 		                                                                      "UpdateHeapLeft", 
 		                                                                      new Type[] { typeof (XMRInstAbstract),
@@ -292,11 +294,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				AddVarDefinition (declVar.name, globalVar);
 
 				/*
-				 * If it references heap, add it to list of global vars that reference heap.  We use this list 
-				 * to maintain instance.heapLeft to keep track of how much heap script is allowed to use.
+				 * If it references heap, add it to list of global vars that reference heap.  We use 
+				 * this list to maintain instance.heapLeft to keep track of how much heap script is 
+				 * allowed to use.  Do not include arrays as they do their own heap tracking.
 				 */
-				if ((declVar.type is TokenTypeArray) ||
-				    (declVar.type is TokenTypeList) ||
+				if ((declVar.type is TokenTypeList) ||
 				    (declVar.type is TokenTypeStr)) {
 					TokenDeclVar stDeclVar = new TokenDeclVar (declVar, null);
 					stDeclVar.type = new TokenTypeInt (declVar);
@@ -748,7 +750,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						CompValu rVal = GenerateFromRVal (gblDeclVar.init);
 						rVal.PushVal (this, gblDeclVar.type);
 					} else {
-						PushDefaultValue (gblDeclVar.type);
+						PushVarDefaultValue (gblDeclVar);
 					}
 					var.PopPost (this);
 
@@ -869,7 +871,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				CompValu localLoc = new CompValuTemp (localVar.type, localVar.name.val, this);
 				localVar.location = localLoc;
 				localLoc.PopPre (this);
-				PushDefaultValue (localVar.type);
+				PushVarDefaultValue (localVar);
 				localLoc.PopPost (this);
 
 				/*
@@ -2193,6 +2195,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					leftLVal.PopPre (this);
 					right.PushVal (this, leftLVal.type);  // push (leftLVal.type)right
 					leftLVal.PopPost (this);              // pop to leftLVal
+					DebitHeapLeft (left, true, token.rValLeft);
 				}
 				return left;
 			}
@@ -2989,13 +2992,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		/**
-		 * @brief Push the default (null) value for a particular type
-		 * @param type = type to get the default value for
+		 * @brief Push the default (null) value for a particular variable
+		 * @param var = variable to get the default value for
 		 * @returns with value pushed on stack
 		 */
-		private void PushDefaultValue (TokenType type)
+		private void PushVarDefaultValue (TokenDeclVar var)
 		{
+			TokenType type = var.type;
 			if (type is TokenTypeArray) {
+				ilGen.Emit (OpCodes.Ldarg_0);  // instance
+				PushConstantI4 (var.line);     // source line in file
+				PushConstantI4 (var.posn);     // source posn in line
 				ilGen.Emit (OpCodes.Newobj, xmrArrayConstructorInfo);
 				return;
 			}
@@ -3189,12 +3196,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		/**
 		 * @brief Maintain list of current function's local variables so we can keep track
 		 *        of heap usage.  We don't have to keep track of stack usage as that is done
-		 *        entirely within CheckRun().
+		 *        entirely within CheckRun().  Do not include arrays as they do their own heap tracking.
 		 */
 		private void NewLocalVariable (CompValu local, TokenName name)
 		{
-			if ((local.type is TokenTypeArray) ||
-			    (local.type is TokenTypeList) ||
+			if ((local.type is TokenTypeList) ||
 			    (local.type is TokenTypeStr)) {
 				CompValu heapTracker = new CompValuTemp (new TokenTypeInt (name), "__htl_" + name.val, this);
 				localHeapTrackers.Add (local, heapTracker);
@@ -3214,6 +3220,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			CompValu heapTracker;
 
+			/*
+			 * If just did something like 'arr[idx] = val' the 
+			 * array as an object keeps track of heap use so we 
+			 * want to reference the array object itself.
+			 */
+			if (value is CompValuArEle) {
+				value = ((CompValuArEle)value).arr;
+			}
+
+			/*
+			 * Now see if the variable is heap tracked
+			 * and if so, output call to check heap usage.
+			 */
 			if (globalHeapTrackers.TryGetValue (value, out heapTracker) ||
 			    localHeapTrackers.TryGetValue (value, out heapTracker)) {
 
@@ -3247,16 +3266,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (localHeapTrackers.Count > 0) {
 				ilGen.Emit (OpCodes.Ldarg_0);                    // instance
 				ilGen.Emit (OpCodes.Ldflda, heapLeftFieldInfo);  // &instance.heapLeft
-				ilGen.Emit (OpCodes.Dup);
-				ilGen.Emit (OpCodes.Ldobj, typeof (int));        // instance.heapLeft
-
+				PushConstantI4 (0);                              // total of all local heap use
 				foreach (KeyValuePair<CompValu, CompValu> kvp in localHeapTrackers) {
 					CompValu heapTracker = kvp.Value;
 					heapTracker.PushVal (this);              // numberOfBytes subtracted from heapLeft
 					ilGen.Emit (OpCodes.Add);                // add them back to heapLeft
 				}
-
-				ilGen.Emit (OpCodes.Stobj, typeof (int));
+				ilGen.Emit (OpCodes.Call, interlockedAddMethodInfo);  // ...atomically
+				ilGen.Emit (OpCodes.Pop);                        // we don't need return value
 			}
 		}
 
@@ -3419,15 +3436,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			int newHeapUse = 0;
 
-			///??? if (value is XMR_Array) newHeapUse = ((XMR_Array)value).Size;///??? fix this!
-			     if (value is LSL_List)   newHeapUse = ((LSL_List)value).Size;
+			     if (value is XMR_Array)  newHeapUse = ((XMR_Array)value).Size;
+			else if (value is LSL_List)   newHeapUse = ((LSL_List)value).Size;
 			else if (value is LSL_String) newHeapUse = ((LSL_String)value).Length * 2 + 24;
 			else if (value is string)     newHeapUse = ((string)value).Length * 2 + 24;
 
-			int oldHeapLeft = instance.heapLeft;
-			int heapNeeded = newHeapUse - oldHeapUse;
-			instance.heapLeft = oldHeapLeft - heapNeeded;
-			if (instance.heapLeft < 0) throw new OutOfHeapException (heapNeeded, oldHeapLeft, srcLine, srcPosn);
+			int heapNeeded  = newHeapUse - oldHeapUse;
+			int newHeapLeft = Interlocked.Add (ref instance.heapLeft, -heapNeeded);
+			int oldHeapLeft = newHeapLeft + heapNeeded;
+			if (newHeapLeft < 0) {
+				GC.Collect ();
+				GC.WaitForPendingFinalizers ();  // in case XMR_Array can give anything back
+				if (instance.heapLeft < 0) {
+					throw new OutOfHeapException (heapNeeded, oldHeapLeft, srcLine, srcPosn);
+				}
+			}
 
 			if (instance.traceHeapUse != null) {
 				Console.WriteLine("traceHeapUse: {0} {1}.{2}: old={3} new={4} left={5}", 
