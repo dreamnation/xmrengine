@@ -123,6 +123,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 /*
                  * Print the entries.
                  */
+                if (!flagFull) {
+                    outFile.WriteLine("                              ItemID" + 
+                                      "   CPU(ms)" +
+                                      " NumEvents" +
+                                      " Status     " +
+                                      "<Part>:<Item>");
+                }
                 for (int i = 0; (i < numScripts) && (i < maxScripts); i ++) {
                     outFile.WriteLine(instances[i].RunTestLs(flagFull));
                 }
