@@ -443,17 +443,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Make sure event handler name is valid and that number and type of arguments is correct.
+			 * Apparently some scripts exist with fewer than correct number of args in their declaration 
+			 * so allow for that.  It is ok because the handlers are called with the arguments in an
+			 * object[] array, and we just won't access the missing argments in the vector.
 			 */
 			if (!legalEventHandlers.ContainsKey (eventname)) {
 				ErrorMsg (declFunc, "unknown event handler " + eventname);
 				return;
 			}
 			TokenDeclFunc protoDeclFunc = legalEventHandlers[eventname];
-			if (protoDeclFunc.argDecl.types.Length != nargs) {
+			if (nargs > protoDeclFunc.argDecl.types.Length) {
 				ErrorMsg (declFunc, eventname + "(...) supposed to have " + protoDeclFunc.argDecl.types.Length + 
 				                    " arg(s), not " + nargs);
-				if (nargs > protoDeclFunc.argDecl.types.Length) nargs = protoDeclFunc.argDecl.types.Length;
+				nargs = protoDeclFunc.argDecl.types.Length;
 			}
+
+			/*
+			 * In any case, for arguments that were specified, they must be of correct type.
+			 */
 			for (int i = 0; i < nargs; i ++) {
 				if (protoDeclFunc.argDecl.types[i].typ != argDecl.types[i].typ) {
 					ErrorMsg (declFunc, eventname + "(... " + argDecl.types[i].ToString () + " " + 
