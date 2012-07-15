@@ -676,7 +676,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * resetting so no other thread will touch it.
                  */
                 case XMRInstState.ONYIELDQ: {
-                    lock (m_Engine.m_SleepQueue) {
+                    lock (m_Engine.m_YieldQueue) {
                         if (m_IState == XMRInstState.ONYIELDQ) {
                             m_Engine.m_YieldQueue.Remove(this);
                             m_IState = XMRInstState.RESETTING;
