@@ -873,16 +873,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_CheckRunLine = line;
 
             /*
-             * We should never try to stop with stateChanged as once stateChanged is set to true,
-             * the compiled script functions all return directly out without calling CheckRun().
-             *
-             * Thus any checkpoint/restart save/resume code can assume stateChanged = false.
-             */
-            if (stateChanged) {
-                throw new Exception ("CheckRun() called with stateChanged set");
-            }
-
-            /*
              * Make sure script isn't about to run out of stack.
              */
             if ((uint)MMRUThread.StackLeft () < stackLimit) {

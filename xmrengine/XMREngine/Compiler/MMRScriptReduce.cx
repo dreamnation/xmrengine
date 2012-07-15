@@ -822,7 +822,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			if (token is TokenName) {
 				tokenStmtState.state = (TokenName)token;
 			}
-			currentDeclFunc.changesState = true;
 			token = token.nextToken.nextToken;
 			return tokenStmtState;
 		}
@@ -1854,7 +1853,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenStmtBlock body;          // statements
 		public Dictionary<string, TokenStmtLabel> labels = new Dictionary<string, TokenStmtLabel> ();
 		                                     // all labels defined in the function
-		public bool changesState;            // contains a 'state' statement somewhere
 		public Dictionary<string, TokenName> calledFuncs = new Dictionary<string, TokenName> ();
 		                                     // all functions called by this function
 		public LinkedList<TokenDeclVar> localVars = new LinkedList<TokenDeclVar> ();
@@ -1877,7 +1875,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			foreach (KeyValuePair<string, TokenStmtLabel> kvp in labels) {
 				writer.Write (kvp.Value);
 			}
-			writer.Write (changesState);
 			writer.Write (calledFuncs.Count);
 			foreach (KeyValuePair<string, TokenName> kvp in calledFuncs) {
 				writer.Write (kvp.Value);
@@ -1902,7 +1899,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				TokenStmtLabel label = (TokenStmtLabel)reader.ReadToken ();
 				labels[label.name.val] = label;
 			}
-			changesState = reader.ReadBool ();
 			int nFuncs = reader.ReadInt ();
 			while (-- nFuncs >= 0) {
 				TokenName func = (TokenName)reader.ReadToken ();

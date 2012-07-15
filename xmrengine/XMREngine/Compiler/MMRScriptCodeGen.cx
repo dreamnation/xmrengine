@@ -26,7 +26,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	public class ScriptCodeGen
 	{
 		public static readonly string OBJECT_CODE_MAGIC = "XMRObjectCode";
-		public static int COMPILED_VERSION_VALUE = 14;  // incremented when compiler changes for compatibility testing
+		public static int COMPILED_VERSION_VALUE = 15;  // incremented when compiler changes for compatibility testing
 
 		public static readonly int CALL_FRAME_MEMUSE = 64;
 		public static readonly int STRING_LEN_TO_MEMUSE = 2;
@@ -55,6 +55,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static ConstructorInfo lslStringConstructorInfo = typeof (LSL_String).GetConstructor (new Type[] { typeof (string) });
 		public  static ConstructorInfo lslVectorConstructorInfo = typeof (LSL_Vector).GetConstructor (new Type[] { typeof (double), typeof (double), typeof (double) });
 		private static ConstructorInfo scriptBadCallNoExceptionConstructorInfo = typeof (ScriptBadCallNoException).GetConstructor (new Type[] { typeof (int) });
+		private static ConstructorInfo scriptChangeStateExceptionConstructorInfo = typeof (ScriptChangeStateException).GetConstructor (new Type[] { typeof (int) });
 		private static ConstructorInfo scriptUndefinedStateExceptionConstructorInfo = typeof (ScriptUndefinedStateException).GetConstructor (new Type[] { typeof (string) });
 		private static ConstructorInfo xmrArrayConstructorInfo = typeof (XMR_Array).GetConstructor (new Type[] { typeof (XMRInstAbstract), typeof (int), typeof (int) });
 		private static FieldInfo callModeFieldInfo     = typeof (XMRInstAbstract).GetField ("callMode");
@@ -66,8 +67,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static FieldInfo rotationYFieldInfo    = typeof (LSL_Rotation).GetField ("y");
 		private static FieldInfo rotationZFieldInfo    = typeof (LSL_Rotation).GetField ("z");
 		private static FieldInfo rotationSFieldInfo    = typeof (LSL_Rotation).GetField ("s");
-		private static FieldInfo stateChangedFieldInfo = typeof (XMRInstAbstract).GetField ("stateChanged");
-		private static FieldInfo stateCodeFieldInfo    = typeof (XMRInstAbstract).GetField ("stateCode");
 		private static FieldInfo vectorXFieldInfo      = typeof (LSL_Vector).GetField ("x");
 		private static FieldInfo vectorYFieldInfo      = typeof (LSL_Vector).GetField ("y");
 		private static FieldInfo vectorZFieldInfo      = typeof (LSL_Vector).GetField ("z");
@@ -236,31 +235,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				TokenDeclFunc declFunc = kvp.Value;
 				scriptFunctions.Add (declFunc.funcName.val, declFunc);
 			}
-
-			/*
-			 * If function x calls function y, and function y has a 'state' statement,
-			 * then pretend x has a 'state' statement in it.  Recurse as needed so that
-			 * any number of call levels are handled.
-			 */
-			bool foundChangedState;
-			do {
-				foundChangedState = false;
-				foreach (KeyValuePair<string, TokenDeclFunc> kvpX in tokenScript.funcs) {
-					TokenDeclFunc declFuncX = kvpX.Value;
-					if (declFuncX.changesState) continue;
-					foreach (KeyValuePair<string, TokenName> kvpY in declFuncX.calledFuncs) {
-						InlineFunction inlFuncY;
-						TokenDeclFunc declFuncY;
-						string nameY = kvpY.Key;
-						if ((scriptFunctions.TryGetValue (nameY, out declFuncY) && declFuncY.changesState) ||
-						    (inlineFunctions.TryGetValue (nameY, out inlFuncY) && inlFuncY.changesState)) {
-							declFuncX.changesState = true;
-							foundChangedState = true;
-							break;
-						}
-					}
-				}
-			} while (foundChangedState);
 
 			/*
 			 * Set up stack of dictionaries to translate variable names to their declaration.
@@ -1552,7 +1526,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		/**
 		 * @brief generate code for a 'state' statement that transitions state.
-		 * It sets the new state then returns.
+		 * It sets the new state by throwing a ScriptChangeStateException.
 		 */
 		private void GenerateStmtState (TokenStmtState stateStmt)
 		{
@@ -1561,8 +1535,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			int index = 0;  // 'default' state
 
 			/*
-			 * Set new state value and set the global 'stateChanged' flag.
-			 * The 'stateChanged' flag causes our caller to unwind to its caller.
+			 * Set new state value by throwing an exception.
+			 * These exceptions aren't catchable by script-level try { } catch { }.
 			 */
 			if ((stateStmt.state != null) && !stateIndices.TryGetValue (stateStmt.state.val, out index)) {
 				// The moron XEngine compiles scripts that reference undefined states.
@@ -1572,29 +1546,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				// throw new UndefinedStateException (stateStmt.state.val);
 				ilGen.Emit (OpCodes.Ldstr, stateStmt.state.val);
 				ilGen.Emit (OpCodes.Newobj, scriptUndefinedStateExceptionConstructorInfo);
-				ilGen.Emit (OpCodes.Throw);
-				mightGetHere = false;
-				return;
+			} else {
+				PushConstantI4 (index);				// new state's index
+				ilGen.Emit (OpCodes.Newobj, scriptChangeStateExceptionConstructorInfo);
 			}
-
-			/*
-			 * __sm.stateCode = index
-			 */
-			ilGen.Emit (OpCodes.Ldarg_0);                    // instance
-			ilGen.Emit (OpCodes.Dup);                        // instance
-			PushConstantI4 (index);                          // new state's index
-			ilGen.Emit (OpCodes.Stfld, stateCodeFieldInfo);  // instance.stateCode
-
-			/*
-			 * __sm.stateChanged = true
-			 */
-			PushConstantI4 (1);
-			ilGen.Emit (OpCodes.Stfld, stateChangedFieldInfo);
-
-			/*
-			 * Return without doing anything more.
-			 */
-			EmitDummyReturn ();
+			ilGen.Emit (OpCodes.Throw);
 
 			/*
 			 * 'state' statements never fall through.
@@ -2659,13 +2615,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Deal with the return value (if any), by putting it in 'result'.
 			 */
 			result.PopPost (this, declFunc.retType);
-
-			/*
-			 * Also, unwind out if the called function changed state.
-			 */
-			if (declFunc.changesState) {
-				EmitStateChgCk (call);
-			}
 			return result;
 		}
 
@@ -2966,29 +2915,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				return result;
 			}
 			throw new Exception ("unknown TokenTypeExp type " + typeExp.GetType ());
-		}
-
-		/**
-		 * @brief Emit code that check for state changed so it will do a 'return' out of this function.
-		 */
-		public void EmitStateChgCk (Token token)
-		{
-			// if (__sw.StateChanged) return;
-			ScriptMyLabel noStateChangeLabel = ilGen.DefineLabel ("nostatechg_" + token.Unique);
-			ilGen.Emit (OpCodes.Ldarg_0);                       // instance
-			ilGen.Emit (OpCodes.Ldfld, stateChangedFieldInfo);  // instance.stateChanged
-			ilGen.Emit (OpCodes.Brfalse, noStateChangeLabel);
-			EmitDummyReturn ();
-			ilGen.MarkLabel (noStateChangeLabel);
-		}
-
-		/**
-		 * @brief Output a return statement with a null value.
-		 *        This is used when unwinding, such as from a changed state.
-		 */
-		private void EmitDummyReturn ()
-		{
-			ilGen.Emit (OpCodes.Leave, retLabel);
 		}
 
 		/**
@@ -3600,6 +3526,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public string stateName;
 		public ScriptUndefinedStateException (string stateName) : base ("undefined state " + stateName) {
 			this.stateName = stateName;
+		}
+	}
+
+	/**
+	 * @brief Thrown by a script when it attempts to change to a defined state.
+	 */
+	public class ScriptChangeStateException : Exception, IXMRUncatchable {
+		public int newState;
+		public ScriptChangeStateException (int newState) {
+			this.newState = newState;
 		}
 	}
 

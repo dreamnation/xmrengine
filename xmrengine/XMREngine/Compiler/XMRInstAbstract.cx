@@ -32,7 +32,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public const int CALLMODE_RESTORE = 2;  // when function is called, it pops state from stackFrames
 
         public object[] ehArgs;             // event handler argument array
-        public bool stateChanged = false;   // script sets this if/when it executes a 'state' statement
         public bool doGblInit = true;       // default state_entry() needs to initialize global variables
         public uint stackLimit;             // CheckRun() must always see this much stack available
         public int heapLimit;               // let script use this many bytes of heap maximum

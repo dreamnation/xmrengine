@@ -80,44 +80,47 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
          */
         private void CallSEH ()
         {
-            int newStateCode, oldStateCode;
+            int newStateCode;
             ScriptEventHandler seh;
             XMRInstance sw = instance;
 
-            /*
-             * Process event given by 'stateCode' and 'eventCode'.
-             * The event handler should call CheckRun() as often as convenient.
-             *
-             * We do not have to check for null 'seh' here because
-             * StartEventHandler() already checked the table entry.
-             */
-            sw.stateChanged = false;
-            oldStateCode = sw.stateCode;
-            seh = sw.objCode.scriptEventHandlerTable[oldStateCode,(int)sw.eventCode];
-            seh (sw);
-
-            sw.ehArgs = null;  // we are done with them and no args for
-                               // exit_state()/enter_state() anyway
-
-            /*
-             * If event handler changed state, call exit_state() on the old state,
-             * change the state, then call enter_state() on the new state.
-             */
-            while (sw.stateChanged) {
+            while (true) {
 
                 /*
-                 * Get what state they transitioned to.
+                 * Process event given by 'stateCode' and 'eventCode'.
+                 * The event handler should call CheckRun() as often as convenient.
                  */
                 newStateCode = sw.stateCode;
+                seh = sw.objCode.scriptEventHandlerTable[sw.stateCode,(int)sw.eventCode];
+                if (seh != null) {
+                    try {
+                        seh (sw);
+                    } catch (ScriptChangeStateException scse) {
+                        newStateCode = scse.newState;
+                    }
+                }
+                sw.ehArgs = null;  // we are done with them and no args for
+                                   // exit_state()/enter_state() anyway
 
                 /*
-                 * Restore to old state and call its state_exit() handler.
+                 * The usual case is no state change.
+                 * Even a 'state <samestate>;' statement has no effect except to exit out.
+                 * See http://wiki.secondlife.com/wiki/State
                  */
-                sw.stateChanged = false;
+                if (newStateCode == sw.stateCode) break;
+
+                /*
+                 * Call old state's state_exit() handler.
+                 */
                 sw.eventCode = ScriptEventCode.state_exit;
-                sw.stateCode = oldStateCode;
-                seh = sw.objCode.scriptEventHandlerTable[oldStateCode,(int)ScriptEventCode.state_exit];
-                if (seh != null) seh (sw);
+                seh = sw.objCode.scriptEventHandlerTable[sw.stateCode,(int)ScriptEventCode.state_exit];
+                if (seh != null) {
+                    try {
+                        seh (sw);
+                    } catch (ScriptChangeStateException scse) {
+                        newStateCode = scse.newState;
+                    }
+                }
 
                 /*
                  * Now that the old state can't possibly start any more activity,
@@ -127,20 +130,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                 sw.StateChange ();
 
                 /*
-                 * Now the new state becomes the old state in case the new state_entry() 
-                 * changes state again.
+                 * Loop back to call the new state's state_entry() handler.
                  */
-                oldStateCode = newStateCode;
-
-                /*
-                 * Call the new state's state_entry() handler.
-                 * I've seen scripts that change state in the state_entry() handler, 
-                 * so allow for that by looping back to check sw.stateChanged again.
-                 */
-                sw.stateChanged = false;
                 sw.eventCode = ScriptEventCode.state_entry;
-                seh = sw.objCode.scriptEventHandlerTable[newStateCode,(int)ScriptEventCode.state_entry];
-                if (seh != null) seh (sw);
             }
 
             /*

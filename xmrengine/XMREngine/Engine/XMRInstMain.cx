@@ -151,6 +151,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public int m_SleepEventMask2 = 0;
 
         private Dictionary<string,IScriptApi> m_Apis;
+        private XMRLSL_Api m_XMRLSLApi;
 
         public ScriptEventCode eventCode = ScriptEventCode.None;
                                                   // event handler being executed (None when idle)

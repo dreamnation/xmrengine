@@ -37,6 +37,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
     public class XMRLSL_Api : LSL_Api
     {
+        public AsyncCommandManager acm;
+
+        public void InitXMRLSLApi()
+        {
+            acm = AsyncCommands;
+        }
+
         protected override void ScriptSleep(int ms)
         {
             XMREngine e = (XMREngine)m_ScriptEngine;
@@ -300,13 +307,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             /*
              * Keep waiting until we find a returnable event or timeout.
-             * Also stop waiting if a background event handler changed state.
              */
         checktmo:
-            if (!stateChanged && (DateTime.UtcNow < sleepUntil)) goto findevent;
+            if (DateTime.UtcNow < sleepUntil) goto findevent;
 
             /*
-             * We timed out or background event handler changed state, return an empty list.
+             * We timed out, return an empty list.
              */
             return emptyList;
         }
@@ -658,12 +664,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * @brief The script is executing a 'state <newState>;' command.
          * Tell outer layers to cancel any event triggers, like llListen(),
          * then tell outer layers which events the new state has handlers for.
+         * We also clear the event queue as per http://wiki.secondlife.com/wiki/State
          */
         public void StateChange()
         {
-///???            AsyncCommandManager.StateChange(m_Engine, m_LocalID, m_ItemID);
-            m_Part.SetScriptEvents(m_ItemID, 
-                                   GetStateEventFlags(stateCode));
+            /*
+             * Cancel any llListen()s etc.
+             * But llSetTimerEvent() should persist.
+             */
+            object[] timers = m_XMRLSLApi.acm.TimerPlugin.GetSerializationData(m_ItemID);
+            AsyncCommandManager.RemoveScript(m_Engine, m_LocalID, m_ItemID);
+            m_XMRLSLApi.acm.TimerPlugin.CreateFromData(m_LocalID, m_ItemID, UUID.Zero, timers);
+
+            /*
+             * Tell whoever cares which event handlers the new state has.
+             */
+            m_Part.SetScriptEvents(m_ItemID, GetStateEventFlags(stateCode));
+
+            /*
+             * Clear out any old events from the queue.
+             */
+            lock (m_QueueLock) {
+                m_EventQueue.Clear();
+                for (int i = m_EventCounts.Length; -- i >= 0;) m_EventCounts[i] = 0;
+            }
         }
 
         /**
