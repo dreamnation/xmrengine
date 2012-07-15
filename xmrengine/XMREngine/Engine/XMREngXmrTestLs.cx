@@ -76,7 +76,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             try {
-                for (int i = 0; i < NUMSCRIPTHREADWKRS; i ++) {
+                for (int i = 0; i < numThreadScriptWorkers; i ++) {
                     XMRScriptThread th = m_ScriptThreads[i];
                     outFile.WriteLine("Script thread ID: " + th.m_ScriptThreadTID);
                     long execTime = th.m_ScriptExecTime;

@@ -106,7 +106,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private StateSource m_StateSource;
         public  string m_DescName;
         private bool[] m_HaveEventHandlers;
-        public  UIntPtr m_StackSize;
+        public  int m_StackSize;
+        public  int m_HeapSize;
         private ArrayList m_CompilerErrors;
         private DateTime m_LastRanAt = DateTime.MinValue;
         private string m_RunOnePhase = "hasn't run";

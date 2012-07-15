@@ -39,9 +39,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     public partial class XMREngine : INonSharedRegionModule, IScriptEngine,
             IScriptModule
     {
-        public const int NUMSCRIPTHREADCPUS = 2;
-        public const int NUMSCRIPTHREADWKRS = 1;
-
         public  static readonly DetectParams[] zeroDetectParams = new DetectParams[0];
         private static ArrayList noScriptErrors = new ArrayList();
         public  static readonly ILog m_log =
@@ -55,17 +52,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private bool m_Enabled = false;
         private Dictionary<UUID, ArrayList> m_ScriptErrors =
                 new Dictionary<UUID, ArrayList>();
-        private Dictionary<UUID, List<UUID>> m_Objects =
+        private Dictionary<UUID, List<UUID>> m_ObjectItemList =
                 new Dictionary<UUID, List<UUID>>();
-        private Dictionary<UUID, UUID> m_Partmap =
-                new Dictionary<UUID, UUID>();
-        private UIntPtr m_StackSize;
-        private XMRScriptThread[] m_ScriptThreads = new XMRScriptThread[NUMSCRIPTHREADWKRS];
+        private Dictionary<UUID, XMRInstance[]> m_ObjectInstArray =
+                new Dictionary<UUID, XMRInstance[]>();
+        private int m_StackSize;
+        private int m_HeapSize;
+        private XMRScriptThread[] m_ScriptThreads;
         private Thread m_SleepThread = null;
         private Thread m_SliceThread = null;
         private bool m_Exiting = false;
 
         private int m_MaintenanceInterval = 10;
+        public  int numThreadScriptCores = 2;
+        public  int numThreadScriptWorkers = 1;
         
         private System.Timers.Timer m_MaintenanceTimer;
 
@@ -133,6 +133,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 return;
             }
 
+            numThreadScriptCores   = m_Config.GetInt ("NumThreadScriptCores",   numThreadScriptCores);
+            numThreadScriptWorkers = m_Config.GetInt ("NumThreadScriptWorkers", numThreadScriptWorkers);
+            m_ScriptThreads        = new XMRScriptThread[numThreadScriptWorkers];
+
             /*
              * Verify that our ScriptEventCode's match OpenSim's scriptEvent's.
              */
@@ -162,14 +166,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 return;
             }
 
-            m_StackSize = (UIntPtr)m_Config.GetInt("ScriptStackSize", 
-                                                   2*1024*1024);
+            m_StackSize = m_Config.GetInt("ScriptStackSize", 2048) << 10;
+            m_HeapSize  = m_Config.GetInt("ScriptHeapSize",  1024) << 10;
 
             m_log.InfoFormat("[XMREngine]: Enabled, {0}.{1} Meg (0x{2}) stacks",
-                    (m_StackSize.ToUInt64() >> 20).ToString (),
-                    (((m_StackSize.ToUInt64() % 0x100000) * 1000) 
+                    (m_StackSize >> 20).ToString (),
+                    (((m_StackSize % 0x100000) * 1000) 
                             >> 20).ToString ("D3"),
-                    m_StackSize.ToUInt64().ToString ("X"));
+                    m_StackSize.ToString ("X"));
+
+            m_log.InfoFormat("[XMREngine]:  ... {0}.{1} Meg (0x{2}) heaps",
+                    (m_HeapSize >> 20).ToString (),
+                    (((m_HeapSize % 0x100000) * 1000) 
+                            >> 20).ToString ("D3"),
+                    m_HeapSize.ToString ("X"));
 
             m_MaintenanceInterval = m_Config.GetInt("MaintenanceInterval", 10);
 
@@ -232,7 +242,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * one to finish (ie, script gets to CheckRun() call).
              */
             m_Exiting = true;
-            for (int i = 0; i < NUMSCRIPTHREADWKRS; i ++) {
+            for (int i = 0; i < numThreadScriptWorkers; i ++) {
                 XMRScriptThread scriptThread = m_ScriptThreads[i];
                 if (scriptThread != null) {
                     scriptThread.Terminate();
@@ -282,7 +292,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void StartProcessing()
         {
-            for (int i = 0; i < NUMSCRIPTHREADWKRS; i ++) {
+            for (int i = 0; i < numThreadScriptWorkers; i ++) {
                 m_ScriptThreads[i] = new XMRScriptThread(this);
             }
             m_SleepThread = new Thread(RunSleepThread);
@@ -376,14 +386,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
                 case "resume": {
                     m_log.Info ("[XMREngine]: resuming scripts");
-                    for (int i = 0; i < NUMSCRIPTHREADWKRS; i ++) {
+                    for (int i = 0; i < numThreadScriptWorkers; i ++) {
                         m_ScriptThreads[i].ResumeThread();
                     }
                     break;
                 }
                 case "suspend": {
                     m_log.Info ("[XMREngine]: suspending scripts");
-                    for (int i = 0; i < NUMSCRIPTHREADWKRS; i ++) {
+                    for (int i = 0; i < numThreadScriptWorkers; i ++) {
                         m_ScriptThreads[i].SuspendThread();
                     }
                     break;
@@ -442,20 +452,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         //
         public bool PostScriptEvent(UUID itemID, EventParams parms)
         {
-            XMRInstance instance = null;
-
-            lock (m_InstancesDict)
-            {
-                if (!m_InstancesDict.TryGetValue(itemID, out instance))
-                {
-                    return false;
-                }
-            }
+            XMRInstance instance = GetInstance (itemID);
+            if (instance == null) return false;
 
             TCP("[XMREngine]: XMREngine.PostScriptEvent({0},{1})", itemID.ToString(), parms.EventName);
 
             instance.PostEvent(parms);
-
             return true;
         }
 
@@ -470,45 +472,38 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (part == null)
                 return false;
 
+            UUID partUUID = part.UUID;
+
             TCP("[XMREngine]: XMREngine.PostObjectEvent({0},{1})", localID.ToString(), parms.EventName);
 
-            List<UUID> list = null;
+            /*
+             * Get list of script instances running in the object.
+             */
+            XMRInstance[] objInstArray;
             lock (m_InstancesDict) {
-                if (!m_Objects.TryGetValue(part.UUID, out list))
-                {
+                if (!m_ObjectInstArray.TryGetValue (partUUID, out objInstArray)) {
                     return false;
                 }
-                // Deep-copy, since TryGetValue only gives us a ref
-                // which can be modified once we release the lock
-                List<UUID> l2 = new List<UUID>();
-                foreach (UUID id in list)
-                    l2.Add(id);
-                list = l2;
-            }
-
-            bool success = false;
-
-            foreach (UUID id in list)
-            {
-                if (PostScriptEvent(id, parms))
-                    success = true;
-            }
-                
-            return success;
-        }
-
-        public DetectParams GetDetectParams(UUID item, int number)
-        {
-            XMRInstance instance = null;
-
-            lock (m_InstancesDict)
-            {
-                if (!m_InstancesDict.TryGetValue(item, out instance))
-                {
-                    return null;
+                if (objInstArray == null) {
+                    objInstArray = RebuildObjectInstArray (partUUID);
+                    m_ObjectInstArray[partUUID] = objInstArray;
                 }
             }
 
+            /*
+             * Post event to all script instances in the object.
+             */
+            if (objInstArray.Length <= 0) return false;
+            foreach (XMRInstance inst in objInstArray) {
+                inst.PostEvent (parms);
+            }
+            return true;
+        }
+
+        public DetectParams GetDetectParams(UUID itemID, int number)
+        {
+            XMRInstance instance = GetInstance (itemID);
+            if (instance == null) return null;
             return instance.GetDetectParams(number);
         }
 
@@ -518,16 +513,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public int GetStartParameter(UUID itemID)
         {
-            XMRInstance instance = null;
-
-            lock (m_InstancesDict)
-            {
-                if (!m_InstancesDict.TryGetValue(itemID, out instance))
-                {
-                    return 0;
-                }
-            }
-
+            XMRInstance instance = GetInstance (itemID);
+            if (instance == null) return 0;
             return instance.StartParam;
         }
 
@@ -535,35 +522,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         //
         public void SetScriptState(UUID itemID, bool state)
         {
-            XMRInstance instance = null;
-
-            lock (m_InstancesDict)
-            {
-                if (!m_InstancesDict.TryGetValue(itemID, out instance))
-                {
-                    return;
-                }
+            XMRInstance instance = GetInstance (itemID);
+            if (instance != null) {
+                instance.Running = state;
             }
-
-            TCP("[XMREngine]: XMREngine.SetScriptState({0},{1})", itemID.ToString(), state.ToString());
-
-            instance.Running = state;
         }
 
         // Control display of the "running" checkbox
         //
         public bool GetScriptState(UUID itemID)
         {
-            XMRInstance instance = null;
-
-            lock (m_InstancesDict)
-            {
-                if (!m_InstancesDict.TryGetValue(itemID, out instance))
-                {
-                    return false;
-                }
-            }
-
+            XMRInstance instance = GetInstance (itemID);
+            if (instance == null) return false;
             return instance.Running;
         }
 
@@ -574,36 +544,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void ApiResetScript(UUID itemID)
         {
-            XMRInstance instance = null;
-
-            lock (m_InstancesDict)
-            {
-                if (!m_InstancesDict.TryGetValue(itemID, out instance))
-                {
-                    return;
-                }
+            XMRInstance instance = GetInstance (itemID);
+            if (instance != null) {
+                instance.ApiReset();
             }
-
-            TCP("[XMREngine]: XMREngine.ApiResetScript({0})", itemID.ToString());
-
-            instance.ApiReset();
         }
 
         public void ResetScript(UUID itemID)
         {
-            XMRInstance instance = null;
-
-            lock (m_InstancesDict)
-            {
-                if (!m_InstancesDict.TryGetValue(itemID, out instance))
-                {
-                    return;
-                }
+            XMRInstance instance = GetInstance (itemID);
+            if (instance != null) {
+                instance.Reset();
             }
-
-            TCP("[XMREngine]: XMREngine.ResetScript({0})", itemID.ToString());
-
-            instance.Reset();
         }
 
         public IConfig Config
@@ -633,19 +585,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public string GetXMLState(UUID itemID)
         {
-            XMRInstance instance;
+            XMRInstance instance = GetInstance (itemID);
+            if (instance == null) return String.Empty;
 
-            lock (m_InstancesDict)
-            {
-                if (!m_InstancesDict.TryGetValue(itemID, out instance))
-                {
-                    return String.Empty;
-                }
-            }
             TCP("[XMREngine]: XMREngine.GetXMLState({0})", itemID.ToString());
 
-            if (!instance.m_HasRun)
-                return String.Empty;
+            if (!instance.m_HasRun) return String.Empty;
 
             XmlDocument doc = new XmlDocument();
 
@@ -758,7 +703,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         //
         //  localID     = the object as a whole, may contain many scripts
         //  itemID      = this instance of the script in this object
-        //  script      = script source
+        //  script      = script source code
         //  startParam  = value passed to 'on_rez' event handler
         //  postOnRez   = true to post an 'on_rez' event to script on load
         //  defEngine   = default script engine
@@ -769,6 +714,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             SceneObjectPart part = m_Scene.GetSceneObjectPart(localID);
             TaskInventoryItem item = part.Inventory.GetInventoryItem(itemID);
+            UUID partUUID = part.UUID;
 
             TCP("[XMREngine]: OnRezScript(...,{0},...)", itemID.ToString());
 
@@ -804,7 +750,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 instance.Initialize(localID, itemID, script,
                                     startParam, postOnRez, stateSource,
                                     this, part, item, m_ScriptBasePath,
-                                    m_StackSize, errors, false);
+                                    m_StackSize, m_HeapSize, errors, false);
             } catch (Exception e1) {
                 m_log.DebugFormat("[XMREngine]: {0} first load failed ({1}), retrying after reset", itemID.ToString(), e1.Message);
                 errors = new ArrayList();
@@ -812,7 +758,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     instance.Initialize(localID, itemID, script,
                                         startParam, postOnRez, stateSource,
                                         this, part, item, m_ScriptBasePath,
-                                        m_StackSize, errors, true);
+                                        m_StackSize, m_HeapSize, errors, true);
                 } catch (Exception e2) {
                     m_log.DebugFormat("[XMREngine]: Error starting script {0}: {1}",
                                       itemID.ToString(), e2.Message);
@@ -823,19 +769,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     /*
                      * Post errors where GetScriptErrors() can see them.
                      */
-                    if (errors.Count == 0)
-                    {
+                    if (errors.Count == 0) {
                         errors.Add(e2.Message);
-                    }
-                    else
-                    {
-                        foreach (Object err in errors)
-                        {
+                    } else {
+                        foreach (Object err in errors) {
                             m_log.DebugFormat("[XMREngine]:   {0}", err.ToString());
                         }
                     }
-                    lock (m_ScriptErrors)
-                    {
+                    lock (m_ScriptErrors) {
                         m_ScriptErrors[itemID] = errors;
                     }
                 
@@ -847,18 +788,40 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * Tell GetScriptErrors() that we have finished compiling/loading
              * successfully (by posting a 0 element array).
              */
-            lock (m_ScriptErrors)
-            {
+            lock (m_ScriptErrors) {
                 m_ScriptErrors[itemID] = noScriptErrors;
             }
 
+            /*
+             * Put on object/instance lists.
+             */
+            lock (m_InstancesDict) {
+                m_LockedDict = "RegisterInstance";
+
+                // Insert on internal list of all scripts being handled by this engine instance.
+                m_InstancesDict[itemID] = instance;
+
+                // Insert on internal list of all scripts being handled by this engine instance
+                // that are part of the object.
+                List<UUID> itemIDList;
+                if (!m_ObjectItemList.TryGetValue(partUUID, out itemIDList)) {
+                    itemIDList = new List<UUID>();
+                    m_ObjectItemList[partUUID] = itemIDList;
+                }
+
+                if (!itemIDList.Contains(itemID)) {
+                    itemIDList.Add(itemID);
+                    m_ObjectInstArray[partUUID] = null;
+                }
+
+                m_LockedDict = "~RegisterInstance";
+            }
 
             /*
              * Transition from CONSTRUCT->ONSTARTQ and give to RunScriptThread().
              * Put it on the start queue so it will run any queued event handlers,
              * such as state_entry() or on_rez().  If there aren't any queued, it
-             * will just go back to idle state when RunOne() tries to dequeue an
-             * event.
+             * will just go to idle state when RunOne() tries to dequeue an event.
              */
             if (instance.m_IState != XMRInstState.CONSTRUCT) throw new Exception("bad state");
             instance.m_IState = XMRInstState.ONSTARTQ;
@@ -867,8 +830,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void OnRemoveScript(uint localID, UUID itemID)
         {
-            SceneObjectPart part =
-                    m_Scene.GetSceneObjectPart(localID);
+            SceneObjectPart part = m_Scene.GetSceneObjectPart(localID);
+            UUID partUUID = part.UUID;
             XMRInstance instance = null;
 
             TCP("[XMREngine]: OnRemoveScript(...,{0})", itemID.ToString());
@@ -900,19 +863,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * Remove it from our list of known script instances.
                  */
                 m_InstancesDict.Remove(itemID);
-                m_LockedDict = "~~OnRemoveScript";
 
-                if (m_Objects.ContainsKey(part.UUID))
-                {
-                    List<UUID> l = m_Objects[part.UUID];
-                    l.Remove(itemID);
-                    if (l.Count == 0)
-                    {
-                        m_Objects.Remove(part.UUID);
+                List<UUID> itemIDList;
+                if (m_ObjectItemList.TryGetValue (partUUID, out itemIDList)) {
+                    itemIDList.Remove(itemID);
+                    if (itemIDList.Count == 0) {
+                        m_ObjectItemList.Remove(partUUID);
+                        m_ObjectInstArray.Remove(partUUID);
+                    } else {
+                        m_ObjectInstArray[partUUID] = null;
                     }
                 }
-
-                m_Partmap.Remove(itemID);
 
                 /*
                  * Delete the .state file as any needed contents were fetched with GetXMLState()
@@ -920,6 +881,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  */
                 string stateFileName = XMRInstance.GetStateFileName(m_ScriptBasePath, itemID);
                 File.Delete(stateFileName);
+
+                m_LockedDict = "~~OnRemoveScript";
             }
 
             /*
@@ -937,78 +900,46 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void OnStartScript(uint localID, UUID itemID)
         {
-            XMRInstance instance = null;
-
-            lock (m_InstancesDict)
-            {
-                if (!m_InstancesDict.TryGetValue(itemID, out instance))
-                {
-                    return;
-                }
+            XMRInstance instance = GetInstance (itemID);
+            if (instance != null) {
+                instance.Running = true;
             }
-            TCP("[XMREngine]: XMREngine.OnStartScript({0},{1})", localID.ToString(), itemID.ToString());
-
-            instance.Running = true;
         }
 
         public void OnStopScript(uint localID, UUID itemID)
         {
-            XMRInstance instance = null;
-
-            lock (m_InstancesDict)
-            {
-                if (!m_InstancesDict.TryGetValue(itemID, out instance))
-                {
-                    return;
-                }
+            XMRInstance instance = GetInstance (itemID);
+            if (instance != null) {
+                instance.Running = false;
             }
-            TCP("[XMREngine]: XMREngine.OnStopScript({0},{1})", localID.ToString(), itemID.ToString());
-
-            instance.Running = false;
         }
 
         public void OnGetScriptRunning(IClientAPI controllingClient,
                 UUID objectID, UUID itemID)
         {
-            XMRInstance instance = null;
+            XMRInstance instance = GetInstance (itemID);
+            if (instance != null) {
+                TCP("[XMREngine]: XMREngine.OnGetScriptRunning({0},{1})", objectID.ToString(), itemID.ToString());
 
-            lock (m_InstancesDict)
-            {
-                if (!m_InstancesDict.TryGetValue(itemID, out instance))
-                {
-                    return;
+                IEventQueue eq = World.RequestModuleInterface<IEventQueue>();
+                if (eq == null) {
+                    controllingClient.SendScriptRunningReply(objectID, itemID,
+                            instance.Running);
+                } else {
+                    eq.Enqueue(EventQueueHelper.ScriptRunningReplyEvent(objectID,
+                            itemID, instance.Running, true),
+                            controllingClient.AgentId);
                 }
-            }
-            TCP("[XMREngine]: XMREngine.OnGetScriptRunning({0},{1})", objectID.ToString(), itemID.ToString());
-
-            IEventQueue eq = World.RequestModuleInterface<IEventQueue>();
-            if (eq == null)
-            {
-                controllingClient.SendScriptRunningReply(objectID, itemID,
-                        instance.Running);
-            }
-            else
-            {
-                eq.Enqueue(EventQueueHelper.ScriptRunningReplyEvent(objectID,
-                        itemID, instance.Running, true),
-                        controllingClient.AgentId);
             }
         }
 
         public bool HasScript(UUID itemID, out bool running)
         {
-            running = true;
-
-            XMRInstance instance = null;
-
-            lock (m_InstancesDict)
-            {
-                if (!m_InstancesDict.TryGetValue(itemID, out instance))
-                {
-                    return false;
-                }
+            XMRInstance instance = GetInstance (itemID);
+            if (instance == null) {
+                running = true;
+                return false;
             }
-
             running = instance.Running;
             return true;
         }
@@ -1223,18 +1154,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         private void RunSliceThread()
         {
-            while (!m_Exiting)
-            {
+            int ms = m_Config.GetInt ("TimeSlice", 50);
+            while (!m_Exiting) {
+
                 /*
                  * Let script run for a little bit.
                  */
-                System.Threading.Thread.Sleep(50);
+                System.Threading.Thread.Sleep(ms);
 
                 /*
                  * If some script is running, flag it to suspend
                  * next time it calls CheckRun().
                  */
-                for (int i = 0; i < NUMSCRIPTHREADWKRS; i ++) {
+                for (int i = 0; i < numThreadScriptWorkers; i ++) {
                     XMRScriptThread st = m_ScriptThreads[i];
                     if (st != null) st.TimeSlice();
                 }
@@ -1243,36 +1175,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void Suspend(UUID itemID, int ms)
         {
-            XMRInstance instance = null;
-
-            lock (m_InstancesDict)
-            {
-                if (!m_InstancesDict.TryGetValue(itemID, out instance))
-                    return;
+            XMRInstance instance = GetInstance (itemID);
+            if (instance != null) {
+                instance.Sleep(ms);
             }
-
-            instance.Sleep(ms);
         }
 
         public void Die(UUID itemID)
         {
-            XMRInstance instance = null;
-
-            lock (m_InstancesDict)
-            {
-                if (!m_InstancesDict.TryGetValue(itemID, out instance))
-                    return;
+            XMRInstance instance = GetInstance (itemID);
+            if (instance != null) {
+                TCP("[XMREngine]: XMREngine.Die({0})", itemID.ToString());
+                instance.Die();
             }
-            TCP("[XMREngine]: XMREngine.Die({0})", itemID.ToString());
-            instance.Die();
         }
 
         public XMRInstance GetInstance(UUID itemID)
         {
-            lock (m_InstancesDict)
-            {
-                return m_InstancesDict[itemID];
+            XMRInstance instance;
+            lock (m_InstancesDict) {
+                if (!m_InstancesDict.TryGetValue(itemID, out instance)) {
+                    instance = null;
+                }
             }
+            return instance;
         }
 
         // Called occasionally to write script state to .state file so the
@@ -1303,14 +1229,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             ArrayList errors;
 
-            lock (m_ScriptErrors)
-            {
-                if (m_ScriptErrors.TryGetValue(itemID, out errors))
-                {
+            lock (m_ScriptErrors) {
+                if (m_ScriptErrors.TryGetValue(itemID, out errors)) {
                     m_ScriptErrors.Remove(itemID);
-                }
-                else
-                {
+                } else {
                     errors = noScriptErrors;
                 }
             }
@@ -1319,68 +1241,42 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void SuspendScript(UUID itemID)
         {
-            XMRInstance instance = null;
-
-            lock (m_InstancesDict)
-            {
-                if (!m_InstancesDict.TryGetValue(itemID, out instance))
-                {
-                    return;
-                }
+            XMRInstance instance = GetInstance (itemID);
+            if (instance != null) {
+                TCP("[XMREngine]: XMREngine.SuspendScript({0})", itemID.ToString());
+                instance.Suspend();
             }
-
-            TCP("[XMREngine]: XMREngine.SuspendScript({0})", itemID.ToString());
-
-            instance.Suspend();
         }
 
         public void ResumeScript(UUID itemID)
         {
-            XMRInstance instance = null;
-
-            lock (m_InstancesDict)
-            {
-                if (!m_InstancesDict.TryGetValue(itemID, out instance))
-                {
-                    m_log.ErrorFormat("[XMREngine]: ResumeScript called for {0}, which was not found", itemID.ToString());
-                    return;
-                }
+            XMRInstance instance = GetInstance (itemID);
+            if (instance != null) {
+                TCP("[XMREngine]: XMREngine.ResumeScript({0})", itemID.ToString());
+                instance.Resume();
+            } else {
+                m_log.ErrorFormat("[XMREngine]: ResumeScript called for {0}, which was not found", itemID.ToString());
             }
-
-            TCP("[XMREngine]: XMREngine.ResumeScript({0})", itemID.ToString());
-
-            instance.Resume();
         }
 
-        public void RegisterInstance(SceneObjectPart part, UUID itemID, XMRInstance instance)
+        /**
+         * @brief Rebuild m_ObjectInstArray[partUUID] from m_ObjectItemList[partUUID]
+         * @param partUUID = which object in scene to rebuild for
+         */
+        private XMRInstance[] RebuildObjectInstArray (UUID partUUID)
         {
-            /*
-             * Let other parts of OpenSim see the instance.
-             */
-            lock (m_InstancesDict)
-            {
-                m_LockedDict = "RegisterInstance";
-                // Insert on known scripts list
-                m_InstancesDict[itemID] = instance;
-
-                List<UUID> l;
-
-                if (m_Objects.ContainsKey(part.UUID))
-                {
-                    l = m_Objects[part.UUID];
-                }
-                else
-                {
-                    l = new List<UUID>();
-                    m_Objects[part.UUID] = l;
-                }
-
-                if (!l.Contains(itemID))
-                    l.Add(itemID);
-
-                m_Partmap[itemID] = part.UUID;
-                m_LockedDict = "~OnRezScript";
+            List<UUID> itemIDList = m_ObjectItemList[partUUID];
+            int n = 0;
+            foreach (UUID itemID in itemIDList) {
+                if (m_InstancesDict.ContainsKey (itemID)) n ++;
             }
+            XMRInstance[] a = new XMRInstance[n];
+            n = 0;
+            foreach (UUID itemID in itemIDList) {
+                if (m_InstancesDict.TryGetValue (itemID, out a[n])) n ++;
+            }
+            m_ObjectInstArray[partUUID] = a;
+            return a;
         }
     }
 }

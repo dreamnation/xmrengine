@@ -37,7 +37,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
         public XMRInstance instance;
 
-        public ScriptUThread (XMRInstance instance) : base (instance.m_StackSize, instance.m_DescName)
+        public ScriptUThread (XMRInstance instance) 
+                : base ((UIntPtr)(uint)instance.m_StackSize, instance.m_DescName)
         {
             this.instance = instance;
         }

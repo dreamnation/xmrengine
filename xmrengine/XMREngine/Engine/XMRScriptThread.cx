@@ -100,7 +100,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             XMRInstance inst;
 
             /*
-             * Set affinity mask to the NUMSCRIPTHREADCPUS highest numbered cores
+             * Set affinity mask to the numThreadScriptCores highest numbered cores
              * so we can't hog more than that many cores no matter what.
              */
             string soName = "./xmrhelpers" + (IntPtr.Size * 8) + ".so";
@@ -123,7 +123,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     XMREngine.m_log.ErrorFormat("[XMREngine]: failed to get thread affinity mask: errno={0}", rc);
                     break;
                 }
-                int n = XMREngine.NUMSCRIPTHREADCPUS;
+                int n = engine.numThreadScriptCores;
                 for (int i = rc; -- i >= 0;) {
                     for (byte j = 0x80; j != 0; j /= 2) {
                         if (((affinity[i] & j) != 0) && (-- n < 0)) {
