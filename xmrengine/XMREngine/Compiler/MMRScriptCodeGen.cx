@@ -139,9 +139,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private Dictionary<string, int> stateIndices = null;
 		private Stack<Dictionary<string, CompValu>> scriptVariablesStack = null;
 		private Dictionary<string, CompValu> scriptInstanceVariables = null;
-		private Dictionary<CompValu, CompValu> globalHeapTrackers = null;
-		                                        // given a script-visible global variable,
-		                                        // ... return the corresponding global heapTracker var, if any.
 
 		// code generation output
 		public ScriptObjCode scriptObjCode = null;
@@ -153,9 +150,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private ScriptMyLocal callNo   = null;
 		private LinkedList<CallLabel> allCallLabels = new LinkedList<CallLabel> ();
 		public  LinkedList<CompValuTemp> activeTemps = new LinkedList<CompValuTemp> ();
-		private Dictionary<CompValu, CompValu> localHeapTrackers = null;
-		                                        // given a script-visible local variable (or argument variable),
-		                                        // ... return the corresponding heapTracker variable, if any.
 
 		private ScriptCodeGen (TokenScript tokenScript, BinaryWriter objFileWriter)
 		{
@@ -242,7 +236,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			scriptVariablesStack = new Stack<Dictionary<string, CompValu>> ();
 			scriptInstanceVariables = PushVarDefnBlock ();
-			globalHeapTrackers = new Dictionary<CompValu, CompValu> ();
 
 			/*
 			 * Assign all global variables a slot in its corresponding XMRInstance.gbl<Type>s[] array.
@@ -277,8 +270,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					TokenDeclVar stDeclVar = new TokenDeclVar (declVar, null);
 					stDeclVar.type = new TokenTypeInt (declVar);
 					stDeclVar.name = new TokenName (declVar, "__htg_" + declVar.name.val);
-					CompValu heapTracker = new CompValuGlobal (stDeclVar, scriptObjCode);
-					globalHeapTrackers.Add (globalVar, heapTracker);
+					globalVar.heapTracker = new CompValuGlobal (stDeclVar, scriptObjCode);
 				}
 			}
 
@@ -310,8 +302,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				objFileWriter.Write (kvp.Key);            // string
 				objFileWriter.Write (gblVar.field.Name);  // string
 				objFileWriter.Write (gblVar.index);       // int
-				CompValu heapTracker;
-				if (globalHeapTrackers.TryGetValue (kvp.Value, out heapTracker)) {
+				CompValu heapTracker = kvp.Value.heapTracker;
+				if (heapTracker != null) {
 					gblVar = (CompValuGlobal)heapTracker;
 					objFileWriter.Write ("__htg_" + kvp.Key);
 					objFileWriter.Write (gblVar.field.Name);
@@ -351,14 +343,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				if (defaultStateEntry.funcName.val == "state_entry") break;
 			}
 			if (defaultStateEntry == null) {
-				defaultStateEntry = new TokenDeclFunc (tokenScript.defaultState.body);
-				defaultStateEntry.retType  = new TokenTypeVoid  (tokenScript.defaultState.body);
-				defaultStateEntry.funcName = new TokenName      (tokenScript.defaultState.body, "state_entry");
-				defaultStateEntry.argDecl  = new TokenArgDecl   (tokenScript.defaultState.body);
+				defaultStateEntry               = new TokenDeclFunc (tokenScript.defaultState.body);
+				defaultStateEntry.retType       = new TokenTypeVoid  (tokenScript.defaultState.body);
+				defaultStateEntry.funcName      = new TokenName      (tokenScript.defaultState.body, "state_entry");
+				defaultStateEntry.argDecl       = new TokenArgDecl   (tokenScript.defaultState.body);
 				defaultStateEntry.argDecl.types = new TokenType[0];
 				defaultStateEntry.argDecl.names = new TokenName[0];
 				defaultStateEntry.argDecl.locns = new CompValu[0];
-				defaultStateEntry.body     = new TokenStmtBlock (tokenScript.defaultState.body);
+				defaultStateEntry.body          = new TokenStmtBlock (tokenScript.defaultState.body);
 				defaultStateEntry.body.function = defaultStateEntry;
 
 				defaultStateEntry.nextToken = tokenScript.defaultState.body.eventFuncs;
@@ -446,24 +438,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
-			 * Push current function being processed.
-			 * Set 'mightGetHere' as the code at the top is always executed.
-			 */
-			bool          oldMightGetHere = mightGetHere;
-			BreakContTarg oldBreakTarg    = curBreakTarg;
-			BreakContTarg oldContTarg     = curContTarg;
-			TokenDeclFunc oldDeclFunc     = curDeclFunc;
-			mightGetHere = true;
-			curBreakTarg = null;
-			curContTarg  = null;
-			curDeclFunc  = declFunc;
-
-			/*
-			 * Any vars defined by function, including its args, go in their own var block.
-			 */
-			PushVarDefnBlock ();
-
-			/*
 			 * Output function header.
 			 * They just have the XMRInstance pointer as the one argument.
 			 */
@@ -475,16 +449,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			                           typeof (void),
 			                           instanceTypeArg,
 			                           objFileWriter);
-			ilGen.BegMethod ();
-
-			/*
-			 * Set up dictionary to convert a local variable to its corresponding heaptracker variable.
-			 * There are only entries for object-type local vars (strings, lists, etc).  Local value-type
-			 * vars (int, vector, etc) use stack space only and are kept track of by instance.stackLimit.
-			 * The heaptracker variable is always an int giving how many bytes instance.heapLeft
-			 * was debited by the local variable.
-			 */
-			localHeapTrackers = new Dictionary<CompValu, CompValu> ();
+			StartFunctionBody (declFunc);
 
 			/*
 			 * Output args as variable definitions and initialize each from __sw.ehArgs[].
@@ -546,12 +511,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Output code for the statements and clean up.
 			 */
-			GenerateFuncBody (declFunc);
-
-			mightGetHere = oldMightGetHere;
-			curBreakTarg = oldBreakTarg;
-			curContTarg  = oldContTarg;
-			curDeclFunc  = oldDeclFunc;
+			GenerateFuncBody ();
 		}
 
 		/**
@@ -593,46 +553,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void GenerateMethodBody (TokenDeclFunc declFunc)
 		{
-			TokenArgDecl argDecl = declFunc.argDecl;
-
-			/*
-			 * Push current function being processed.
-			 * Set 'mightGetHere' as the code is always entered at the top.
-			 */
-			bool oldMightGetHere       = mightGetHere;
-			BreakContTarg oldBreakTarg = curBreakTarg;
-			BreakContTarg oldContTarg  = curContTarg;
-			TokenDeclFunc oldDeclFunc  = curDeclFunc;
-			mightGetHere = true;
-			curBreakTarg = null;
-			curContTarg  = null;
-			curDeclFunc  = declFunc;
-
-			/*
-			 * The function's vars, including its arguments, start in an empty definition frame.
-			 */
-			PushVarDefnBlock ();
-
 			/*
 			 * Set up code generator for the function's contents.
 			 */
 			ilGen = declFunc.ilGen;
-			ilGen.BegMethod ();
-
-			/*
-			 * Set up dictionary to convert a local variable to its corresponding heaptracker variable.
-			 * There are only entries for object-type local vars (strings, lists, etc).  Local value-type
-			 * vars (int, vector, etc) use stack space only and are kept track of by instance.stackLimit.
-			 * The heaptracker variable is always an int giving how many bytes instance.heapLeft
-			 * was debited by the local variable.
-			 */
-			localHeapTrackers = new Dictionary<CompValu, CompValu> ();
+			StartFunctionBody (declFunc);
 
 			/*
 			 * Define all arguments as named variables so script body can reference them.
 			 * The argument indices need to have +1 added to them because XMRInstance is spliced in at arg 0.
 			 * Account for their heap usage just like they were local variables.
 			 */
+			TokenArgDecl argDecl = declFunc.argDecl;
 			int nargs = argDecl.types.Length;
 			for (int i = 0; i < nargs; i ++) {
 				CompValu arg = new CompValuArg (argDecl.types[i], i + 1);
@@ -644,18 +576,35 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Output code for the statements and clean up.
 			 */
-			GenerateFuncBody (declFunc);
+			GenerateFuncBody ();
+		}
 
-			mightGetHere = oldMightGetHere;
-			curBreakTarg = oldBreakTarg;
-			curContTarg  = oldContTarg;
-			curDeclFunc  = oldDeclFunc;
+		private void StartFunctionBody (TokenDeclFunc declFunc)
+		{
+			/*
+			 * Start current function being processed.
+			 * Set 'mightGetHere' as the code at the top is always executed.
+			 */
+			mightGetHere = true;
+			curBreakTarg = null;
+			curContTarg  = null;
+			curDeclFunc  = declFunc;
+
+			/*
+			 * Any vars defined by function, including its args, go in their own var block.
+			 */
+			PushVarDefnBlock ();
+
+			/*
+			 * Start generating code.
+			 */
+			ilGen.BegMethod ();
 		}
 
 		/**
 		 * @brief Output function body (either event handler or script-defined method).
 		 */
-		private void GenerateFuncBody (TokenDeclFunc declFunc)
+		private void GenerateFuncBody ()
 		{
 			/*
 			 * Clear list of all call labels.
@@ -677,8 +626,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			retLabel = ilGen.DefineLabel ("__retlbl");
 			retValue = null;
-			if (!(declFunc.retType is TokenTypeVoid)) {
-				retValue = ilGen.DeclareLocal (declFunc.retType.typ, "__retval");
+			if (!(curDeclFunc.retType is TokenTypeVoid)) {
+				retValue = ilGen.DeclareLocal (curDeclFunc.retType.typ, "__retval");
 			}
 
 			/*
@@ -740,17 +689,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Alloc stack space for local vars.
 			 * Also allocates corresponding heap-tracker vars.
 			 */
-			AllocLocalVarStackSpace (declFunc);
+			AllocLocalVarStackSpace ();
 
 			/*
 			 * See if time to suspend in case they are doing a loop with recursion.
 			 */
-			EmitCallCheckRun (declFunc.line);
+			EmitCallCheckRun (curDeclFunc.line);
 
 			/*
 			 * Output code body.
 			 */
-			GenerateStmtBlock (declFunc.body);
+			GenerateStmtBlock (curDeclFunc.body);
 
 			/*
 			 * If code falls through to this point, means they are missing 
@@ -758,8 +707,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * returns 'void'.
 			 */
 			if (mightGetHere) {
-				if (!(declFunc.retType is TokenTypeVoid)) {
-					ErrorMsg (declFunc.body, "missing final return statement");
+				if (!(curDeclFunc.retType is TokenTypeVoid)) {
+					ErrorMsg (curDeclFunc.body, "missing final return statement");
 				}
 				ilGen.Emit (OpCodes.Leave, retLabel);
 			}
@@ -786,17 +735,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			CreditAllLocalsHeapLeft ();
 			ilGen.Emit (OpCodes.Br, endFin);
 			ilGen.MarkLabel (cmSave);
-			GenerateFrameCaptureCode(declFunc);
+			GenerateFrameCaptureCode ();
 			ilGen.MarkLabel (endFin);
 			ilGen.Emit (OpCodes.Endfinally);
 			ilGen.EndExceptionBlock ();
-			localHeapTrackers = null;
 
 			/*
 			 * Output the 'real' return opcode.
 			 */
 			ilGen.MarkLabel (retLabel);
-			if (!(declFunc.retType is TokenTypeVoid)) {
+			if (!(curDeclFunc.retType is TokenTypeVoid)) {
 				ilGen.Emit (OpCodes.Ldloc, retValue);
 			}
 			ilGen.Emit (OpCodes.Ret);
@@ -807,7 +755,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Output code to restore stack frame from stream.
 			 */
 			ilGen.MarkLabel (cmRestore);
-			GenerateFrameRestoreCode(declFunc);
+			GenerateFrameRestoreCode ();
 
 			/*
 			 * No more instructions for this method.
@@ -819,6 +767,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Pop off the top-level local definition block.
 			 */
 			PopVarDefnBlock ();
+
+			/*
+			 * Not generating function code any more.
+			 */
+			curBreakTarg = null;
+			curContTarg  = null;
+			curDeclFunc  = null;
 		}
 
 
@@ -830,9 +785,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * We don't add it to the var definition stack as we don't want it to be visible
 		 * until the script says the variable is declared.
 		 */
-		private void AllocLocalVarStackSpace (TokenDeclFunc declFunc)
+		private void AllocLocalVarStackSpace ()
 		{
-			foreach (TokenDeclVar localVar in declFunc.localVars) {
+			foreach (TokenDeclVar localVar in curDeclFunc.localVars) {
 
 				/*
 				 * Skip all 'constant' vars as they were handled by the reducer.
@@ -860,9 +815,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief Generate code to write all arguments and locals to the capture stack frame.
 		 *        This includes heap-tracker and temp variables.
 		 */
-		private void GenerateFrameCaptureCode (TokenDeclFunc declFunc)
+		private void GenerateFrameCaptureCode ()
 		{
-			int nSaves = declFunc.argDecl.locns.Length + declFunc.localVars.Count + activeTemps.Count;
+			int nSaves = curDeclFunc.argDecl.locns.Length + curDeclFunc.localVars.Count + activeTemps.Count;
 
 			/*
 			 * Output code to allocate a stack frame object with an object array.
@@ -879,7 +834,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Copy arg values to object array, boxing as needed.
 			 */
 			int i = 0;
-			foreach (CompValu argLoc in declFunc.argDecl.locns) {
+			foreach (CompValu argLoc in curDeclFunc.argDecl.locns) {
 				ilGen.Emit (OpCodes.Dup);
 				PushConstantI4 (i ++);
 				argLoc.PushVal (this, tokenTypeObj);
@@ -889,7 +844,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Copy local values to object array, boxing as needed.
 			 */
-			foreach (TokenDeclVar localVar in declFunc.localVars) {
+			foreach (TokenDeclVar localVar in curDeclFunc.localVars) {
 				ilGen.Emit (OpCodes.Dup);
 				PushConstantI4 (i ++);
 				CompValu localLoc = localVar.location;
@@ -914,7 +869,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief Generate code to restore all arguments and locals from the restore stack frame.
 		 *        This includes heap-tracker and temp variables.
 		 */
-		private void GenerateFrameRestoreCode (TokenDeclFunc declFunc)
+		private void GenerateFrameRestoreCode ()
 		{
 			ScriptMyLocal objArray = ilGen.DeclareLocal (typeof (object[]), "__restObjArray");
 
@@ -934,7 +889,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * function has modified them since, so we need to do our own restore.
 			 */
 			int i = 0;
-			foreach (CompValu argLoc in declFunc.argDecl.locns) {
+			foreach (CompValu argLoc in curDeclFunc.argDecl.locns) {
 				argLoc.PopPre (this);
 				ilGen.Emit (OpCodes.Ldloc, objArray);
 				PushConstantI4 (i ++);
@@ -945,7 +900,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Restore local values from object array, unboxing as needed.
 			 */
-			foreach (TokenDeclVar localVar in declFunc.localVars) {
+			foreach (TokenDeclVar localVar in curDeclFunc.localVars) {
 				CompValu localLoc = localVar.location;
 				localLoc.PopPre (this);
 				ilGen.Emit (OpCodes.Ldloc, objArray);
@@ -3128,8 +3083,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			if ((local.type is TokenTypeList) ||
 			    (local.type is TokenTypeStr)) {
-				CompValu heapTracker = new CompValuTemp (new TokenTypeInt (name), "__htl_" + name.val, this);
-				localHeapTrackers.Add (local, heapTracker);
+				local.heapTracker = new CompValuTemp (new TokenTypeInt (name), "__htl_" + name.val, this);
 				DebitHeapLeft (local, false, name);
 			}
 		}
@@ -3144,8 +3098,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void DebitHeapLeft (CompValu value, bool stValid, Token name)
 		{
-			CompValu heapTracker;
-
 			/*
 			 * If just did something like 'arr[idx] = val' the 
 			 * array as an object keeps track of heap use so we 
@@ -3159,9 +3111,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Now see if the variable is heap tracked
 			 * and if so, output call to check heap usage.
 			 */
-			if (globalHeapTrackers.TryGetValue (value, out heapTracker) ||
-			    localHeapTrackers.TryGetValue (value, out heapTracker)) {
-
+			CompValu heapTracker = value.heapTracker;
+			if (heapTracker != null) {
 				heapTracker.PopPre (this);
 				
 				ilGen.Emit (OpCodes.Ldarg_0);                         // instance
@@ -3189,17 +3140,25 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void CreditAllLocalsHeapLeft ()
 		{
-			if (localHeapTrackers.Count > 0) {
-				ilGen.Emit (OpCodes.Ldarg_0);                    // instance
-				ilGen.Emit (OpCodes.Ldflda, heapLeftFieldInfo);  // &instance.heapLeft
-				PushConstantI4 (0);                              // total of all local heap use
-				foreach (KeyValuePair<CompValu, CompValu> kvp in localHeapTrackers) {
-					CompValu heapTracker = kvp.Value;
-					heapTracker.PushVal (this);              // numberOfBytes subtracted from heapLeft
-					ilGen.Emit (OpCodes.Add);                // add them back to heapLeft
+			bool first = true;
+
+			foreach (TokenDeclVar localVar in curDeclFunc.localVars) {
+				CompValu heapTracker = localVar.location.heapTracker;
+				if (heapTracker == null) continue;
+
+				if (first) {
+					ilGen.Emit (OpCodes.Ldarg_0);                    // instance
+					ilGen.Emit (OpCodes.Ldflda, heapLeftFieldInfo);  // &instance.heapLeft
+					heapTracker.PushVal (this);                      // numberOfBytes subtracted from heapLeft
+					first = false;
+				} else {
+					heapTracker.PushVal (this);                      // numberOfBytes subtracted from heapLeft
+					ilGen.Emit (OpCodes.Add);                        // add them back to heapLeft
 				}
-				ilGen.Emit (OpCodes.Call, interlockedAddMethodInfo);  // ...atomically
-				ilGen.Emit (OpCodes.Pop);                        // we don't need return value
+			}
+			if (!first) {
+				ilGen.Emit (OpCodes.Call, interlockedAddMethodInfo);     // ...atomically
+				ilGen.Emit (OpCodes.Pop);                                // we don't need return value
 			}
 		}
 

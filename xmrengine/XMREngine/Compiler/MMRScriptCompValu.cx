@@ -25,12 +25,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	 *        Includes constants, expressions and temp variables.
 	 */
 	public abstract class CompValu {
-		public TokenType type;     // type of the value and where in the source is was used
-		public bool isFinal;       // true iff value cannot be changed by any side effects
-		                           // - ie, PushVal() is idempotent (no calls, autoincrements, assignment, etc)
-		                           // - temps do not change because we allocate a new one each time
-		                           // - constants never change because they are constant
-		                           // - expressions consisting of all isFinal operands are final
+		public TokenType type;        // type of the value and where in the source is was used
+		public bool isFinal;          // true iff value cannot be changed by any side effects
+		                              // - ie, PushVal() is idempotent (no calls, autoincrements, assignment, etc)
+		                              // - temps do not change because we allocate a new one each time
+		                              // - constants never change because they are constant
+		                              // - expressions consisting of all isFinal operands are final
+		public CompValu heapTracker;  // var to keep track of any heap use by this var
+		                              // - only applies to global and local vars holding lists and strings
+		                              // - temp lists and strings are not tracked because they are hopefully temporary
+		                              // - arrays keep track of their own heap usage
+		                              // - global value types are tracked by a static amount
+		                              // - local & temp value types are tracked by the amount of stack they use
 
 		public CompValu (TokenType type)
 		{
