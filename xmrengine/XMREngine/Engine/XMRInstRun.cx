@@ -569,23 +569,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             msg.Append(m_Part.Name);
             msg.Append(">, Item: <");
             msg.Append(m_Item.Name);
-            msg.Append(">\nYou must Reset script to re-enable.");
+            msg.Append(">\nYou must Reset script to re-enable.\n");
 
             /*
-             * Remove extra garbage from error message that includes stack 
-             * dump.
+             * Give script owner the stack dump.
              */
-            string[] lines = e.ToString().Split(new char[] { '\n' });
-            for (int i = 0; i < lines.Length; i ++)
-            {
-                string line = lines[i];
-                if (line != "") {
-                    msg.Append('\n');
-                }
-            }
+            msg.Append(e.ToString());
 
             /*
-             * Send sanitized error message to owner.
+             * Send error message to owner.
              */
             this.llOwnerSay(msg.ToString());
 
