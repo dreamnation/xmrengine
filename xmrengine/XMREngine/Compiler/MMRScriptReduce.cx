@@ -1891,6 +1891,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				localVars.AddLast (local);
 			}
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			if (!(retType is TokenTypeVoid)) {
+				writeSrc (retType.ToString () + " ");
+			}
+			writeSrc (funcName.val + " (");
+			for (int i = 0; i < argDecl.types.Length; i ++) {
+				if (i > 0) writeSrc (", ");
+				writeSrc (argDecl.types[i].ToString () + " " + argDecl.names[i].val);
+			}
+			writeSrc (")\n");
+			body.Reconst (writeSrc);
+			writeSrc ("\n");
+		}
+#endif
 	}
 
 	/**
@@ -1914,6 +1931,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			name = (TokenName)     reader.ReadToken ();
 			body = (TokenStateBody)reader.ReadToken ();
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			if (name == null) {
+				writeSrc ("default {");
+			} else {
+				writeSrc ("state " + name.val + " {");
+			}
+			body.Reconst (writeSrc);
+			writeSrc ("}");
+		}
+#endif
 	}
 
 	public class TokenDeclVar : Token {
@@ -1962,6 +1992,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			name = (TokenName)reader.ReadToken ();
 			init = (TokenRVal)reader.ReadToken ();
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			writeSrc (type.ToString () + " " + name.val);
+			if (init != null) {
+				writeSrc (" = ");
+				init.Reconst (writeSrc);
+			}
+			writeSrc (";");
+		}
+#endif
 	}
 
 
@@ -1993,6 +2035,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			baseRVal = (TokenRVal)reader.ReadToken ();
 			subRVal  = (TokenRVal)reader.ReadToken ();
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			baseRVal.Reconst (writeSrc);
+			writeSrc ("[");
+			subRVal.Reconst (writeSrc);
+			writeSrc ("]");
+		}
+#endif
 	}
 
 	/**
@@ -2015,6 +2067,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			baseRVal = (TokenRVal)reader.ReadToken ();
 			field    = (TokenName)reader.ReadToken ();
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			baseRVal.Reconst (writeSrc);
+			writeSrc (".");
+			writeSrc (field.val);
+		}
+#endif
 	}
 
 	/**
@@ -2042,6 +2103,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			name = (TokenName)reader.ReadToken ();
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			writeSrc (name.val);
+		}
+#endif
 	}
 
 	/**
@@ -2079,6 +2147,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			lVal = (TokenLVal)reader.ReadToken ();
 			postfix = reader.ReadToken ();
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			lVal.Reconst (writeSrc);
+			writeSrc (" " + postfix.ToString ());
+		}
+#endif
 	}
 
 	/**
@@ -2103,6 +2179,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			prefix = reader.ReadToken ();
 			lVal = (TokenLVal)reader.ReadToken ();
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			writeSrc (prefix.ToString () + " ");
+			lVal.Reconst (writeSrc);
+		}
+#endif
 	}
 
 	/**
@@ -2144,6 +2228,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				lastArg = arg;
 			}
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			meth.Reconst (writeSrc);
+			writeSrc (" (");
+			for (Token t = args; t != null; t = t.nextToken) {
+				if (t != args) writeSrc (", ");
+				t.Reconst (writeSrc);
+			}
+			writeSrc (")");
+		}
+#endif
 	}
 
 	/**
@@ -2176,6 +2273,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			castTo = (TokenType)reader.ReadToken ();
 			rVal   = (TokenRVal)reader.ReadToken ();
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			writeSrc ("(" + castTo.ToString () + ")");
+			rVal.Reconst (writeSrc);
+		}
+#endif
 	}
 
 	/**
@@ -2216,6 +2321,36 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				default: throw new Exception ("unknown type");
 			}
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			object v = val;
+			     if (v is int) writeSrc (((int)v).ToString());
+			else if (v is SCRIPTFLOAT) writeSrc (((SCRIPTFLOAT)v).ToString());
+			else if (v is string) ReconstString ((string)v, writeSrc);
+			else throw new Exception ("unknown const type " + v.GetType ());
+		}
+
+		private static void ReconstString (string s, SrcWriter writeSrc)
+		{
+			StringBuilder sb = new StringBuilder ();
+			sb.Append ('"');
+			for (int i = 0; i < s.Length; i ++) {
+				char c = s[i];
+				if ((c == '"') || (c == '\\')) {
+					sb.Append ('\\');
+				}
+				if (c == '\n') {
+					sb.Append ('\\');
+					c = 'n';
+				}
+				sb.Append (c);
+			}
+			sb.Append ('"');
+			writeSrc (sb.ToString ());
+		}
+#endif
 	}
 
 	public class TokenRValCVSField : TokenRVal {
@@ -2245,6 +2380,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			rValExp = (TokenRVal)   reader.ReadToken ();
 			typeExp = (TokenTypeExp)reader.ReadToken ();
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			rValExp.Reconst (writeSrc);
+			writeSrc (" is ");
+			typeExp.Reconst (writeSrc);
+		}
+#endif
 	}
 
 	/**
@@ -2281,6 +2425,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				lastRVal = thisRVal;
 			}
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			bool first = true;
+			writeSrc ("[");
+			for (Token t = rVal; t != null; t = t.nextToken) {
+				if (!first) writeSrc (", ");
+				t.Reconst (writeSrc);
+				first = false;
+			}
+			writeSrc ("]");
+		}
+#endif
 	}
 
 	/**
@@ -2330,6 +2488,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				              (opStr != "<=") && (opStr != "!=") && (opStr != "==");
 			}
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			rValLeft.Reconst (writeSrc);
+			writeSrc (" " + opcode.ToString () + " ");
+			rValRight.Reconst (writeSrc);
+		}
+#endif
 	}
 
 	/**
@@ -2363,6 +2530,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			rVal        = (TokenRVal)reader.ReadToken ();
 			sideEffects = rVal.sideEffects;
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			writeSrc (opcode.ToString () + " ");
+			rVal.Reconst (writeSrc);
+		}
+#endif
 	}
 
 	/**
@@ -2383,6 +2558,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			rVal = (TokenRVal)reader.ReadToken ();
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			writeSrc ("(");
+			rVal.Reconst (writeSrc);
+			writeSrc (")");
+		}
+#endif
 	}
 
 	public class TokenRValRot : TokenRVal {
@@ -2409,6 +2593,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			zRVal = (TokenRVal)reader.ReadToken ();
 			wRVal = (TokenRVal)reader.ReadToken ();
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			writeSrc ("<");
+			xRVal.Reconst (writeSrc);
+			writeSrc (", ");
+			yRVal.Reconst (writeSrc);
+			writeSrc (", ");
+			zRVal.Reconst (writeSrc);
+			writeSrc (", ");
+			wRVal.Reconst (writeSrc);
+			writeSrc (">");
+		}
+#endif
 	}
 
 	/**
@@ -2424,6 +2623,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public override void ReadIn (TokenReader reader)
 		{
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			writeSrc ("undef");
+		}
+#endif
 	}
 
 	/**
@@ -2450,6 +2656,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			yRVal = (TokenRVal)reader.ReadToken ();
 			zRVal = (TokenRVal)reader.ReadToken ();
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			writeSrc ("<");
+			xRVal.Reconst (writeSrc);
+			writeSrc (", ");
+			yRVal.Reconst (writeSrc);
+			writeSrc (", ");
+			zRVal.Reconst (writeSrc);
+			writeSrc (">");
+		}
+#endif
 	}
 	
 	/**
@@ -2503,6 +2722,36 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				states[state.name.val] = state;
 			}
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			/*
+			 * Global variables.
+			 */
+			foreach (KeyValuePair<string, TokenDeclVar> kvp in vars) {
+				TokenDeclVar declVar = kvp.Value;
+				declVar.Reconst (writeSrc);
+			}
+
+			/*
+			 * Functions.
+			 */
+			foreach (KeyValuePair<string, TokenDeclFunc> kvp in funcs) {
+				TokenDeclFunc declFunc = kvp.Value;
+				declFunc.Reconst (writeSrc);
+			}
+
+			/*
+			 * States.
+			 */
+			defaultState.Reconst (writeSrc);
+			foreach (KeyValuePair<string, TokenDeclState> kvp in states) {
+				TokenDeclState declState = kvp.Value;
+				declState.Reconst (writeSrc);
+			}
+		}
+#endif
 	}
 
 	/**
@@ -2539,6 +2788,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				lastT = thisT;
 			}
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			for (Token t = eventFuncs; t != null; t = t.nextToken) {
+				t.Reconst (writeSrc);
+			}
+		}
+#endif
 	}
 
 	/**
@@ -2603,6 +2861,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				variables[var.name.val] = var;
 			}
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			writeSrc ("{");
+			for (Token t = statements; t != null; t = t.nextToken) {
+				t.Reconst (writeSrc);
+			}
+			writeSrc ("}");
+		}
+#endif
 	}
 
 	/**
@@ -2632,6 +2901,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			block       = (TokenStmtBlock)reader.ReadToken ();
 			hasBkwdRefs = reader.ReadBool ();
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			writeSrc ("@" + name.val + ";");
+		}
+#endif
 	}
 
 	/**
@@ -2652,18 +2928,40 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			rVal = (TokenRVal)reader.ReadToken ();
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			rVal.Reconst (writeSrc);
+			writeSrc (";");
+		}
+#endif
 	}
 
 	public class TokenStmtBreak : TokenStmt {
 		public TokenStmtBreak (Token original) : base (original) { }
 		public override void WriteOut (TokenWriter writer) { }
 		public override void ReadIn (TokenReader reader) { }
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			writeSrc ("break;");
+		}
+#endif
 	}
 
 	public class TokenStmtCont : TokenStmt {
 		public TokenStmtCont (Token original) : base (original) { }
 		public override void WriteOut (TokenWriter writer) { }
 		public override void ReadIn (TokenReader reader) { }
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			writeSrc ("continue;");
+		}
+#endif
 	}
 
 	/**
@@ -2687,6 +2985,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			bodyStmt = (TokenStmt)reader.ReadToken ();
 			testRVal = (TokenRVal)reader.ReadToken ();
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			writeSrc ("do ");
+			bodyStmt.Reconst (writeSrc);
+			writeSrc ("while ");
+			testRVal.Reconst (writeSrc);
+			writeSrc (";");
+		}
+#endif
 	}
 
 	/**
@@ -2716,6 +3025,26 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			incrRVal = (TokenRVal)reader.ReadToken ();
 			bodyStmt = (TokenStmt)reader.ReadToken ();
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			writeSrc ("for (");
+			if (initStmt == null) writeSrc (";");
+			else initStmt.Reconst (writeSrc);
+			if (testRVal != null) {
+				writeSrc (" ");
+				testRVal.Reconst (writeSrc);
+			}
+			writeSrc (";");
+			if (incrRVal != null) {
+				writeSrc (" ");
+				incrRVal.Reconst (writeSrc);
+			}
+			writeSrc (") ");
+			bodyStmt.Reconst (writeSrc);
+		}
+#endif
 	}
 
 	/**
@@ -2745,6 +3074,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			arrayRVal = (TokenRVal)reader.ReadToken ();
 			bodyStmt  = (TokenStmt)reader.ReadToken ();
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			writeSrc ("foreach (");
+			if (keyLVal != null) {
+				keyLVal.Reconst (writeSrc);
+			}
+			writeSrc (",");
+			if (valLVal != null) {
+				valLVal.Reconst (writeSrc);
+			}
+			writeSrc (" in ");
+			arrayRVal.Reconst (writeSrc);
+			writeSrc (") ");
+			bodyStmt.Reconst (writeSrc);
+		}
+#endif
 	}
 
 	public class TokenStmtIf : TokenStmt {
@@ -2768,6 +3115,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			trueStmt = (TokenStmt)reader.ReadToken ();
 			elseStmt = (TokenStmt)reader.ReadToken ();
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			writeSrc ("if ");
+			testRVal.Reconst (writeSrc);
+			writeSrc (" ");
+			trueStmt.Reconst (writeSrc);
+			if (elseStmt != null) {
+				writeSrc (" else ");
+				elseStmt.Reconst (writeSrc);
+			}
+		}
+#endif
 	}
 
 	public class TokenStmtJump : TokenStmt {
@@ -2785,6 +3146,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			label = (TokenName)reader.ReadToken ();
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			writeSrc ("jump " + label.val + ";");
+		}
+#endif
 	}
 
 	public class TokenStmtNull : TokenStmt {
@@ -2798,6 +3166,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public override void ReadIn (TokenReader reader)
 		{
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			writeSrc (";");
+		}
+#endif
 	}
 
 	public class TokenStmtRet : TokenStmt {
@@ -2815,6 +3190,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			rVal = (TokenRVal)reader.ReadToken ();
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			writeSrc ("return");
+			if (rVal != null) {
+				writeSrc (" ");
+				rVal.Reconst (writeSrc);
+			}
+			writeSrc (";");
+		}
+#endif
 	}
 
 	/**
@@ -2835,6 +3222,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			state = (TokenName)reader.ReadToken ();
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			writeSrc ("state " + ((state == null) ? "default" : state.val) + ";");
+		}
+#endif
 	}
 
 	/**
@@ -2877,6 +3271,32 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				lastCase = thisCase;
 			}
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			writeSrc ("switch ");
+			testRVal.Reconst (writeSrc);
+			writeSrc (" {");
+			for (TokenSwitchCase thisCase = cases; thisCase != null; thisCase = thisCase.nextCase) {
+				if (thisCase.rVal1 == null) {
+					writeSrc ("default:");
+				} else {
+					writeSrc ("case ");
+					thisCase.rVal1.Reconst (writeSrc);
+					if (thisCase.rVal2 != null) {
+						writeSrc (" ... ");
+						thisCase.rVal2.Reconst (writeSrc);
+					}
+					writeSrc (":");
+				}
+				for (TokenStmt stmt = thisCase.stmts; stmt != null; stmt = (TokenStmt)stmt.nextToken) {
+					stmt.Reconst (writeSrc);
+				}
+			}
+			writeSrc ("}");
+		}
+#endif
 	}
 
 	/**
@@ -2939,6 +3359,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			rVal = (TokenRVal)reader.ReadToken ();
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			writeSrc ("throw");
+			if (rVal != null) {
+				writeSrc (" ");
+				rVal.Reconst (writeSrc);
+			}
+			writeSrc (";");
+		}
+#endif
 	}
 
 	/**
@@ -2968,6 +3400,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			catchStmt   = (TokenStmtBlock)reader.ReadToken ();
 			finallyStmt = (TokenStmtBlock)reader.ReadToken ();
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			writeSrc ("try ");
+			tryStmt.Reconst (writeSrc);
+			if (catchStmt != null) {
+				writeSrc (" catch (string ");
+				writeSrc (catchVar.val);
+				writeSrc (") ");
+				catchStmt.Reconst (writeSrc);
+			}
+			if (finallyStmt != null) {
+				writeSrc (" finally ");
+				finallyStmt.Reconst (writeSrc);
+			}
+		}
+#endif
 	}
 
 	public class TokenStmtWhile : TokenStmt {
@@ -2988,6 +3438,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			testRVal = (TokenRVal)reader.ReadToken ();
 			bodyStmt = (TokenStmt)reader.ReadToken ();
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			writeSrc ("while (");
+			testRVal.Reconst (writeSrc);
+			writeSrc (") ");
+			bodyStmt.Reconst (writeSrc);
+		}
+#endif
 	}
 
 	/**
@@ -3017,6 +3477,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			binOp   =               reader.ReadToken ();
 			rightOp = (TokenTypeExp)reader.ReadToken ();
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			leftOp.Reconst (writeSrc);
+			writeSrc (" " + binOp.ToString () + " ");
+			rightOp.Reconst (writeSrc);
+		}
+#endif
 	}
 
 	public class TokenTypeExpNot : TokenTypeExp {
@@ -3033,6 +3502,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			typeExp = (TokenTypeExp)reader.ReadToken ();
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			writeSrc ("~");
+			typeExp.Reconst (writeSrc);
+		}
+#endif
 	}
 
 	public class TokenTypeExpPar : TokenTypeExp {
@@ -3049,6 +3526,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			typeExp = (TokenTypeExp)reader.ReadToken ();
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			writeSrc ("(");
+			typeExp.Reconst (writeSrc);
+			writeSrc (")");
+		}
+#endif
 	}
 
 	public class TokenTypeExpType : TokenTypeExp {
@@ -3065,6 +3551,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			typeToken = (TokenType)reader.ReadToken ();
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			writeSrc (typeToken.ToString ());
+		}
+#endif
 	}
 
 	public class TokenTypeExpUndef : TokenTypeExp {
@@ -3077,5 +3570,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public override void ReadIn (TokenReader reader)
 		{
 		}
+
+#ifdef SECRET_STUFF
+		public override void Reconst (SrcWriter writeSrc)
+		{
+			writeSrc ("undef");
+		}
+#endif
 	}
 }

@@ -91,6 +91,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             throw new Exception (this.GetType() + " missing ReadIn() method");
         }
 
+        /*
+         * Reconstruct source
+         */
+#ifdef SECRET_STUFF
+        public virtual void Reconst (SrcWriter writeSrc)
+        {
+            throw new Exception (this.GetType() + " missing Reconst() method");
+        }
+#endif
+
         /**
          * @brief output an error message associated with this token
          *        sends the message to the token's error object
