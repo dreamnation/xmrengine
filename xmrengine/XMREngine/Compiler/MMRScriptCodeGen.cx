@@ -1228,22 +1228,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			BreakContTarg oldContTarg  = curContTarg;
 			CompValu      keyLVal      = null;
 			CompValu      valLVal      = null;
-			CompValu      arrayLVal    = GenerateFromLVal (forEachStmt.arrayLVal);
+			CompValu      arrayRVal    = GenerateFromRVal (forEachStmt.arrayRVal);
 
 			if (forEachStmt.keyLVal != null) {
 				keyLVal = GenerateFromLVal (forEachStmt.keyLVal);
 				if (!(keyLVal.type is TokenTypeObject)) {
-					ErrorMsg (forEachStmt.arrayLVal, "must be object");
+					ErrorMsg (forEachStmt.arrayRVal, "must be object");
 				}
 			}
 			if (forEachStmt.valLVal != null) {
 				valLVal = GenerateFromLVal (forEachStmt.valLVal);
 				if (!(valLVal.type is TokenTypeObject)) {
-					ErrorMsg (forEachStmt.arrayLVal, "must be object");
+					ErrorMsg (forEachStmt.arrayRVal, "must be object");
 				}
 			}
-			if (!(arrayLVal.type is TokenTypeArray)) {
-				ErrorMsg (forEachStmt.arrayLVal, "must be an array");
+			if (!(arrayRVal.type is TokenTypeArray)) {
+				ErrorMsg (forEachStmt.arrayRVal, "must be an array");
 			}
 
 			curBreakTarg = new BreakContTarg (ilGen, "foreachbreak_" + forEachStmt.Unique);
@@ -1255,8 +1255,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			ilGen.MarkLabel (loopLabel);
 
-			// ForEach arg 0: arrayLVal
-			arrayLVal.PushVal (this);
+			// ForEach arg 0: arrayRVal
+			arrayRVal.PushVal (this);
 
 			// ForEach arg 1: indexVar ++
 			ilGen.Emit (OpCodes.Ldloc, indexVar);
@@ -1279,7 +1279,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				valLVal.PushByRef (this);
 			}
 
-			// Call XMR_Array.ForEach (arrayLVal, index, ref keyLVal, ref valLVal)
+			// Call XMR_Array.ForEach (arrayRVal, index, ref keyLVal, ref valLVal)
 			ilGen.Emit (OpCodes.Callvirt, forEachMethodInfo);
 			ilGen.Emit (OpCodes.Brfalse, curBreakTarg.label);
 			curBreakTarg.used = true;
@@ -1910,9 +1910,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private CompValu GenerateFromLVal (TokenLVal lVal)
 		{
-			if (lVal is TokenLValArEle) return GenerateFromLValArEle ((TokenLValArEle)lVal);
-			if (lVal is TokenLValField) return GenerateFromLValField ((TokenLValField)lVal);
-			if (lVal is TokenLValName)  return GenerateFromLValName  ((TokenLValName)lVal);
+			if (lVal is TokenLValArEle)  return GenerateFromLValArEle  ((TokenLValArEle)lVal);
+			if (lVal is TokenLValIField) return GenerateFromLValIField ((TokenLValIField)lVal);
+			if (lVal is TokenLValName)   return GenerateFromLValName   ((TokenLValName)lVal);
 			throw new Exception ("bad lval class");
 		}
 
@@ -1930,41 +1930,41 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Compute location of array itself.
 			 */
-			CompValu baseLVal = GenerateFromLVal (lVal.baseLVal);
+			CompValu baseRVal = GenerateFromRVal (lVal.baseRVal);
 
 			/*
 			 * It better be an array!
 			 */
-			if (!(baseLVal.type is TokenTypeArray)) {
+			if (!(baseRVal.type is TokenTypeArray)) {
 				ErrorMsg (lVal, "taking subscript of non-array");
-				return baseLVal;
+				return baseRVal;
 			}
 
 			/*
 			 * Ok, generate reference.
 			 */
-			return new CompValuArEle (new TokenTypeObject (lVal), baseLVal, subRVal);
+			return new CompValuArEle (new TokenTypeObject (lVal), baseRVal, subRVal);
 		}
 
 		/**
 		 * @brief we have an L-value token that is a field within a struct.
 		 * @returns a CompValu giving the type and location of the field in the struct.
 		 */
-		private CompValu GenerateFromLValField (TokenLValField lVal)
+		private CompValu GenerateFromLValIField (TokenLValIField lVal)
 		{
-			CompValu baseLVal = GenerateFromLVal (lVal.baseLVal);
+			CompValu baseRVal = GenerateFromRVal (lVal.baseRVal);
 			string fieldName = lVal.field.val;
 
 			/*
 			 * Since we only have a few types with fields, just pound them out.
 			 */
-			if (baseLVal.type is TokenTypeArray) {
+			if (baseRVal.type is TokenTypeArray) {
 
 				// no arguments, no parentheses, just the field name, returning integer
 				// but internally, it is a call to a method()
 				if (fieldName == "count") {
 					TokenTypeInt tti = new TokenTypeInt (lVal);
-					return new CompValuMethod (tti, baseLVal, arrayCountMethodInfo);
+					return new CompValuMethod (tti, baseRVal, arrayCountMethodInfo);
 				}
 
 				// no arguments but with the parentheses, returning void
@@ -1977,7 +1977,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					ttm.funcs[0].argDecl          = new TokenArgDecl (lVal);
 					ttm.funcs[0].argDecl.types    = new TokenType[0];
 					ttm.funcs[0].argDecl.names    = new TokenName[0];
-					return new CompValuMethod (ttm, baseLVal, arrayClearMethodInfo);
+					return new CompValuMethod (ttm, baseRVal, arrayClearMethodInfo);
 				}
 
 				// single integer argument, returning an object
@@ -1995,31 +1995,31 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					ttm.funcs[0].argDecl.types[0] = new TokenTypeInt (lVal);
 					ttm.funcs[0].argDecl.names    = new TokenName[1];
 					ttm.funcs[0].argDecl.names[0] = new TokenName (lVal, "number");
-					return new CompValuMethod (ttm, baseLVal, mi);
+					return new CompValuMethod (ttm, baseRVal, mi);
 				}
 			}
-			if (baseLVal.type is TokenTypeRot) {
+			if (baseRVal.type is TokenTypeRot) {
 				FieldInfo fi = null;
 				if (fieldName == "x") fi = rotationXFieldInfo;
 				if (fieldName == "y") fi = rotationYFieldInfo;
 				if (fieldName == "z") fi = rotationZFieldInfo;
 				if (fieldName == "s") fi = rotationSFieldInfo;
 				if (fi != null) {
-					return new CompValuField (new TokenTypeFloat (lVal), baseLVal, fi);
+					return new CompValuField (new TokenTypeFloat (lVal), baseRVal, fi);
 				}
 			}
-			if (baseLVal.type is TokenTypeVec) {
+			if (baseRVal.type is TokenTypeVec) {
 				FieldInfo fi = null;
 				if (fieldName == "x") fi = vectorXFieldInfo;
 				if (fieldName == "y") fi = vectorYFieldInfo;
 				if (fieldName == "z") fi = vectorZFieldInfo;
 				if (fi != null) {
-					return new CompValuField (new TokenTypeFloat (lVal), baseLVal, fi);
+					return new CompValuField (new TokenTypeFloat (lVal), baseRVal, fi);
 				}
 			}
 
-			ErrorMsg (lVal, "type " + baseLVal.type + " does not define field " + fieldName);
-			return baseLVal;
+			ErrorMsg (lVal, "type " + baseRVal.type + " does not define field " + fieldName);
+			return baseRVal;
 		}
 
 		/**
@@ -2060,13 +2060,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (rVal is TokenRValCVSField) return GenerateFromRValCVSField ((TokenRValCVSField)rVal);
 			if (rVal is TokenRValIsType)   return GenerateFromRValIsType   ((TokenRValIsType)rVal);
 			if (rVal is TokenRValList)     return GenerateFromRValList     ((TokenRValList)rVal);
-			if (rVal is TokenRValLVal)     return GenerateFromRValLVal     ((TokenRValLVal)rVal);
 			if (rVal is TokenRValOpBin)    return GenerateFromRValOpBin    ((TokenRValOpBin)rVal);
 			if (rVal is TokenRValOpUn)     return GenerateFromRValOpUn     ((TokenRValOpUn)rVal);
 			if (rVal is TokenRValParen)    return GenerateFromRValParen    ((TokenRValParen)rVal);
 			if (rVal is TokenRValRot)      return GenerateFromRValRot      ((TokenRValRot)rVal);
 			if (rVal is TokenRValUndef)    return GenerateFromRValUndef    ((TokenRValUndef)rVal);
 			if (rVal is TokenRValVec)      return GenerateFromRValVec      ((TokenRValVec)rVal);
+			if (rVal is TokenLVal)         return GenerateFromLVal         ((TokenLVal)rVal);
 			throw new Exception ("bad rval class " + rVal.GetType ().ToString ());
 		}
 
@@ -2085,14 +2085,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * If left operand is an L-value, create an leftLVal location marker for it.
 			 * In either case, create a R-value location marker for it.
 			 */
-			if (token.rValLeft is TokenRValLVal) {
-				left = leftLVal = GenerateFromLVal (((TokenRValLVal)token.rValLeft).lvToken);
+			if (token.rValLeft is TokenLVal) {
+				left = leftLVal = GenerateFromLVal ((TokenLVal)token.rValLeft);
 			}
 
 			/*
 			 * Simple overwriting assignments are their own special case,
 			 * as we want to cast the R-value to the type of the L-value.
-			 * StringWithCast() is what determines if it is legal or not.
 			 * And we might also be able to optimize out a temp by having
 			 * the result put directly in the L-value variable.
 			 */
@@ -2363,8 +2362,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private CompValu GenerateFromRValCall (TokenRValCall call)
 		{
-			if (call.meth is TokenLValField) return GenerateFromRValCallField (call);
-			if (call.meth is TokenLValName)  return GenerateFromRValCallName  (call);
+			if (call.meth is TokenLValIField) return GenerateFromRValCallIField (call);
+			if (call.meth is TokenLValName)   return GenerateFromRValCallName   (call);
 			throw new Exception ("unknown call type");
 		}
 
@@ -2372,16 +2371,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief Generate code that calls a method of an object.
 		 * @returns where the call's return value is stored (a TokenTypeVoid if void)
 		 */
-		private CompValu GenerateFromRValCallField (TokenRValCall call)
+		private CompValu GenerateFromRValCallIField (TokenRValCall call)
 		{
 			CompValu[] argRVals;
 			int i, nargs;
-			TokenLValField meth = (TokenLValField)call.meth;
+			TokenLValIField meth = (TokenLValIField)call.meth;
 
 			/*
 			 * Get method's entrypoint and signature.
 			 */
-			CompValu method = GenerateFromLValField (meth);
+			CompValu method = GenerateFromLValIField (meth);
 			if (!(method is CompValuMethod)) {
 				ErrorMsg (meth, "must be a method, not a field");
 				return new CompValuVoid (meth);
@@ -2720,29 +2719,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ilGen.Emit (OpCodes.Newobj, lslListConstructorInfo);
 			newList.PopPost (this);
 			return newList;
-		}
-
-		/**
-		 * @brief get the R-value from an L-value
-		 *        this happens when doing things like reading a variable
-		 */
-		private CompValu GenerateFromRValLVal (TokenRValLVal rValLVal)
-		{
-			if (!(rValLVal.lvToken is TokenLValName)) {
-				return GenerateFromLVal (rValLVal.lvToken);
-			}
-
-			string name = ((TokenLValName)rValLVal.lvToken).name.val;
-
-			foreach (Dictionary<string, CompValu> vars in scriptVariablesStack) {
-				CompValu defn;
-				if (vars.TryGetValue (name, out defn)) {
-					return defn;
-				}
-			}
-
-			ErrorMsg (rValLVal, "undefined variable " + name);
-			return new CompValuVoid (rValLVal);
 		}
 
 		/**

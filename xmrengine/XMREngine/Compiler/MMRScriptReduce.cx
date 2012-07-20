@@ -16,16 +16,13 @@
  *  
  *  tokenScript = represents the whole script source
  *                as a tree of tokens
- *
- * Any of the tokens can be disassembled with ToString ().
- * To get the entire source disassembled, do this:
- *  string scriptSource = tokenScript.toString ();
  */
 
 using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Text;
 
 #include "lsltypes.h"
 
@@ -630,8 +627,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				return null;
 			}
 			token = token.nextToken;
-			tokenStmtForEach.arrayLVal = ParseLVal (ref token);
-			if (tokenStmtForEach.arrayLVal == null) return null;
+			tokenStmtForEach.arrayRVal = GetOperand (ref token);
+			if (tokenStmtForEach.arrayRVal == null) return null;
 			if (!(token is TokenKwParClose)) {
 				ErrorMsg (token, "expecting )");
 				token = SkipPastSemi (token);
@@ -1226,66 +1223,150 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		private TokenRVal GetOperand (ref Token token)
 		{
-			TokenRVal operand = GetOperandNoCall (ref token);
-			if (operand == null) return null;
-
 			/*
-			 * If not followed by a (, it isn't a function call.
+			 * Prefix unary operators (eg ++, --) requiring an L-value.
 			 */
-			if (!(token is TokenKwParOpen)) return operand;
-
-			/*
-			 * Function call, make sure thing before ( is a name or a field.
-			 */
-			TokenLVal meth = null;
-			if (operand is TokenRValLVal) {
-				TokenRValLVal op = (TokenRValLVal)operand;
-				if (op.lvToken is TokenLValName)  meth = op.lvToken;
-				if (op.lvToken is TokenLValField) meth = op.lvToken;
-			}
-			if (meth == null) {
-				ErrorMsg (token, "invalid function reference or missing operator");
-				return null;
-			}
-
-			/*
-			 * Set up basic function call struct with function name.
-			 */
-			TokenRValCall rValCall = new TokenRValCall (token);
-			rValCall.meth = meth;
-			token = token.nextToken;
-
-			/*
-			 * Parse the call parameters, if any.
-			 */
-			if (token is TokenKwParClose) {
+			if ((token is TokenKwIncr) || (token is TokenKwDecr)) {
+				TokenRValAsnPre asnPre = new TokenRValAsnPre (token);
+				asnPre.prefix = token;
 				token = token.nextToken;
-			} else {
-				rValCall.args = ParseRVal (ref token, parCloseOnly);
-				if (rValCall.args == null) return null;
-				rValCall.nArgs = SplitCommaRVals (rValCall.args, out rValCall.args, ref rValCall.sideEffects);
+				TokenRVal op = GetOperand (ref token);
+				if (op == null) return null;
+				if (!(op is TokenLVal)) {
+					ErrorMsg (op, "can pre{in,de}crement only an L-value");
+					return null;
+				}
+				asnPre.lVal = (TokenLVal)op;
+				return asnPre;
 			}
 
 			/*
-			 * If calling a function (not a method), rememeber the called function.
+			 * Get the bulk of the operand, ie, without any of the below suffixes.
 			 */
-			if (meth is TokenLValName) {
-				TokenLValName methName = (TokenLValName)meth;
-				if (!currentDeclFunc.calledFuncs.ContainsKey (methName.name.val)) {
-					currentDeclFunc.calledFuncs[methName.name.val] = methName.name;
+			TokenRVal operand = GetOperandNoMods (ref token);
+			if (operand == null) return null;
+		modifiers:
+
+			/*
+			 * If followed by '++' or '--', it is post-{in,de}cremented.
+			 */
+			if ((token is TokenKwIncr) || (token is TokenKwDecr)) {
+				TokenRValAsnPost asnPost = new TokenRValAsnPost (token);
+				asnPost.postfix = token;
+				token = token.nextToken;
+				if (!(operand is TokenLVal)) {
+					ErrorMsg (operand, "can post{in,de}crement only an L-value");
+					return null;
 				}
+				asnPost.lVal = (TokenLVal)operand;
+				return asnPost;
 			}
 
-			return rValCall;
+			/*
+			 * If followed by a '.', it is an instance field or instance method reference.
+			 */
+			if (token is TokenKwDot) {
+				token = token.nextToken;
+				if (!(token is TokenName)) {
+					ErrorMsg (token, ". must be followed by field/method name");
+					return null;
+				}
+				TokenLValIField field = new TokenLValIField (token);
+				field.baseRVal = operand;
+				field.field = (TokenName)token;
+				operand = field;
+				token = token.nextToken;
+				goto modifiers;
+			}
+
+			/*
+			 * If follwed by a '[', it is an array subscript.
+			 */
+			if (token is TokenKwBrkOpen) {
+				TokenLValArEle tokenLValArEle = new TokenLValArEle (token);
+				token = token.nextToken;
+
+				/*
+				 * Parse subscript(s) expression.
+				 */
+				tokenLValArEle.subRVal = ParseRVal (ref token, brkCloseOnly);
+				if (tokenLValArEle.subRVal == null) {
+					ErrorMsg (tokenLValArEle, "invalid subscript");
+					return null;
+				}
+
+				/*
+				 * See if comma-separated list of values.
+				 */
+				bool sideEffects = false;
+				TokenRVal subscriptRVals;
+				int numSubscripts = SplitCommaRVals (tokenLValArEle.subRVal, out subscriptRVals, ref sideEffects);
+				if (numSubscripts > 1) {
+
+					/*
+					 * If so, put the values in an LSL_List object.
+					 */
+					TokenRValList rValList = new TokenRValList (tokenLValArEle);
+					rValList.rVal = subscriptRVals;
+					rValList.nItems = numSubscripts;
+					rValList.sideEffects = sideEffects;
+					tokenLValArEle.subRVal = rValList;
+				}
+
+				/*
+				 * Either way, save array variable name
+				 * and substitute whole reference for L-value
+				 */
+				tokenLValArEle.baseRVal = operand;
+				operand = tokenLValArEle;
+				goto modifiers;
+			}
+
+			/*
+			 * If followed by a '(', it is a function/method call.
+			 */
+			if (token is TokenKwParOpen) {
+
+				/*
+				 * Set up basic function call struct with function name.
+				 */
+				TokenRValCall rValCall = new TokenRValCall (token);
+				rValCall.meth = operand;
+				token = token.nextToken;
+
+				/*
+				 * Parse the call parameters, if any.
+				 */
+				if (token is TokenKwParClose) {
+					token = token.nextToken;
+				} else {
+					rValCall.args = ParseRVal (ref token, parCloseOnly);
+					if (rValCall.args == null) return null;
+					rValCall.nArgs = SplitCommaRVals (rValCall.args, out rValCall.args, ref rValCall.sideEffects);
+				}
+
+				/*
+				 * If calling a function (not a method), rememeber the called function.
+				 */
+				if (operand is TokenLValName) {
+					TokenLValName methName = (TokenLValName)operand;
+					if (!currentDeclFunc.calledFuncs.ContainsKey (methName.name.val)) {
+						currentDeclFunc.calledFuncs[methName.name.val] = methName.name;
+					}
+				}
+
+				operand = rValCall;
+				goto modifiers;
+			}
+
+			return operand;
 		}
 
 		/**
-		 * @brief same as GetOperand() except doesn't check for a function call
+		 * @brief same as GetOperand() except doesn't check for any modifiers
 		 */
-		private TokenRVal GetOperandNoCall (ref Token token)
+		private TokenRVal GetOperandNoMods (ref Token token)
 		{
-			TokenLVal lVal;
-
 			/*
 			 * Simple unary operators.
 			 */
@@ -1297,18 +1378,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				TokenRVal rVal = GetOperand (ref token);
 				if (rVal == null) return null;
 				return PerformUnOp (uop, rVal);
-			}
-
-			/*
-			 * Prefix unary operators requiring an L-value.
-			 */
-			if ((token is TokenKwIncr) || (token is TokenKwDecr)) {
-				TokenRValAsnPre asnPre = new TokenRValAsnPre (token);
-				asnPre.prefix = token;
-				token = token.nextToken;
-				asnPre.lVal = ParseLVal (ref token);
-				if (asnPre.lVal == null) return null;
-				return asnPre;
 			}
 
 			/*
@@ -1409,7 +1478,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			}
 
 			/*
-			 * Reference to such as 'integer constant <name> = <value> ;'
+			 * Reference to such as 'constant <name> = <value> ;'
 			 */
 			if (token is TokenName) {
 				TokenRValConst rValConst = TryUserDefConst (ref token);
@@ -1440,37 +1509,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						object v = ((CompValuSField)val).field.GetValue(null);
 
 						// Handle the basic types LSL_Constants contains
-						if (v is string)
+						if (v is string) {
 							rVal =  new TokenRValConst (token, v);
-						else if (v is float)
+						} else if (v is float) {
 							rVal =  new TokenRValConst (token, v);
-						else if (v is int)
+						} else if (v is int) {
 							rVal =  new TokenRValConst (token, v);
-						else if (v is LSL_Vector)
-                        {
-                            LSL_Vector vec = (LSL_Vector)v;
+						} else if (v is LSL_Vector) {
+							LSL_Vector vec = (LSL_Vector)v;
 							TokenRValVec rValVec =  new TokenRValVec (token);
-                            rValVec.xRVal = new TokenRValConst(token, vec.x);
-                            rValVec.yRVal = new TokenRValConst(token, vec.y);
-                            rValVec.zRVal = new TokenRValConst(token, vec.z);
-                            rVal = rValVec;
-                        }
-						else if (v is LSL_Rotation)
-                        {
-                            LSL_Rotation rot = (LSL_Rotation)v;
+							rValVec.xRVal = new TokenRValConst(token, vec.x);
+							rValVec.yRVal = new TokenRValConst(token, vec.y);
+							rValVec.zRVal = new TokenRValConst(token, vec.z);
+							rVal = rValVec;
+						} else if (v is LSL_Rotation) {
+							LSL_Rotation rot = (LSL_Rotation)v;
 							TokenRValRot rValRot =  new TokenRValRot (token);
-                            rValRot.xRVal = new TokenRValConst(token, rot.x);
-                            rValRot.yRVal = new TokenRValConst(token, rot.y);
-                            rValRot.zRVal = new TokenRValConst(token, rot.z);
-                            rValRot.wRVal = new TokenRValConst(token, rot.s);
-                            rVal = rValRot;
-                        }
-						else
-                        {
-                            //ErrorMsg (token, "unhandled type for "+((CompValuSField)val).field.Name);
-                            
+							rValRot.xRVal = new TokenRValConst(token, rot.x);
+							rValRot.yRVal = new TokenRValConst(token, rot.y);
+							rValRot.zRVal = new TokenRValConst(token, rot.z);
+							rValRot.wRVal = new TokenRValConst(token, rot.s);
+							rVal = rValRot;
+						} else {
 							rVal = new TokenRValCVSField (token, (CompValuSField)val);
-                        }
+						}
 					}
 
 					/*
@@ -1489,26 +1551,33 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			}
 
 			/*
-			 * L-value being used as an R-value is all we got left to try.
+			 * Maybe we have <type>.<name> referencing a static field or method of some type.
 			 */
-			lVal = ParseLVal (ref token);
-			if (lVal == null) return null;
+			/*
+			if ((token is TokenType) && (token.nextToken is TokenKwDot) && (token.nextToken.nextToken is TokenName)) {
+				TokenLValSField field = new TokenLValSField (token.nextToken.nextToken);
+				field.baseType = (TokenType)token;
+				field.fieldName = (TokenName)token.nextToken.nextToken;
+				token = token.nextToken.nextToken.nextToken;
+				return field;
+			}
+			*/
 
 			/*
-			 * Maybe the L-value is followed by a postfix operator.
+			 * All we got left is <name>, eg, arg, global or local variable reference
 			 */
-			if ((token is TokenKwIncr) || (token is TokenKwDecr)) {
-				TokenRValAsnPost asnPost = new TokenRValAsnPost (token);
-				asnPost.lVal = lVal;
-				asnPost.postfix = token;
+			if (token is TokenName) {
+				TokenLValName name = new TokenLValName ((TokenName)token);
 				token = token.nextToken;
-				return asnPost;
+				return name;
 			}
 
 			/*
-			 * Just a simple L-value being used as an R-value.
+			 * Who knows what it is supposed to be?
 			 */
-			return new TokenRValLVal (lVal);
+			ErrorMsg (token, "invalid operand token");
+			token = SkipPastSemi (token);
+			return null;
 		}
 
 		/**
@@ -1684,95 +1753,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		}
 
 		/**
-		 * @brief parse a L-value, ie, something that can be used on left side of '='
-		 * @param token = points to first token to check
-		 * @returns encapsulation of L-value expression
-		 *          token = advanced past L-value expression
-		 */
-		private TokenLVal ParseLVal (ref Token token)
-		{
-			/*
-			 * L-values always start with a name
-			 */
-			if (!(token is TokenName)) {
-				ErrorMsg (token, "invalid L-value, expect name");
-				token = SkipPastSemi (token);
-				return null;
-			}
-			TokenLVal tokenLVal = new TokenLValName ((TokenName)token);
-			token = token.nextToken;
-
-			while (true) {
-
-				/*
-				 * They may be followed by .fieldname
-				 */
-				if (token is TokenKwDot) {
-					TokenLValField tokenLValField = new TokenLValField (token);
-					token = token.nextToken;
-					if (!(token is TokenName)) {
-						ErrorMsg (token, "invalid field name");
-						token = SkipPastSemi (token);
-						return null;
-					}
-					tokenLValField.baseLVal = tokenLVal;
-					tokenLValField.field = (TokenName)token;
-					tokenLVal = tokenLValField;
-					token = token.nextToken;
-					continue;
-				}
-
-				/*
-				 * They may be followed by [subscript(s)]
-				 */
-				if (token is TokenKwBrkOpen) {
-					TokenLValArEle tokenLValArEle = new TokenLValArEle (token);
-					token = token.nextToken;
-
-					/*
-					 * Parse subscript(s) expression.
-					 */
-					tokenLValArEle.subRVal = ParseRVal (ref token, brkCloseOnly);
-					if (tokenLValArEle.subRVal == null) {
-						ErrorMsg (tokenLValArEle, "invalid subscript");
-						return null;
-					}
-
-					/*
-					 * See if comma-separated list of values.
-					 */
-					bool sideEffects = false;
-					TokenRVal subscriptRVals;
-					int numSubscripts = SplitCommaRVals (tokenLValArEle.subRVal, out subscriptRVals, ref sideEffects);
-					if (numSubscripts > 1) {
-
-						/*
-						 * If so, put the values in an LSL_List object.
-						 */
-						TokenRValList rValList = new TokenRValList (tokenLValArEle);
-						rValList.rVal = subscriptRVals;
-						rValList.nItems = numSubscripts;
-						rValList.sideEffects = sideEffects;
-						tokenLValArEle.subRVal = rValList;
-					}
-
-					/*
-					 * Either way, save array variable name
-					 * and substitute whole reference for L-value
-					 */
-					tokenLValArEle.baseLVal = tokenLVal;
-					tokenLVal = tokenLValArEle;
-					continue;
-				}
-
-				/*
-				 * No modifier we recognize, done parsing.
-				 */
-				return tokenLVal;
-			}
-		}
-
-		/**
 		 * @brief output error message and remember that there is an error.
 		 * @param token = what token is associated with the error
 		 * @param message = error message string
@@ -1835,6 +1815,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			int n = reader.ReadInt ();
 			types = new TokenType[n];
 			names = new TokenName[n];
+			locns = new CompValu[n];
 			for (int i = 0; i < n; i ++) {
 				types[i] = (TokenType)reader.ReadToken ();
 				names[i] = (TokenName)reader.ReadToken ();
@@ -1987,29 +1968,29 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	/**
 	 * @brief any expression that can go on left side of an "="
 	 */
-	public class TokenLVal : Token {
+	public class TokenLVal : TokenRVal {
 
 		public TokenLVal (Token original) : base (original) { }
 	}
 
 	/**
-	 * @brief an element of an L-value array is an L-value
+	 * @brief an element of an array is an L-value
 	 */
 	public class TokenLValArEle : TokenLVal {
-		public TokenLVal baseLVal;
+		public TokenRVal baseRVal;
 		public TokenRVal subRVal;
 
 		public TokenLValArEle (Token original) : base (original) { }
 
 		public override void WriteOut (TokenWriter writer)
 		{
-			writer.Write (baseLVal);
+			writer.Write (baseRVal);
 			writer.Write (subRVal);
 		}
 
 		public override void ReadIn (TokenReader reader)
 		{
-			baseLVal = (TokenLVal)reader.ReadToken ();
+			baseRVal = (TokenRVal)reader.ReadToken ();
 			subRVal  = (TokenRVal)reader.ReadToken ();
 		}
 	}
@@ -2017,21 +1998,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	/**
 	 * @brief a field within an L-value struct is an L-value
 	 */
-	public class TokenLValField : TokenLVal {
-		public TokenLVal baseLVal;
+	public class TokenLValIField : TokenLVal {
+		public TokenRVal baseRVal;
 		public TokenName field;
 
-		public TokenLValField (Token original) : base (original) { }
+		public TokenLValIField (Token original) : base (original) { }
 
 		public override void WriteOut (TokenWriter writer)
 		{
-			writer.Write (baseLVal);
+			writer.Write (baseRVal);
 			writer.Write (field);
 		}
 
 		public override void ReadIn (TokenReader reader)
 		{
-			baseLVal = (TokenLVal)reader.ReadToken ();
+			baseRVal = (TokenRVal)reader.ReadToken ();
 			field    = (TokenName)reader.ReadToken ();
 		}
 	}
@@ -2125,11 +2106,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	}
 
 	/**
-	 * @brief calling a function, ie, may have side-effects
+	 * @brief calling a function or method, ie, may have side-effects
 	 */
 	public class TokenRValCall : TokenRVal {
 
-		public TokenLVal meth;  // TokenLValName or TokenLValField
+		public TokenRVal meth;  // TokenLValName or TokenLValField
 		public TokenRVal args;  // null-terminated TokenRVal list
 		public int nArgs;       // number of elements in args
 
@@ -2299,32 +2280,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				}
 				lastRVal = thisRVal;
 			}
-		}
-	}
-
-	/**
-	 * @brief an L-value is being used as an R-value
-	 */
-	public class TokenRValLVal : TokenRVal {
-		public TokenLVal lvToken;
-		public TokenRValLVal (TokenLVal original) : base (original)
-		{
-			this.lvToken = original;
-		}
-
-		/**
-		 * @brief Serialization/Deserialization.
-		 */
-		public TokenRValLVal (Token original) : base (original) { }
-
-		public override void WriteOut (TokenWriter writer)
-		{
-			writer.Write (lvToken);
-		}
-
-		public override void ReadIn (TokenReader reader)
-		{
-			lvToken = (TokenLVal)reader.ReadToken ();
 		}
 	}
 
@@ -2770,7 +2725,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public TokenLVal keyLVal;
 		public TokenLVal valLVal;
-		public TokenLVal arrayLVal;
+		public TokenRVal arrayRVal;
 		public TokenStmt bodyStmt;  // there is always a body statement, though it may be a null statement
 
 		public TokenStmtForEach (Token original) : base (original) { }
@@ -2779,7 +2734,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			writer.Write (keyLVal);
 			writer.Write (valLVal);
-			writer.Write (arrayLVal);
+			writer.Write (arrayRVal);
 			writer.Write (bodyStmt);
 		}
 
@@ -2787,7 +2742,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			keyLVal   = (TokenLVal)reader.ReadToken ();
 			valLVal   = (TokenLVal)reader.ReadToken ();
-			arrayLVal = (TokenLVal)reader.ReadToken ();
+			arrayRVal = (TokenRVal)reader.ReadToken ();
 			bodyStmt  = (TokenStmt)reader.ReadToken ();
 		}
 	}
