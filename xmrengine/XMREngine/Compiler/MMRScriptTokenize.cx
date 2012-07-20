@@ -26,6 +26,8 @@ using System.Text;
 using System;
 using System.Collections.Generic;
 
+#define strcasecmp(s,t) String.Compare(s,t,StringComparison.OrdinalIgnoreCase)
+
 namespace OpenSim.Region.ScriptEngine.XMREngine {
 
     public delegate void TokenErrorMessage (Token token, string message);
@@ -135,6 +137,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         private bool optionArrays;      // has seen 'XMROption arrays;'
         private bool optionAdvFlowCtl;  // has seen 'XMROption advFlowCtl;'
         private bool optionTryCatch;    // has seen 'XMROption tryCatch;'
+        private bool optionObjects;     // has seen 'XMROption objects;'
 
         /**
          * @brief convert a source file in the form of a string
@@ -304,6 +307,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                         } else if (optionTryCatch && tryCatchKeywords.ContainsKey (name)) {
                             Object[] args = new Object[] { emsg, filNam, lineNo, i - bolIdx };
                             AppendToken ((Token)tryCatchKeywords[name].Invoke (args));
+                        } else if (optionObjects && objectsKeywords.ContainsKey (name)) {
+                            Object[] args = new Object[] { emsg, filNam, lineNo, i - bolIdx };
+                            AppendToken ((Token)objectsKeywords[name].Invoke (args));
                         } else {
                             AppendToken (new TokenName (emsg, filNam, lineNo, i - bolIdx, name));
                         }
@@ -316,30 +322,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                  * Check for option enables.
                  */
                 if ((c == ';') && (lastToken is TokenName) && 
-                                  (((TokenName)lastToken).val == "arrays") &&
-                                  (lastToken.prevToken is TokenName) && 
-                                  (((TokenName)lastToken.prevToken).val == "XMROption")) {
-                    optionArrays = true;
-                    lastToken = lastToken.prevToken.prevToken;
-                    lastToken.nextToken = null;
-                    continue;
-                }
-
-                if ((c == ';') && (lastToken is TokenName) && 
-                                  (((TokenName)lastToken).val == "advFlowCtl") &&
-                                  (lastToken.prevToken is TokenName) && 
-                                  (((TokenName)lastToken.prevToken).val == "XMROption")) {
-                    optionAdvFlowCtl = true;
-                    lastToken = lastToken.prevToken.prevToken;
-                    lastToken.nextToken = null;
-                    continue;
-                }
-
-                if ((c == ';') && (lastToken is TokenName) && 
-                                  (((TokenName)lastToken).val == "tryCatch") &&
-                                  (lastToken.prevToken is TokenName) && 
-                                  (((TokenName)lastToken.prevToken).val == "XMROption")) {
-                    optionTryCatch = true;
+                    (lastToken.prevToken is TokenName) && 
+                    (strcasecmp(((TokenName)lastToken.prevToken).val, "xmroption") == 0)) {
+                    string opt = ((TokenName)lastToken).val;
+                    if (strcasecmp (opt, "arrays") == 0) {
+                        optionArrays = true;
+                    } else if (strcasecmp (opt, "advflowctl") == 0) {
+                        optionAdvFlowCtl = true;
+                    } else if (strcasecmp (opt, "trycatch") == 0) {
+                        optionTryCatch = true;
+                    } else if (strcasecmp (opt, "objects") == 0) {
+                        optionObjects = true;
+                    } else {
+                        lastToken.ErrorMsg ("unknown XMROption");
+                    }
                     lastToken = lastToken.prevToken.prevToken;
                     lastToken.nextToken = null;
                     continue;
@@ -652,85 +648,95 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         };
 
         /**
-         * @brief keyword table
-         *        The keyword table translates a keyword string
+         * @brief keyword tables
+         *        The keyword tables translate a keyword string
          *        to the corresponding token constructor.
          */
-        private static void BuildKeywords ()
+        private static Dictionary<string, System.Reflection.ConstructorInfo> keywords           = BuildKeywords ();
+        private static Dictionary<string, System.Reflection.ConstructorInfo> arrayKeywords      = BuildArrayKeywords ();
+        private static Dictionary<string, System.Reflection.ConstructorInfo> advFlowCtlKeywords = BuildAdvFlowCtlKeywords ();
+        private static Dictionary<string, System.Reflection.ConstructorInfo> tryCatchKeywords   = BuildTryCatchKeywords ();
+        private static Dictionary<string, System.Reflection.ConstructorInfo> objectsKeywords    = BuildObjectsKeywords ();
+
+        private static Dictionary<string, System.Reflection.ConstructorInfo> BuildKeywords ()
         {
-            if (keywords == null) {
-                Dictionary<string, System.Reflection.ConstructorInfo> kws = new Dictionary<string, System.Reflection.ConstructorInfo> ();
+            Dictionary<string, System.Reflection.ConstructorInfo> kws = new Dictionary<string, System.Reflection.ConstructorInfo> ();
 
-                kws.Add ("default",  GetTokenCtor (typeof (TokenKwDefault)));
-                kws.Add ("do",       GetTokenCtor (typeof (TokenKwDo)));
-                kws.Add ("else",     GetTokenCtor (typeof (TokenKwElse)));
-                kws.Add ("float",    GetTokenCtor (typeof (TokenTypeFloat)));
-                kws.Add ("for",      GetTokenCtor (typeof (TokenKwFor)));
-                kws.Add ("if",       GetTokenCtor (typeof (TokenKwIf)));
-                kws.Add ("integer",  GetTokenCtor (typeof (TokenTypeInt)));
-                kws.Add ("list",     GetTokenCtor (typeof (TokenTypeList)));
-                kws.Add ("jump",     GetTokenCtor (typeof (TokenKwJump)));
-                kws.Add ("key",      GetTokenCtor (typeof (TokenTypeStr)));
-                kws.Add ("return",   GetTokenCtor (typeof (TokenKwRet)));
-                kws.Add ("rotation", GetTokenCtor (typeof (TokenTypeRot)));
-                kws.Add ("state",    GetTokenCtor (typeof (TokenKwState)));
-                kws.Add ("string",   GetTokenCtor (typeof (TokenTypeStr)));
-                kws.Add ("vector",   GetTokenCtor (typeof (TokenTypeVec)));
-                kws.Add ("while",    GetTokenCtor (typeof (TokenKwWhile)));
+            kws.Add ("default",  GetTokenCtor (typeof (TokenKwDefault)));
+            kws.Add ("do",       GetTokenCtor (typeof (TokenKwDo)));
+            kws.Add ("else",     GetTokenCtor (typeof (TokenKwElse)));
+            kws.Add ("float",    GetTokenCtor (typeof (TokenTypeFloat)));
+            kws.Add ("for",      GetTokenCtor (typeof (TokenKwFor)));
+            kws.Add ("if",       GetTokenCtor (typeof (TokenKwIf)));
+            kws.Add ("integer",  GetTokenCtor (typeof (TokenTypeInt)));
+            kws.Add ("list",     GetTokenCtor (typeof (TokenTypeList)));
+            kws.Add ("jump",     GetTokenCtor (typeof (TokenKwJump)));
+            kws.Add ("key",      GetTokenCtor (typeof (TokenTypeStr)));
+            kws.Add ("return",   GetTokenCtor (typeof (TokenKwRet)));
+            kws.Add ("rotation", GetTokenCtor (typeof (TokenTypeRot)));
+            kws.Add ("state",    GetTokenCtor (typeof (TokenKwState)));
+            kws.Add ("string",   GetTokenCtor (typeof (TokenTypeStr)));
+            kws.Add ("vector",   GetTokenCtor (typeof (TokenTypeVec)));
+            kws.Add ("while",    GetTokenCtor (typeof (TokenKwWhile)));
 
-                //MB();
-                keywords = kws;
-            }
-
-            if (arrayKeywords == null) {
-                Dictionary<string, System.Reflection.ConstructorInfo> kws = new Dictionary<string, System.Reflection.ConstructorInfo> ();
-
-                kws.Add ("array",   GetTokenCtor (typeof (TokenTypeArray)));
-                kws.Add ("foreach", GetTokenCtor (typeof (TokenKwForEach)));
-                kws.Add ("in",      GetTokenCtor (typeof (TokenKwIn)));
-                kws.Add ("is",      GetTokenCtor (typeof (TokenKwIs)));
-                kws.Add ("object",  GetTokenCtor (typeof (TokenTypeObject)));
-                kws.Add ("undef",   GetTokenCtor (typeof (TokenKwUndef)));
-
-                //MB();
-                arrayKeywords = kws;
-            }
-
-            if (advFlowCtlKeywords == null) {
-                Dictionary<string, System.Reflection.ConstructorInfo> kws = new Dictionary<string, System.Reflection.ConstructorInfo> ();
-
-                kws.Add ("break",    GetTokenCtor (typeof (TokenKwBreak)));
-                kws.Add ("case",     GetTokenCtor (typeof (TokenKwCase)));
-                kws.Add ("constant", GetTokenCtor (typeof (TokenKwConst)));
-                kws.Add ("continue", GetTokenCtor (typeof (TokenKwCont)));
-                kws.Add ("switch",   GetTokenCtor (typeof (TokenKwSwitch)));
-
-                //MB();
-                advFlowCtlKeywords = kws;
-            }
-
-            if (tryCatchKeywords == null) {
-                Dictionary<string, System.Reflection.ConstructorInfo> kws = new Dictionary<string, System.Reflection.ConstructorInfo> ();
-
-                kws.Add ("catch",   GetTokenCtor (typeof (TokenKwCatch)));
-                kws.Add ("finally", GetTokenCtor (typeof (TokenKwFinally)));
-                kws.Add ("throw",   GetTokenCtor (typeof (TokenKwThrow)));
-                kws.Add ("try",     GetTokenCtor (typeof (TokenKwTry)));
-
-                //MB();
-                tryCatchKeywords = kws;
-            }
-
-            //MB();
+            return kws;
         }
 
-        private static Dictionary<string, System.Reflection.ConstructorInfo> keywords = null;
-        private static Dictionary<string, System.Reflection.ConstructorInfo> arrayKeywords = null;
-        private static Dictionary<string, System.Reflection.ConstructorInfo> advFlowCtlKeywords = null;
-        private static Dictionary<string, System.Reflection.ConstructorInfo> tryCatchKeywords = null;
+        private static Dictionary<string, System.Reflection.ConstructorInfo> BuildArrayKeywords ()
+        {
+            Dictionary<string, System.Reflection.ConstructorInfo> kws = new Dictionary<string, System.Reflection.ConstructorInfo> ();
+
+            kws.Add ("array",   GetTokenCtor (typeof (TokenTypeArray)));
+            kws.Add ("foreach", GetTokenCtor (typeof (TokenKwForEach)));
+            kws.Add ("in",      GetTokenCtor (typeof (TokenKwIn)));
+            kws.Add ("is",      GetTokenCtor (typeof (TokenKwIs)));
+            kws.Add ("object",  GetTokenCtor (typeof (TokenTypeObject)));
+            kws.Add ("undef",   GetTokenCtor (typeof (TokenKwUndef)));
+
+            return kws;
+        }
+
+        private static Dictionary<string, System.Reflection.ConstructorInfo> BuildAdvFlowCtlKeywords ()
+        {
+            Dictionary<string, System.Reflection.ConstructorInfo> kws = new Dictionary<string, System.Reflection.ConstructorInfo> ();
+
+            kws.Add ("break",    GetTokenCtor (typeof (TokenKwBreak)));
+            kws.Add ("case",     GetTokenCtor (typeof (TokenKwCase)));
+            kws.Add ("constant", GetTokenCtor (typeof (TokenKwConst)));
+            kws.Add ("continue", GetTokenCtor (typeof (TokenKwCont)));
+            kws.Add ("switch",   GetTokenCtor (typeof (TokenKwSwitch)));
+
+            return kws;
+        }
+
+        private static Dictionary<string, System.Reflection.ConstructorInfo> BuildTryCatchKeywords ()
+        {
+            Dictionary<string, System.Reflection.ConstructorInfo> kws = new Dictionary<string, System.Reflection.ConstructorInfo> ();
+
+            kws.Add ("catch",   GetTokenCtor (typeof (TokenKwCatch)));
+            kws.Add ("finally", GetTokenCtor (typeof (TokenKwFinally)));
+            kws.Add ("throw",   GetTokenCtor (typeof (TokenKwThrow)));
+            kws.Add ("try",     GetTokenCtor (typeof (TokenKwTry)));
+
+            return kws;
+        }
+
+        private static Dictionary<string, System.Reflection.ConstructorInfo> BuildObjectsKeywords ()
+        {
+            Dictionary<string, System.Reflection.ConstructorInfo> kws = new Dictionary<string, System.Reflection.ConstructorInfo> ();
+
+            kws.Add ("class",     GetTokenCtor (typeof (TokenKwClass)));
+            kws.Add ("delegate",  GetTokenCtor (typeof (TokenKwDelegate)));
+            kws.Add ("interface", GetTokenCtor (typeof (TokenKwInterface)));
+            kws.Add ("new",       GetTokenCtor (typeof (TokenKwNew)));
+            kws.Add ("override",  GetTokenCtor (typeof (TokenKwOverride)));
+            kws.Add ("static",    GetTokenCtor (typeof (TokenKwStatic)));
+            kws.Add ("struct",    GetTokenCtor (typeof (TokenKwStruct)));
+            kws.Add ("virtual",   GetTokenCtor (typeof (TokenKwVirtual)));
+
+            return kws;
+        }
     }
-
-
 
     /**
      * @brief All output token types in addition to TokenBegin.
@@ -920,8 +926,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
     DEFTOKENKW(Break    , "break",    Null, Null)
     DEFTOKENKW(Case     , "case",     Null, Null)
     DEFTOKENKW(Catch    , "catch",    Null, Null)
+    DEFTOKENKW(Class    , "class",    Null, Null)
     DEFTOKENKW(Const    , "constant", Null, Null)
     DEFTOKENKW(Cont     , "continue", Null, Null)
+    DEFTOKENKW(Delegate , "delegate", Null, Null)
     DEFTOKENKW(Default  , "default",  Null, Null)
     DEFTOKENKW(Do       , "do",       Null, Null)
     DEFTOKENKW(Else     , "else",     Null, Null)
@@ -930,14 +938,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
     DEFTOKENKW(ForEach  , "foreach",  Null, Null)
     DEFTOKENKW(If       , "if",       Null, Null)
     DEFTOKENKW(In       , "in",       Null, Null)
+    DEFTOKENKW(Interface, "interface",Null, Null)
     DEFTOKENKW(Is       , "is",       Null, Null)
     DEFTOKENKW(Jump     , "jump",     Null, Null)
+    DEFTOKENKW(New      , "new",      Null, Null)
+    DEFTOKENKW(Override , "override", Null, Null)
     DEFTOKENKW(Ret      , "return",   Null, Null)
     DEFTOKENKW(State    , "state",    Null, Null)
+    DEFTOKENKW(Static   , "static",   Null, Null)
+    DEFTOKENKW(Struct   , "struct",   Null, Null)
     DEFTOKENKW(Switch   , "switch",   Null, Null)
     DEFTOKENKW(Throw    , "throw",    Null, Null)
     DEFTOKENKW(Try      , "try",      Null, Null)
     DEFTOKENKW(Undef    , "undef",    Null, Null)
+    DEFTOKENKW(Virtual  , "virtual",  Null, Null)
     DEFTOKENKW(While    , "while",    Null, Null)
 
     /**
