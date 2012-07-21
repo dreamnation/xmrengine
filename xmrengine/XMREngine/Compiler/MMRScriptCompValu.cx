@@ -44,14 +44,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.isFinal = true;
 		}
 
-		public Type SysType() {
-			return (type.lslBoxing != null) ? type.lslBoxing : type.typ;
-		}
-
 		public CompValu (TokenType type, bool isFinal)
 		{
 			this.type    = type;
 			this.isFinal = isFinal;
+		}
+
+		public Type ToSysType()
+		{
+			return (type.ToLSLWrapType () != null) ? type.ToLSLWrapType () : type.ToSysType ();
 		}
 
 		// emit code to push value onto stack
@@ -285,7 +286,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			} else if (type is TokenTypeInt) {
 				scg.ilGen.Emit (OpCodes.Ldelem_I4);
 			} else {
-				scg.ilGen.Emit (OpCodes.Ldelem, SysType());
+				scg.ilGen.Emit (OpCodes.Ldelem, ToSysType());
 			}
 		}
 		public override void PushByRef (ScriptCodeGen scg)
@@ -293,7 +294,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			scg.ilGen.Emit (OpCodes.Ldarg_0);            // xmrinstance
 			scg.ilGen.Emit (OpCodes.Ldfld, field);       // xmrinstance.gbl<Type>s
 			scg.PushConstantI4 (index);
-			scg.ilGen.Emit (OpCodes.Ldelema, SysType());
+			scg.ilGen.Emit (OpCodes.Ldelema, ToSysType());
 		}
 		public override void PopPre (ScriptCodeGen scg)
 		{
@@ -314,7 +315,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			} else if (type is TokenTypeInt) {
 				scg.ilGen.Emit (OpCodes.Stelem_I4);
 			} else {
-				scg.ilGen.Emit (OpCodes.Stelem, SysType());
+				scg.ilGen.Emit (OpCodes.Stelem, ToSysType());
 			}
 		}
 	}
@@ -528,7 +529,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (name == null) {
 				name = "__tmp_" + (++ scg.tempCompValuNum);
 			}
-			this.localBuilder = scg.ilGen.DeclareLocal (SysType(), name);
+			this.localBuilder = scg.ilGen.DeclareLocal (ToSysType(), name);
 			scg.activeTemps.AddLast (this);
 		}
 		public override void PushVal (ScriptCodeGen scg)

@@ -430,7 +430,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * In any case, for arguments that were specified, they must be of correct type.
 			 */
 			for (int i = 0; i < nargs; i ++) {
-				if (protoDeclFunc.argDecl.types[i].typ != argDecl.types[i].typ) {
+				if (protoDeclFunc.argDecl.types[i].ToSysType () != argDecl.types[i].ToSysType ()) {
 					ErrorMsg (declFunc, eventname + "(... " + argDecl.types[i].ToString () + " " + 
 					                    argDecl.names[i] + " ...) should be " + 
 					                    protoDeclFunc.argDecl.types[i].ToString ());
@@ -466,7 +466,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 					// <argtype> __lcl_<argname> = (<argtype>)__sw.ehArgs[i];
 					TokenType argTokType = argDecl.types[i];
-					Type argSysType = argTokType.typ;
+					Type argSysType = argTokType.ToSysType ();
 					CompValu local = new CompValuTemp (argTokType, argDecl.names[i].val, this);
 					argDecl.locns[i] = local;
 					local.PopPre (this);
@@ -532,7 +532,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			Type[] argTypes = new Type[argDecl.types.Length+1];
 			argTypes[0] = typeof (XMRInstAbstract);
 			for (int i = 0; i < argDecl.types.Length; i ++) {
-				argTypes[i+1] = argDecl.types[i].typ;
+				argTypes[i+1] = argDecl.types[i].ToSysType ();
 			}
 
 			/*
@@ -540,7 +540,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			string methodName = "__fun_" + name;
 			declFunc.ilGen = new ScriptMyILGen (methodName,
-			                                    declFunc.retType.typ,
+			                                    declFunc.retType.ToSysType (),
 			                                    argTypes,
 			                                    objFileWriter);
 		}
@@ -627,7 +627,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			retLabel = ilGen.DefineLabel ("__retlbl");
 			retValue = null;
 			if (!(curDeclFunc.retType is TokenTypeVoid)) {
-				retValue = ilGen.DeclareLocal (curDeclFunc.retType.typ, "__retval");
+				retValue = ilGen.DeclareLocal (curDeclFunc.retType.ToSysType (), "__retval");
 			}
 
 			/*
@@ -2202,7 +2202,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 * We can only actually process it if the resultant type is of the left type.
 					 * So for example, we can't do float += list, as float + list gives a list.
 					 */
-					if (binOpStr.outtype == left.type.typ) {
+					if (binOpStr.outtype == left.type.ToSysType ()) {
 
 						/*
 						 * Types are ok, see if the '=' (read/modify/write) form is allowed...
@@ -2691,7 +2691,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				 * it is an object, not a struct.
 				 */
 				eRVal.PushVal (this);
-				if (eRVal.type.lslBoxing == null) {
+				if (eRVal.type.ToLSLWrapType () == null) {
 					if (eRVal.type is TokenTypeFloat) {
 						ilGen.Emit (OpCodes.Newobj, lslFloatConstructorInfo);
 						ilGen.Emit (OpCodes.Box, typeof (LSL_Float));
@@ -2701,13 +2701,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					} else if (eRVal.type is TokenTypeStr) {
 						ilGen.Emit (OpCodes.Newobj, lslStringConstructorInfo);
 						ilGen.Emit (OpCodes.Box, typeof (LSL_String));
-					} else if (eRVal.type.typ.IsValueType) {
-						ilGen.Emit (OpCodes.Box, eRVal.type.typ);
+					} else if (eRVal.type.ToSysType ().IsValueType) {
+						ilGen.Emit (OpCodes.Box, eRVal.type.ToSysType ());
 					}
-				} else if (eRVal.type.lslBoxing.IsValueType) {
+				} else if (eRVal.type.ToLSLWrapType ().IsValueType) {
 
 					// Convert the LSL value structs to an object of the LSL-boxed type
-					ilGen.Emit (OpCodes.Box, eRVal.type.lslBoxing);
+					ilGen.Emit (OpCodes.Box, eRVal.type.ToLSLWrapType ());
 				}
 				ilGen.Emit (OpCodes.Stelem, typeof (object));
 				i ++;
@@ -2828,7 +2828,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				CompValu result = new CompValuTemp (tokenTypeBool, null, this);
 				result.PopPre (this);
 				val.PushVal (this);
-				ilGen.Emit (OpCodes.Isinst, ((TokenTypeExpType)typeExp).typeToken.typ);
+				ilGen.Emit (OpCodes.Isinst, ((TokenTypeExpType)typeExp).typeToken.ToSysType ());
 				ilGen.Emit (OpCodes.Ldnull);
 				ilGen.Emit (OpCodes.Ceq);
 				PushConstantI4 (1);

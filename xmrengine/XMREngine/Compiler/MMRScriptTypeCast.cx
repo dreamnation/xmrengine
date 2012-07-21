@@ -124,12 +124,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * If the basic types are the same, there is no conceptual casting needed.
-			 * However, there may be boxing/unboxing to/from the LSL wrappers.
+			 * However, there may be wraping/unwraping to/from the LSL wrappers.
 			 */
-			if (oldType.typ == newType.typ) {
-				if (oldType.lslBoxing != newType.lslBoxing) {
-					LSLUnbox (scg.ilGen, oldType);
-					LSLBox (scg.ilGen, newType);
+			if (oldType.ToSysType () == newType.ToSysType ()) {
+				if (oldType.ToLSLWrapType () != newType.ToLSLWrapType ()) {
+					LSLUnwrap (scg.ilGen, oldType);
+					LSLWrap (scg.ilGen, newType);
 				}
 				return;
 			}
@@ -161,39 +161,39 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Ok, output cast.  But make sure it is in native form without any LSL_Float-style boxing.
 			 */
-			LSLUnbox (scg.ilGen, oldType);
+			LSLUnwrap (scg.ilGen, oldType);
 			castDelegate (scg.ilGen);
-			LSLBox (scg.ilGen, newType);
+			LSLWrap (scg.ilGen, newType);
 		}
 
 		/**
-		 * @brief If value on the stack is an LSL-style boxed value, unbox it.
+		 * @brief If value on the stack is an LSL-style wrapped value, unwrap it.
 		 */
-		public static void LSLUnbox (ScriptMyILGen ilGen, TokenType type)
+		public static void LSLUnwrap (ScriptMyILGen ilGen, TokenType type)
 		{
-			if (type.lslBoxing == typeof (LSL_Float)) {
+			if (type.ToLSLWrapType () == typeof (LSL_Float)) {
 				ilGen.Emit (OpCodes.Ldfld, lslFloatValueFieldInfo);
 			}
-			if (type.lslBoxing == typeof (LSL_Integer)) {
+			if (type.ToLSLWrapType () == typeof (LSL_Integer)) {
 				ilGen.Emit (OpCodes.Ldfld, lslIntegerValueFieldInfo);
 			}
-			if (type.lslBoxing == typeof (LSL_String)) {
+			if (type.ToLSLWrapType () == typeof (LSL_String)) {
 				ilGen.Emit (OpCodes.Ldfld, lslStringValueFieldInfo);
 			}
 		}
 
 		/**
-		 * @brief If caller wants the unboxed value on stack boxed LSL-style, box it.
+		 * @brief If caller wants the unwrapped value on stack wrapped LSL-style, wrap it.
 		 */
-		private static void LSLBox (ScriptMyILGen ilGen, TokenType type)
+		private static void LSLWrap (ScriptMyILGen ilGen, TokenType type)
 		{
-			if (type.lslBoxing == typeof (LSL_Float)) {
+			if (type.ToLSLWrapType () == typeof (LSL_Float)) {
 				ilGen.Emit (OpCodes.Newobj, lslFloatConstructorInfo);
 			}
-			if (type.lslBoxing == typeof (LSL_Integer)) {
+			if (type.ToLSLWrapType () == typeof (LSL_Integer)) {
 				ilGen.Emit (OpCodes.Newobj, lslIntegerConstructorInfo);
 			}
-			if (type.lslBoxing == typeof (LSL_String)) {
+			if (type.ToLSLWrapType () == typeof (LSL_String)) {
 				ilGen.Emit (OpCodes.Newobj, lslStringConstructorInfo);
 			}
 		}

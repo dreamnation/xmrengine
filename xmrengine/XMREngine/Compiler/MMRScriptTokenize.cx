@@ -1086,52 +1086,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
     /*
      * Various datatypes.
      */
-    public class TokenType : TokenNS {
-        public System.Type typ;
-        public System.Type lslBoxing;  // null: normal
-                                       // else: LSL-style boxing, ie, LSL_Integer, LSL_Float, LSL_String
-                                       //       typ=System.Int32;  lslBoxing=LSL_Integer
-                                       //       typ=System.Float;  lslBoxing=LSL_Float
-                                       //       typ=System.String; lslBoxing=LSL_String
+    public abstract class TokenType : TokenNS {
 
-        public TokenType (TokenErrorMessage emsg, string file, int line, int posn, System.Type typ) : base (emsg, file, line, posn)
-        {
-            this.typ = typ;
-        }
-        public TokenType (Token original, System.Type typ) : base (original)
-        {
-            this.typ = typ;
-        }
+        public TokenType (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
+        public TokenType (Token original) : base (original) { }
 
         public static TokenType FromSysType (Token original, System.Type typ)
         {
-            if (typ == typeof (LSL_List)) return new TokenTypeList (original);
-            if (typ == typeof (LSL_Rotation)) return new TokenTypeRot (original);
-            if (typ == typeof (void)) return new TokenTypeVoid (original);
-            if (typ == typeof (LSL_Vector)) return new TokenTypeVec (original);
-            if (typ == typeof (float)) return new TokenTypeFloat (original);
-            if (typ == typeof (int)) return new TokenTypeInt (original);
-            if (typ == typeof (string)) return new TokenTypeStr (original);
-            if (typ == typeof (double)) return new TokenTypeFloat (original);
-            if (typ == typeof (bool)) return new TokenTypeBool (original);
-            if (typ == typeof (object)) return new TokenTypeObject (original);
-            if (typ == typeof (XMR_Array)) return new TokenTypeArray (original);
-
-            if (typ == typeof (LSL_Integer)) {
-                TokenType tokenType = new TokenTypeInt (original);
-                tokenType.lslBoxing = typ;
-                return tokenType;
-            }
-            if (typ == typeof (LSL_Float)) {
-                TokenType tokenType = new TokenTypeFloat (original);
-                tokenType.lslBoxing = typ;
-                return tokenType;
-            }
-            if (typ == typeof (LSL_String)) {
-                TokenType tokenType = new TokenTypeStr (original);
-                tokenType.lslBoxing = typ;
-                return tokenType;
-            }
+            if (typ == typeof (LSL_List))     return new TokenTypeList      (original);
+            if (typ == typeof (LSL_Rotation)) return new TokenTypeRot       (original);
+            if (typ == typeof (void))         return new TokenTypeVoid      (original);
+            if (typ == typeof (LSL_Vector))   return new TokenTypeVec       (original);
+            if (typ == typeof (float))        return new TokenTypeFloat     (original);
+            if (typ == typeof (int))          return new TokenTypeInt       (original);
+            if (typ == typeof (string))       return new TokenTypeStr       (original);
+            if (typ == typeof (double))       return new TokenTypeFloat     (original);
+            if (typ == typeof (bool))         return new TokenTypeBool      (original);
+            if (typ == typeof (object))       return new TokenTypeObject    (original);
+            if (typ == typeof (XMR_Array))    return new TokenTypeArray     (original);
+            if (typ == typeof (LSL_Integer))  return new TokenTypeLSLInt    (original);
+            if (typ == typeof (LSL_Float))    return new TokenTypeLSLFloat  (original);
+            if (typ == typeof (LSL_String))   return new TokenTypeLSLString (original);
 
             throw new Exception ("unknown type " + typ.ToString ());
         }
@@ -1177,64 +1152,111 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
             throw new Exception ("unknown type " + typ.ToString ());
         }
+
+        /**
+         * @brief Return the corresponding system type.
+         */
+        public abstract Type ToSysType ();
+
+        /**
+         * @brief Return the equivalent LSL wrapping type.
+         *
+         *  null: normal
+         *  else: LSL-style wrapping, ie, LSL_Integer, LSL_Float, LSL_String
+         *        ToSysType()=System.Int32;  lslWrapping=LSL_Integer
+         *        ToSysType()=System.Float;  lslWrapping=LSL_Float
+         *        ToSysType()=System.String; lslWrapping=LSL_String
+         */
+        public virtual Type ToLSLWrapType ()
+        {
+            return null;
+        }
     }
 
     public class TokenTypeArray : TokenType {
-        public TokenTypeArray (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn, typeof (XMR_Array)) { }
-        public TokenTypeArray (Token original) : base (original, typeof (XMR_Array)) { }
+        public TokenTypeArray (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
+        public TokenTypeArray (Token original) : base (original) { }
+        public override Type ToSysType () { return typeof (XMR_Array); }
         public override string ToString () { return "array"; }
     }
     public class TokenTypeBool : TokenType {
-        public TokenTypeBool (Token original) : base (original, typeof (bool)) { }
+        public TokenTypeBool (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
+        public TokenTypeBool (Token original) : base (original) { }
+        public override Type ToSysType () { return typeof (bool); }
         public override string ToString () { return "bool"; }
     }
     public class TokenTypeFloat : TokenType {
-        public TokenTypeFloat (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn, typeof (SCRIPTFLOAT)) { }
-        public TokenTypeFloat (Token original) : base (original, typeof (SCRIPTFLOAT)) { }
+        public TokenTypeFloat (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
+        public TokenTypeFloat (Token original) : base (original) { }
+        public override Type ToSysType () { return typeof (SCRIPTFLOAT); }
         public override string ToString () { return "float"; }
     }
     public class TokenTypeInt : TokenType {
-        public TokenTypeInt (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn, typeof (int)) { }
-        public TokenTypeInt (Token original) : base (original, typeof (int)) { }
+        public TokenTypeInt (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
+        public TokenTypeInt (Token original) : base (original) { }
+        public override Type ToSysType () { return typeof (int); }
         public override string ToString () { return "integer"; }
     }
     public class TokenTypeList : TokenType {
-        public TokenTypeList (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn, typeof (LSL_List)) { }
-        public TokenTypeList (Token original) : base (original, typeof (LSL_List)) { }
+        public TokenTypeList (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
+        public TokenTypeList (Token original) : base (original) { }
+        public override Type ToSysType () { return typeof (LSL_List); }
         public override string ToString () { return "list"; }
     }
     public class TokenTypeMeth : TokenType {
         public TokenDeclFunc[] funcs;
-        public TokenTypeMeth (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn, null) { }
-        public TokenTypeMeth (Token original) : base (original, null)
+        public TokenTypeMeth (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
+        public TokenTypeMeth (Token original) : base (original)
         {
             ///??? this.typ = build a type from retType + argTypes ???///
         }
+        public override Type ToSysType () { return null; }
         public override string ToString () { return "method"; }
     }
     public class TokenTypeObject : TokenType {
-        public TokenTypeObject (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn, typeof (object)) { }
-        public TokenTypeObject (Token original) : base (original, typeof (object)) { }
+        public TokenTypeObject (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
+        public TokenTypeObject (Token original) : base (original) { }
+        public override Type ToSysType () { return typeof (object); }
         public override string ToString () { return "object"; }
     }
     public class TokenTypeRot : TokenType {
-        public TokenTypeRot (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn, typeof (LSL_Rotation)) { }
-        public TokenTypeRot (Token original) : base (original, typeof (LSL_Rotation)) { }
+        public TokenTypeRot (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
+        public TokenTypeRot (Token original) : base (original) { }
+        public override Type ToSysType () { return typeof (LSL_Rotation); }
         public override string ToString () { return "rotation"; }
     }
     public class TokenTypeStr : TokenType {
-        public TokenTypeStr (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn, typeof (string)) { }
-        public TokenTypeStr (Token original) : base (original, typeof (string)) { }
+        public TokenTypeStr (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
+        public TokenTypeStr (Token original) : base (original) { }
+        public override Type ToSysType () { return typeof (string); }
         public override string ToString () { return "string"; }
     }
     public class TokenTypeVec : TokenType {
-        public TokenTypeVec (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn, typeof (LSL_Vector)) { } 
-        public TokenTypeVec (Token original) : base (original, typeof (LSL_Vector)) { }
+        public TokenTypeVec (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { } 
+        public TokenTypeVec (Token original) : base (original) { }
+        public override Type ToSysType () { return typeof (LSL_Vector); }
         public override string ToString () { return "vector"; }
     }
     public class TokenTypeVoid : TokenType {
-        public TokenTypeVoid (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn, typeof (void)) { }
-        public TokenTypeVoid (Token original) : base (original, typeof (void)) { }
+        public TokenTypeVoid (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
+        public TokenTypeVoid (Token original) : base (original) { }
+        public override Type ToSysType () { return typeof (void); }
         public override string ToString () { return "void"; }
+    }
+
+    public class TokenTypeLSLFloat : TokenTypeFloat {
+        public TokenTypeLSLFloat (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
+        public TokenTypeLSLFloat (Token original) : base (original) { }
+        public override Type ToLSLWrapType () { return typeof (LSL_Float); }
+    }
+    public class TokenTypeLSLInt : TokenTypeInt {
+        public TokenTypeLSLInt (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
+        public TokenTypeLSLInt (Token original) : base (original) { }
+        public override Type ToLSLWrapType () { return typeof (LSL_Integer); }
+    }
+    public class TokenTypeLSLString : TokenTypeStr {
+        public TokenTypeLSLString (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
+        public TokenTypeLSLString (Token original) : base (original) { }
+        public override Type ToLSLWrapType () { return typeof (LSL_String); }
     }
 }
