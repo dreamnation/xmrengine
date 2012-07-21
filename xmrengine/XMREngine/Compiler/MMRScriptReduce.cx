@@ -132,6 +132,63 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			tokenScript = new TokenScript (token);
 
 			/*
+			 * Keyword 'delegate' is always followed by the return type (or void)
+			 * and followed by '(' arg types ')'.
+			 * Replace with a single type token that encompasses the whole thing.
+			 * Account for delegates inside delegates etc.
+			 */
+			bool didDelegate;
+			do {
+				didDelegate = false;
+				for (Token t = token; !(t is TokenEnd); t = t.nextToken) {
+					if (t is TokenKwDelegate) {
+						List<TokenType> args;
+						Token u = t;
+						TokenType ret;
+						TokenTypeDelegate tokdel;
+
+						// first thing following 'delegate' should be return type
+						// ... or a '(' if return type void
+						u = u.nextToken;
+						if (u is TokenType) {
+							ret = (TokenType)u;
+							u = u.nextToken;
+						} else {
+							ret = new TokenTypeVoid (u);
+						}
+
+						// make sure open paren is there and skip over it
+						if (!(u is TokenKwParOpen)) continue;
+						u = u.nextToken;
+
+						// get comma-separated arg types up to close paren
+						args = new List<TokenType> ();
+						while (!(u is TokenKwParClose)) {
+							if (u is TokenKwComma) u = u.nextToken;
+							if (!(u is TokenType)) break;
+							args.Add ((TokenType)u);
+							u = u.nextToken;
+						}
+						if (!(u is TokenKwParClose)) continue;
+
+						// syntax is ok, create delegate type
+						tokdel = new TokenTypeDelegate (t, ret, args.ToArray ());
+
+						// splice the TokenTypeDelegate in over the whole mess
+						// replacing 'delegate' rettype '(' arg types ')'
+						tokdel.nextToken = u.nextToken;
+						tokdel.prevToken = t.prevToken;
+						t.prevToken.nextToken = tokdel;
+						u.nextToken.prevToken = tokdel;
+
+						t = tokdel;
+
+						didDelegate = true;
+					}
+				}
+			} while (didDelegate);
+
+			/*
 			 * Scan through the tokens until we reach the end.
 			 */
 			while (!(token is TokenEnd)) {
@@ -1345,16 +1402,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					rValCall.nArgs = SplitCommaRVals (rValCall.args, out rValCall.args, ref rValCall.sideEffects);
 				}
 
-				/*
-				 * If calling a function (not a method), rememeber the called function.
-				 */
-				if (operand is TokenLValName) {
-					TokenLValName methName = (TokenLValName)operand;
-					if (!currentDeclFunc.calledFuncs.ContainsKey (methName.name.val)) {
-						currentDeclFunc.calledFuncs[methName.name.val] = methName.name;
-					}
-				}
-
 				operand = rValCall;
 				goto modifiers;
 			}
@@ -1478,7 +1525,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			}
 
 			/*
-			 * Reference to such as 'constant <name> = <value> ;'
+			 * Reference to such as the <name> defined by 'constant <name> = <value> ;'
 			 */
 			if (token is TokenName) {
 				TokenRValConst rValConst = TryUserDefConst (ref token);
@@ -1564,7 +1611,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			*/
 
 			/*
-			 * All we got left is <name>, eg, arg, global or local variable reference
+			 * All we got left is <name>, eg, arg, function, global or local variable reference
 			 */
 			if (token is TokenName) {
 				TokenLValName name = new TokenLValName ((TokenName)token);
@@ -1834,8 +1881,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenStmtBlock body;          // statements
 		public Dictionary<string, TokenStmtLabel> labels = new Dictionary<string, TokenStmtLabel> ();
 		                                     // all labels defined in the function
-		public Dictionary<string, TokenName> calledFuncs = new Dictionary<string, TokenName> ();
-		                                     // all functions called by this function
 		public LinkedList<TokenDeclVar> localVars = new LinkedList<TokenDeclVar> ();
 		                                     // all local variables declared by this function
 		                                     // - doesn't include argument variables
@@ -1854,10 +1899,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			// the below probably should be rederived when reconstructed
 			writer.Write (labels.Count);
 			foreach (KeyValuePair<string, TokenStmtLabel> kvp in labels) {
-				writer.Write (kvp.Value);
-			}
-			writer.Write (calledFuncs.Count);
-			foreach (KeyValuePair<string, TokenName> kvp in calledFuncs) {
 				writer.Write (kvp.Value);
 			}
 			writer.Write (localVars.Count);
@@ -1879,11 +1920,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			while (-- nLabels >= 0) {
 				TokenStmtLabel label = (TokenStmtLabel)reader.ReadToken ();
 				labels[label.name.val] = label;
-			}
-			int nFuncs = reader.ReadInt ();
-			while (-- nFuncs >= 0) {
-				TokenName func = (TokenName)reader.ReadToken ();
-				calledFuncs[func.val] = func;
 			}
 			int nLocals = reader.ReadInt ();
 			while (-- nLocals >= 0) {

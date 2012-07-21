@@ -148,6 +148,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			string oldString = oldType.ToString ();
 			string newString = newType.ToString ();
 
+			if (oldString.StartsWith ("delegate ") && (newString == "object")) {
+				return;
+			}
+			if ((oldString == "object") && newString.StartsWith ("delegate ")) {
+				scg.ilGen.Emit (OpCodes.Castclass, newType.ToSysType ());
+				return;
+			}
+
 			string key = oldString + " " + newString;
 
 			if (!legalTypeCasts.TryGetValue (key, out castDelegate)) {
@@ -159,7 +167,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
-			 * Ok, output cast.  But make sure it is in native form without any LSL_Float-style boxing.
+			 * Ok, output cast.  But make sure it is in native form without any LSL wrapping.
 			 */
 			LSLUnwrap (scg.ilGen, oldType);
 			castDelegate (scg.ilGen);

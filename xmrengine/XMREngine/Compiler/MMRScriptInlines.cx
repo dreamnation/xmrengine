@@ -22,7 +22,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 {
 	public delegate void CodeGenCall (ScriptCodeGen scg, Token token, CompValu result, CompValu[] args);
 
-	public class InlineFunction {
+	public class CompValuInline : CompValu {
 
 		public string signature;      // name(arglsltypes,...)
 		public int numArgs;           // number of arguments from signature
@@ -153,46 +153,46 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * In addition to the parameter values, the inline code (either form) has the
 		 * XMRInstance avalable as argument 0 (OpCodes.Ldarg_0).
 		 */
-		public static Dictionary<string, InlineFunction> CreateDictionary ()
+		public static Dictionary<string, CompValu> CreateDictionary ()
 		{
-			Dictionary<string, InlineFunction> ifd = new Dictionary<string, InlineFunction> ();
-			InlineFunction inf;
+			Dictionary<string, CompValu> ifd = new Dictionary<string, CompValu> ();
+			CompValuInline inf;
 
 			/*
 			 * Mono generates an FPU instruction for many math calls.
 			 */
-			inf = new InlineFunction (ifd, "llAbs(integer)",       typeof (int),         null);                                                                      inf.codeGen = inf.CodeGenLLAbs;
-			inf = new InlineFunction (ifd, "llAcos(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Acos",    oneDoub));  inf.codeGen = inf.CodeGenStatic;
-			inf = new InlineFunction (ifd, "llAsin(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Asin",    oneDoub));  inf.codeGen = inf.CodeGenStatic;
-			inf = new InlineFunction (ifd, "llAtan2(float,float)", typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Atan2",   twoDoubs)); inf.codeGen = inf.CodeGenStatic;
-		///	inf = new InlineFunction (ifd, "llCeil(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Ceiling", oneDoub));  inf.codeGen = inf.CodeGenStatic;
-			inf = new InlineFunction (ifd, "llCos(float)",         typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Cos",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
-			inf = new InlineFunction (ifd, "llFabs(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Abs",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
-		///	inf = new InlineFunction (ifd, "llFloor(float)",       typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Floor",   oneDoub));  inf.codeGen = inf.CodeGenStatic;
-			inf = new InlineFunction (ifd, "llLog(float)",         typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Log",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
-			inf = new InlineFunction (ifd, "llLog10(float)",       typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Log10",   oneDoub));  inf.codeGen = inf.CodeGenStatic;
-			inf = new InlineFunction (ifd, "llPow(float,float)",   typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Pow",     twoDoubs)); inf.codeGen = inf.CodeGenStatic;
-			inf = new InlineFunction (ifd, "llRound(float)",       typeof (int),         null);                                                                      inf.codeGen = inf.CodeGenLLRound;
-			inf = new InlineFunction (ifd, "llSin(float)",         typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Sin",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
-			inf = new InlineFunction (ifd, "llSqrt(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Sqrt",    oneDoub));  inf.codeGen = inf.CodeGenStatic;
-			inf = new InlineFunction (ifd, "llTan(float)",         typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Tan",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new CompValuInline (ifd, "llAbs(integer)",       typeof (int),         null);                                                                      inf.codeGen = inf.CodeGenLLAbs;
+			inf = new CompValuInline (ifd, "llAcos(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Acos",    oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new CompValuInline (ifd, "llAsin(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Asin",    oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new CompValuInline (ifd, "llAtan2(float,float)", typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Atan2",   twoDoubs)); inf.codeGen = inf.CodeGenStatic;
+		///	inf = new CompValuInline (ifd, "llCeil(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Ceiling", oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new CompValuInline (ifd, "llCos(float)",         typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Cos",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new CompValuInline (ifd, "llFabs(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Abs",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
+		///	inf = new CompValuInline (ifd, "llFloor(float)",       typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Floor",   oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new CompValuInline (ifd, "llLog(float)",         typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Log",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new CompValuInline (ifd, "llLog10(float)",       typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Log10",   oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new CompValuInline (ifd, "llPow(float,float)",   typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Pow",     twoDoubs)); inf.codeGen = inf.CodeGenStatic;
+			inf = new CompValuInline (ifd, "llRound(float)",       typeof (int),         null);                                                                      inf.codeGen = inf.CodeGenLLRound;
+			inf = new CompValuInline (ifd, "llSin(float)",         typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Sin",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new CompValuInline (ifd, "llSqrt(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Sqrt",    oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new CompValuInline (ifd, "llTan(float)",         typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Tan",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
 
 			/*
 			 * Our internally defined functions.
 			 */
-		///	inf = new InlineFunction (ifd, "consoleWrite(string)",                                   typeof (void),      null); inf.codeGen = inf.CodeGenConsoleWrite;
-			inf = new InlineFunction (ifd, "xmrEventCallHandler(list)",                              typeof (void),      null); inf.codeGen = inf.CodeGenXMREventCallHandler;
-			inf = new InlineFunction (ifd, "xmrEventDequeue(float,integer,integer,integer,integer)", typeof (LSL_List),  null); inf.codeGen = inf.CodeGenXMREventDequeue;
-			inf = new InlineFunction (ifd, "xmrEventEnqueue(list)",                                  typeof (void),      null); inf.codeGen = inf.CodeGenXMREventEnqueue;
-			inf = new InlineFunction (ifd, "xmrEventLoadDets(list)",                                 typeof (void),      null); inf.codeGen = inf.CodeGenXMREventLoadDets;
-			inf = new InlineFunction (ifd, "xmrEventSaveDets()",                                     typeof (LSL_List),  null); inf.codeGen = inf.CodeGenXMREventSaveDets;
-			inf = new InlineFunction (ifd, "xmrHeapLeft()",                                          typeof (int),       null); inf.codeGen = inf.CodeGenXMRHeapLeft;
-			inf = new InlineFunction (ifd, "xmrStackLeft()",                                         typeof (int),       null); inf.codeGen = inf.CodeGenXMRStackLeft;
+		///	inf = new CompValuInline (ifd, "consoleWrite(string)",                                   typeof (void),      null); inf.codeGen = inf.CodeGenConsoleWrite;
+			inf = new CompValuInline (ifd, "xmrEventCallHandler(list)",                              typeof (void),      null); inf.codeGen = inf.CodeGenXMREventCallHandler;
+			inf = new CompValuInline (ifd, "xmrEventDequeue(float,integer,integer,integer,integer)", typeof (LSL_List),  null); inf.codeGen = inf.CodeGenXMREventDequeue;
+			inf = new CompValuInline (ifd, "xmrEventEnqueue(list)",                                  typeof (void),      null); inf.codeGen = inf.CodeGenXMREventEnqueue;
+			inf = new CompValuInline (ifd, "xmrEventLoadDets(list)",                                 typeof (void),      null); inf.codeGen = inf.CodeGenXMREventLoadDets;
+			inf = new CompValuInline (ifd, "xmrEventSaveDets()",                                     typeof (LSL_List),  null); inf.codeGen = inf.CodeGenXMREventSaveDets;
+			inf = new CompValuInline (ifd, "xmrHeapLeft()",                                          typeof (int),       null); inf.codeGen = inf.CodeGenXMRHeapLeft;
+			inf = new CompValuInline (ifd, "xmrStackLeft()",                                         typeof (int),       null); inf.codeGen = inf.CodeGenXMRStackLeft;
 
 			/*
 			 * Jack-assed os...() functions that use screwy types.
 			 */
-			inf = new InlineFunction (ifd, "osParseJSON(string)",                                    typeof (XMR_Array), null); inf.codeGen = inf.CodeGenOSParseJSON;
+			inf = new CompValuInline (ifd, "osParseJSON(string)",                                    typeof (XMR_Array), null); inf.codeGen = inf.CodeGenOSParseJSON;
 
 			/*
 			 * Finally for any API functions defined by ScriptBaseClass that are not overridden 
@@ -204,7 +204,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			return ifd;
 		}
 
-		private static void AddInterfaceMethods (Dictionary<string, InlineFunction> ifd, Type ifaceType)
+		private static void AddInterfaceMethods (Dictionary<string, CompValu> ifd, Type ifaceType)
 		{
 			MethodInfo[] ifaceMethods = ifaceType.GetMethods ();
 			foreach (MethodInfo ifaceMethod in ifaceMethods) {
@@ -238,7 +238,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 */
 					if (!ifd.ContainsKey (key)) {
 						Type retType = ifaceMethod.ReturnType;
-						InlineFunction inlfun = new InlineFunction (ifd, key, retType, ifaceMethod);
+						CompValuInline inlfun = new CompValuInline (ifd, key, retType, ifaceMethod);
 						inlfun.argTypes   = argTypes;
 						inlfun.codeGen    = inlfun.CodeGenBEApi;
 						inlfun.doCheckRun = true;
@@ -254,7 +254,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					///??? string msg = except.ToString ();
 					///??? int i = msg.IndexOf ("\n");
 					///??? if (i > 0) msg = msg.Substring (0, i);
-					///??? Console.WriteLine ("InlineFunction*: {0}:     {1}", key, msg);
+					///??? Console.WriteLine ("CompValuInline*: {0}:     {1}", key, msg);
 
 					///??? IGNORE ANY THAT FAIL - LIKE UNRECOGNIZED TYPE ???///
 					///???                          and OVERLOADED NAMES ???///
@@ -269,10 +269,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @param retType   = system return type, use typeof(void) if no return value
 		 * @param methInfo  = used by codeGen to know what backend method to call
 		 */
-		private InlineFunction (Dictionary<string, InlineFunction> ifd, 
+		private CompValuInline (Dictionary<string, CompValu> ifd, 
 		                        string signature, 
 		                        Type retType, 
 		                        MethodInfo methInfo)
+			: base (DelegateType (retType, signature))
 		{
 			this.signature = signature;
 			this.retType   = TokenType.FromSysType (null, retType);
@@ -285,6 +286,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					if (signature[i] == ',') this.numArgs ++;
 				}
 			}
+		}
+
+		private static TokenType DelegateType (Type retType, string signature)
+		{
+			int i = signature.IndexOf ('(');
+			string argsigst = signature.Substring (i);
+			return new TokenTypeDelegate (retType, argsigst);
+		}
+
+		/**
+		 * @brief nonsense functions required by CompValu
+		 */
+		public override void PushVal (ScriptCodeGen scg)
+		{
+			scg.ErrorMsg (retType, "cannot make delegate of inline function");
+			scg.PushConstantI4 (0);
+		}
+		public override void PushByRef (ScriptCodeGen scg)
+		{
+			throw new Exception ("cannot get address of pointer to inline function");
+		}
+		public override void PopPost (ScriptCodeGen scg)
+		{
+			throw new Exception ("cannot write address of inline function");
 		}
 
 		/**

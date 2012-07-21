@@ -37,7 +37,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * Static tables that there only needs to be one copy of for all.
 		 */
 		private static Dictionary<string, BinOpStr> binOpStrings = BinOpStr.DefineBinOps ();
-		private static Dictionary<string, InlineFunction> inlineFunctions = InlineFunction.CreateDictionary ();
+		private static Dictionary<string, CompValu> inlineFunctions = CompValuInline.CreateDictionary ();
 		private static Dictionary<string, TokenDeclFunc> legalEventHandlers = CreateLegalEventHandlers ();
 		private static TokenTypeBool   tokenTypeBool = new TokenTypeBool   (null);
 		private static TokenTypeFloat  tokenTypeFlt  = new TokenTypeFloat  (null);
@@ -232,9 +232,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Set up stack of dictionaries to translate variable names to their declaration.
-			 * Then push the first element on the stack that will get any global variables.
+			 * Then push the first element on the stack that will get the built-in functions.
+			 * Then push the second element on the stack that will get any script-defined global variables.
 			 */
 			scriptVariablesStack = new Stack<Dictionary<string, CompValu>> ();
+			scriptVariablesStack.Push (inlineFunctions);
 			scriptInstanceVariables = PushVarDefnBlock ();
 
 			/*
@@ -253,7 +255,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				/*
 				 * Create entry in the value array for the variable.
 				 */
-				CompValu globalVar = new CompValuGlobal (declVar, scriptObjCode);
+				CompValu globalVar = new CompValuGlobalVar (declVar, scriptObjCode);
 
 				/*
 				 * Add its name to top-level variable definition stack so code can see it.
@@ -270,7 +272,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					TokenDeclVar stDeclVar = new TokenDeclVar (declVar, null);
 					stDeclVar.type = new TokenTypeInt (declVar);
 					stDeclVar.name = new TokenName (declVar, "__htg_" + declVar.name.val);
-					globalVar.heapTracker = new CompValuGlobal (stDeclVar, scriptObjCode);
+					globalVar.heapTracker = new CompValuGlobalVar (stDeclVar, scriptObjCode);
 				}
 			}
 
@@ -298,13 +300,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * For debugging, we also write out global variable assignments.
 			 */
 			foreach (KeyValuePair<string, CompValu> kvp in scriptInstanceVariables) {
-				CompValuGlobal gblVar = (CompValuGlobal)kvp.Value;
+				CompValuGlobalVar gblVar = (CompValuGlobalVar)kvp.Value;
 				objFileWriter.Write (kvp.Key);            // string
 				objFileWriter.Write (gblVar.field.Name);  // string
 				objFileWriter.Write (gblVar.index);       // int
 				CompValu heapTracker = kvp.Value.heapTracker;
 				if (heapTracker != null) {
-					gblVar = (CompValuGlobal)heapTracker;
+					gblVar = (CompValuGlobalVar)heapTracker;
 					objFileWriter.Write ("__htg_" + kvp.Key);
 					objFileWriter.Write (gblVar.field.Name);
 					objFileWriter.Write (gblVar.index);
@@ -515,7 +517,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		/**
-		 * @brief generate header for an arbitrary script-defined function.
+		 * @brief generate header for an arbitrary script-defined global function.
 		 * @param name = name of the function
 		 * @param argDecl = argument declarations
 		 * @param body = function's code body
@@ -528,21 +530,35 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Make up array of all argument types.
 			 * We splice in XMRInstance for the first arg as the function is static.
+			 * Might as well build argument signature string while we're at it.
 			 */
+			StringBuilder argsigsb = new StringBuilder ("(");
 			Type[] argTypes = new Type[argDecl.types.Length+1];
 			argTypes[0] = typeof (XMRInstAbstract);
 			for (int i = 0; i < argDecl.types.Length; i ++) {
+				if (i > 0) argsigsb.Append (",");
+				argsigsb.Append (argDecl.types[i].ToString ());
 				argTypes[i+1] = argDecl.types[i].ToSysType ();
 			}
+			argsigsb.Append (")");
+			string argsigst = argsigsb.ToString ();
 
 			/*
 			 * Set up entrypoint.
 			 */
-			string methodName = "__fun_" + name;
+			string methodName = "__fun_" + name + argsigst;
 			declFunc.ilGen = new ScriptMyILGen (methodName,
 			                                    declFunc.retType.ToSysType (),
 			                                    argTypes,
 			                                    objFileWriter);
+
+			/*
+			 * Set up an entry as if it were a global variable so GenerateFromLValName () will see it.
+			 * We have to cram the arg signature on the end of the name in case of overloading.
+			 */
+			TokenTypeDelegate delType = new TokenTypeDelegate (declFunc, declFunc.retType, argDecl.types);
+			CompValu globalMeth = new CompValuGlobalMeth (declFunc, delType);
+			AddVarDefinition (declFunc.funcName, delType.argSig, globalMeth);
 		}
 
 		/**
@@ -949,7 +965,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private class CallLabel {
 			public int           index;       // sequential integer, starting at 0
 			public ScriptMyLabel callLabel;   // the actual label token
-			public TokenType[]   argTypes;    // types of args for the call we ar labelling
 
 			public CallLabel (ScriptCodeGen scg)
 			{
@@ -1893,7 +1908,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			if (declVar.init != null) {
 				local.PopPre (this);
-				CompValu rVal = GenerateFromRVal (declVar.init);
+				string argsig = null;
+				if (local.type is TokenTypeDelegate) {
+					argsig = ((TokenTypeDelegate)local.type).argSig;
+				}
+				CompValu rVal = GenerateFromRVal (declVar.init, argsig);
 				rVal.PushVal (this, declVar.type);
 				local.PopPost (this);
 				DebitHeapLeft (local, true, declVar);
@@ -1910,9 +1929,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private CompValu GenerateFromLVal (TokenLVal lVal)
 		{
+			return GenerateFromLVal (lVal, null);
+		}
+		private CompValu GenerateFromLVal (TokenLVal lVal, string argsig)
+		{
 			if (lVal is TokenLValArEle)  return GenerateFromLValArEle  ((TokenLValArEle)lVal);
 			if (lVal is TokenLValIField) return GenerateFromLValIField ((TokenLValIField)lVal);
-			if (lVal is TokenLValName)   return GenerateFromLValName   ((TokenLValName)lVal);
+			if (lVal is TokenLValName)   return GenerateFromLValName   ((TokenLValName)lVal, argsig);
 			throw new Exception ("bad lval class");
 		}
 
@@ -1963,21 +1986,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				// no arguments, no parentheses, just the field name, returning integer
 				// but internally, it is a call to a method()
 				if (fieldName == "count") {
-					TokenTypeInt tti = new TokenTypeInt (lVal);
-					return new CompValuMethod (tti, baseRVal, arrayCountMethodInfo);
+					TokenType retType = new TokenTypeInt (lVal);
+					return new CompValuIntInstROProp (retType, baseRVal, arrayCountMethodInfo);
 				}
 
 				// no arguments but with the parentheses, returning void
 				if (fieldName == "clear") {
-					TokenTypeMeth ttm             = new TokenTypeMeth (lVal);
-					ttm.funcs                     = new TokenDeclFunc[1];
-					ttm.funcs[0]                  = new TokenDeclFunc (lVal);
-					ttm.funcs[0].retType          = new TokenTypeVoid (lVal);
-					ttm.funcs[0].funcName         = new TokenName (lVal, "array." + fieldName);
-					ttm.funcs[0].argDecl          = new TokenArgDecl (lVal);
-					ttm.funcs[0].argDecl.types    = new TokenType[0];
-					ttm.funcs[0].argDecl.names    = new TokenName[0];
-					return new CompValuMethod (ttm, baseRVal, arrayClearMethodInfo);
+					TokenType retType = new TokenTypeVoid (lVal);
+					TokenType[] argTypes = new TokenType[0];
+					TokenTypeDelegate ttd = new TokenTypeDelegate (lVal, retType, argTypes);
+					return new CompValuIntInstMeth (ttd, baseRVal, arrayClearMethodInfo);
 				}
 
 				// single integer argument, returning an object
@@ -1985,17 +2003,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				if (fieldName == "index") mi = arrayIndexMethodInfo;
 				if (fieldName == "value") mi = arrayValueMethodInfo;
 				if (mi != null) {
-					TokenTypeMeth ttm             = new TokenTypeMeth (lVal);
-					ttm.funcs                     = new TokenDeclFunc[1];
-					ttm.funcs[0]                  = new TokenDeclFunc (lVal);
-					ttm.funcs[0].retType          = new TokenTypeObject (lVal);
-					ttm.funcs[0].funcName         = new TokenName (lVal, "array." + fieldName);
-					ttm.funcs[0].argDecl          = new TokenArgDecl (lVal);
-					ttm.funcs[0].argDecl.types    = new TokenType[1];
-					ttm.funcs[0].argDecl.types[0] = new TokenTypeInt (lVal);
-					ttm.funcs[0].argDecl.names    = new TokenName[1];
-					ttm.funcs[0].argDecl.names[0] = new TokenName (lVal, "number");
-					return new CompValuMethod (ttm, baseRVal, mi);
+					TokenType retType = new TokenTypeObject (lVal);
+					TokenType[] argTypes = new TokenType[] { new TokenTypeInt (lVal) };
+					TokenTypeDelegate ttd = new TokenTypeDelegate (lVal, retType, argTypes);
+					return new CompValuIntInstMeth (ttd, baseRVal, mi);
 				}
 			}
 			if (baseRVal.type is TokenTypeRot) {
@@ -2023,21 +2034,35 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		/**
-		 * @brief we have an L-value token that is a variable name.
-		 * @returns a CompValu giving the type and location of the variable.
+		 * @brief we have an L-value token that is a function, method or variable name.
+		 * @param lVal = name we are looking for
+		 * @param argsig = null: just look for name as a variable
+		 *                 else: look for name as a function/method being called with the given argument types
+		 *                       eg, "(string,integer,list)"
+		 * @returns a CompValu giving the type and location of the function, method or variable.
 		 */
-		private CompValu GenerateFromLValName (TokenLValName lVal)
+		private CompValu GenerateFromLValName (TokenLValName lVal, string argsig)
 		{
 			string name = lVal.name.val;
+			string namesig = name;
+			if (argsig != null) namesig += argsig;
 
 			foreach (Dictionary<string, CompValu> vars in scriptVariablesStack) {
 				CompValu defn;
+				if (vars.TryGetValue (namesig, out defn)) {
+					return defn;
+				}
 				if (vars.TryGetValue (name, out defn)) {
 					return defn;
 				}
 			}
 
-			ErrorMsg (lVal, "undefined variable " + name);
+			ErrorMsg (lVal, "undefined function/method/variable " + name);
+			foreach (Dictionary<string, CompValu> vars in scriptVariablesStack) {
+				foreach (KeyValuePair<string, CompValu> kvp in vars) {
+					Console.WriteLine ("GenerateFromLValName*: " + kvp.Key + " = " + kvp.Value);
+				}
+			}
 			return new CompValuVoid (lVal);
 		}
 
@@ -2047,9 +2072,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * the result it put in a temp var and the temp var name is returned.
 		 * For anything without side-effects, they are returned as an equivalent sequence of Emits.
 		 * @param rVal = rVal token to be evaluated
+		 * @param argsig = null: not being used in an function/method context
+		 *                 else: string giving argument types, eg, "(string,integer,list,vector)"
+		 *                       that can be used to select among overloaded methods
 		 * @returns resultant type and location
 		 */
 		private CompValu GenerateFromRVal (TokenRVal rVal)
+		{
+			return GenerateFromRVal (rVal, null);
+		}
+		private CompValu GenerateFromRVal (TokenRVal rVal, string argsig)
 		{
 			errorMessageToken = rVal;
 			if (rVal is TokenRValAsnPost)  return GenerateFromRValAsnPost  ((TokenRValAsnPost)rVal);
@@ -2066,7 +2098,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (rVal is TokenRValRot)      return GenerateFromRValRot      ((TokenRValRot)rVal);
 			if (rVal is TokenRValUndef)    return GenerateFromRValUndef    ((TokenRValUndef)rVal);
 			if (rVal is TokenRValVec)      return GenerateFromRValVec      ((TokenRValVec)rVal);
-			if (rVal is TokenLVal)         return GenerateFromLVal         ((TokenLVal)rVal);
+			if (rVal is TokenLVal)         return GenerateFromLVal         ((TokenLVal)rVal, argsig);
 			throw new Exception ("bad rval class " + rVal.GetType ().ToString ());
 		}
 
@@ -2092,6 +2124,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Simple overwriting assignments are their own special case,
 			 * as we want to cast the R-value to the type of the L-value.
+			 * And in the case of delegates, we want to use the arg signature
+			 * of the delegate to select which overloaded method to use.
 			 * And we might also be able to optimize out a temp by having
 			 * the result put directly in the L-value variable.
 			 */
@@ -2101,7 +2135,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					ErrorMsg (token, "invalid L-value for =");
 					left = GenerateFromRVal (token.rValLeft);
 				} else {
-					right = GenerateFromRVal (token.rValRight);
+					string argsig = null;
+					if (left.type is TokenTypeDelegate) {
+						argsig = ((TokenTypeDelegate)left.type).argSig;
+					}
+					right = GenerateFromRVal (token.rValRight, argsig);
 					leftLVal.PopPre (this);
 					right.PushVal (this, leftLVal.type);  // push (leftLVal.type)right
 					leftLVal.PopPost (this);              // pop to leftLVal
@@ -2362,227 +2400,97 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private CompValu GenerateFromRValCall (TokenRValCall call)
 		{
-			if (call.meth is TokenLValIField) return GenerateFromRValCallIField (call);
-			if (call.meth is TokenLValName)   return GenerateFromRValCallName   (call);
-			throw new Exception ("unknown call type");
-		}
-
-		/**
-		 * @brief Generate code that calls a method of an object.
-		 * @returns where the call's return value is stored (a TokenTypeVoid if void)
-		 */
-		private CompValu GenerateFromRValCallIField (TokenRValCall call)
-		{
+			CompValu method, result;
 			CompValu[] argRVals;
+			CompValuInline inline;
 			int i, nargs;
-			TokenLValIField meth = (TokenLValIField)call.meth;
-
-			/*
-			 * Get method's entrypoint and signature.
-			 */
-			CompValu method = GenerateFromLValIField (meth);
-			if (!(method is CompValuMethod)) {
-				ErrorMsg (meth, "must be a method, not a field");
-				return new CompValuVoid (meth);
-			}
-
-			/*
-			 * Sorry, we're tu stOOpid to handle multiple prototypes.
-			 */
-			if (((TokenTypeMeth)method.type).funcs.Length != 1) throw new Exception ("tu stOOpid");
-
-			/*
-			 * Get the one-and-only function declaration, the param types better match...
-			 */
-			TokenDeclFunc declFunc = ((TokenTypeMeth)method.type).funcs[0];
-
-			/*
-			 * Compute the values of all the function's call arguments.
-			 */
-			nargs = call.nArgs;
-			if (nargs != declFunc.argDecl.types.Length) {
-				ErrorMsg (call, "method has " + declFunc.argDecl.types.Length.ToString () + " param(s), but call has " + nargs.ToString ());
-				if (nargs > declFunc.argDecl.types.Length) nargs = declFunc.argDecl.types.Length;
-			}
-			argRVals = new CompValu[nargs];
-			TokenRVal arg = call.args;
-			for (i = 0; i < nargs; i ++) {
-				argRVals[i] = GenerateFromRVal (arg);
-				arg = (TokenRVal)arg.nextToken;
-			}
-
-			/*
-			 * Stick in a label here that stack frame restore code can jump to.
-			 */
-			CallLabel cl = new CallLabel (this);
-			cl.argTypes  = declFunc.argDecl.types;
-
-			/*
-			 * Make sure we have a place to put return value and prepare to pop return value into it.
-			 * The PopPre() call must be done before pushing anything else so PopPost() will work.
-			 */
-			CompValu result = SetupReturnLocation (declFunc.retType);
-
-			/*
-			 * Push 'this' pointer as hidden first arg to function.
-			 */
-			((CompValuMethod)method).obj.PushVal (this);
-
-			/*
-			 * Push the values of all the function's call arguments, left-to-right.
-			 */
-			for (i = 0; i < nargs; i ++) {
-				argRVals[i].PushVal (this, declFunc.argDecl.types[i]);
-			}
-
-			/*
-			 * Generate call, leaving the return value (if any) on the stack.
-			 */
-			MethodInfo methodInfo = ((CompValuMethod)method).field;
-			ilGen.Emit (OpCodes.Callvirt, methodInfo);
-
-			/*
-			 * Deal with return value by popping it in 'result'.
-			 */
-			result.PopPost (this, declFunc.retType);
-			return result;
-		}
-
-		/**
-		 * @brief Generate code that calls a function.
-		 * @returns where the call's return value is stored (a TokenTypeVoid if void)
-		 */
-		private CompValu GenerateFromRValCallName (TokenRValCall call)
-		{
-			CompValu[] argRVals;
-			int i, nargs;
-			string name;
-			StringBuilder signature;
-			TokenDeclFunc declFunc = null;
-
-			name = ((TokenLValName)call.meth).name.val;
+			string argsigst;
+			StringBuilder argsigsb;
+			TokenType retType;
+			TokenType[] argTypes;
 
 			/*
 			 * Compute the values of all the function's call arguments.
 			 * Save where the computation results are in the argRVals[] array.
-			 * Might as well build the signature from the argument types, too.
+			 * Might as well build the argument signature from the argument types, too.
 			 */
 			nargs = call.nArgs;
-			signature = new StringBuilder (name);
-			signature.Append ("(");
+			argsigsb = new StringBuilder ("(");
 			argRVals = new CompValu[nargs];
 			if (nargs > 0) {
 				i = 0;
 				for (TokenRVal arg = call.args; arg != null; arg = (TokenRVal)arg.nextToken) {
 					argRVals[i] = GenerateFromRVal (arg);
-					if (i > 0) signature.Append (",");
-					signature.Append (argRVals[i].type.ToString ());
+					if (i > 0) argsigsb.Append (",");
+					argsigsb.Append (argRVals[i].type.ToString ());
 					i ++;
 				}
 			}
-			signature.Append (")");
+			argsigsb.Append (")");
+			argsigst = argsigsb.ToString ();
 
 			/*
-			 * Look the function up.
-			 * First we look for a script-defined function by that name.  We only match name, 
-			 * ... not signature, as we don't allow overloaded script-defined functions.
-			 * Then try inline functions by signature.
+			 * Get function/method's entrypoint that matches the argument signature.
 			 */
-			string sig = signature.ToString ();
-			if (scriptFunctions.ContainsKey (name)) {
-				declFunc = scriptFunctions[name];
-			} else if (inlineFunctions.ContainsKey (sig)) {
-				return GenerateFromRValCallInline (call, inlineFunctions[sig], argRVals);
-			} else {
+			method = GenerateFromRVal (call.meth, argsigst);
+			if (method == null) return null;
 
-				/*
-				 * Not found with that exact signature.
-				 * If there is exactly one definition for that name but different signature,
-				 * try implicit type casts to that one signature.
-				 * Note that we only try internal functions as script-defined functions are
-				 * matched by name only and not complete signature.
-				 */
-				string shortSig = name + "(";
-				InlineFunction foundInline = null;
-				foreach (KeyValuePair<string, InlineFunction> kvp in inlineFunctions) {
-					if (kvp.Key.StartsWith (shortSig) && (kvp.Value.numArgs == nargs)) {
-						if (foundInline != null) goto nohope;
-						foundInline = kvp.Value;
-					}
-				}
-				if (foundInline != null) {
-					return GenerateFromRValCallInline (call, foundInline, argRVals);
-				}
-
-				/*
-				 * No hope, output error message and return void value 
-				 * because we don't know what type the return value is.
-				 */
-			nohope:
-				ErrorMsg (call, "undefined function " + sig);
-				foreach (KeyValuePair<string, InlineFunction> kvp in inlineFunctions) {
-					if (kvp.Key.StartsWith (shortSig)) ErrorMsg (call, "  have " + kvp.Key);
-				}
-				return new CompValuVoid (call);
+			/*
+			 * Inline functions are their own thing.
+			 */
+			if (method is CompValuInline) {
+				inline = (CompValuInline)method;
+				result = SetupReturnLocation (inline.retType);
+				inline.codeGen (this, call, result, argRVals);
+				return result;
 			}
 
 			/*
-			 * Number of arguments passed should match number of params the function was declared with.
-			 * (The only time declFunc.argDecl.types is null is when the function was detected as undefined above).
+			 * Otherwise must some other kind of callable.
 			 */
-			if ((declFunc.argDecl.types != null) && (nargs != declFunc.argDecl.types.Length)) {
-				ErrorMsg (call, name + " has " + declFunc.argDecl.types.Length.ToString () + " param(s), but call has " + nargs.ToString ());
-				if (nargs > declFunc.argDecl.types.Length) nargs = declFunc.argDecl.types.Length;
+			retType = method.GetRetType ();  // TokenTypeVoid if void; null means a variable
+			if (retType == null) {
+				ErrorMsg (call.meth, "must be a function or method");
+				return new CompValuVoid (call.meth);
 			}
 
 			/*
 			 * Stick in a label here that stack frame restore code can jump to.
 			 */
-			CallLabel cl = new CallLabel (this);
-			cl.argTypes  = declFunc.argDecl.types;
+			new CallLabel (this);
 
 			/*
 			 * Make sure we have a place to put return value and prepare to pop return value into it.
 			 * The PopPre() call must be done before pushing anything else so PopPost() will work.
 			 */
-			CompValu result = SetupReturnLocation (declFunc.retType);
+			result = SetupReturnLocation (retType);
 
 			/*
-			 * First arg is instance to pass context along as the function is static.
-			 * Then push the remainder of the args, left-to-right.
+			 * Push whatever the function/method needs as a this argument, if anything.
 			 */
-			ilGen.Emit (OpCodes.Ldarg_0);                  // this function's instance gets passed as arg[0]
+			method.CallPre (this);
+
+			/*
+			 * Push the script-visible args, left-to-right.
+			 */
+			argTypes = method.GetArgTypes ();
 			for (i = 0; i < nargs; i ++) {
-				if (declFunc.argDecl.types == null) {
+				if (argTypes == null) {
 					argRVals[i].PushVal (this);
 				} else {
-					argRVals[i].PushVal (this, declFunc.argDecl.types[i]);
+					argRVals[i].PushVal (this, argTypes[i]);
 				}
 			}
 
 			/*
 			 * Now output call instruction.
 			 */
-			ilGen.Emit (OpCodes.Call, declFunc.ilGen);
+			method.CallPost (this);
 
 			/*
 			 * Deal with the return value (if any), by putting it in 'result'.
 			 */
-			result.PopPost (this, declFunc.retType);
-			return result;
-		}
-
-		/**
-		 * @brief Generate call to inline function.
-		 * @param call       = calling script token, encapsulates call and parameters
-		 * @param inlineFunc = what inline function is being called
-		 * @param argRVals   = arguments to pass to function
-		 * @returns where the call's return value is stored (a TokenTypeVoid if void)
-		 */
-		private CompValu GenerateFromRValCallInline (TokenRValCall call, InlineFunction inlineFunc, CompValu[] argRVals)
-		{
-			CompValu result = SetupReturnLocation (inlineFunc.retType);
-			inlineFunc.codeGen (this, call, result, argRVals);
+			result.PopPost (this, retType);
 			return result;
 		}
 
@@ -2604,11 +2512,26 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private CompValu GenerateFromRValCast (TokenRValCast cast)
 		{
-			CompValu inRVal = GenerateFromRVal (cast.rVal);
+			/*
+			 * If casting to a delegate type, use the argment signature 
+			 * of the delegate to help select the function/method.
+			 */
+			string argsig = null;
 			TokenType outType = cast.castTo;
+			if (outType is TokenTypeDelegate) {
+				argsig = ((TokenTypeDelegate)outType).argSig;
+			}
 
+			/*
+			 * Generate the value that is being cast.
+			 * If the value is already the requested type, just use it as is.
+			 */
+			CompValu inRVal = GenerateFromRVal (cast.rVal, argsig);
 			if (inRVal.type == outType) return inRVal;
 
+			/*
+			 * Different type, generate casting code, putting the result in a temp of the output type.
+			 */
 			//??? optimize by having CompValu.PushVal() emit code for the conversion instead of needing a temp ???//
 			CompValu outRVal = new CompValuTemp (outType, null, this);
 			outRVal.isFinal = inRVal.isFinal;
@@ -2915,6 +2838,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				return;
 			}
 
+			/*
+			 * Default for 'delegate' type is 'undef'.
+			 */
+			if (type is TokenTypeDelegate) {
+				ilGen.Emit (OpCodes.Ldnull);
+				return;
+			}
+
 			throw new Exception ("unknown type " + type.ToString ());
 		}
 
@@ -3154,12 +3085,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		private void AddVarDefinition (TokenName name, CompValu var)
 		{
+			AddVarDefinition (name, null, var);
+		}
+		private void AddVarDefinition (TokenName name, string argSig, CompValu var)
+		{
 			Dictionary<string, CompValu> vars = scriptVariablesStack.Peek ();
+			string namesig = name.val;
 
-			if (vars.ContainsKey (name.val)) {
-				ErrorMsg (name, "duplicate var definition " + name);
+			/*
+			 * If entrypoint refers to a possibly overloaded method, add the 
+			 * argument signature to the name, so we end up cataloging stuff 
+			 * like "Verify(array,list,string)" for such things.
+			 */
+			if (argSig != null) namesig += argSig;
+
+			/*
+			 * Only allow one of each namesig.
+			 */
+			if (vars.ContainsKey (namesig)) {
+				ErrorMsg (name, "duplicate var definition " + namesig);
 			} else {
-				vars.Add (name.val, var);
+				vars.Add (namesig, var);
 			}
 		}
 

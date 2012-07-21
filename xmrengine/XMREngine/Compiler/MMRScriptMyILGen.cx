@@ -827,7 +827,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			s2t.Add ("bool",     typeof (bool));
 			s2t.Add ("double",   typeof (double));
 			s2t.Add ("float",    typeof (float));
-			s2t.Add ("inlfunc",  typeof (InlineFunction));
+			s2t.Add ("inlfunc",  typeof (CompValuInline));
 			s2t.Add ("int",      typeof (int));
 			s2t.Add ("int*",     typeof (int).MakeByRefType ());
 			s2t.Add ("lslfloat", typeof (LSL_Float));
@@ -866,7 +866,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			string s;
 			if (!type2String.TryGetValue (t, out s)) {
-				s = t.AssemblyQualifiedName;
+				s = TokenTypeDelegate.TryGetName (t);
+				if (s == null) {
+					s = t.AssemblyQualifiedName;
+				}
 			}
 			return s;
 		}
@@ -875,7 +878,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			Type t;
 			if (!string2Type.TryGetValue (s, out t)) {
-				t = Type.GetType(s, true);
+				t = TokenTypeDelegate.TryGetSysType (s);
+				if (t == null) {
+					t = Type.GetType(s, true);
+				}
 			}
 			return t;
 		}
