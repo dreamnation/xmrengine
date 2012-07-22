@@ -91,7 +91,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                  * The event handler should call CheckRun() as often as convenient.
                  */
                 newStateCode = sw.stateCode;
-                seh = sw.objCode.scriptEventHandlerTable[sw.stateCode,(int)sw.eventCode];
+                seh = sw.m_ObjCode.scriptEventHandlerTable[sw.stateCode,(int)sw.eventCode];
                 if (seh != null) {
                     try {
                         seh (sw);
@@ -113,7 +113,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                  * Call old state's state_exit() handler.
                  */
                 sw.eventCode = ScriptEventCode.state_exit;
-                seh = sw.objCode.scriptEventHandlerTable[sw.stateCode,(int)ScriptEventCode.state_exit];
+                seh = sw.m_ObjCode.scriptEventHandlerTable[sw.stateCode,(int)ScriptEventCode.state_exit];
                 if (seh != null) {
                     try {
                         seh (sw);

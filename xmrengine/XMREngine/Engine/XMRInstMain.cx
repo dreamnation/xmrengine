@@ -98,7 +98,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private string m_ScriptBasePath;
         private string m_StateFileName;
         private string m_SourceCode;
-        private ScriptObjCode m_ObjCode;
+        public  ScriptObjCode m_ObjCode;
         private bool m_PostOnRez;
         private DetectParams[] m_DetectParams = null;
         private bool m_Die = false;
@@ -158,7 +158,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                                                   // - code assumes that only the event handling microthread
                                                   //   transitions eventCode from non-idle to idle
                                                   // - idle to non-idle is always Interlocked
-        public ScriptObjCode objCode;             // the script's object code pointer
 
         /*
          * We will use this microthread to run the scripts event handlers.

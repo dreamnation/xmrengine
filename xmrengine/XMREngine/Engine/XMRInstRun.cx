@@ -455,7 +455,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Silly to even try if there is no handler defined for this event.
              */
-            if (this.objCode.scriptEventHandlerTable[this.stateCode,(int)eventCode] == null) {
+            if (m_ObjCode.scriptEventHandlerTable[this.stateCode,(int)eventCode] == null) {
                 return null;
             }
 

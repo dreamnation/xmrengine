@@ -3349,11 +3349,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Now fill in the methods (the hard part).
 			 */
-			EndMethodWrapper endMethodWrapper = new EndMethodWrapper ();
-			endMethodWrapper.scriptObjCode = scriptObjCode;
-			endMethodWrapper.descName      = descName;
+			EndMethodWrapper endMethodWrapper     = new EndMethodWrapper ();
+			endMethodWrapper.scriptObjCode        = scriptObjCode;
+			endMethodWrapper.descName             = descName;
 			scriptObjCode.scriptEventHandlerTable = new ScriptEventHandler[nStates,(int)ScriptEventCode.Size];
-			scriptObjCode.dynamicMethods = new Dictionary<string, DynamicMethod> ();
+			scriptObjCode.dynamicMethods          = new Dictionary<string, DynamicMethod> ();
 			ScriptMyILGen.CreateObjCode (objFileReader, endMethodWrapper.EndMethod, asmFileWriter);
 
 			return scriptObjCode;

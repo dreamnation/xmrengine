@@ -137,9 +137,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             suspendOnCheckRunHold = true;
             InstantiateScript();
             m_SourceCode = null;
-            if (objCode == null) throw new ArgumentNullException ("objCode");
-            if (objCode.scriptEventHandlerTable == null) {
-                throw new ArgumentNullException ("objCode.scriptEventHandlerTable");
+            if (m_ObjCode == null) throw new ArgumentNullException ("m_ObjCode");
+            if (m_ObjCode.scriptEventHandlerTable == null) {
+                throw new ArgumentNullException ("m_ObjCode.scriptEventHandlerTable");
             }
 
             suspendOnCheckRunHold = false;
@@ -237,8 +237,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private void LoadObjCode (ScriptObjCode objCode)
         {
             if (objCode  == null) throw new ArgumentNullException ("objCode");
-
-            this.objCode      = objCode;
 
             this.gblArrays    = new XMR_Array[objCode.numGblArrays];
             this.gblFloats    = new SCRIPTFLOAT[objCode.numGblFloats];

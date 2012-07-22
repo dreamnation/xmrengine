@@ -1391,6 +1391,36 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             return s;
         }
 
+        /**
+         * @brief Build a system delegate type from a signature string
+         *        that includes the return type.
+         */
+        public static Type CreateSysType (string sig)
+        {
+            DelegateCommon dc;
+            lock (delegateCommons) {
+                if (!delegateCommons.TryGetValue (sig, out dc)) {
+                    List<TokenType> argtypes = new List<TokenType> ();
+                    TokenBegin tb = TokenBegin.Construct (BadArgSig, sig);
+                    Token t = tb.nextToken;
+                    TokenType rettype = (TokenType)t;
+                    while (!((t = t.nextToken) is TokenKwParClose)) {
+                        if (t is TokenKwParOpen) continue;
+                        if (t is TokenKwComma) continue;
+                        argtypes.Add ((TokenType)t);
+                    }
+                    int nArgs = argtypes.Count;
+                    Type[] argSysTypes = new Type[nArgs];
+                    int i = 0;
+                    foreach (TokenType argtype in argtypes) {
+                        argSysTypes[i++] = argtype.ToSysType ();
+                    }
+                    dc = new DelegateCommon (rettype.ToSysType (), argSysTypes, sig);
+                }
+            }
+            return dc.type;
+        }
+
         /*
          * Keep track of all delegate types we've ever created for all scripts.
          */

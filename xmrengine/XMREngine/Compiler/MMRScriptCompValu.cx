@@ -77,7 +77,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public virtual void PopPre (ScriptCodeGen scg) { }  // call this before pushing value to be popped
 		public abstract void PopPost (ScriptCodeGen scg);   // call this after pushing value to be popped
 
-		// These additional functions are available if the type is a delegate
+		/*
+		 * These additional functions are available if the type is a delegate
+		 */
 		public TokenType GetRetType ()
 		{
 			if (!(type is TokenTypeDelegate)) return null;
@@ -89,9 +91,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			return ((TokenTypeDelegate)type).argTypes;
 		}
 
+		// These are used only if type is a delegate too
+		// - but it is a real delegate pointer in a global or local variable
+		//   ie, so PushVal() pushes a delegate pointer
+		// - so we must have CallPre() push the delegate pointer as a 'this' for this.Invoke(...)
+		// - and CallPost() call the delegate's Invoke() method
 		public virtual void CallPre (ScriptCodeGen scg)   // call this before pushing arguments
 		{
-			this.PushVal (scg);  // push pointer to delegate object
+			this.PushVal (scg);
 		}
 		public virtual void CallPost (ScriptCodeGen scg)  // call this after pushing arguments
 		{
@@ -245,16 +252,33 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	public class CompValuGlobalMeth : CompValu {
 		private TokenDeclFunc func;
 
+		private static readonly MethodInfo gsmdMethodInfo = 
+				typeof (XMRInstAbstract).GetMethod ("GetScriptMethodDelegate", 
+				                                    new Type[] { typeof (string), typeof (string) });
+
 		public CompValuGlobalMeth (TokenDeclFunc declFunc, TokenTypeDelegate type) : base (type)
 		{
 			this.func = declFunc;
 		}
 
+		/**
+		 * @brief PushVal for a function/method means push a delegate on the stack.
+		 *        We build a call to the DynamicMethod's CreateDelegate() function 
+		 *        to create the delegate.  Slip the scriptinstance pointer as the 
+		 *        function's arg 0 because we don't do so manually when calling a
+		 *        delegate.
+		 */
 		public override void PushVal (ScriptCodeGen scg)
 		{
-			this.CallPre (scg);
-			scg.ilGen.Emit (OpCodes.Ldftn, func.ilGen);
-			scg.ilGen.Emit (OpCodes.Newobj, ((TokenTypeDelegate)type).GetConstructorInfo ());
+			string dtn = type.ToString ();
+			if (dtn.StartsWith ("delegate ")) dtn = dtn.Substring (9);
+
+			// delegateinstance = (signature)scriptinstance.GetScriptMethodDelegate (methName, signature);
+			scg.ilGen.Emit (OpCodes.Ldarg_0);                         // [0] scriptinstance
+			scg.ilGen.Emit (OpCodes.Ldstr, func.ilGen.methName);      // [1] method name
+			scg.ilGen.Emit (OpCodes.Ldstr, dtn);                      // [2] delegate type name
+			scg.ilGen.Emit (OpCodes.Callvirt, gsmdMethodInfo);        // [0] delegate instance
+			scg.ilGen.Emit (OpCodes.Castclass, type.ToSysType ());    // [0] cast to correct delegate class
 		}
 		public override void PushByRef (ScriptCodeGen scg)
 		{
@@ -265,6 +289,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			throw new Exception ("cannot store into global method");
 		}
 
+		/**
+		 * @brief A direct call is much simpler.
+		 *        Just push the XMRInstance pointer, push the args and finally call the function.
+		 */
 		public override void CallPre (ScriptCodeGen scg)
 		{
 			// all script-defined global functions/methods are static methods created by DynamicMethod()

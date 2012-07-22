@@ -11,6 +11,7 @@ using System.Threading;
 using System.Reflection;
 using System.Collections;
 using System.Collections.Generic;
+using System.Reflection.Emit;
 using System.Runtime.Remoting.Lifetime;
 using System.Security.Policy;
 using System.IO;
@@ -188,7 +189,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public int GetStateEventFlags(int stateCode)
         {
             if ((stateCode < 0) ||
-                (stateCode >= objCode.scriptEventHandlerTable.GetLength(0)))
+                (stateCode >= m_ObjCode.scriptEventHandlerTable.GetLength(0)))
             {
                 return 0;
             }
@@ -196,7 +197,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             int code = 0;
             for (int i = 0 ; i < 32; i ++)
             {
-                if (objCode.scriptEventHandlerTable[stateCode, i] != null)
+                if (m_ObjCode.scriptEventHandlerTable[stateCode, i] != null)
                 {
                     code |= 1 << i;
                 }
@@ -218,9 +219,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public string GetStateName(int stateCode)
         {
-            if ((objCode.stateNames != null) && (stateCode >= 0) && (stateCode < objCode.stateNames.Length))
+            if ((m_ObjCode.stateNames != null) && (stateCode >= 0) && (stateCode < m_ObjCode.stateNames.Length))
             {
-                return objCode.stateNames[stateCode];
+                return m_ObjCode.stateNames[stateCode];
             }
             return stateCode.ToString();
         }
@@ -300,6 +301,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 return (string)(LSL_String)element;
             }
             return (string)element;
+        }
+
+        /**
+         * @brief Get a delegate for a script-defined function.
+         * @param name = name of the function including arg types, eg,
+         *               "Verify(array,list,string)"
+         * @param sig = type signature including return type, eg,
+         *              "void(array,list,string)"
+         * @returns delegate for the script-defined function,
+         *          including script instance as 'this'
+         */
+        public override Delegate GetScriptMethodDelegate (string name, string sig)
+        {
+            DynamicMethod dm = m_ObjCode.dynamicMethods[name];
+            Type dt = TokenTypeDelegate.CreateSysType (sig);
+            return dm.CreateDelegate (dt, this);
         }
     }
 }

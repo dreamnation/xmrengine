@@ -288,7 +288,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * It is a background event, simply call its event handler,
              * then check event queue again.
              */
-            ScriptEventHandler seh = objCode.scriptEventHandlerTable[stateCode,evc1];
+            ScriptEventHandler seh = m_ObjCode.scriptEventHandlerTable[stateCode,evc1];
             if (seh != null) {
                 DetectParams[]  saveDetParams = this.m_DetectParams;
                 object[]        saveEHArgs    = this.ehArgs;
@@ -348,7 +348,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             object[] data = ev.Data;
             int evc = ListInt (data[0]);
-            ScriptEventHandler seh = objCode.scriptEventHandlerTable[stateCode,evc];
+            ScriptEventHandler seh = m_ObjCode.scriptEventHandlerTable[stateCode,evc];
             if (seh != null) {
                 int nargs = data.Length - 1;
                 object[] args = new object[nargs];
