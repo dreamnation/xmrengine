@@ -84,6 +84,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public abstract void XMREventLoadDets (LSL_List dpList);
         public abstract XMR_Array XMRosParseJSON (string s);
 
-        public abstract Delegate GetScriptMethodDelegate (string name, string sig);
+        public abstract Delegate GetScriptMethodDelegate (string name, string sig, object targ);
     }
 }

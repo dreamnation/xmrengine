@@ -309,14 +309,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          *               "Verify(array,list,string)"
          * @param sig = type signature including return type, eg,
          *              "void(array,list,string)"
-         * @returns delegate for the script-defined function,
-         *          including script instance as 'this'
+         * @param targ = function's 'this' pointer or null if static
+         * @returns delegate for the script-defined function
          */
-        public override Delegate GetScriptMethodDelegate (string name, string sig)
+        public override Delegate GetScriptMethodDelegate (string name, string sig, object targ)
         {
             DynamicMethod dm = m_ObjCode.dynamicMethods[name];
             Type dt = TokenTypeDelegate.CreateSysType (sig);
-            return dm.CreateDelegate (dt, this);
+            return dm.CreateDelegate (dt, targ);
         }
     }
 }

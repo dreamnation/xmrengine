@@ -833,6 +833,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     ident = this.migrateInReader.ReadInt32 ();
                     return this.migrateInObjects[ident];
                 }
+                case Ser.XMRINST: {
+                    return this;
+                }
+                case Ser.DELEGATE: {
+                    string name = this.migrateInReader.ReadString ();
+                    string sig  = this.migrateInReader.ReadString ();
+                    object targ = RecvObjValue ();
+                    return GetScriptMethodDelegate (name, sig, targ);
+                }
                 default: throw new Exception ("bad stream code " + code.ToString ());
             }
         }

@@ -2,12 +2,12 @@ xmrOption arrayS;
 xmroption objects;
 
 array zz;
+delegate void(integer) da;
 
 default
 {
     touch_start(integer num)
     {
-        delegate void(integer) da;
         delegate void(array,list,string) ver = Verify;
 
         da = DumpArray;

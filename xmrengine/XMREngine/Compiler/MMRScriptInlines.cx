@@ -303,7 +303,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			scg.ErrorMsg (retType, "cannot make delegate of inline function");
 			scg.PushConstantI4 (0);
 		}
-		public override void PushByRef (ScriptCodeGen scg)
+		public override void PushRef (ScriptCodeGen scg)
 		{
 			throw new Exception ("cannot get address of pointer to inline function");
 		}

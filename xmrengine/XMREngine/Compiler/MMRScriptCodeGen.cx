@@ -686,7 +686,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					CompValu var = scriptInstanceVariables[gblDeclVar.name.val];
 					var.PopPre (this);
 					if (gblDeclVar.init != null) {
-						CompValu rVal = GenerateFromRVal (gblDeclVar.init);
+						CompValu rVal = GenerateFromRVal (gblDeclVar.init, var.GetArgSig ());
 						rVal.PushVal (this, gblDeclVar.type);
 					} else {
 						PushVarDefaultValue (gblDeclVar);
@@ -1284,14 +1284,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (keyLVal == null) {
 				ilGen.Emit (OpCodes.Ldloca, objectVar);
 			} else {
-				keyLVal.PushByRef (this);
+				keyLVal.PushRef (this);
 			}
 
 			// ForEach arg 3: ref valLVal
 			if (valLVal == null) {
 				ilGen.Emit (OpCodes.Ldloca, objectVar);
 			} else {
-				valLVal.PushByRef (this);
+				valLVal.PushRef (this);
 			}
 
 			// Call XMR_Array.ForEach (arrayRVal, index, ref keyLVal, ref valLVal)
@@ -1908,11 +1908,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			if (declVar.init != null) {
 				local.PopPre (this);
-				string argsig = null;
-				if (local.type is TokenTypeDelegate) {
-					argsig = ((TokenTypeDelegate)local.type).argSig;
-				}
-				CompValu rVal = GenerateFromRVal (declVar.init, argsig);
+				CompValu rVal = GenerateFromRVal (declVar.init, local.GetArgSig ());
 				rVal.PushVal (this, declVar.type);
 				local.PopPost (this);
 				DebitHeapLeft (local, true, declVar);
@@ -2135,11 +2131,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					ErrorMsg (token, "invalid L-value for =");
 					left = GenerateFromRVal (token.rValLeft);
 				} else {
-					string argsig = null;
-					if (left.type is TokenTypeDelegate) {
-						argsig = ((TokenTypeDelegate)left.type).argSig;
-					}
-					right = GenerateFromRVal (token.rValRight, argsig);
+					right = GenerateFromRVal (token.rValRight, left.GetArgSig ());
 					leftLVal.PopPre (this);
 					right.PushVal (this, leftLVal.type);  // push (leftLVal.type)right
 					leftLVal.PopPost (this);              // pop to leftLVal
@@ -2514,7 +2506,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			/*
 			 * If casting to a delegate type, use the argment signature 
-			 * of the delegate to help select the function/method.
+			 * of the delegate to help select the function/method, eg, 
+			 *    '(delegate string(integer))ToString'
+			 * will select 'string ToString(integer x)'
+			 * instaead of 'string ToString(float x)' or anything else
 			 */
 			string argsig = null;
 			TokenType outType = cast.castTo;

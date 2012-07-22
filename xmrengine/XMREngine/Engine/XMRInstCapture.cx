@@ -390,6 +390,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             /*
+             * Script instance pointer is always just that.
+             */
+            if (graph == this) {
+                this.migrateOutWriter.Write ((byte)Ser.XMRINST);
+                return;
+            }
+
+            /*
              * If this same exact object was already serialized,
              * just output an index telling the receiver to use
              * that same old object, rather than creating a whole
@@ -440,23 +448,29 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 DetectParams dp = (DetectParams)graph;
                 this.migrateOutWriter.Write ((byte)Ser.DETPRMS);
                 this.migrateOutWriter.Write (dp.Key.ToString());    // UUID
-                SendObjValue (dp.OffsetPos);                // vector
+                SendObjValue (dp.OffsetPos);                        // vector
                 this.migrateOutWriter.Write (dp.LinkNum);           // integer
                 this.migrateOutWriter.Write (dp.Group.ToString());  // UUID
                 this.migrateOutWriter.Write (dp.Name);              // string
                 this.migrateOutWriter.Write (dp.Owner.ToString());  // UUID
-                SendObjValue (dp.Position);                 // vector
-                SendObjValue (dp.Rotation);                 // rotation
+                SendObjValue (dp.Position);                         // vector
+                SendObjValue (dp.Rotation);                         // rotation
                 this.migrateOutWriter.Write (dp.Type);              // integer
-                SendObjValue (dp.Velocity);                 // vector
-                SendObjValue (dp.TouchST);                  // vector
-                SendObjValue (dp.TouchNormal);              // vector
-                SendObjValue (dp.TouchBinormal);            // vector
-                SendObjValue (dp.TouchPos);                 // vector
-                SendObjValue (dp.TouchUV);                  // vector
+                SendObjValue (dp.Velocity);                         // vector
+                SendObjValue (dp.TouchST);                          // vector
+                SendObjValue (dp.TouchNormal);                      // vector
+                SendObjValue (dp.TouchBinormal);                    // vector
+                SendObjValue (dp.TouchPos);                         // vector
+                SendObjValue (dp.TouchUV);                          // vector
                 this.migrateOutWriter.Write (dp.TouchFace);         // integer
+            } else if (graph is Delegate) {
+                Delegate del = (Delegate)graph;
+                this.migrateOutWriter.Write ((byte)Ser.DELEGATE);
+                this.migrateOutWriter.Write (del.Method.Name);
+                this.migrateOutWriter.Write (TokenTypeDelegate.TryGetSig (del.GetType ()));
+                SendObjValue (del.Target);
             } else {
-                throw new Exception ("unhandled class " + graph.GetType().ToString());
+                throw new Exception ("unhandled type " + graph.GetType().ToString());
             }
         }
 

@@ -1421,6 +1421,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             return dc.type;
         }
 
+        /**
+         * @brief If it's one of our delegate types, return corresponding signature
+         *        string, eg, "void(integer,list)"
+         */
+        public static string TryGetSig (Type del)
+        {
+            DelegateCommon dc;
+            lock (delegateCommons) {
+                if (!delegateCommonsBySysType.TryGetValue (del, out dc)) {
+                    dc = null;
+                }
+            }
+            return (dc == null) ? null : dc.sig;
+        }
+
         /*
          * Keep track of all delegate types we've ever created for all scripts.
          */
