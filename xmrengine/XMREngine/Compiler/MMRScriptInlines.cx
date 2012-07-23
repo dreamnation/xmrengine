@@ -360,7 +360,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 ///		private void CodeGenConsoleWrite (ScriptCodeGen scg, Token token, CompValu result, CompValu[] args)
 ///		{
-///			scg.ilGen.Emit (OpCodes.Ldarg_0);
+///			scg.PushXMRInst ();
 ///			args[0].PushVal (scg, tokenTypeString);
 ///			scg.ilGen.Emit (OpCodes.Call, consoleWrite);
 ///		}
@@ -371,7 +371,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void CodeGenXMREventCallHandler (ScriptCodeGen scg, Token token, CompValu result, CompValu[] args)
 		{
-			scg.ilGen.Emit (OpCodes.Ldarg_0);
+			scg.PushXMRInst ();
 			args[0].PushVal (scg);
 			scg.ilGen.Emit (OpCodes.Call, xmrEventCallHandler);
 		}
@@ -383,7 +383,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void CodeGenXMREventDequeue (ScriptCodeGen scg, Token token, CompValu result, CompValu[] args)
 		{
 			result.PopPre (scg);
-			scg.ilGen.Emit (OpCodes.Ldarg_0);
+			scg.PushXMRInst ();
 			args[0].PushVal (scg, tokenTypeFloat);
 			args[1].PushVal (scg, tokenTypeInt);
 			args[2].PushVal (scg, tokenTypeInt);
@@ -400,18 +400,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void CodeGenXMREventEnqueue (ScriptCodeGen scg, Token token, CompValu result, CompValu[] args)
 		{
-			scg.ilGen.Emit (OpCodes.Ldarg_0);
+			scg.PushXMRInst ();
 			args[0].PushVal (scg);
 			scg.ilGen.Emit (OpCodes.Call, xmrEventEnqueue);
 		}
 
 		/**
-		 * @brief Generate code to loat event detect parameters
+		 * @brief Generate code to load event detect parameters
 		 *        Script-level prototype:  xmrEventLoadDets(list)
 		 */
 		private void CodeGenXMREventLoadDets (ScriptCodeGen scg, Token token, CompValu result, CompValu[] args)
 		{
-			scg.ilGen.Emit (OpCodes.Ldarg_0);
+			scg.PushXMRInst ();
 			args[0].PushVal (scg);
 			scg.ilGen.Emit (OpCodes.Call, xmrEventLoadDets);
 		}
@@ -423,7 +423,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void CodeGenXMREventSaveDets (ScriptCodeGen scg, Token token, CompValu result, CompValu[] args)
 		{
 			result.PopPre (scg);
-			scg.ilGen.Emit (OpCodes.Ldarg_0);
+			scg.PushXMRInst ();
 			scg.ilGen.Emit (OpCodes.Call, xmrEventSaveDets);
 			result.PopPost (scg, retType);
 		}
@@ -435,7 +435,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void CodeGenXMRHeapLeft (ScriptCodeGen scg, Token token, CompValu result, CompValu[] args)
 		{
 			result.PopPre (scg);
-			scg.ilGen.Emit (OpCodes.Ldarg_0);
+			scg.PushXMRInst ();
 			scg.ilGen.Emit (OpCodes.Ldfld, ScriptCodeGen.heapLeftFieldInfo);
 			result.PopPost (scg, retType);
 		}
@@ -448,7 +448,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void CodeGenXMRStackLeft (ScriptCodeGen scg, Token token, CompValu result, CompValu[] args)
 		{
 			result.PopPre (scg);
-			scg.ilGen.Emit (OpCodes.Ldarg_0);
+			scg.PushXMRInst ();
 			scg.ilGen.Emit (OpCodes.Call, stackLeftMethodInfo);
 			result.PopPost (scg, retType);
 		}
@@ -460,7 +460,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void CodeGenOSParseJSON (ScriptCodeGen scg, Token token, CompValu result, CompValu[] args)
 		{
 			result.PopPre (scg);
-			scg.ilGen.Emit (OpCodes.Ldarg_0);
+			scg.PushXMRInst ();
 			args[0].PushVal (scg, tokenTypeString);
 			scg.ilGen.Emit (OpCodes.Call, xmrOSParseJSON);
 			result.PopPost (scg, retType);
@@ -475,7 +475,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void CodeGenBEApi (ScriptCodeGen scg, Token token, CompValu result, CompValu[] args)
 		{
 			result.PopPre (scg);
-			scg.ilGen.Emit (OpCodes.Ldarg_0);            // xmrinstance = 'this' for the API function
+			scg.PushXMRInst ();                          // xmrinstance = 'this' for the API function
 			for (int i = 0; i < args.Length; i ++) {     // push arguments
 				args[i].PushVal (scg, argTypes[i]);  // .. boxing/unboxing as needed
 			}

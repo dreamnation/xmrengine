@@ -58,18 +58,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	 *        Includes constants, expressions and temp variables.
 	 */
 	public abstract class CompValu {
+		protected static readonly MethodInfo gsmdMethodInfo = 
+				typeof (XMRInstAbstract).GetMethod ("GetScriptMethodDelegate", 
+				                                    new Type[] { typeof (string), typeof (string), typeof (object) });
+
 		public TokenType type;        // type of the value and where in the source it was used
 		public bool isFinal;          // true iff value cannot be changed by any side effects
 		                              // - ie, PushVal() is idempotent (no calls, autoincrements, assignment, etc)
 		                              // - temps do not change because we allocate a new one each time
 		                              // - constants never change because they are constant
 		                              // - expressions consisting of all isFinal operands are final
-		public CompValu heapTracker;  // var to keep track of any heap use by this var
-		                              // - only applies to global and local vars holding lists and strings
-		                              // - temp lists and strings are not tracked because they are hopefully temporary
-		                              // - arrays keep track of their own heap usage
-		                              // - global value types are tracked by a static amount
-		                              // - local & temp value types are tracked by the amount of stack they use
 
 		public CompValu (TokenType type)
 		{
@@ -143,6 +141,60 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			TokenTypeSDTypeDelegate ttd = (TokenTypeSDTypeDelegate)type;
 			MethodInfo invokeMethodInfo = ttd.decl.GetInvokerInfo ();
 			scg.ilGen.Emit (OpCodes.Callvirt, invokeMethodInfo);
+		}
+
+		/*
+		 * Utilities used by CompValuGlobalVar and CompValuInstField
+		 * where the value is located in a type-dependent array.
+		 */
+		protected void EmitFieldPushVal (ScriptCodeGen scg, TokenDeclVar var)
+		{
+			scg.ilGen.Emit (OpCodes.Ldfld, var.vTableArray);  // which array
+			scg.PushConstantI4 (var.vTableIndex);             // which array element
+			if (type is TokenTypeFloat) {
+#define double Ldelem_R8
+#define float  Ldelem_R4
+				scg.ilGen.Emit (OpCodes.SCRIPTFLOAT);
+#undef double
+#undef float
+			} else if (type is TokenTypeInt) {
+				scg.ilGen.Emit (OpCodes.Ldelem_I4);
+			} else if (type is TokenTypeSDTypeDelegate) {
+				scg.ilGen.Emit (OpCodes.Ldelem, typeof (object));
+				scg.ilGen.Emit (OpCodes.Castclass, ToSysType ());
+			} else {
+				scg.ilGen.Emit (OpCodes.Ldelem, ToSysType ());
+			}
+		}
+
+		protected void EmitFieldPushRef (ScriptCodeGen scg, TokenDeclVar var)
+		{
+			scg.ilGen.Emit (OpCodes.Ldfld, var.vTableArray);
+			scg.PushConstantI4 (var.vTableIndex);
+			scg.ilGen.Emit (OpCodes.Ldelema, ToSysType());
+		}
+
+		protected void EmitFieldPopPre (ScriptCodeGen scg, TokenDeclVar var)
+		{
+			scg.ilGen.Emit (OpCodes.Ldfld, var.vTableArray);
+			scg.PushConstantI4 (var.vTableIndex);
+		}
+
+		protected void EmitFieldPopPost (ScriptCodeGen scg, TokenDeclVar var)
+		{
+			if (type is TokenTypeFloat) {
+#define double Stelem_R8
+#define float  Stelem_R4
+				scg.ilGen.Emit (OpCodes.SCRIPTFLOAT);
+#undef double
+#undef float
+			} else if (type is TokenTypeInt) {
+				scg.ilGen.Emit (OpCodes.Stelem_I4);
+			} else if (type is TokenTypeSDTypeDelegate) {
+				scg.ilGen.Emit (OpCodes.Stelem, typeof (object));
+			} else {
+				scg.ilGen.Emit (OpCodes.Stelem, ToSysType ());
+			}
 		}
 	}
 
@@ -286,13 +338,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 	}
 
-	// The value is the entrypoint of a script-defined global function/method
+	// The value is the entrypoint of a script-defined global function
 	public class CompValuGlobalMeth : CompValu {
 		private TokenDeclFunc func;
-
-		private static readonly MethodInfo gsmdMethodInfo = 
-				typeof (XMRInstAbstract).GetMethod ("GetScriptMethodDelegate", 
-				                                    new Type[] { typeof (string), typeof (string), typeof (object) });
 
 		public CompValuGlobalMeth (TokenDeclFunc declFunc, TokenTypeSDTypeDelegate type) : base (type)
 		{
@@ -311,10 +359,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (dtn.StartsWith ("delegate ")) dtn = dtn.Substring (9);
 
 			// delegateinstance = (signature)scriptinstance.GetScriptMethodDelegate (methName, signature, scriptinstance);
-			scg.ilGen.Emit (OpCodes.Ldarg_0);                       // [0] scriptinstance
+			scg.PushXMRInst ();                                     // [0] scriptinstance
 			scg.ilGen.Emit (OpCodes.Ldstr, func.ilGen.methName);    // [1] method name
 			scg.ilGen.Emit (OpCodes.Ldstr, dtn);                    // [2] delegate type name
-			scg.ilGen.Emit (OpCodes.Ldarg_0);                       // [3] scriptinstance
+			scg.PushXMRInst ();                                     // [3] scriptinstance
 			scg.ilGen.Emit (OpCodes.Callvirt, gsmdMethodInfo);      // [0] delegate instance
 			scg.ilGen.Emit (OpCodes.Castclass, type.ToSysType ());  // [0] cast to correct delegate class
 		}
@@ -333,14 +381,94 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		public override void CallPre (ScriptCodeGen scg)
 		{
-			// all script-defined global functions/methods are static methods created by DynamicMethod()
+			// all script-defined global functions are static methods created by DynamicMethod()
 			// and the first argument is always the XMR_Instance pointer
-			// so we always can simply forward it from one function/method to the next
-			scg.ilGen.Emit (OpCodes.Ldarg_0);
+			scg.PushXMRInst ();
 		}
 		public override void CallPost (ScriptCodeGen scg)
 		{
 			scg.ilGen.Emit (OpCodes.Call, func.ilGen);
+		}
+	}
+
+	// The value is the entrypoint of a script-defined type's instance method
+	public class CompValuInstMeth : CompValu {
+		private TokenDeclFunc func;
+		private CompValu baseRVal;
+
+		private static FieldInfo vTableFieldInfo = typeof (XMRSDTypeClassInstance).GetField ("sdtcVTable");
+
+		public CompValuInstMeth (TokenDeclFunc declFunc, TokenTypeSDTypeDelegate type, CompValu baseRVal) : base (type)
+		{
+			this.func     = declFunc;
+			this.baseRVal = baseRVal;
+		}
+
+		public override void PushVal (ScriptCodeGen scg)
+		{
+			if ((func.sdtFlags & ScriptReduce.SDT_STATIC) != 0) throw new Exception ("dont use for statics");
+
+			if (func.vTableIndex < 0) {
+
+				/*
+				 * Non-virtual instance method, create a delegate that references the method.
+				 */
+				string dtn = type.ToString ();
+				if (dtn.StartsWith ("delegate ")) dtn = dtn.Substring (9);
+
+				// delegateinstance = (signature)scriptinstance.GetScriptMethodDelegate (methName, signature, sdtinstance);
+				scg.PushXMRInst ();                                     // [0] scriptinstance
+				scg.ilGen.Emit (OpCodes.Ldstr, func.ilGen.methName);    // [1] method name
+				scg.ilGen.Emit (OpCodes.Ldstr, dtn);                    // [2] delegate type name
+				scg.ilGen.Emit (OpCodes.Ldarg_0);                       // [3] sdtinstance
+				scg.ilGen.Emit (OpCodes.Callvirt, gsmdMethodInfo);      // [0] delegate instance
+				scg.ilGen.Emit (OpCodes.Castclass, type.ToSysType ());  // [0] cast to correct delegate class
+			} else {
+
+				/*
+				 * Virtual instance method, get the delegate from the vtable.
+				 */
+				baseRVal.PushVal (scg);                                 // 'this' selecting the instance
+				scg.ilGen.Emit (OpCodes.Ldfld, vTableFieldInfo);        // get pointer to instance's vtable array
+				scg.PushConstantI4 (func.vTableIndex);                  // select vtable element
+				scg.ilGen.Emit (OpCodes.Ldelem, typeof (Delegate));     // get delegate pointer = 'this' for 'Invoke()'
+				scg.ilGen.Emit (OpCodes.Castclass, type.ToSysType ());  // cast to correct delegate class
+			}
+		}
+		public override void PushRef (ScriptCodeGen scg)
+		{
+			throw new Exception ("cannot get ref to instance method");
+		}
+		public override void PopPost (ScriptCodeGen scg)
+		{
+			throw new Exception ("cannot store into instance method");
+		}
+
+		public override void CallPre (ScriptCodeGen scg)
+		{
+			if ((func.sdtFlags & ScriptReduce.SDT_STATIC) != 0) throw new Exception ("dont use for statics");
+
+			if (func.vTableIndex < 0) {
+				baseRVal.PushVal (scg);                                 // 'this' being passed directly to method
+			} else {
+				baseRVal.PushVal (scg);                                 // 'this' selecting the instance
+				scg.ilGen.Emit (OpCodes.Ldfld, vTableFieldInfo);        // get pointer to instance's vtable array
+				scg.PushConstantI4 (func.vTableIndex);                  // select vtable element
+				scg.ilGen.Emit (OpCodes.Ldelem, typeof (Delegate));     // get delegate pointer = 'this' for 'Invoke()'
+				scg.ilGen.Emit (OpCodes.Castclass, type.ToSysType ());  // cast to correct delegate class
+			}
+		}
+		public override void CallPost (ScriptCodeGen scg)
+		{
+			if (func.vTableIndex < 0) {
+				// non-virt instance, just call function directly
+				scg.ilGen.Emit (OpCodes.Call, func.ilGen);
+			} else {
+				// virtual, call via delegate Invoke(...) method
+				TokenTypeSDTypeDelegate ttd = (TokenTypeSDTypeDelegate)type;
+				MethodInfo invokeMethodInfo = ttd.decl.GetInvokerInfo ();
+				scg.ilGen.Emit (OpCodes.Callvirt, invokeMethodInfo);
+			}
 		}
 	}
 
@@ -412,112 +540,64 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 	// The value is in a script-global variable = ScriptModule instance variable
 	public class CompValuGlobalVar : CompValu {
-		public FieldInfo field;
-		public int index;
-
-		private static readonly FieldInfo gblArraysFieldInfo    = typeof (XMRInstAbstract).GetField ("gblArrays");
-		private static readonly FieldInfo gblFloatsFieldInfo    = typeof (XMRInstAbstract).GetField ("gblFloats");
-		private static readonly FieldInfo gblIntegersFieldInfo  = typeof (XMRInstAbstract).GetField ("gblIntegers");
-		private static readonly FieldInfo gblListsFieldInfo     = typeof (XMRInstAbstract).GetField ("gblLists");
-		private static readonly FieldInfo gblObjectsFieldInfo   = typeof (XMRInstAbstract).GetField ("gblObjects");
-		private static readonly FieldInfo gblRotationsFieldInfo = typeof (XMRInstAbstract).GetField ("gblRotations");
-		private static readonly FieldInfo gblStringsFieldInfo   = typeof (XMRInstAbstract).GetField ("gblStrings");
-		private static readonly FieldInfo gblVectorsFieldInfo   = typeof (XMRInstAbstract).GetField ("gblVectors");
+		private TokenDeclVar declVar;
 
 		public CompValuGlobalVar (TokenDeclVar declVar, ScriptObjCode scriptObjCode) : base (declVar.type)
 		{
-			if (type is TokenTypeArray) {
-				this.field = gblArraysFieldInfo;
-				this.index = scriptObjCode.numGblArrays ++;
-			}
-			if (type is TokenTypeSDTypeDelegate) {
-				// delegates go in the objects array because we
-				// would have to cast when taking them out of an
-				// array of type Delegate anyway so might as well
-				// just use the objects array.
-				this.field = gblObjectsFieldInfo;
-				this.index = scriptObjCode.numGblObjects ++;
-			}
-			if (type is TokenTypeFloat) {
-				this.field = gblFloatsFieldInfo;
-				this.index = scriptObjCode.numGblFloats ++;
-			}
-			if (type is TokenTypeInt) {
-				this.field = gblIntegersFieldInfo;
-				this.index = scriptObjCode.numGblIntegers ++;
-			}
-			if (type is TokenTypeList) {
-				this.field = gblListsFieldInfo;
-				this.index = scriptObjCode.numGblLists ++;
-			}
-			if (type is TokenTypeObject) {
-				this.field = gblObjectsFieldInfo;
-				this.index = scriptObjCode.numGblObjects ++;
-			}
-			if (type is TokenTypeRot) {
-				this.field = gblRotationsFieldInfo;
-				this.index = scriptObjCode.numGblRotations ++;
-			}
-			if (type is TokenTypeStr) {
-				this.field = gblStringsFieldInfo;
-				this.index = scriptObjCode.numGblStrings ++;
-			}
-			if (type is TokenTypeVec) {
-				this.field = gblVectorsFieldInfo;
-				this.index = scriptObjCode.numGblVectors ++;
-			}
-			if (this.field == null) {
-				throw new Exception ("unsupported type " + type.GetType ().ToString ());
-			}
+			this.declVar = declVar;
+			declVar.type.AssignGlobalVarSlot (declVar, scriptObjCode);
 		}
 		public override void PushVal (ScriptCodeGen scg)
 		{
-			scg.ilGen.Emit (OpCodes.Ldarg_0);            // xmrinstance
-			scg.ilGen.Emit (OpCodes.Ldfld, field);       // xmrinstance.gbl<Type>s
-			scg.PushConstantI4 (index);
-			if (type is TokenTypeFloat) {
-#define double Ldelem_R8
-#define float  Ldelem_R4
-				scg.ilGen.Emit (OpCodes.SCRIPTFLOAT);
-#undef double
-#undef float
-			} else if (type is TokenTypeInt) {
-				scg.ilGen.Emit (OpCodes.Ldelem_I4);
-			} else if (type is TokenTypeSDTypeDelegate) {
-				scg.ilGen.Emit (OpCodes.Ldelem, typeof (object));
-				scg.ilGen.Emit (OpCodes.Castclass, ToSysType ());
-			} else {
-				scg.ilGen.Emit (OpCodes.Ldelem, ToSysType ());
-			}
+			scg.PushXMRInst ();
+			EmitFieldPushVal (scg, declVar);
 		}
 		public override void PushRef (ScriptCodeGen scg)
 		{
-			scg.ilGen.Emit (OpCodes.Ldarg_0);            // xmrinstance
-			scg.ilGen.Emit (OpCodes.Ldfld, field);       // xmrinstance.gbl<Type>s
-			scg.PushConstantI4 (index);
-			scg.ilGen.Emit (OpCodes.Ldelema, ToSysType());
+			scg.PushXMRInst ();
+			EmitFieldPushRef (scg, declVar);
 		}
 		public override void PopPre (ScriptCodeGen scg)
 		{
-			scg.ilGen.Emit (OpCodes.Ldarg_0);            // xmrinstance
-			scg.ilGen.Emit (OpCodes.Ldfld, field);       // xmrinstance.gbl<Type>s
-			scg.PushConstantI4 (index);
+			scg.PushXMRInst ();
+			EmitFieldPopPre (scg, declVar);
 		}
 		public override void PopPost (ScriptCodeGen scg)
 		{
-			if (type is TokenTypeFloat) {
-#define double Stelem_R8
-#define float  Stelem_R4
-				scg.ilGen.Emit (OpCodes.SCRIPTFLOAT);
-#undef double
-#undef float
-			} else if (type is TokenTypeInt) {
-				scg.ilGen.Emit (OpCodes.Stelem_I4);
-			} else if (type is TokenTypeSDTypeDelegate) {
-				scg.ilGen.Emit (OpCodes.Stelem, typeof (object));
-			} else {
-				scg.ilGen.Emit (OpCodes.Stelem, ToSysType ());
-			}
+			EmitFieldPopPost (scg, declVar);
+		}
+	}
+
+	// The value is in a script-defined type class instance, ie, 
+	// one of the arrays contained within XMRSDTypeClassInstance
+	public class CompValuInstField : CompValu {
+		private TokenDeclVar declVar;
+		private CompValu baseRVal;
+
+		public CompValuInstField (TokenDeclVar declVar, CompValu baseRVal) : base (declVar.type)
+		{
+			this.declVar  = declVar;
+			this.baseRVal = baseRVal;
+		}
+
+		public override void PushVal (ScriptCodeGen scg)
+		{
+			baseRVal.PushVal (scg);
+			EmitFieldPushVal (scg, declVar);
+		}
+		public override void PushRef (ScriptCodeGen scg)
+		{
+			baseRVal.PushVal (scg);
+			EmitFieldPushRef (scg, declVar);
+		}
+		public override void PopPre (ScriptCodeGen scg)
+		{
+			baseRVal.PushVal (scg);
+			EmitFieldPopPre (scg, declVar);
+		}
+		public override void PopPost (ScriptCodeGen scg)
+		{
+			EmitFieldPopPost (scg, declVar);
 		}
 	}
 

@@ -30,6 +30,10 @@ using System.Text;
 namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 	public class ScriptReduce {
+		public const uint SDT_ABSTRACT = 1;
+		public const uint SDT_OVERRIDE = 2;
+		public const uint SDT_STATIC   = 4;
+		public const uint SDT_VIRTUAL  = 8;
 
 		private static Dictionary<Type, int> precedence = PrecedenceInit ();
 
@@ -223,10 +227,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				/*
 				 * class <classdef> ... { ... }
 				 */
-				/*if (token is TokenKwClass) {
+				if (token is TokenKwClass) {
 					ParseDeclClass (ref token);
 					continue;
-				}*/
+				}
 
 				/*
 				 * constant <name> = <rval> ;
@@ -248,7 +252,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				 * interface <interfacedef> ... { ... }
 				 */
 				/*if (token is TokenKwInterface) {
-					ParseDeclInterface (ref token);
+					ParseDeclClass (ref token, true);
 					continue;
 				}*/
 
@@ -285,7 +289,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						 * global function definition
 						 */
 						token = tokenType;
-						TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token);
+						TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, false);
 						if (tokenDeclFunc == null) continue;
 						if (tokenScript.funcs.ContainsKey (tokenName.val)) {
 							ErrorMsg (tokenName, "duplicate function name");
@@ -313,7 +317,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						continue;
 					}
 					token = tokenName;
-					TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token);
+					TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, false);
 					if (tokenDeclFunc == null) continue;
 					tokenDeclFunc.retType = new TokenTypeVoid (tokenName);
 					if (tokenScript.funcs.ContainsKey (tokenName.val)) {
@@ -382,6 +386,195 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * If any error messages were written out, set return value to null.
 			 */
 			if (errors) tokenScript = null;
+		}
+
+		/**
+		 * @brief Parse a class declaration.
+		 * @param token = points to 'class' keyword on entry
+		 *                points just past closing '}' on return
+		 */
+		private void ParseDeclClass (ref Token token)
+		{
+			Token u = token.nextToken;
+			TokenDeclSDTypeClass tokdeclcl;
+
+			// first thing following 'class' should be the
+			// class's declaration that we foud during
+			// pre-scan
+			if (!(u is TokenDeclSDTypeClass)) {
+				ErrorMsg (u, "expecting class name");
+				token = SkipPastSemi (token);
+				return;
+			}
+			tokdeclcl = (TokenDeclSDTypeClass)u;
+			u = u.nextToken;
+
+			// next can be ':' followed by list of implemented
+			// interfaces and one extended class
+			if (u is TokenKwColon) {
+				u = u.nextToken;
+				while (true) {
+					if (u is TokenTypeSDTypeClass) {
+						TokenDeclSDTypeClass c = ((TokenTypeSDTypeClass)u).decl;
+						if (tokdeclcl.extends == null) {
+							tokdeclcl.extends = c;
+						} else if (tokdeclcl.extends != c) {
+							ErrorMsg (u, "can extend from only one class");
+						}
+					} else if (u is TokenTypeSDTypeInterface) {
+						TokenDeclSDTypeInterface i = ((TokenTypeSDTypeInterface)u).decl;
+						if (!tokdeclcl.implements.Contains (i)) {
+							tokdeclcl.implements.Add (i);
+						}
+					} else {
+						ErrorMsg (u, "expecting class or interface name");
+						if (u is TokenKwBrcOpen) break;
+					}
+					u = u.nextToken;
+					if (!(u is TokenKwComma)) break;
+					u = u.nextToken;
+				}
+			}
+
+			// next must be '{' to open class declaration body
+			if (!(u is TokenKwBrcOpen)) {
+				ErrorMsg (u, "expecting { to open class declaration body");
+				token = SkipPastSemi (token);
+				return;
+			}
+			token = u.nextToken;
+
+			// process declaration statements until '}'
+			while (!(token is TokenKwBrcClose)) {
+
+				/*
+				 * constant <name> = <rval> ;
+				 */
+				if (token is TokenKwConst) {
+					ParseDeclVar (ref token, tokdeclcl.fields);
+					continue;
+				}
+
+				/*
+				 * Maybe there is a 'static' prefix.
+				 */
+				uint flags = 0;
+				if (token is TokenKwStatic) {
+					flags |= SDT_STATIC;
+					token = token.nextToken;
+				}
+
+				/*
+				 * [ static ] <type> <name> ;
+				 * [ static ] <type> <name> = <rval> ;
+				 */
+				if ((token is TokenType) &&
+				    (token.nextToken is TokenName) &&
+				    ((token.nextToken.nextToken is TokenKwSemi) || 
+				     (token.nextToken.nextToken is TokenKwAssign))) {
+					ParseDeclVar (ref token, tokdeclcl.fields).sdtFlags = flags;
+					continue;
+				}
+
+				/*
+				 * Maybe there is an 'abstract', 'override' or 'virtual' prefix.
+				 */
+				while (true) {
+					if (token is TokenKwAbstract) {
+						if (flags != 0) ErrorMsg (token, "conflicting prefixes");
+						else flags |= SDT_ABSTRACT;
+						tokdeclcl.isAbstract = true;
+						token = token.nextToken;
+						continue;
+					}
+					if (token is TokenKwOverride) {
+						if (flags != 0) ErrorMsg (token, "conflicting prefixes");
+						else flags |= SDT_OVERRIDE;
+						token = token.nextToken;
+						continue;
+					}
+					if (token is TokenKwVirtual) {
+						if (flags != 0) ErrorMsg (token, "conflicting prefixes");
+						else flags |= SDT_VIRTUAL;
+						token = token.nextToken;
+						continue;
+					}
+					break;
+				}
+
+				/*
+				 * [ abstract | override | static | virtual ] <type> <name> <funcargs> <funcbody>
+				 * instance method with explicit return type
+				 */
+				if (token is TokenType) {
+					TokenType tokenType = (TokenType)token;
+
+					token = token.nextToken;
+					if (!(token is TokenName)) {
+						ErrorMsg (token, "expecting field/method name");
+						token = SkipPastSemi (token);
+						continue;
+					}
+					TokenName tokenName = (TokenName)token;
+					token = token.nextToken;
+					if (token is TokenKwParOpen) {
+
+						/*
+						 * <type> <name> (
+						 * instance method definition
+						 */
+						token = tokenType;
+						TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, (flags & SDT_ABSTRACT) != 0);
+						if (tokenDeclFunc == null) continue;
+						tokenDeclFunc.sdtFlags = flags;
+						if (tokdeclcl.methods.ContainsKey (tokenName.val)) {
+							ErrorMsg (tokenName, "duplicate method name");
+							continue;
+						}
+						tokdeclcl.methods.Add (tokenName.val, tokenDeclFunc);
+						continue;
+					}
+					ErrorMsg (token, "<type> <name> must be followed by ; = or (");
+					token = SkipPastSemi (token);
+					continue;
+				}
+
+				/*
+				 * [ abstract | override | static | virtual ] <name> <funcargs> <funcbody>
+				 * instance method returning void
+				 */
+				if (token is TokenName) {
+					TokenName tokenName = (TokenName)token;
+					token = token.nextToken;
+					if (!(token is TokenKwParOpen)) {
+						ErrorMsg (token, "looking for open paren after assuming " + 
+						                 tokenName.val + " is a method name");
+						token = SkipPastSemi (token);
+						continue;
+					}
+					token = tokenName;
+					TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, (flags & SDT_ABSTRACT) != 0);
+					if (tokenDeclFunc == null) continue;
+					tokenDeclFunc.retType = new TokenTypeVoid (tokenName);
+					if (tokdeclcl.methods.ContainsKey (tokenName.val)) {
+						ErrorMsg (tokenName, "duplicate method name");
+						continue;
+					}
+					tokdeclcl.methods.Add (tokenDeclFunc.funcName.val, tokenDeclFunc);
+					continue;
+				}
+
+				/*
+				 * That's all we support in a class declaration.
+				 */
+				ErrorMsg (token, "expecting field or method declaration");
+				token = SkipPastSemi (token);
+			}
+
+			/*
+			 * Skip over the closing brace.
+			 */
+			token = token.nextToken;
 		}
 
 		/**
@@ -489,7 +682,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					ErrorMsg (tokenStateBody, "eof parsing state body");
 					return null;
 				}
-				TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token);
+				TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, false);
 				if (tokenDeclFunc == null) return null;
 				if (!(tokenDeclFunc.retType is TokenTypeVoid)) {
 					ErrorMsg (tokenDeclFunc.retType, "event handlers don't have return types");
@@ -505,11 +698,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		/**
 		 * @brief parse a function declaration, including its arg list and body
 		 * @param token = points to function type token (or function name token if void)
+		 * @param abs = false: concrete function; true: abstract declaration
 		 * @returns null: error parsing function definition
 		 *          else: function declaration
 		 *          token = advanced just past function, ie, just past the closing brace
 		 */
-		private TokenDeclFunc ParseDeclFunc (ref Token token)
+		private TokenDeclFunc ParseDeclFunc (ref Token token, bool abs)
 		{
 			TokenType tokenType;
 			if (token is TokenType) {
@@ -530,12 +724,25 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			tokenDeclFunc.funcName = tokenName;
 			tokenDeclFunc.argDecl  = ParseFuncArgs (ref token);
 
-			TokenDeclFunc saveDeclFunc = currentDeclFunc;
-			currentDeclFunc = tokenDeclFunc;
-			tokenDeclFunc.body = ParseStmtBlock (ref token);
-			currentDeclFunc = saveDeclFunc;
-
-			if ((tokenDeclFunc.argDecl == null) || (tokenDeclFunc.body == null)) return null;
+			if (token is TokenKwSemi) {
+				if (!abs) {
+					ErrorMsg (token, "expecting function body, not abstract");
+					token = SkipPastSemi (token);
+					return null;
+				}
+				token = token.nextToken;
+			} else {
+				TokenDeclFunc saveDeclFunc = currentDeclFunc;
+				currentDeclFunc = tokenDeclFunc;
+				tokenDeclFunc.body = ParseStmtBlock (ref token);
+				currentDeclFunc = saveDeclFunc;
+				if (tokenDeclFunc.body == null) return null;
+				if (abs) {
+					ErrorMsg (tokenDeclFunc.body, "function declared abstract but has body");
+					tokenDeclFunc.body = null;
+				}
+			}
+			if (tokenDeclFunc.argDecl == null) return null;
 			return tokenDeclFunc;
 		}
 
@@ -2040,6 +2247,29 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 	public class TokenDeclSDTypeClass : TokenDeclSDType {
 		public TokenName name;
+		public TokenDeclSDTypeClass extends;
+		public List<TokenDeclSDTypeInterface> implements = new List<TokenDeclSDTypeInterface> ();
+		public bool isAbstract;
+		public Dictionary<string, TokenDeclVar>  fields  = new Dictionary<string, TokenDeclVar>  ();
+		public Dictionary<string, TokenDeclFunc> methods = new Dictionary<string, TokenDeclFunc> ();
+
+		public bool slotsAssigned;    // set true when slots have been assigned...
+		public int numInstArrays;     // number of non-static array fields
+		public int numInstFloats;     // number of non-static float fields
+		public int numInstIntegers;   // number of non-static integer fields
+		public int numInstLists;      // number of non-static list fields
+		public int numInstObjects;    // number of non-static object fields
+		public int numInstRotations;  // number of non-static rotation fields
+		public int numInstStrings;    // number of non-static string fields
+		public int numInstVectors;    // number of non-static vector fields
+		public int numInstSDTClasses; // number of non-static sdt-class fields
+		public int numInstVirtFuncs;  // number of virtual functions
+
+		private string extendsStr;
+		private List<StackedMethod> stackedMethods;
+
+		public DynamicMethod[] vDynMeths;  // virtual method entrypoints
+		public Type[] vMethTypes;          // virtual method delegate type
 
 		public TokenDeclSDTypeClass (TokenName name) : base (name)
 		{
@@ -2053,15 +2283,130 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public override Type GetSysType ()
 		{
-			throw new Exception ("not implemented");
+			return typeof (XMRSDTypeClassInstance);
 		}
+
+		/**
+		 * @brief Write enough out so we can reconstruct with ReadFromFile.
+		 */
 		public override void WriteToFile (BinaryWriter objFileWriter)
 		{
-			throw new Exception ("not implemented");
+			objFileWriter.Write (numInstArrays);
+			objFileWriter.Write (numInstFloats);
+			objFileWriter.Write (numInstIntegers);
+			objFileWriter.Write (numInstLists);
+			objFileWriter.Write (numInstObjects);
+			objFileWriter.Write (numInstRotations);
+			objFileWriter.Write (numInstStrings);
+			objFileWriter.Write (numInstVectors);
+			objFileWriter.Write (numInstSDTClasses);
+			objFileWriter.Write (numInstVirtFuncs);
+
+			if (extends == null) {
+				objFileWriter.Write ("");
+			} else {
+				objFileWriter.Write (extends.name.val);
+			}
+
+			foreach (KeyValuePair<string, TokenDeclFunc> kvp in methods) {
+				TokenDeclFunc meth = kvp.Value;
+				if (meth.vTableIndex >= 0) {
+					TokenDeclSDTypeDelegate delType = new TokenDeclSDTypeDelegate (meth.funcName);
+					delType.SetRetArgTypes (meth.retType, meth.argDecl.types);
+					objFileWriter.Write (meth.vTableIndex);
+					objFileWriter.Write (meth.ilGen.methName);
+					objFileWriter.Write (delType.GetWholeSig ());
+				}
+			}
+			objFileWriter.Write (-1);
 		}
+
+		/**
+		 * @brief Reconstruct from the file.
+		 */
 		public override void ReadFromFile (BinaryReader objFileReader, TextWriter asmFileWriter)
 		{
-			throw new Exception ("not implemented");
+			numInstArrays     = objFileReader.ReadInt32 ();
+			numInstFloats     = objFileReader.ReadInt32 ();
+			numInstIntegers   = objFileReader.ReadInt32 ();
+			numInstLists      = objFileReader.ReadInt32 ();
+			numInstObjects    = objFileReader.ReadInt32 ();
+			numInstRotations  = objFileReader.ReadInt32 ();
+			numInstStrings    = objFileReader.ReadInt32 ();
+			numInstVectors    = objFileReader.ReadInt32 ();
+			numInstSDTClasses = objFileReader.ReadInt32 ();
+			numInstVirtFuncs  = objFileReader.ReadInt32 ();
+
+			extendsStr = objFileReader.ReadString ();
+
+			stackedMethods = new List<StackedMethod> ();
+			int vTableIndex;
+			while ((vTableIndex = objFileReader.ReadInt32 ()) >= 0) {
+				StackedMethod sm;
+				sm.methVTI  = vTableIndex;
+				sm.methName = objFileReader.ReadString ();
+				sm.methSig  = objFileReader.ReadString ();
+				stackedMethods.Add (sm);
+			}
+		}
+
+		private struct StackedMethod {
+			public int methVTI;
+			public string methName;
+			public string methSig;
+		}
+
+		/**
+		 * @brief Called after all dynamic method code has been generated to fill in vDynMeths and vMethTypes
+		 */
+		public void FillVTables (ScriptObjCode scriptObjCode)
+		{
+			if (extendsStr != null) {
+				if (extendsStr != "") {
+					extends = (TokenDeclSDTypeClass)scriptObjCode.sdObjTypes[extendsStr];
+					extends.FillVTables (scriptObjCode);
+				}
+				extendsStr = null;
+			}
+
+			if ((numInstVirtFuncs > 0) && (stackedMethods != null)) {
+
+				/*
+				 * Allocate arrays big enough for mine plus type we are extending.
+				 */
+				vDynMeths  = new DynamicMethod[numInstVirtFuncs];
+				vMethTypes = new Type[numInstVirtFuncs];
+
+				/*
+				 * Fill in low parts from type we are extending.
+				 */
+				if (extends != null) {
+					int n = extends.numInstVirtFuncs;
+					for (int i = 0; i < n; i ++) {
+						vDynMeths[i]  = extends.vDynMeths[i];
+						vMethTypes[i] = extends.vMethTypes[i];
+					}
+				}
+
+				/*
+				 * Fill in high parts with my own methods.
+				 * Might also overwrite lower ones with 'override' methods.
+				 */
+				foreach (StackedMethod sm in stackedMethods) {
+					int i = sm.methVTI;
+					string methName  = sm.methName;
+					DynamicMethod dm = scriptObjCode.dynamicMethods[methName];
+					vDynMeths[i] = dm;
+					Type retType = dm.ReturnType;
+					ParameterInfo[] pi = dm.GetParameters ();
+					Type[] argTypes = new Type[pi.Length];
+					for (int j = 0; j < pi.Length; j ++) {
+						argTypes[j] = pi[j].ParameterType;
+					}
+					vMethTypes[i] = DelegateCommon.GetType (retType, argTypes, sm.methSig);
+				}
+				stackedMethods = null;
+			}
 		}
 	}
 
@@ -2353,6 +2698,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	}
 
 	public class TokenTypeSDTypeClass : TokenTypeSDType {
+		private static readonly FieldInfo gblSDTClassesFieldInfo  = typeof (XMRInstAbstract).GetField ("gblSDTClasses");
+		private static readonly FieldInfo sdtcSDTClassesFieldInfo = typeof (XMRSDTypeClassInstance).GetField ("sdtcSDTClasses");
+ 
 		public TokenDeclSDTypeClass decl;
 		public TokenTypeSDTypeClass (Token t, TokenDeclSDTypeClass decl) : base (t)
 		{
@@ -2362,9 +2710,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			return null;
 		}
+		public override void AssignGlobalVarSlot (TokenDeclVar declVar, ScriptObjCode scriptObjCode)
+		{
+			declVar.vTableArray = gblSDTClassesFieldInfo;
+			declVar.vTableIndex = scriptObjCode.numGblSDTClasses ++;
+		}
+		public override void AssignSDTClassFieldSlot (TokenDeclVar declVar, TokenDeclSDTypeClass sdtClass)
+		{
+			declVar.vTableArray = sdtcSDTClassesFieldInfo;
+			declVar.vTableIndex = sdtClass.numInstSDTClasses ++;
+		}
 	}
 
 	public class TokenTypeSDTypeDelegate : TokenTypeSDType {
+		private static readonly FieldInfo gblObjectsFieldInfo  = typeof (XMRInstAbstract).GetField ("gblObjects");
+		private static readonly FieldInfo sdtcObjectsFieldInfo = typeof (XMRSDTypeClassInstance).GetField ("sdtcObjects");
+
 		public TokenDeclSDTypeDelegate decl;
 
 		private static ulong anonDeclDel = 0;
@@ -2413,14 +2774,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			/*
 			 * No such luck, create a new anonymous declaration.
 			 */
-			string namestr;
-			do namestr = ".anondel." + (++ anonDeclDel);
-			while (tokenScript.sdSrcTypes.ContainsKey (namestr));
-
+			string namestr = ".anondel." + (++ anonDeclDel);
 			TokenName name = new TokenName (t, namestr);
 			decldel        = new TokenDeclSDTypeDelegate (name);
 			decldel.SetRetArgTypes (retType, argTypes);
-			tokenScript.sdSrcTypes.Add (namestr, decldel);
 			this.decl = decldel;
 		}
 
@@ -2432,6 +2789,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public override string ToString ()
 		{
 			return decl.name.val;
+		}
+
+		/**
+		 * @brief Assign slots in the gblObjects[] array because we have to typecast out in any case.
+		 *        Likewise with the sdtcObjects[] array.
+		 */
+		public override void AssignGlobalVarSlot (TokenDeclVar declVar, ScriptObjCode scriptObjCode)
+		{
+			declVar.vTableArray = gblObjectsFieldInfo;
+			declVar.vTableIndex = scriptObjCode.numGblObjects ++;
+		}
+		public override void AssignSDTClassFieldSlot (TokenDeclVar declVar, TokenDeclSDTypeClass sdtClass)
+		{
+			declVar.vTableArray = sdtcObjectsFieldInfo;
+			declVar.vTableIndex = sdtClass.numInstObjects ++;
 		}
 
 		/**
@@ -2498,13 +2870,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenType retType;            // new TokenTypeVoid (token) if void; NEVER null
 		public TokenName funcName;           // function name
 		public TokenArgDecl argDecl;         // argument list prototypes
-		public TokenStmtBlock body;          // statements
+		public TokenStmtBlock body;          // statements (null iff abstract)
+		public uint sdtFlags;                // abstract/override/static/virtual
 		public Dictionary<string, TokenStmtLabel> labels = new Dictionary<string, TokenStmtLabel> ();
 		                                     // all labels defined in the function
 		public LinkedList<TokenDeclVar> localVars = new LinkedList<TokenDeclVar> ();
 		                                     // all local variables declared by this function
 		                                     // - doesn't include argument variables
 
+		public int vTableIndex;              // if script-defined type method, vtable index
 		public ScriptMyILGen ilGen;          // codegen stores emitted code here
 
 		public TokenDeclFunc (Token original) : base (original) { }
@@ -2608,13 +2982,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenName name;
 		public TokenRVal init;  // null if none
 		public bool constant;
-
-		public bool preDefd;    // used by codegen
-		                        // false: normal in-order definition
-		                        //  true: var was defined at top of block
-		                        //        just set initialization value
+		public uint sdtFlags;
 
 		public CompValu location;  // used by codegen to keep track of location
+		public FieldInfo vTableArray;
+		public int vTableIndex;
+
+		public TokenDeclVar heapTracker;
 
 		/**
 		 * @brief Set up a variable declaration statement token.

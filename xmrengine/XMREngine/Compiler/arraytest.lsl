@@ -24,6 +24,14 @@ delegate void VERIFY(array,list s,string);
 array zz;
 DUMPARRAY da;
 
+class Klass {
+    integer x;
+    void Print ()
+    {
+        SaySomething ("Klass.x=" + x);
+    }
+}
+
 default
 {
     touch_start(integer num)

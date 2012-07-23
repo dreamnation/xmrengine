@@ -15,7 +15,8 @@ SADLLFILES = \
 	MMRScriptTokenReadWrite.cs \
 	MMRScriptTypeCast.cs \
 	XMRArray.cs \
-	XMRInstAbstract.cs
+	XMRInstAbstract.cs \
+	XMRSDTypeClassInstance.cs
 
 OPENSIMDLLDIR ?= ../../../bin
 SAOPENSIMDLLS = \

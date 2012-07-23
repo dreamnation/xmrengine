@@ -1,0 +1,91 @@
+/***************************************************\
+ *  COPYRIGHT 2012, Mike Rieker, Beverly, MA, USA  *
+ *  All rights reserved.                           *
+\***************************************************/
+
+#include "lsltypes.h"
+
+using System;
+using System.Reflection.Emit;
+
+namespace OpenSim.Region.ScriptEngine.XMREngine
+{
+    public class XMRSDTypeClassInstance
+    {
+        /*
+         * Which script instance we are part of so we can access
+         * the script's global variables and functions.
+         */
+        public XMRInstAbstract xmrInst;
+
+        /*
+         * What class we actually are in the hierarchy
+         * used for casting.
+         */
+        public TokenDeclSDTypeClass sdtcClass;
+
+        /*
+         * Our VTable array, used for calling virtual functions.
+         */
+        public Delegate[]     sdtcVTable;
+
+        /*
+         * These arrays hold the insance variable values.
+         * The array lengths are determined by the script compilation,
+         * and are found in TokenDeclSDTypeClass.
+         */
+        public XMR_Array[]    sdtcArrays;
+        public SCRIPTFLOAT[]  sdtcFloats;
+        public int[]          sdtcIntegers;
+        public LSL_List[]     sdtcLists;
+        public object[]       sdtcObjects;
+        public LSL_Rotation[] sdtcRotations;
+        public string[]       sdtcStrings;
+        public LSL_Vector[]   sdtcVectors;
+        public XMRSDTypeClassInstance[] sdtcSDTClasses;
+
+        private static XMR_Array[]    noArrays    = new XMR_Array[0];
+        private static SCRIPTFLOAT[]  noFloats    = new SCRIPTFLOAT[0];
+        private static int[]          noIntegers  = new int[0];
+        private static LSL_List[]     noLists     = new LSL_List[0];
+        private static object[]       noObjects   = new object[0];
+        private static LSL_Rotation[] noRotations = new LSL_Rotation[0];
+        private static string[]       noStrings   = new string[0];
+        private static LSL_Vector[]   noVectors   = new LSL_Vector[0];
+        private static XMRSDTypeClassInstance[] noSTDClasses = new XMRSDTypeClassInstance[0];
+
+        public XMRSDTypeClassInstance (XMRInstAbstract inst, TokenDeclSDTypeClass clas)
+        {
+            xmrInst   = inst;
+            sdtcClass = clas;
+
+            /*
+             * VTable consists of delegates built from DynamicMethods and the 'this' pointer.
+             * Yes, yes, lots of shitty little mallocs.
+             */
+            DynamicMethod[] vDynMeths = clas.vDynMeths;
+            if (vDynMeths != null) {
+                int n = vDynMeths.Length;
+                Type[] vMethTypes = clas.vMethTypes;
+                sdtcVTable = new Delegate[n];
+                for (int i = 0; i < n; i ++) {
+                    sdtcVTable[i] = vDynMeths[i].CreateDelegate (vMethTypes[i], this);
+                }
+            }
+
+            /*
+             * These arrays hold the script non-static instance variables.
+             * Lots more shitty little mallocs...
+             */
+            sdtcArrays     = (clas.numInstArrays     > 0) ? new XMR_Array   [clas.numInstArrays]    : noArrays;
+            sdtcFloats     = (clas.numInstFloats     > 0) ? new SCRIPTFLOAT [clas.numInstFloats]    : noFloats;
+            sdtcIntegers   = (clas.numInstIntegers   > 0) ? new int         [clas.numInstIntegers]  : noIntegers;
+            sdtcLists      = (clas.numInstLists      > 0) ? new LSL_List    [clas.numInstLists]     : noLists;
+            sdtcObjects    = (clas.numInstObjects    > 0) ? new object      [clas.numInstObjects]   : noObjects;
+            sdtcRotations  = (clas.numInstRotations  > 0) ? new LSL_Rotation[clas.numInstRotations] : noRotations;
+            sdtcStrings    = (clas.numInstStrings    > 0) ? new string      [clas.numInstStrings]   : noStrings;
+            sdtcVectors    = (clas.numInstVectors    > 0) ? new LSL_Vector  [clas.numInstVectors]   : noVectors;
+            sdtcSDTClasses = (clas.numInstSDTClasses > 0) ? new XMRSDTypeClassInstance[clas.numInstSDTClasses] : noSTDClasses;
+        }
+    }
+}
