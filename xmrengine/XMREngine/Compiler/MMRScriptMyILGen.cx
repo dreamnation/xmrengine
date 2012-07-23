@@ -44,17 +44,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						new Type[] { typeof (ILGenerator) }, null);
 
 		public string methName;
-		private BinaryWriter objWriter;
 
+		private BinaryWriter objWriter;
+		private Dictionary<string, TokenDeclSDType> sdTypes;
+		private Dictionary<Type, string> sdTypesRev;
 		private int labelNumber = 0;
 		private int localNumber = 0;
 
 		/**
-		 * @brief Begin fucntion declaration
-		 * @param methName = name of the method being declared
-		 * @param retType = its return value type
+		 * @brief Begin function declaration
+		 * @param sdTypes    = script-defined types
+		 * @param methName   = name of the method being declared, eg, "__fun_Verify(array,list,string)"
+		 * @param retType    = its return value type
 		 * @param argTypes[] = its argument types
-		 * @param objWriter = file to write its object code to
+		 * @param objWriter  = file to write its object code to
 		 *
 		 * After calling this function, the following functions should be called:
 		 *    this.BegMethod ();
@@ -68,8 +71,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * many constructors possible so we get function headers at the beginning
 		 * of the object file in case there are forward references to the functions.
 		 */
-		public ScriptMyILGen (string methName, Type retType, Type[] argTypes, BinaryWriter objWriter)
+		public ScriptMyILGen (Dictionary<string, TokenDeclSDType> sdTypes, string methName, Type retType, Type[] argTypes, BinaryWriter objWriter)
 		{
+			this.sdTypes   = sdTypes;
 			this.methName  = methName;
 			this.objWriter = objWriter;
 
@@ -312,11 +316,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		/**
 		 * @brief Take an object file created by ScriptMyILGen() and convert it to a series of dynamic methods.
+		 * @param sdTypes   = script-defined types
 		 * @param objReader = where to read object file from (as written by ScriptMyILGen above).
 		 * @param endMethod = called for each method defined
 		 * @param debWriter = debug file writer (or null if not wanted)
 		 */
-		public static void CreateObjCode (BinaryReader objReader, ScriptMyILGenEndMethod endMethod, TextWriter debWriter)
+		public static void CreateObjCode (Dictionary<string, TokenDeclSDType> sdTypes, BinaryReader objReader, ScriptMyILGenEndMethod endMethod, TextWriter debWriter)
 		{
 			Dictionary<string, DynamicMethod> methods = new Dictionary<string, DynamicMethod> ();
 			DynamicMethod method = null;
@@ -412,7 +417,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						int number  = objReader.ReadInt32 ();
 						string name = objReader.ReadString ();
 						string type = objReader.ReadString ();
-						Type syType = GetTypeFromStr (type);
+						Type syType = GetTypeFromStr (sdTypes, type);
 
 						locals.Add (number, ilGen.DeclareLocal (syType));
 						localNames.Add (number, name + "_" + number.ToString ());
@@ -431,12 +436,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 */
 					case ScriptMyILGenCode.DclMethod: {
 						string methName = objReader.ReadString ();
-						Type retType    = GetTypeFromStr (objReader.ReadString ());
+						Type retType    = GetTypeFromStr (sdTypes, objReader.ReadString ());
 						int nArgs       = objReader.ReadInt32 ();
 
 						Type[] argTypes = new Type[nArgs];
 						for (int i = 0; i < nArgs; i ++) {
-							argTypes[i] = GetTypeFromStr (objReader.ReadString ());
+							argTypes[i] = GetTypeFromStr (sdTypes, objReader.ReadString ());
 						}
 						methods.Add (methName, new DynamicMethod (methName, retType, argTypes));
 
@@ -477,7 +482,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					}
 
 					case ScriptMyILGenCode.BegCatBlk: {
-						Type excType = GetTypeFromStr (objReader.ReadString ());
+						Type excType = GetTypeFromStr (sdTypes, objReader.ReadString ());
 						ilGen.BeginCatchBlock (excType);
 						LinePrefix (offset, dbg, ilGenArg);
 						dbg.Append (" BeginCatchBlock ");
@@ -516,7 +521,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 */
 					case ScriptMyILGenCode.EmitField: {
 						OpCode opCode      = ReadOpCode (objReader);
-						Type reflectedType = GetTypeFromStr (objReader.ReadString ());
+						Type reflectedType = GetTypeFromStr (sdTypes, objReader.ReadString ());
 						string fieldName   = objReader.ReadString ();
 
 						FieldInfo field    = reflectedType.GetField (fieldName);
@@ -552,7 +557,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 */
 					case ScriptMyILGenCode.EmitType: {
 						OpCode opCode = ReadOpCode (objReader);
-						Type type     = GetTypeFromStr (objReader.ReadString ());
+						Type type     = GetTypeFromStr (sdTypes, objReader.ReadString ());
 
 						ilGen.Emit (opCode, type);
 
@@ -610,12 +615,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					case ScriptMyILGenCode.EmitMethodExt: {
 						OpCode opCode   = ReadOpCode (objReader);
 						string methName = objReader.ReadString ();
-						Type methType   = GetTypeFromStr (objReader.ReadString ());
+						Type methType   = GetTypeFromStr (sdTypes, objReader.ReadString ());
 						int nArgs       = objReader.ReadInt32 ();
 
 						Type[] argTypes = new Type[nArgs];
 						for (int i = 0; i < nArgs; i ++) {
-							argTypes[i] = GetTypeFromStr (objReader.ReadString ());
+							argTypes[i] = GetTypeFromStr (sdTypes, objReader.ReadString ());
 						}
 						MethodInfo methInfo = methType.GetMethod (methName, argTypes);
 						if (methInfo == null) {
@@ -672,11 +677,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 */
 					case ScriptMyILGenCode.EmitCtor: {
 						OpCode opCode   = ReadOpCode (objReader);
-						Type ctorType   = GetTypeFromStr (objReader.ReadString ());
+						Type ctorType   = GetTypeFromStr (sdTypes, objReader.ReadString ());
 						int nArgs       = objReader.ReadInt32 ();
 						Type[] argTypes = new Type[nArgs];
 						for (int i = 0; i < nArgs; i ++) {
-							argTypes[i] = GetTypeFromStr (objReader.ReadString ());
+							argTypes[i] = GetTypeFromStr (sdTypes, objReader.ReadString ());
 						}
 
 						ConstructorInfo ctorInfo = ctorType.GetConstructor (argTypes);
@@ -823,6 +828,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			Dictionary<string, Type> s2t = new Dictionary<string, Type> ();
 
+			s2t.Add ("badcallx", typeof (ScriptBadCallNoException));
 			s2t.Add ("binopstr", typeof (BinOpStr));
 			s2t.Add ("bool",     typeof (bool));
 			s2t.Add ("double",   typeof (double));
@@ -830,6 +836,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			s2t.Add ("inlfunc",  typeof (CompValuInline));
 			s2t.Add ("int",      typeof (int));
 			s2t.Add ("int*",     typeof (int).MakeByRefType ());
+			s2t.Add ("intrlokd", typeof (System.Threading.Interlocked));
 			s2t.Add ("lslfloat", typeof (LSL_Float));
 			s2t.Add ("lslint",   typeof (LSL_Integer));
 			s2t.Add ("lsllist",  typeof (LSL_List));
@@ -845,6 +852,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			s2t.Add ("scrcode",  typeof (ScriptCodeGen));
 			s2t.Add ("string",   typeof (string));
 			s2t.Add ("typecast", typeof (TypeCast));
+			s2t.Add ("undstatx", typeof (ScriptUndefinedStateException));
 			s2t.Add ("void",     typeof (void));
 			s2t.Add ("xmrarray", typeof (XMR_Array));
 			s2t.Add ("xmrinst",  typeof (XMRInstAbstract));
@@ -862,28 +870,53 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			return t2s;
 		}
 
-		private static string GetStrFromType (Type t)
+		private string GetStrFromType (Type t)
 		{
 			string s;
-			if (!type2String.TryGetValue (t, out s)) {
-				s = TokenTypeDelegate.TryGetName (t);
-				if (s == null) {
-					s = t.AssemblyQualifiedName;
-				}
-			}
-			return s;
+
+			// internal fixed types like int and xmrarray etc
+			if (type2String.TryGetValue (t, out s)) return s;
+
+			// script-defined types
+			if (sdTypesRev == null) CreateSDTypesRev ();
+			if (sdTypesRev.TryGetValue (t, out s)) return ".sdt." + s;
+
+			// inline function types
+			s = TokenDeclSDTypeDelegate.TryGetInlineName (t);
+			if (s != null) return s;
+
+			// last resort
+			return t.AssemblyQualifiedName;
 		}
 
-		private static Type GetTypeFromStr (string s)
+		private static Type GetTypeFromStr (Dictionary<string, TokenDeclSDType> sdTypes, string s)
 		{
 			Type t;
-			if (!string2Type.TryGetValue (s, out t)) {
-				t = TokenTypeDelegate.TryGetSysType (s);
-				if (t == null) {
-					t = Type.GetType(s, true);
-				}
+
+			// internal fixed types like int and xmrarray etc
+			if (string2Type.TryGetValue (s, out t)) return t;
+
+			// script-defined types
+			if (s.StartsWith (".sdt.")) return sdTypes[s.Substring(5)].GetSysType ();
+
+			// inline function types
+			t = TokenDeclSDTypeDelegate.TryGetInlineSysType (s);
+			if (t != null) return t;
+
+			// last resort
+			return Type.GetType (s, true);
+		}
+
+		/**
+		 * @brief sdTypes contains a dictionary that translates script-defined type names to TokenDeclSDType structs.
+		 *        Create a reverse dictionary that translates system types to script-defined type names.
+		 */
+		private void CreateSDTypesRev ()
+		{
+			sdTypesRev = new Dictionary<Type, string> ();
+			foreach (KeyValuePair<string, TokenDeclSDType> kvp in sdTypes) {
+				sdTypesRev[kvp.Value.GetSysType()] = kvp.Key;
 			}
-			return t;
 		}
 	}
 

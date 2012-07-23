@@ -40,6 +40,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		                                // 2nd subscript = event code number
 		                                // null entry means no handler defined for that state,event
 
+		public Dictionary<string, TokenDeclSDType> sdObjTypes;
+		                                // all script-defined types
+
 		public Dictionary<string, DynamicMethod> dynamicMethods;
 		                                // all dyanmic methods that could be encountered by checkpointing
 	}

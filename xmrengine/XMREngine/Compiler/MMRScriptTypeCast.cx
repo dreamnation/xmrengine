@@ -143,19 +143,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
-			 * Some actual conversion is needed, see if it is in table of legal casts.
+			 * Delegates can be implicitly cast to/from objects.
 			 */
-			string oldString = oldType.ToString ();
-			string newString = newType.ToString ();
-
-			if (oldString.StartsWith ("delegate ") && (newString == "object")) {
+			if ((oldType is TokenTypeSDTypeDelegate) && (newType is TokenTypeObject)) {
 				return;
 			}
-			if ((oldString == "object") && newString.StartsWith ("delegate ")) {
+			if ((oldType is TokenTypeObject) && (newType is TokenTypeSDTypeDelegate)) {
 				scg.ilGen.Emit (OpCodes.Castclass, newType.ToSysType ());
 				return;
 			}
 
+			/*
+			 * Some actual conversion is needed, see if it is in table of legal casts.
+			 */
+			string oldString = oldType.ToString ();
+			string newString = newType.ToString ();
 			string key = oldString + " " + newString;
 
 			if (!legalTypeCasts.TryGetValue (key, out castDelegate)) {

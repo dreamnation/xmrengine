@@ -292,7 +292,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			int i = signature.IndexOf ('(');
 			string argsigst = signature.Substring (i);
-			return new TokenTypeDelegate (retType, argsigst);
+			return new TokenTypeSDTypeDelegate (retType, argsigst);
 		}
 
 		/**

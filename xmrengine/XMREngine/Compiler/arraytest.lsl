@@ -1,21 +1,40 @@
 xmrOption arrayS;
 xmroption objects;
 
+DumpArray(integer shouldhave)
+{
+    integer n = zz.count;
+    SaySomething("count=" + n);
+    object l;
+    object v;
+    foreach (l,v in zz) {
+        SaySomething("l=" + (string)l + ", v=" + (string)v);
+    }
+    for (integer i = 0; i < n; i ++) {
+        l = zz.index(i);
+        v = zz.value(i);
+        SaySomething((string)i + ": zz[" + (string)l + "]=" + (string)v);
+    }
+    if ((shouldhave >= 0) && (n != shouldhave)) state error;
+}
+
+delegate void DUMPARRAY(integer shouldHave);
+delegate void VERIFY(array,list s,string);
+
 array zz;
-delegate void(integer) da;
+DUMPARRAY da;
 
 default
 {
     touch_start(integer num)
     {
-        delegate void(array,list,string) ver = Verify;
+        VERIFY ver = Verify;
+        AwfulSig(ZERO_ROTATION, ZERO_VECTOR, "", 0, []);
 
-        da = DumpArray;
-
-        llSay(0, "existing array:");
+        SaySomething("existing array:");
         da(-1);
         zz.clear();
-        llSay(0, "arraytest");
+        SaySomething("arraytest");
         zz[0] = "the cat is fat";
         zz["pig"] = "dog";
         da(2);
@@ -34,33 +53,26 @@ default
         ver(zz, [1,2], "one,two");
         ver(zz, ["two",3], "t.w.o,three");
         ver(zz, [4,5,6,7], "four,five,six,seven");
-        llSay(0, "success!");
+        SaySomething("success!");
     }
 }
 
-DumpArray(integer shouldhave)
+AwfulSig(rotation r, vector v, string s, integer i, list l)
 {
-    integer n = zz.count;
-    llSay(0, "count=" + n);
-    object l;
-    object v;
-    foreach (l,v in zz) {
-        llSay(0, "l=" + (string)l + ", v=" + (string)v);
-    }
-    for (integer i = 0; i < n; i ++) {
-        l = zz.index(i);
-        v = zz.value(i);
-        llSay(0, (string)i + ": zz[" + (string)l + "]=" + (string)v);
-    }
-    if ((shouldhave >= 0) && (n != shouldhave)) state error;
+    da = DumpArray;
 }
 
 Verify(array a, list s, string expect)
 {
     string actual = (string)a[s];
-    llSay(0, "zz[" + (string)s +  "]=" + actual);
+    SaySomething("zz[" + (string)s +  "]=" + actual);
     if (actual != expect) {
-        llSay(0, "...but expect=" + expect);
+        SaySomething("...but expect=" + expect);
         state error;
     }
+}
+
+SaySomething(string msg)
+{
+    llSay(0, msg);
 }

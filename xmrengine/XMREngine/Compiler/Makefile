@@ -1,5 +1,6 @@
 SADLLFILES = \
 	IEventHandlers.cs \
+	MMRDelegateCommon.cs \
 	MMRInternalFuncDict.cs \
 	MMRScriptBinOpStr.cs \
 	MMRScriptCodeGen.cs \

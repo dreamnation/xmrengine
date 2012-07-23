@@ -31,7 +31,7 @@ using System.Reflection.Emit;
  *                <push value to be popped>
  *            cv.PushPre() - pops value from the CIL stack
  *
- *        If the type is a TokenTypeDelegate, the location is callable, 
+ *        If the type is a TokenTypeSDTypeDelegate, the location is callable, 
  *        so you get these additional functions:
  *
  *            cv.GetRetType()  - gets function/method's return value type
@@ -115,18 +115,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		public TokenType GetRetType ()
 		{
-			if (!(type is TokenTypeDelegate)) return null;
-			return ((TokenTypeDelegate)type).retType;
+			if (!(type is TokenTypeSDTypeDelegate)) return null;
+			return ((TokenTypeSDTypeDelegate)type).decl.GetRetType ();
 		}
 		public TokenType[] GetArgTypes ()
 		{
-			if (!(type is TokenTypeDelegate)) return null;
-			return ((TokenTypeDelegate)type).argTypes;
+			if (!(type is TokenTypeSDTypeDelegate)) return null;
+			return ((TokenTypeSDTypeDelegate)type).decl.GetArgTypes ();
 		}
 		public string GetArgSig ()
 		{
-			if (!(type is TokenTypeDelegate)) return null;
-			return ((TokenTypeDelegate)type).argSig;
+			if (!(type is TokenTypeSDTypeDelegate)) return null;
+			return ((TokenTypeSDTypeDelegate)type).decl.GetArgSig ();
 		}
 
 		// These are used only if type is a delegate too
@@ -140,8 +140,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		public virtual void CallPost (ScriptCodeGen scg)  // call this after pushing arguments
 		{
-			TokenTypeDelegate ttd = (TokenTypeDelegate)type;
-			MethodInfo invokeMethodInfo = ttd.GetInvokerInfo ();
+			TokenTypeSDTypeDelegate ttd = (TokenTypeSDTypeDelegate)type;
+			MethodInfo invokeMethodInfo = ttd.decl.GetInvokerInfo ();
 			scg.ilGen.Emit (OpCodes.Callvirt, invokeMethodInfo);
 		}
 	}
@@ -294,7 +294,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				typeof (XMRInstAbstract).GetMethod ("GetScriptMethodDelegate", 
 				                                    new Type[] { typeof (string), typeof (string), typeof (object) });
 
-		public CompValuGlobalMeth (TokenDeclFunc declFunc, TokenTypeDelegate type) : base (type)
+		public CompValuGlobalMeth (TokenDeclFunc declFunc, TokenTypeSDTypeDelegate type) : base (type)
 		{
 			this.func = declFunc;
 		}
@@ -350,7 +350,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private CompValu baseRVal;
 		private MethodInfo mi;
 
-		public CompValuIntInstMeth (TokenTypeDelegate type, CompValu baseRVal, MethodInfo mi) : base (type)
+		public CompValuIntInstMeth (TokenTypeSDTypeDelegate type, CompValu baseRVal, MethodInfo mi) : base (type)
 		{
 			this.baseRVal = baseRVal;
 			this.mi = mi;
@@ -360,7 +360,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			baseRVal.PushVal (scg);
 			scg.ilGen.Emit (OpCodes.Ldftn, mi);
-			scg.ilGen.Emit (OpCodes.Newobj, ((TokenTypeDelegate)type).GetConstructorInfo ());
+			scg.ilGen.Emit (OpCodes.Newobj, ((TokenTypeSDTypeDelegate)type).decl.GetConstructorInfo ());
 		}
 		public override void PushRef (ScriptCodeGen scg)
 		{
@@ -430,7 +430,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				this.field = gblArraysFieldInfo;
 				this.index = scriptObjCode.numGblArrays ++;
 			}
-			if (type is TokenTypeDelegate) {
+			if (type is TokenTypeSDTypeDelegate) {
 				// delegates go in the objects array because we
 				// would have to cast when taking them out of an
 				// array of type Delegate anyway so might as well
@@ -483,7 +483,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 #undef float
 			} else if (type is TokenTypeInt) {
 				scg.ilGen.Emit (OpCodes.Ldelem_I4);
-			} else if (type is TokenTypeDelegate) {
+			} else if (type is TokenTypeSDTypeDelegate) {
 				scg.ilGen.Emit (OpCodes.Ldelem, typeof (object));
 				scg.ilGen.Emit (OpCodes.Castclass, ToSysType ());
 			} else {
@@ -513,7 +513,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 #undef float
 			} else if (type is TokenTypeInt) {
 				scg.ilGen.Emit (OpCodes.Stelem_I4);
-			} else if (type is TokenTypeDelegate) {
+			} else if (type is TokenTypeSDTypeDelegate) {
 				scg.ilGen.Emit (OpCodes.Stelem, typeof (object));
 			} else {
 				scg.ilGen.Emit (OpCodes.Stelem, ToSysType ());

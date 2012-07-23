@@ -26,7 +26,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	public class ScriptCodeGen
 	{
 		public static readonly string OBJECT_CODE_MAGIC = "XMRObjectCode";
-		public static int COMPILED_VERSION_VALUE = 15;  // incremented when compiler changes for compatibility testing
+		public static int COMPILED_VERSION_VALUE = 16;  // incremented when compiler changes for compatibility testing
 
 		public static readonly int CALL_FRAME_MEMUSE = 64;
 		public static readonly int STRING_LEN_TO_MEMUSE = 2;
@@ -315,6 +315,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			objFileWriter.Write ("");
 
 			/*
+			 * Write out script-defined types.
+			 */
+			foreach (KeyValuePair<string, TokenDeclSDType> kvp in tokenScript.sdSrcTypes) {
+				objFileWriter.Write (kvp.Key);
+				kvp.Value.WriteToFile (objFileWriter);
+			}
+			objFileWriter.Write ("");
+
+			/*
 			 * Output each global function as a private method.
 			 *
 			 * Prefix the names with __fun_ to keep them separate from any XMRInstance functions.
@@ -447,7 +456,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			int eventcode = (int)Enum.Parse (typeof (ScriptEventCode), eventname);
 			string functionName = "__seh_" + statecode.ToString() + "_" + eventcode.ToString () + "_" + 
 			                                 statename + "_" + eventname;
-			ilGen = new ScriptMyILGen (functionName,
+			ilGen = new ScriptMyILGen (tokenScript.sdSrcTypes, 
+			                           functionName,
 			                           typeof (void),
 			                           instanceTypeArg,
 			                           objFileWriter);
@@ -547,7 +557,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Set up entrypoint.
 			 */
 			string methodName = "__fun_" + name + argsigst;
-			declFunc.ilGen = new ScriptMyILGen (methodName,
+			declFunc.ilGen = new ScriptMyILGen (tokenScript.sdSrcTypes, 
+			                                    methodName,
 			                                    declFunc.retType.ToSysType (),
 			                                    argTypes,
 			                                    objFileWriter);
@@ -556,9 +567,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Set up an entry as if it were a global variable so GenerateFromLValName () will see it.
 			 * We have to cram the arg signature on the end of the name in case of overloading.
 			 */
-			TokenTypeDelegate delType = new TokenTypeDelegate (declFunc, declFunc.retType, argDecl.types);
+			TokenTypeSDTypeDelegate delType = new TokenTypeSDTypeDelegate (declFunc, declFunc.retType, argDecl.types, tokenScript);
 			CompValu globalMeth = new CompValuGlobalMeth (declFunc, delType);
-			AddVarDefinition (declFunc.funcName, delType.argSig, globalMeth);
+			AddVarDefinition (declFunc.funcName, delType.decl.GetArgSig (), globalMeth);
 		}
 
 		/**
@@ -1990,7 +2001,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				if (fieldName == "clear") {
 					TokenType retType = new TokenTypeVoid (lVal);
 					TokenType[] argTypes = new TokenType[0];
-					TokenTypeDelegate ttd = new TokenTypeDelegate (lVal, retType, argTypes);
+					TokenTypeSDTypeDelegate ttd = new TokenTypeSDTypeDelegate (lVal, retType, argTypes, tokenScript);
 					return new CompValuIntInstMeth (ttd, baseRVal, arrayClearMethodInfo);
 				}
 
@@ -2001,7 +2012,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				if (mi != null) {
 					TokenType retType = new TokenTypeObject (lVal);
 					TokenType[] argTypes = new TokenType[] { new TokenTypeInt (lVal) };
-					TokenTypeDelegate ttd = new TokenTypeDelegate (lVal, retType, argTypes);
+					TokenTypeSDTypeDelegate ttd = new TokenTypeSDTypeDelegate (lVal, retType, argTypes, tokenScript);
 					return new CompValuIntInstMeth (ttd, baseRVal, mi);
 				}
 			}
@@ -2054,11 +2065,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			ErrorMsg (lVal, "undefined function/method/variable " + name);
-			foreach (Dictionary<string, CompValu> vars in scriptVariablesStack) {
-				foreach (KeyValuePair<string, CompValu> kvp in vars) {
-					Console.WriteLine ("GenerateFromLValName*: " + kvp.Key + " = " + kvp.Value);
-				}
-			}
 			return new CompValuVoid (lVal);
 		}
 
@@ -2513,8 +2519,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			string argsig = null;
 			TokenType outType = cast.castTo;
-			if (outType is TokenTypeDelegate) {
-				argsig = ((TokenTypeDelegate)outType).argSig;
+			if (outType is TokenTypeSDTypeDelegate) {
+				argsig = ((TokenTypeSDTypeDelegate)outType).decl.GetArgSig ();
 			}
 
 			/*
@@ -2836,7 +2842,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Default for 'delegate' type is 'undef'.
 			 */
-			if (type is TokenTypeDelegate) {
+			if (type is TokenTypeSDTypeDelegate) {
 				ilGen.Emit (OpCodes.Ldnull);
 				return;
 			}
@@ -3342,6 +3348,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
+			 * Read in script-defined types.
+			 */
+			scriptObjCode.sdObjTypes = new Dictionary<string, TokenDeclSDType> ();
+			while ((gblName = objFileReader.ReadString ()) != "") {
+				TokenDeclSDType sdt = TokenDeclSDType.ReadFromFile (scriptObjCode.sdObjTypes, 
+				                                      gblName, objFileReader, asmFileWriter);
+				scriptObjCode.sdObjTypes.Add (gblName, sdt);
+			}
+
+			/*
 			 * Now fill in the methods (the hard part).
 			 */
 			EndMethodWrapper endMethodWrapper     = new EndMethodWrapper ();
@@ -3349,7 +3365,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			endMethodWrapper.descName             = descName;
 			scriptObjCode.scriptEventHandlerTable = new ScriptEventHandler[nStates,(int)ScriptEventCode.Size];
 			scriptObjCode.dynamicMethods          = new Dictionary<string, DynamicMethod> ();
-			ScriptMyILGen.CreateObjCode (objFileReader, endMethodWrapper.EndMethod, asmFileWriter);
+			ScriptMyILGen.CreateObjCode (scriptObjCode.sdObjTypes, objFileReader, endMethodWrapper.EndMethod, asmFileWriter);
 
 			return scriptObjCode;
 		}

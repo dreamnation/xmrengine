@@ -467,7 +467,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 Delegate del = (Delegate)graph;
                 this.migrateOutWriter.Write ((byte)Ser.DELEGATE);
                 this.migrateOutWriter.Write (del.Method.Name);
-                this.migrateOutWriter.Write (TokenTypeDelegate.TryGetSig (del.GetType ()));
+                Type delType = del.GetType ();
+                foreach (KeyValuePair<string, TokenDeclSDType> kvp in m_ObjCode.sdObjTypes) {
+                    TokenDeclSDType sdt = kvp.Value;
+                    if (sdt is TokenDeclSDTypeDelegate) {
+                        TokenDeclSDTypeDelegate sdtd = (TokenDeclSDTypeDelegate)sdt;
+                        if (sdtd.GetSysType () == delType) {
+                            this.migrateOutWriter.Write (kvp.Key);
+                            goto found;
+                        }
+                    }
+                }
+                throw new Exception ("cant find script-defined delegate for " + del.Method.Name + " type " + del.GetType ());
+            found:
                 SendObjValue (del.Target);
             } else {
                 throw new Exception ("unhandled type " + graph.GetType().ToString());
