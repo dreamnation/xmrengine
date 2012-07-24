@@ -26,9 +26,16 @@ DUMPARRAY da;
 
 class Klass {
     integer x;
+    static integer y;
     void Print ()
     {
-        SaySomething ("Klass.x=" + x);
+        SaySomething ("this.x=" + this.x);
+        SaySomething ("Klass.y=" + Klass.y);
+    }
+    void PrintTwice ()
+    {
+        this.Print ();
+        this.Print ();
     }
 }
 
