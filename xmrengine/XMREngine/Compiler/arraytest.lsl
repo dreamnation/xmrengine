@@ -24,18 +24,45 @@ delegate void VERIFY(array,list s,string);
 array zz;
 DUMPARRAY da;
 
+class KlassOne : Klass {
+    destructor ()
+    {
+        SaySomething ("KlassOne is dieing");
+    }
+
+    override string ToString ()
+    {
+        return "zhis is KlassOne";
+    }
+}
+
 class Klass {
     integer x;
     static integer y;
+
+    constructor ()
+    {
+        this.x = 99;
+    }
+
+    destructor ()
+    {
+        SaySomething ("Klass is dieing");
+    }
+
     void Print ()
     {
         SaySomething ("this.x=" + this.x);
         SaySomething ("Klass.y=" + Klass.y);
     }
-    void PrintTwice ()
+    PrintTwice ()
     {
         this.Print ();
         this.Print ();
+    }
+    virtual string ToString ()
+    {
+        return "zhis is Klass";
     }
 }
 

@@ -135,9 +135,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private BinaryWriter objFileWriter = null;
 		private TokenScript tokenScript = null;
 		public  int tempCompValuNum = 0;
-		private TokenDeclSDTypeClass currentSDTClass = null;  // doing top-level method
-		                                                      // else doing this script-defined class's method
-		private TokenDeclFunc currentSDTMethod = null;
 
 		private Dictionary<string, int> stateIndices = null;
 		private Stack<Dictionary<string, CompValu>> scriptVariablesStack = null;
@@ -468,19 +465,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				foreach (KeyValuePair<string, TokenDeclSDType> kvpc in tokenScript.sdSrcTypes) {
 					TokenDeclSDType sdType = kvpc.Value;
 					if (sdType is TokenDeclSDTypeClass) {
-						currentSDTClass = (TokenDeclSDTypeClass)sdType;
-						foreach (KeyValuePair<string, TokenDeclFunc> kvpm in currentSDTClass.methods) {
+						TokenDeclSDTypeClass sdtClass = (TokenDeclSDTypeClass)sdType;
+						foreach (KeyValuePair<string, TokenDeclFunc> kvpm in sdtClass.methods) {
 							TokenDeclFunc declFunc = kvpm.Value;
 							if (declFunc.body != null) {
-								currentSDTMethod = declFunc;
 								if (pass == 0) GenerateMethodHeader (declFunc);
 								          else GenerateMethodBody   (declFunc);
 							}
 						}
 					}
 				}
-				currentSDTMethod = null;
-				currentSDTClass  = null;
 			}
 
 			/*
@@ -495,10 +489,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				if (defaultStateEntry.funcNameSig.val == "state_entry()") break;
 			}
 			if (defaultStateEntry == null) {
-				defaultStateEntry               = new TokenDeclFunc (tokenScript.defaultState.body);
-				defaultStateEntry.retType       = new TokenTypeVoid  (tokenScript.defaultState.body);
-				defaultStateEntry.funcNameSig   = new TokenName      (tokenScript.defaultState.body, "state_entry()");
-				defaultStateEntry.argDecl       = new TokenArgDecl   (tokenScript.defaultState.body);
+				defaultStateEntry               = new TokenDeclFunc (tokenScript.defaultState.body, tokenScript);
+				defaultStateEntry.retType       = new TokenTypeVoid (tokenScript.defaultState.body);
+				defaultStateEntry.funcNameSig   = new TokenName     (tokenScript.defaultState.body, "state_entry()");
+				defaultStateEntry.argDecl       = new TokenArgDecl  (tokenScript.defaultState.body);
 				defaultStateEntry.argDecl.types = new TokenType[0];
 				defaultStateEntry.argDecl.names = new TokenName[0];
 				defaultStateEntry.argDecl.locns = new CompValu[0];
@@ -692,6 +686,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void GenerateMethodHeader (TokenDeclFunc declFunc)
 		{
+			curDeclFunc = declFunc;
+
 			/*
 			 * Make up array of all argument types as seen by the code generator.
 			 * We splice in XMRInstance or XMRSDTypeClassInstance for the first 
@@ -712,26 +708,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Set up entrypoint.
 			 * Prefix the names with __fun_ to keep them separate from any XMRInstance functions.
-			 * funcName includes the script-visible argument signature in case of overloading.
 			 */
-			TokenName funcName = declFunc.funcNameSig;
-			string nameWithSig = funcName.val;
-			string methodName  = "__fun_";
-			if (currentSDTClass != null) {
-				methodName += currentSDTClass.name.val + ".";
-			}
-			methodName += nameWithSig;
+			string objCodeName = declFunc.GetObjCodeName ();
 			declFunc.ilGen = new ScriptMyILGen (tokenScript.sdSrcTypes, 
-			                                    methodName,
+			                                    objCodeName,
 			                                    declFunc.retType.ToSysType (),
 			                                    argTypes,
 			                                    objFileWriter);
-
-			/*
-			 * Make a delegate of the script-visible arguments and return value.
-			 * This is the type of the function/method.
-			 */
-			declFunc.delType = new TokenTypeSDTypeDelegate (declFunc, declFunc.retType, argDecl.types, tokenScript);
 
 			/*
 			 * For script-global functions, make it a global variable so GenerateFromLValName() will see it,
@@ -739,11 +722,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * For script-defined type methods, do likewise so GenerateFromLValSField() will see it,
 			 * using the name <sdtclassname>.<methodnsme>(<argsig>).
 			 */
-			if (currentSDTClass != null) {
-				funcName = new TokenName (funcName, currentSDTClass.name.val + "." + nameWithSig);
+			TokenName funcName = declFunc.funcNameSig;
+			if (declFunc.sdtClass != null) {
+				funcName = new TokenName (funcName, declFunc.sdtClass.name.val + "." + funcName.val);
 			}
 			CompValu globalMeth = new CompValuGlobalMeth (declFunc);
 			AddVarDefinition (funcName, globalMeth);
+
+			curDeclFunc = null;
 		}
 
 		/**
@@ -761,11 +747,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			StartFunctionBody (declFunc);
 
 			/*
-			 * For SDTypeClass instance methods, arg 0 is a 'this' pointer to the instance.
+			 * For SDTypeClass instance methods, scripts see a 'this' pointer to the instance 
+			 * which is arg 0 in the object code.  Also set up a 'base' pointer if this class 
+			 * extends another script-defined type.
+			 *
+			 * For others (global functions and static methods), the script does not see a 'this',
+			 * although arg 0 in the object code points to the script's XMRInstance.
 			 */
 			if (IsSDTInstMethod ()) {
 				TokenName    thisName = new TokenName (declFunc, "this");
-				TokenType    thisType = currentSDTClass.MakeRefToken (declFunc);
+				TokenType    thisType = declFunc.sdtClass.MakeRefToken (declFunc);
 				CompValu     thisLoc  = new CompValuArg (thisType, 0);
 				TokenDeclVar thisVar  = new TokenDeclVar (thisName, null);
 				thisVar.type     = thisType;
@@ -773,7 +764,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				thisVar.location = thisLoc;
 				NewLocalVariable (thisVar);
 				AddVarDefinition (thisName, thisLoc);
+
+				TokenDeclSDTypeClass ext = declFunc.sdtClass.extends;
+				if (ext != null) {
+					TokenName    baseName = new TokenName (declFunc, "base");
+					TokenType    baseType = ext.MakeRefToken (declFunc);
+					CompValu     baseLoc  = new CompValuArg (baseType, 0);
+					TokenDeclVar baseVar  = new TokenDeclVar (baseName, null);
+					baseVar.type     = baseType;
+					baseVar.name     = baseName;
+					baseVar.location = baseLoc;
+					NewLocalVariable (baseVar);
+					AddVarDefinition (baseName, baseLoc);
+				}
 			}
+
 
 			/*
 			 * Define all arguments as named variables so script body can reference them.
@@ -3498,12 +3503,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		/**
 		 * @returns true: Ldarg_0 gives XMRSDTypeClassInstance pointer
+		 *                - this is the case for instance methods
 		 *         false: Ldarg_0 gives XMR_Instance pointer
+		 *                - this is the case for both global functions and static methods
 		 */
 		public bool IsSDTInstMethod ()
 		{
-			return (currentSDTMethod != null) && 
-			       ((currentSDTMethod.sdtFlags & ScriptReduce.SDT_STATIC) == 0);
+			return (curDeclFunc.sdtClass != null) && 
+			       ((curDeclFunc.sdtFlags & ScriptReduce.SDT_STATIC) == 0);
 		}
 
 		/**

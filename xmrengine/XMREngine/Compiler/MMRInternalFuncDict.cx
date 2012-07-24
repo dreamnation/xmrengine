@@ -52,7 +52,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						key += argDecl.types[i].ToString ();
 					}
 					key += ")";
-					TokenDeclFunc declFunc = new TokenDeclFunc (null);
+					TokenDeclFunc declFunc = new TokenDeclFunc (null, null);
 					declFunc.retType       = TokenType.FromSysType (null, ifaceMethod.ReturnType);
 					declFunc.argDecl       = argDecl;
 					declFunc.funcNameSig   = new TokenName (null, key);

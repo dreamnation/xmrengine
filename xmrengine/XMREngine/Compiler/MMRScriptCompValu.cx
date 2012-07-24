@@ -352,7 +352,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	public class CompValuGlobalMeth : CompValu {
 		private TokenDeclFunc func;
 
-		public CompValuGlobalMeth (TokenDeclFunc declFunc) : base (declFunc.delType)
+		public CompValuGlobalMeth (TokenDeclFunc declFunc) : base (declFunc.GetDelType ())
 		{
 			this.func = declFunc;
 		}
@@ -412,7 +412,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		private static FieldInfo vTableFieldInfo = typeof (XMRSDTypeClassInstance).GetField ("sdtcVTable");
 
-		public CompValuInstMeth (TokenDeclFunc declFunc, CompValu baseRVal) : base (declFunc.delType)
+		public CompValuInstMeth (TokenDeclFunc declFunc, CompValu baseRVal) : base (declFunc.GetDelType ())
 		{
 			this.func     = declFunc;
 			this.baseRVal = baseRVal;

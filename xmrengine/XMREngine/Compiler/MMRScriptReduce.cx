@@ -502,8 +502,122 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				}
 
 				/*
+				 * 'constructor' '(' arglist ')' [ ':' [ 'base' ] '(' baseconstructorcall ')' ] '{' body '}'
+				 */
+				if (token is TokenKwConstructor) {
+					if (flags != 0) {
+						ErrorMsg (token, "constructors can't be abstract/override/static/virtual");
+					}
+
+					TokenDeclFunc tokenDeclFunc = new TokenDeclFunc (token, tokenScript);
+					tokenDeclFunc.retType       = new TokenTypeVoid (token);
+
+					token = token.nextToken;
+					if (!(token is TokenKwParOpen)) {
+						ErrorMsg (token, "expecting ( for constructor argument list");
+						token = SkipPastSemi (token);
+						continue;
+					}
+
+					tokenDeclFunc.argDecl       = ParseFuncArgs (ref token);
+					if (tokenDeclFunc.argDecl == null) continue;
+					string nameSig              = "constructor" + tokenDeclFunc.argDecl.GetArgSig ();
+
+					tokenDeclFunc.funcNameSig   = new TokenName (tokenDeclFunc, nameSig);
+					tokenDeclFunc.sdtClass      = tokdeclcl;
+					tokenDeclFunc.sdtFlags      = flags;
+
+					TokenDeclFunc saveDeclFunc = currentDeclFunc;
+					currentDeclFunc = tokenDeclFunc;
+					TokenStmtRVal baseCtorCall = null;
+					try {
+
+						/*
+						 * Parse any base constructor call as if it were the first statement of the
+						 * constructor itself.
+						 */
+						if (token is TokenKwColon) {
+							token = token.nextToken;
+							if ((token is TokenName) && (((TokenName)token).val == "base")) {
+								token = token.nextToken;
+							}
+							if (!(token is TokenKwParOpen)) {
+								ErrorMsg (token, "expecting ( for base constructor call arguments");
+								token = SkipPastSemi (token);
+								continue;
+							}
+							TokenLValName cn  = new TokenLValName (new TokenName (token, "constructor"));
+							baseCtorCall      = new TokenStmtRVal (token);
+							baseCtorCall.rVal = ParseRValCall (ref token, cn);
+							if (baseCtorCall.rVal == null) continue;
+						} else if (tokdeclcl.extends != null) {
+							TokenRValCall rvc = new TokenRValCall (token);
+							rvc.meth          = new TokenLValName (new TokenName (token, "constructor"));
+							baseCtorCall      = new TokenStmtRVal (token);
+							baseCtorCall.rVal = rvc;
+						}
+
+						/*
+						 * Parse the constructor body.
+						 */
+						tokenDeclFunc.body = ParseStmtBlock (ref token);
+						if (tokenDeclFunc.body == null) continue;
+						if (tokenDeclFunc.argDecl == null) continue;
+					} finally {
+						currentDeclFunc = saveDeclFunc;
+					}
+
+					/*
+					 * If there is a base constructor call, slip it in as first statement of constructor body.
+					 */
+					if (baseCtorCall != null) {
+						baseCtorCall.nextToken = tokenDeclFunc.body.statements;
+						tokenDeclFunc.body.statements = baseCtorCall;
+					}
+
+					/*
+					 * Add to list of methods defined by this class.
+					 * It has the name "constructor(argsig)".
+					 * Note that script can't call it directly via a call to a method named constructor
+					 * because constructor is a keyword.
+					 */
+					if (tokdeclcl.methods.ContainsKey (tokenDeclFunc.funcNameSig.val)) {
+						ErrorMsg (tokenDeclFunc.funcNameSig, "duplicate constructor");
+					} else {
+						tokdeclcl.methods.Add (tokenDeclFunc.funcNameSig.val, tokenDeclFunc);
+					}
+					continue;
+				}
+
+				/*
+				 * [ abstract | override | virtual ] destructor ( ) { <body> }
+				 */
+				if (token is TokenKwDestructor) {
+					if ((flags & SDT_STATIC) != 0) {
+						ErrorMsg (token, "destructors can't be static");
+					}
+					token = token.nextToken;
+					TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, (flags & SDT_ABSTRACT) != 0, 
+					                                             new TokenTypeVoid (token), 
+					                                             new TokenName (token.prevToken, "destructor"));
+					if (tokenDeclFunc == null) continue;
+					tokenDeclFunc.sdtClass = tokdeclcl;
+					tokenDeclFunc.sdtFlags = flags;
+					if (tokenDeclFunc.argDecl.names.Length > 0) {
+						ErrorMsg (tokenDeclFunc.argDecl.names[0], "destructors don't have any arguments");
+						continue;
+					}
+					if (tokdeclcl.methods.ContainsKey (tokenDeclFunc.funcNameSig.val)) {
+						ErrorMsg (tokenDeclFunc.funcNameSig, "duplicate destructor");
+						continue;
+					}
+					tokdeclcl.methods.Add (tokenDeclFunc.funcNameSig.val, tokenDeclFunc);
+					continue;
+				}
+
+				/*
 				 * [ abstract | override | static | virtual ] <type> <name> <funcargs> <funcbody>
-				 * instance method with explicit return type
+				 * method with explicit return type
 				 */
 				if (token is TokenType) {
 					TokenType tokenType = (TokenType)token;
@@ -525,6 +639,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						token = tokenType;
 						TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, (flags & SDT_ABSTRACT) != 0);
 						if (tokenDeclFunc == null) continue;
+						tokenDeclFunc.sdtClass = tokdeclcl;
 						tokenDeclFunc.sdtFlags = flags;
 						if (tokdeclcl.methods.ContainsKey (tokenDeclFunc.funcNameSig.val)) {
 							ErrorMsg (tokenName, "duplicate method name");
@@ -540,7 +655,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 				/*
 				 * [ abstract | override | static | virtual ] <name> <funcargs> <funcbody>
-				 * instance method returning void
+				 * method returning void
 				 */
 				if (token is TokenName) {
 					TokenName tokenName = (TokenName)token;
@@ -554,6 +669,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					token = tokenName;
 					TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, (flags & SDT_ABSTRACT) != 0);
 					if (tokenDeclFunc == null) continue;
+					tokenDeclFunc.sdtClass = tokdeclcl;
+					tokenDeclFunc.sdtFlags = flags;
 					if (tokdeclcl.methods.ContainsKey (tokenDeclFunc.funcNameSig.val)) {
 						ErrorMsg (tokenName, "duplicate method name");
 						continue;
@@ -694,8 +811,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		}
 
 		/**
-		 * @brief parse a function declaration, including its arg list and body
-		 * @param token = points to function type token (or function name token if void)
+		 * @brief Parse a function declaration, including its arg list and body
+		 * @param token = points to function return type token (or function name token if return type void)
 		 * @param abs = false: concrete function; true: abstract declaration
 		 * @returns null: error parsing function definition
 		 *          else: function declaration
@@ -703,24 +820,42 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		private TokenDeclFunc ParseDeclFunc (ref Token token, bool abs)
 		{
-			TokenType tokenType;
+			TokenType retType;
 			if (token is TokenType) {
-				tokenType = (TokenType)token;
+				retType = (TokenType)token;
 				token = token.nextToken;
 			} else {
-				tokenType = new TokenTypeVoid (token);
+				retType = new TokenTypeVoid (token);
 			}
 			if (!(token is TokenName)) {
 				ErrorMsg (token, "expecting function name");
 				token = SkipPastSemi (token);
 				return null;
 			}
-			TokenName tokenName = (TokenName)token;
+
+			TokenName simpleName = (TokenName)token;
 			token = token.nextToken;
-			TokenDeclFunc tokenDeclFunc = new TokenDeclFunc (tokenName);
-			tokenDeclFunc.retType       = tokenType;
+			return ParseDeclFunc (ref token, abs, retType, simpleName);
+		}
+
+		/**
+		 * @brief Parse a function declaration, including its arg list and body
+		 *        This version enters with token pointing to the '('
+		 * @param token = points to the '(' of the arg list
+		 * @param abs = false: concrete function; true: abstract declaration
+		 * @param retType = return type (TokenTypeVoid if void, never null)
+		 * @param simpleName = function name without any signature
+		 * @returns null: error parsing remainder of function definition
+		 *          else: function declaration
+		 *          token = advanced just past function, ie, just past the closing brace
+		 */
+		private TokenDeclFunc ParseDeclFunc (ref Token token, bool abs, TokenType retType, TokenName simpleName)
+		{
+			TokenDeclFunc tokenDeclFunc = new TokenDeclFunc (simpleName, tokenScript);
+			tokenDeclFunc.retType       = retType;
 			tokenDeclFunc.argDecl       = ParseFuncArgs (ref token);
-			tokenDeclFunc.funcNameSig   = new TokenName (tokenName, tokenName.val + tokenDeclFunc.argDecl.GetArgSig ());
+			tokenDeclFunc.funcNameSig   = new TokenName (simpleName, 
+			                                             simpleName.val + tokenDeclFunc.argDecl.GetArgSig ());
 
 			if (token is TokenKwSemi) {
 				if (!abs) {
@@ -1721,26 +1856,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * If followed by a '(', it is a function/method call.
 			 */
 			if (token is TokenKwParOpen) {
-
-				/*
-				 * Set up basic function call struct with function name.
-				 */
-				TokenRValCall rValCall = new TokenRValCall (token);
-				rValCall.meth = operand;
-				token = token.nextToken;
-
-				/*
-				 * Parse the call parameters, if any.
-				 */
-				if (token is TokenKwParClose) {
-					token = token.nextToken;
-				} else {
-					rValCall.args = ParseRVal (ref token, parCloseOnly);
-					if (rValCall.args == null) return null;
-					rValCall.nArgs = SplitCommaRVals (rValCall.args, out rValCall.args, ref rValCall.sideEffects);
-				}
-
-				operand = rValCall;
+				operand = ParseRValCall (ref token, operand);
 				goto modifiers;
 			}
 
@@ -1961,6 +2077,36 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			ErrorMsg (token, "invalid operand token");
 			token = SkipPastSemi (token);
 			return null;
+		}
+
+		/**
+		 * @brief Parse a call expression
+		 * @param token = points to arg list '('
+		 * @param meth = points to method name being called
+		 * @returns call expression value
+		 *          token = points just past arg list ')'
+		 */
+		private TokenRValCall ParseRValCall (ref Token token, TokenRVal meth)
+		{
+			/*
+			 * Set up basic function call struct with function name.
+			 */
+			TokenRValCall rValCall = new TokenRValCall (token);
+			rValCall.meth = meth;
+
+			/*
+			 * Parse the call parameters, if any.
+			 */
+			token = token.nextToken;
+			if (token is TokenKwParClose) {
+				token = token.nextToken;
+			} else {
+				rValCall.args = ParseRVal (ref token, parCloseOnly);
+				if (rValCall.args == null) return null;
+				rValCall.nArgs = SplitCommaRVals (rValCall.args, out rValCall.args, ref rValCall.sideEffects);
+			}
+
+			return rValCall;
 		}
 
 		/**
@@ -2313,8 +2459,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				TokenDeclFunc meth = kvp.Value;
 				if (meth.vTableIndex >= 0) {
 					objFileWriter.Write (meth.vTableIndex);
-					objFileWriter.Write (meth.ilGen.methName);
-					objFileWriter.Write (meth.delType.decl.GetWholeSig ());
+					objFileWriter.Write (meth.GetObjCodeName ());
+					objFileWriter.Write (meth.GetDelType ().decl.GetWholeSig ());
 				}
 			}
 			objFileWriter.Write (-1);
@@ -2886,32 +3032,67 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	 */
 	public class TokenDeclFunc : Token {
 
-		public TokenType retType;            // new TokenTypeVoid (token) if void; NEVER null
-		public TokenName funcNameSig;        // function name including argumet signature, eg, "PrintStuff(list,string)"
-		public TokenArgDecl argDecl;         // argument list prototypes
-		public TokenStmtBlock body;          // statements (null iff abstract)
-		public uint sdtFlags;                // abstract/override/static/virtual
+		public TokenType retType;              // new TokenTypeVoid (token) if void; NEVER null
+		public TokenName funcNameSig;          // function name including argumet signature, eg, "PrintStuff(list,string)"
+		public TokenArgDecl argDecl;           // argument list prototypes
+		public TokenStmtBlock body;            // statements (null iff abstract)
+		public TokenScript tokenScript;        // what script this function is part of
+		public TokenDeclSDTypeClass sdtClass;  // null: script global function
+		                                       // else: method is part of this script-defined type
+		public uint sdtFlags;                  // abstract/override/static/virtual
 		public Dictionary<string, TokenStmtLabel> labels = new Dictionary<string, TokenStmtLabel> ();
-		                                     // all labels defined in the function
+		                                       // all labels defined in the function
 		public LinkedList<TokenDeclVar> localVars = new LinkedList<TokenDeclVar> ();
-		                                     // all local variables declared by this function
-		                                     // - doesn't include argument variables
+		                                       // all local variables declared by this function
+		                                       // - doesn't include argument variables
 
-		public TokenTypeSDTypeDelegate delType;
-		                                     // the function's script-visible type,
-		                                     // includes return type and all script-visible argument types
+		public int vTableIndex = -1;           // if script-defined type method, vtable index
+		                                       //  <0: non-virtual; >=0: virtual
+		public ScriptMyILGen ilGen;            // codegen stores emitted code here
 
-		public int vTableIndex = -1;         // if script-defined type method, vtable index
-		                                     //  <0: non-virtual; >=0: virtual
-		public ScriptMyILGen ilGen;          // codegen stores emitted code here
+		public TokenDeclFunc (Token original, TokenScript ts) : base (original)
+		{
+			tokenScript = ts;
+		}
 
-		public TokenDeclFunc (Token original) : base (original) { }
-
+		/**
+		 * @brief The bare function name, ie, without any signature info
+		 */
 		public string GetSimpleName ()
 		{
 			string nameWithSig = funcNameSig.val;
 			string simpleName  = nameWithSig.Substring (0, nameWithSig.IndexOf ('('));
 			return simpleName;
+		}
+
+		/**
+		 * @brief The function name as it appears in the object code,
+		 *        ie, including "__fun_", script-defined type name if any,
+		 *        bare function name and argument signature, 
+		 *        eg, "__fun_MyClass.PrintStuff(string)"
+		 */
+		public string GetObjCodeName ()
+		{
+                        string objCodeName  = "__fun_";
+                        if (sdtClass != null) {
+                                objCodeName += sdtClass.name.val + ".";
+                        }
+                        objCodeName += funcNameSig.val;
+			return objCodeName;
+		}
+
+		/**
+		 * @brief Get delegate type.
+		 *        This is the function's script-visible type,
+		 *        It includes return type and all script-visible argument types.
+		 */
+		private TokenTypeSDTypeDelegate delType;
+		public TokenTypeSDTypeDelegate GetDelType ()
+		{
+			if (delType == null) {
+				delType = new TokenTypeSDTypeDelegate (this, retType, argDecl.types, tokenScript);
+			}
+			return delType;
 		}
 
 		public override void WriteOut (TokenWriter writer)
