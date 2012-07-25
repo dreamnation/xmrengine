@@ -96,7 +96,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * @param classname = script-defined class to cast it to
          * @returns ob is a valid instance of classname; else exception thrown
          */
-        public static XMRSDTypeClassInstance Cast (object ob, string classname)
+        public static XMRSDTypeClassInstance Cast2Class (object ob, string classname)
         {
             /*
              * Let mono check to see if we at least have an XMRSDTypeClassInstance.

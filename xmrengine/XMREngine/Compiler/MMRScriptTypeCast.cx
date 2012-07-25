@@ -42,7 +42,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static MethodInfo vectorToBoolMethodInfo     = typeof (TypeCast).GetMethod ("VectorToBool",       new Type[] { typeof (LSL_Vector) });
 		private static MethodInfo vectorToStringMethodInfo   = typeof (TypeCast).GetMethod ("VectorToString",     new Type[] { typeof (LSL_Vector) });
 		private static MethodInfo listOfOneObjMethodInfo     = typeof (TypeCast).GetMethod ("ListOfOneObj",       new Type[] { typeof (object) });
-		private static MethodInfo sdTypeClassCastMethodInfo  = typeof (XMRSDTypeClassInstance).GetMethod ("Cast", new Type[] { typeof (object), typeof (string) });
+		private static MethodInfo sdTypeClassCast2ClassMethodInfo  = typeof (XMRSDTypeClassInstance).GetMethod ("Cast2Class", new Type[] { typeof (object), typeof (string) });
 
 		/*
 		 * List of all allowed type casts and how to perform the casting.
@@ -143,7 +143,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 							                                             " to " + newType.ToString ());
 						}
 						scg.ilGen.Emit (OpCodes.Ldstr, newType.ToString ());
-						scg.ilGen.Emit (OpCodes.Call, sdTypeClassCastMethodInfo);
+						scg.ilGen.Emit (OpCodes.Call, sdTypeClassCast2ClassMethodInfo);
 						return;
 					}
 				}
@@ -191,7 +191,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					scg.ErrorMsg (newType, "must explicitly cast from object to " + newType.ToString ());
 				}
 				scg.ilGen.Emit (OpCodes.Ldstr, newType.ToString ());
-				scg.ilGen.Emit (OpCodes.Call, sdTypeClassCastMethodInfo);
+				scg.ilGen.Emit (OpCodes.Call, sdTypeClassCast2ClassMethodInfo);
 				return;
 			}
 

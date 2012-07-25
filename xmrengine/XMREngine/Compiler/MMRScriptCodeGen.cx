@@ -1200,7 +1200,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ilGen.Emit (OpCodes.Ldloc, objArray);
 				PushConstantI4 (i ++);
 				ilGen.Emit (OpCodes.Ldelem_Ref);
-				argLoc.PopPost (this, tokenTypeObj);
+				TypeCast.CastTopOfStack (this, tokenTypeObj, argLoc.type, true);
+				argLoc.PopPost (this);
 			}
 
 			/*
@@ -1212,7 +1213,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ilGen.Emit (OpCodes.Ldloc, objArray);
 				PushConstantI4 (i ++);
 				ilGen.Emit (OpCodes.Ldelem_Ref);
-				localLoc.PopPost (this, tokenTypeObj);
+				TypeCast.CastTopOfStack (this, tokenTypeObj, localVar.type, true);
+				localLoc.PopPost (this);
 			}
 
 			/*
@@ -1223,7 +1225,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ilGen.Emit (OpCodes.Ldloc, objArray);
 				PushConstantI4 (i ++);
 				ilGen.Emit (OpCodes.Ldelem_Ref);
-				temp.PopPost (this, tokenTypeObj);
+				TypeCast.CastTopOfStack (this, tokenTypeObj, temp.type, true);
+				temp.PopPost (this);
 			}
 
 			/*
