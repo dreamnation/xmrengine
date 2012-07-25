@@ -768,7 +768,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (IsSDTInstMethod ()) {
 				TokenName    thisName = new TokenName (declFunc, "this");
 				TokenType    thisType = declFunc.sdtClass.MakeRefToken (declFunc);
-				CompValu     thisLoc  = new CompValuArg (thisType, 0);
+				CompValu     thisLoc  = new CompValuArg (thisType, 0, true);
 				TokenDeclVar thisVar  = new TokenDeclVar (thisName, null);
 				thisVar.type     = thisType;
 				thisVar.name     = thisName;
@@ -780,7 +780,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				if (ext != null) {
 					TokenName    baseName = new TokenName (declFunc, "base");
 					TokenType    baseType = ext.MakeRefToken (declFunc);
-					CompValu     baseLoc  = new CompValuArg (baseType, 0);
+					CompValu     baseLoc  = new CompValuArg (baseType, 0, true);
 					TokenDeclVar baseVar  = new TokenDeclVar (baseName, null);
 					baseVar.type     = baseType;
 					baseVar.name     = baseName;

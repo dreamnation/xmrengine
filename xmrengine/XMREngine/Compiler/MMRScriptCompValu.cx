@@ -248,6 +248,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	// The value is kept in the current function's argument list
 	public class CompValuArg : CompValu {
 		public int index;
+		public bool readOnly;
 
 		private static OpCode[] ldargs = { OpCodes.Ldarg_0, OpCodes.Ldarg_1, 
 		                                   OpCodes.Ldarg_2, OpCodes.Ldarg_3 };
@@ -255,6 +256,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public CompValuArg (TokenType type, int index) : base (type)
 		{
 			this.index = index;
+		}
+		public CompValuArg (TokenType type, int index, bool ro) : base (type)
+		{
+			this.index = index;
+			this.readOnly = ro;
 		}
 		public override void PushVal (ScriptCodeGen scg)
 		{
@@ -264,11 +270,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		public override void PushRef (ScriptCodeGen scg)
 		{
+			if (readOnly) {
+				scg.ErrorMsg (type, "location cannot be written to");
+			}
 			if (index <= 255) scg.ilGen.Emit (OpCodes.Ldarga_S, index);
 			               else scg.ilGen.Emit (OpCodes.Ldarga, index);
 		}
 		public override void PopPost (ScriptCodeGen scg)
 		{
+			if (readOnly) {
+				scg.ErrorMsg (type, "location cannot be written to");
+			}
 			scg.ilGen.Emit (OpCodes.Starg, index);
 		}
 	}
