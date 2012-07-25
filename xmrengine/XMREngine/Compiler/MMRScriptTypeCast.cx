@@ -33,15 +33,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static FieldInfo  lslFloatValueFieldInfo     = typeof (LSL_Float).GetField ("value");
 		private static FieldInfo  lslIntegerValueFieldInfo   = typeof (LSL_Integer).GetField ("value");
 		private static FieldInfo  lslStringValueFieldInfo    = typeof (LSL_String).GetField ("m_string");
-		private static MethodInfo floatToStringMethodInfo    = typeof (TypeCast).GetMethod ("FloatToString",    new Type[] { typeof (SCRIPTFLOAT) });
-		private static MethodInfo intToStringMethodInfo      = typeof (TypeCast).GetMethod ("IntegerToString",  new Type[] { typeof (int) });
-		private static MethodInfo listToStringMethodInfo     = typeof (TypeCast).GetMethod ("ListToString",     new Type[] { typeof (LSL_List) });
-		private static MethodInfo objectToStringMethodInfo   = typeof (TypeCast).GetMethod ("ObjectToString",   new Type[] { typeof (object) });
-		private static MethodInfo rotationToBoolMethodInfo   = typeof (TypeCast).GetMethod ("RotationToBool",   new Type[] { typeof (LSL_Rotation) });
-		private static MethodInfo rotationToStringMethodInfo = typeof (TypeCast).GetMethod ("RotationToString", new Type[] { typeof (LSL_Rotation) });
-		private static MethodInfo vectorToBoolMethodInfo     = typeof (TypeCast).GetMethod ("VectorToBool",     new Type[] { typeof (LSL_Vector) });
-		private static MethodInfo vectorToStringMethodInfo   = typeof (TypeCast).GetMethod ("VectorToString",   new Type[] { typeof (LSL_Vector) });
-		private static MethodInfo listOfOneObjMethodInfo     = typeof (TypeCast).GetMethod ("ListOfOneObj",     new Type[] { typeof (object) });
+		private static MethodInfo floatToStringMethodInfo    = typeof (TypeCast).GetMethod ("FloatToString",      new Type[] { typeof (SCRIPTFLOAT) });
+		private static MethodInfo intToStringMethodInfo      = typeof (TypeCast).GetMethod ("IntegerToString",    new Type[] { typeof (int) });
+		private static MethodInfo listToStringMethodInfo     = typeof (TypeCast).GetMethod ("ListToString",       new Type[] { typeof (LSL_List) });
+		private static MethodInfo objectToStringMethodInfo   = typeof (TypeCast).GetMethod ("ObjectToString",     new Type[] { typeof (object) });
+		private static MethodInfo rotationToBoolMethodInfo   = typeof (TypeCast).GetMethod ("RotationToBool",     new Type[] { typeof (LSL_Rotation) });
+		private static MethodInfo rotationToStringMethodInfo = typeof (TypeCast).GetMethod ("RotationToString",   new Type[] { typeof (LSL_Rotation) });
+		private static MethodInfo vectorToBoolMethodInfo     = typeof (TypeCast).GetMethod ("VectorToBool",       new Type[] { typeof (LSL_Vector) });
+		private static MethodInfo vectorToStringMethodInfo   = typeof (TypeCast).GetMethod ("VectorToString",     new Type[] { typeof (LSL_Vector) });
+		private static MethodInfo listOfOneObjMethodInfo     = typeof (TypeCast).GetMethod ("ListOfOneObj",       new Type[] { typeof (object) });
+		private static MethodInfo sdTypeClassCastMethodInfo  = typeof (XMRSDTypeClassInstance).GetMethod ("Cast", new Type[] { typeof (object), typeof (string) });
 
 		/*
 		 * List of all allowed type casts and how to perform the casting.
@@ -123,6 +124,37 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			CastDelegate castDelegate;
 
 			/*
+			 * Script-defined classes can be cast up and down the tree.
+			 */
+			if ((oldType is TokenTypeSDTypeClass) && (newType is TokenTypeSDTypeClass)) {
+				TokenDeclSDTypeClass oldSDTC = ((TokenTypeSDTypeClass)oldType).decl;
+				TokenDeclSDTypeClass newSDTC = ((TokenTypeSDTypeClass)newType).decl;
+
+				// implicit cast allowed from leaf toward root
+				for (TokenDeclSDTypeClass sdtc = oldSDTC; sdtc != null; sdtc = sdtc.extends) {
+					if (sdtc == newSDTC) return;
+				}
+
+				// explicit cast allowed from root toward leaf
+				for (TokenDeclSDTypeClass sdtc = newSDTC; sdtc != null; sdtc = sdtc.extends) {
+					if (sdtc == oldSDTC) {
+						if (!explicitAllowed) {
+							scg.ErrorMsg (newType, "must explicitly cast from " + oldType.ToString () + 
+							                                             " to " + newType.ToString ());
+						}
+						scg.ilGen.Emit (OpCodes.Ldstr, newType.ToString ());
+						scg.ilGen.Emit (OpCodes.Call, sdTypeClassCastMethodInfo);
+						return;
+					}
+				}
+
+				// not on same branch
+				scg.ErrorMsg (newType, "illegal to cast from " + oldType.ToString () + 
+				                                        " to " + newType.ToString ());
+				return;
+			}
+
+			/*
 			 * If the basic types are the same, there is no conceptual casting needed.
 			 * However, there may be wraping/unwraping to/from the LSL wrappers.
 			 */
@@ -139,6 +171,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			if (newType is TokenTypeVoid) {
 				scg.ilGen.Emit (OpCodes.Pop);
+				return;
+			}
+
+			/*
+			 * Script-defined classes can be implicitly cast to objects.
+			 */
+			if ((oldType is TokenTypeSDTypeClass) && (newType is TokenTypeObject)) {
+				return;
+			}
+
+			/*
+			 * Script-defined classes can be explicitly cast from objects and other script-defined classes.
+			 * Note that we must manually check that it is the correct SDTypeClass however because as far as 
+			 * mono is concerned, all SDTypeClass's are the same.
+			 */
+			if ((oldType is TokenTypeObject) && (newType is TokenTypeSDTypeClass)) {
+				if (!explicitAllowed) {
+					scg.ErrorMsg (newType, "must explicitly cast from object to " + newType.ToString ());
+				}
+				scg.ilGen.Emit (OpCodes.Ldstr, newType.ToString ());
+				scg.ilGen.Emit (OpCodes.Call, sdTypeClassCastMethodInfo);
 				return;
 			}
 

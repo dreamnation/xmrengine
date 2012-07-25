@@ -54,8 +54,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private static LSL_Vector[]   noVectors   = new LSL_Vector[0];
         private static XMRSDTypeClassInstance[] noSTDClasses = new XMRSDTypeClassInstance[0];
 
-        public XMRSDTypeClassInstance (XMRInstAbstract inst, TokenDeclSDTypeClass clas)
+        public XMRSDTypeClassInstance (XMRInstAbstract inst, string classname)
         {
+            TokenDeclSDTypeClass clas = (TokenDeclSDTypeClass)inst.m_ObjCode.sdObjTypes[classname];
+
             xmrInst   = inst;
             sdtcClass = clas;
 
@@ -86,6 +88,43 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             sdtcStrings    = (clas.numInstStrings    > 0) ? new string      [clas.numInstStrings]   : noStrings;
             sdtcVectors    = (clas.numInstVectors    > 0) ? new LSL_Vector  [clas.numInstVectors]   : noVectors;
             sdtcSDTClasses = (clas.numInstSDTClasses > 0) ? new XMRSDTypeClassInstance[clas.numInstSDTClasses] : noSTDClasses;
+        }
+
+        /**
+         * @brief Perform runtime casting of XMRSDTypeClassInstance's.
+         * @param ob = XMRSDTypeClassInstance of unknown script-defined class to cast
+         * @param classname = script-defined class to cast it to
+         * @returns ob is a valid instance of classname; else exception thrown
+         */
+        public static XMRSDTypeClassInstance Cast (object ob, string classname)
+        {
+            /*
+             * Let mono check to see if we at least have an XMRSDTypeClassInstance.
+             */
+            XMRSDTypeClassInstance ci = (XMRSDTypeClassInstance)ob;
+            if (ci != null) {
+
+                /*
+                 * This is the target class, ie, what we are hoping the object can cast to.
+                 */
+                TokenDeclSDTypeClass tc = (TokenDeclSDTypeClass)ci.xmrInst.m_ObjCode.sdObjTypes[classname];
+
+                /*
+                 * Step from the object's actual class rootward.
+                 * If we find the target class along the way, the cast is valid.
+                 * If we run off the end of the root, the cast is not valid.
+                 */
+                for (TokenDeclSDTypeClass ac = ci.sdtcClass; ac != tc; ac = ac.extends) {
+                    if (ac == null) throw new InvalidCastException ("invalid cast from " + ci.sdtcClass.name.val + 
+                                                                                  " to " + classname);
+                }
+
+                /*
+                 * The target class is at or rootward of the actual class,
+                 * so the cast is valid.
+                 */
+            }
+            return ci;
         }
     }
 }

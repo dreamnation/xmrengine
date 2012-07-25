@@ -57,6 +57,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static ConstructorInfo scriptBadCallNoExceptionConstructorInfo = typeof (ScriptBadCallNoException).GetConstructor (new Type[] { typeof (int) });
 		private static ConstructorInfo scriptChangeStateExceptionConstructorInfo = typeof (ScriptChangeStateException).GetConstructor (new Type[] { typeof (int) });
 		private static ConstructorInfo scriptUndefinedStateExceptionConstructorInfo = typeof (ScriptUndefinedStateException).GetConstructor (new Type[] { typeof (string) });
+		private static ConstructorInfo sdtClassConstructorInfo = typeof (XMRSDTypeClassInstance).GetConstructor (new Type[] { typeof (XMRInstAbstract), typeof (string) });
 		private static ConstructorInfo xmrArrayConstructorInfo = typeof (XMR_Array).GetConstructor (new Type[] { typeof (XMRInstAbstract), typeof (int), typeof (int) });
 		private static FieldInfo callModeFieldInfo     = typeof (XMRInstAbstract).GetField ("callMode");
 		private static FieldInfo doGblInitFieldInfo    = typeof (XMRInstAbstract).GetField ("doGblInit");
@@ -468,7 +469,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						TokenDeclSDTypeClass sdtClass = (TokenDeclSDTypeClass)sdType;
 						foreach (KeyValuePair<string, TokenDeclFunc> kvpm in sdtClass.methods) {
 							TokenDeclFunc declFunc = kvpm.Value;
-							if (declFunc.body != null) {
+							if ((declFunc.sdtFlags & ScriptReduce.SDT_ABSTRACT) == 0) {
 								if (pass == 0) GenerateMethodHeader (declFunc);
 								          else GenerateMethodBody   (declFunc);
 							}
@@ -741,6 +742,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void GenerateMethodBody (TokenDeclFunc declFunc)
 		{
 			/*
+			 * Now for some craziness...
+			 * Script-defined types create static methods called 'new' that are supposed to create a new instance 
+			 * of the type.  But it generates special code, so we just pump it out here.
+			 */
+			if (declFunc.funcNameSig.val.StartsWith ("new(") && (declFunc.sdtClass != null)) {
+				GenerateNewobjBody (declFunc);
+				return;
+			}
+
+			/*
 			 * Set up code generator for the function's contents.
 			 */
 			ilGen = declFunc.ilGen;
@@ -778,7 +789,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					AddVarDefinition (baseName, baseLoc);
 				}
 			}
-
 
 			/*
 			 * Define all arguments as named variables so script body can reference them.
@@ -824,6 +834,48 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Start generating code.
 			 */
 			ilGen.BegMethod ();
+		}
+
+		/**
+		 * @brief Generate code for a script-define type's <typename>.new(<argsig>) method.
+		 *        It is used to malloc the object and initialize it.
+		 *        It is defined as a script-defined type static method, so the object level
+		 *        method gets the XMRInstance pointer passed as arg 0, and the method is 
+		 *        supposed to return the allocated and constructed XMRSDTypeClassInstance
+		 *        object pointer.
+		 */
+		private void GenerateNewobjBody (TokenDeclFunc newobjFunc)
+		{
+			ScriptMyILGen ilGen = newobjFunc.ilGen;
+			ilGen.BegMethod ();
+
+			/*
+			 * First off, malloc a new empty XMRSDTypeClassInstance object
+			 * then call the XMRSDTypeClassInstance()-level constructor.
+			 */
+			ilGen.Emit (OpCodes.Ldarg_0);
+			ilGen.Emit (OpCodes.Ldstr, newobjFunc.sdtClass.name.val);
+			ilGen.Emit (OpCodes.Newobj, sdtClassConstructorInfo);
+
+			/*
+			 * Now call the script-level constructor.
+			 * It is compiled as an instance method so its arg 0 = pointer to the XMRSDTypeClassInstance object.
+			 * The rest of the args are the script-visible args and are just copied from new newobj call.
+			 */
+			ilGen.Emit (OpCodes.Dup);
+			int nArgs = newobjFunc.argDecl.names.Length;
+			for (int i = 0; i < nArgs; i ++) {
+				ilGen.Emit (OpCodes.Ldarg, i + 1);
+			}
+			string ctorNameSig = "constructor" + newobjFunc.argDecl.GetArgSig ();
+			TokenDeclFunc ctorFunc = newobjFunc.sdtClass.methods[ctorNameSig];
+			ilGen.Emit (OpCodes.Call, ctorFunc.ilGen);
+
+			/*
+			 * The return value should be on the stack still (pointer to the XMRSDTypeClassInstance object).
+			 */
+			ilGen.Emit (OpCodes.Ret);
+			ilGen.EndMethod ();
 		}
 
 		/**
@@ -2364,12 +2416,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					fieldName += argsig;
 					for (TokenDeclSDTypeClass sdtd = sdtDecl; sdtd != null; sdtd = sdtd.extends) {
 						TokenDeclFunc declFunc;
-						if (!sdtd.methods.TryGetValue (fieldName, out declFunc)) {
+						if (sdtd.methods.TryGetValue (fieldName, out declFunc)) {
 							if ((declFunc.sdtFlags & ScriptReduce.SDT_STATIC) == 0) {
 								ErrorMsg (lVal.fieldName, "static reference to non-static method " + fieldName);
 								return new CompValuVoid (lVal.fieldName);
 							}
-							return globalVariables[sdtd.name.val + "," + fieldName];
+							return globalVariables[sdtd.name.val + "." + fieldName];
 						}
 					}
 					ErrorMsg (lVal.fieldName, "no method " + fieldName + " in " + sdtDecl.name.val);
@@ -3138,8 +3190,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Default for 'object' type is 'undef'.
+			 * Likewise for script-defined classes.
 			 */
-			if (type is TokenTypeObject) {
+			if ((type is TokenTypeObject) || (type is TokenTypeSDTypeClass)) {
 				ilGen.Emit (OpCodes.Ldnull);
 				return;
 			}

@@ -557,7 +557,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 */
 					case ScriptMyILGenCode.EmitType: {
 						OpCode opCode = ReadOpCode (objReader);
-						Type type     = GetTypeFromStr (sdTypes, objReader.ReadString ());
+						string name   = objReader.ReadString ();
+						Type type     = GetTypeFromStr (sdTypes, name);
 
 						ilGen.Emit (opCode, type);
 

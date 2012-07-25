@@ -98,7 +98,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private string m_ScriptBasePath;
         private string m_StateFileName;
         private string m_SourceCode;
-        public  ScriptObjCode m_ObjCode;
         private bool m_PostOnRez;
         private DetectParams[] m_DetectParams = null;
         private bool m_Die = false;

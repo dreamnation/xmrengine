@@ -73,6 +73,14 @@ default
         VERIFY ver = Verify;
         AwfulSig(ZERO_ROTATION, ZERO_VECTOR, "", 0, []);
 
+        Klass k = new Klass ();
+        k.PrintTwice ();
+        SaySomething ("k string " + k.ToString ());
+
+        Klass k1 = new KlassOne ();
+        k1.PrintTwice ();
+        SaySomething ("k1 string " + k1.ToString ());
+
         SaySomething("existing array:");
         da(-1);
         zz.clear();

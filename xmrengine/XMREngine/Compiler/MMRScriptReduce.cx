@@ -394,6 +394,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		private void ParseDeclClass (ref Token token)
 		{
+			bool haveExplicitConstructor = false;
 			Token u = token.nextToken;
 			TokenDeclSDTypeClass tokdeclcl;
 
@@ -531,6 +532,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					currentDeclFunc = tokenDeclFunc;
 					TokenStmtRVal baseCtorCall = null;
 					try {
+						/*
+						 * Set up reference to base constructor.
+						 */
+						TokenLValIField baseCtor = new TokenLValIField (token);
+						baseCtor.baseRVal        = new TokenLValName (new TokenName (token, "base"));
+						baseCtor.field           = new TokenName (token, "constructor");
 
 						/*
 						 * Parse any base constructor call as if it were the first statement of the
@@ -546,13 +553,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 								token = SkipPastSemi (token);
 								continue;
 							}
-							TokenLValName cn  = new TokenLValName (new TokenName (token, "constructor"));
 							baseCtorCall      = new TokenStmtRVal (token);
-							baseCtorCall.rVal = ParseRValCall (ref token, cn);
+							baseCtorCall.rVal = ParseRValCall (ref token, baseCtor);
 							if (baseCtorCall.rVal == null) continue;
 						} else if (tokdeclcl.extends != null) {
+
+							/*
+							 * Caller didn't specify a constructor but we are extending, so we will 
+							 * call the extended class's default constructor.
+							 */
 							TokenRValCall rvc = new TokenRValCall (token);
-							rvc.meth          = new TokenLValName (new TokenName (token, "constructor"));
+							rvc.meth          = baseCtor;
 							baseCtorCall      = new TokenStmtRVal (token);
 							baseCtorCall.rVal = rvc;
 						}
@@ -583,9 +594,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					 */
 					if (tokdeclcl.methods.ContainsKey (tokenDeclFunc.funcNameSig.val)) {
 						ErrorMsg (tokenDeclFunc.funcNameSig, "duplicate constructor");
-					} else {
-						tokdeclcl.methods.Add (tokenDeclFunc.funcNameSig.val, tokenDeclFunc);
+						continue;
 					}
+					tokdeclcl.methods.Add (tokenDeclFunc.funcNameSig.val, tokenDeclFunc);
+
+					MakeNewobjMethod (tokdeclcl, tokenDeclFunc);
+
+					haveExplicitConstructor = true;
+
 					continue;
 				}
 
@@ -687,9 +703,61 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			}
 
 			/*
+			 * If script didn't specify any constructor, create a default no-argument one.
+			 */
+			if (!haveExplicitConstructor) {
+				TokenDeclFunc tokenDeclFunc = new TokenDeclFunc (token, tokenScript);
+				tokenDeclFunc.retType       = new TokenTypeVoid (token);
+				tokenDeclFunc.argDecl       = new TokenArgDecl (token);
+				tokenDeclFunc.argDecl.types = new TokenType[0];
+				tokenDeclFunc.argDecl.names = new TokenName[0];
+				tokenDeclFunc.argDecl.locns = new CompValu[0];
+				tokenDeclFunc.funcNameSig   = new TokenName (token, "constructor()");
+				tokenDeclFunc.sdtClass      = tokdeclcl;
+				tokenDeclFunc.sdtFlags      = 0;
+				tokenDeclFunc.body          = new TokenStmtBlock (token);
+				tokenDeclFunc.body.function = tokenDeclFunc;
+
+				if (tokdeclcl.extends != null) {
+					TokenLValIField meth = new TokenLValIField (token);
+					meth.baseRVal        = new TokenLValName (new TokenName (token, "base"));
+					meth.field           = new TokenName (token, "constructor");
+					TokenRValCall rvc    = new TokenRValCall (token);
+					rvc.meth             = meth;
+					TokenStmtRVal bcc    = new TokenStmtRVal (token);
+					bcc.rVal             = rvc;
+					bcc.nextToken        = null;
+					tokenDeclFunc.body.statements = bcc;
+				}
+
+				tokdeclcl.methods.Add (tokenDeclFunc.funcNameSig.val, tokenDeclFunc);
+
+				MakeNewobjMethod (tokdeclcl, tokenDeclFunc);
+			}
+
+			/*
 			 * Skip over the closing brace.
 			 */
 			token = token.nextToken;
+		}
+
+		/**
+		 * @brief Now for a little craziness...
+		 *        We create a static method that actually does the newobj and calls the 
+		 *        XMRSDTypeClassInstance() constructor then finally calls this script-level
+		 *        constructor.  It gets referenced by 'new classname' to create the object.
+		 *        We don't give it a body, GenerateNewobjBody() just knows how to gen it.
+		 */
+		private void MakeNewobjMethod (TokenDeclSDTypeClass tokdeclcl, TokenDeclFunc tokenDeclFunc)
+		{
+			TokenDeclFunc newobjDeclFunc = new TokenDeclFunc (tokenDeclFunc, tokenScript);
+			newobjDeclFunc.retType       = tokdeclcl.MakeRefToken (newobjDeclFunc);
+			newobjDeclFunc.argDecl       = tokenDeclFunc.argDecl;
+			string nameSig               = "new" + tokenDeclFunc.argDecl.GetArgSig ();
+			newobjDeclFunc.funcNameSig   = new TokenName (newobjDeclFunc, nameSig);
+			newobjDeclFunc.sdtClass      = tokdeclcl;
+			newobjDeclFunc.sdtFlags      = SDT_STATIC;
+			tokdeclcl.methods.Add (newobjDeclFunc.funcNameSig.val, newobjDeclFunc);
 		}
 
 		/**
@@ -854,6 +922,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			TokenDeclFunc tokenDeclFunc = new TokenDeclFunc (simpleName, tokenScript);
 			tokenDeclFunc.retType       = retType;
 			tokenDeclFunc.argDecl       = ParseFuncArgs (ref token);
+			if (tokenDeclFunc.argDecl == null) return null;
 			tokenDeclFunc.funcNameSig   = new TokenName (simpleName, 
 			                                             simpleName.val + tokenDeclFunc.argDecl.GetArgSig ());
 
@@ -2063,6 +2132,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			}
 
 			/*
+			 * Maybe we have 'new <script-defined-type>' saying to create an object instance.
+			 * This ends up generating a call to static function <script-defined-type>.new(...)
+			 * whose CIL code is generated by GenerateNewobjBody().
+			 */
+			if ((token is TokenKwNew) && (token.nextToken is TokenType)) {
+				TokenLValSField field = new TokenLValSField (token.nextToken.nextToken);
+				field.baseType  = (TokenType)token.nextToken;
+				field.fieldName = new TokenName (token, "new");
+				token = token.nextToken.nextToken;
+				return field;
+			}
+
+			/*
 			 * All we got left is <name>, eg, arg, function, global or local variable reference
 			 */
 			if (token is TokenName) {
@@ -2851,9 +2933,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			this.decl = decl;
 		}
+		public override string ToString ()
+		{
+			return decl.name.val;
+		}
 		public override Type ToSysType ()
 		{
-			return null;
+			return typeof (XMRSDTypeClassInstance);
 		}
 		public override void AssignGlobalVarSlot (TokenDeclVar declVar, ScriptObjCode scriptObjCode)
 		{
