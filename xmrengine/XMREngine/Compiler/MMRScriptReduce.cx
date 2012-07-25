@@ -251,10 +251,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				/*
 				 * interface <interfacedef> ... { ... }
 				 */
-				/*if (token is TokenKwInterface) {
-					ParseDeclClass (ref token, true);
+				if (token is TokenKwInterface) {
+					ParseDeclInterface (ref token);
 					continue;
-				}*/
+				}
 
 				/*
 				 * <type> <name> ;
@@ -817,6 +817,110 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				return;
 			}
 			token = u.nextToken;
+		}
+
+		/**
+		 * @brief Parse an interface declaration.
+		 * @param token = points to 'interface' keyword on entry
+		 *                points just past closing '}' on return
+		 */
+		private void ParseDeclInterface (ref Token token)
+		{
+			Token u = token.nextToken;
+			TokenDeclSDTypeInterface tokdeclin;
+
+			// first thing following 'interface' should be the
+			// interface's declaration that we foud during
+			// pre-scan
+			if (!(u is TokenDeclSDTypeInterface)) {
+				ErrorMsg (u, "expecting interface name");
+				token = SkipPastSemi (token);
+				return;
+			}
+			tokdeclin = (TokenDeclSDTypeInterface)u;
+			u = u.nextToken;
+
+			// next must be '{' to open interface declaration body
+			if (!(u is TokenKwBrcOpen)) {
+				ErrorMsg (u, "expecting { to open interface declaration body");
+				token = SkipPastSemi (token);
+				return;
+			}
+			token = u.nextToken;
+
+			// process declaration statements until '}'
+			while (!(token is TokenKwBrcClose)) {
+
+				/*
+				 * <type> <name> <funcargs> ;
+				 * abstract method with explicit return type
+				 */
+				if (token is TokenType) {
+					TokenType tokenType = (TokenType)token;
+
+					token = token.nextToken;
+					if (!(token is TokenName)) {
+						ErrorMsg (token, "expecting method name");
+						token = SkipPastSemi (token);
+						continue;
+					}
+					TokenName tokenName = (TokenName)token;
+					token = token.nextToken;
+					if (!(token is TokenKwParOpen)) {
+						ErrorMsg (token, "<type> <name> must be followed by (");
+						token = SkipPastSemi (token);
+						continue;
+					}
+
+					/*
+					 * <type> <name> (
+					 * interface method prototype
+					 */
+					token = tokenType;
+					TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, true);
+					if (tokenDeclFunc == null) continue;
+					if (tokdeclin.methods.ContainsKey (tokenDeclFunc.funcNameSig.val)) {
+						ErrorMsg (tokenName, "duplicate method name");
+						continue;
+					}
+					tokdeclin.methods.Add (tokenDeclFunc.funcNameSig.val, tokenDeclFunc);
+					continue;
+				}
+
+				/*
+				 * <name> <funcargs> ;
+				 * abstract method returning void
+				 */
+				if (token is TokenName) {
+					TokenName tokenName = (TokenName)token;
+					token = token.nextToken;
+					if (!(token is TokenKwParOpen)) {
+						ErrorMsg (token, "<name> must be followed by (");
+						token = SkipPastSemi (token);
+						continue;
+					}
+					token = tokenName;
+					TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, true);
+					if (tokenDeclFunc == null) continue;
+					if (tokdeclin.methods.ContainsKey (tokenDeclFunc.funcNameSig.val)) {
+						ErrorMsg (tokenName, "duplicate method name");
+						continue;
+					}
+					tokdeclin.methods.Add (tokenDeclFunc.funcNameSig.val, tokenDeclFunc);
+					continue;
+				}
+
+				/*
+				 * That's all we support in an interface declaration.
+				 */
+				ErrorMsg (token, "expecting method declaration");
+				token = SkipPastSemi (token);
+			}
+
+			/*
+			 * Skip over the closing brace.
+			 */
+			token = token.nextToken;
 		}
 
 		/**
@@ -2449,10 +2553,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	public class TokenDeclSDTypeClass : TokenDeclSDType {
 		public TokenName name;
 		public TokenDeclSDTypeClass extends;
-		public List<TokenDeclSDTypeInterface> implements = new List<TokenDeclSDTypeInterface> ();
 		public bool isAbstract;
+		public List<TokenDeclSDTypeInterface> implements = new List<TokenDeclSDTypeInterface> ();
 		public Dictionary<string, TokenDeclVar>  fields  = new Dictionary<string, TokenDeclVar>  ();
 		public Dictionary<string, TokenDeclFunc> methods = new Dictionary<string, TokenDeclFunc> ();
+
+		public Dictionary<string, int> intfIndices = new Dictionary<string, int> ();
+		public TokenDeclFunc[][] iImplFunc;  // iImplFunc[i][j]:
+		                                     //   low-end [i] entries copied from rootward classes
+		                                     //   i = interface number from this.intfIndices[name]
+		                                     //   j = method of interface from iface.methods[name].vTableIndex
+		public TokenDeclSDTypeInterface[] iFaces;  // array of implemented interfaces
+		                                           //   low-end entries copied from rootward classes
 
 		public bool slotsAssigned;    // set true when slots have been assigned...
 		public int numInstArrays;     // number of non-static array fields
@@ -2464,14 +2576,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public int numInstStrings;    // number of non-static string fields
 		public int numInstVectors;    // number of non-static vector fields
 		public int numInstSDTClasses; // number of non-static sdt-class fields
-		public int numInstVirtFuncs;  // number of virtual functions
+		public int numVirtFuncs;      // number of virtual functions
+		public int numInterfaces;     // number of implemented interfaces
 
 		private string extendsStr;
 		private List<StackedMethod> stackedMethods;
+		private List<StackedIFace>  stackedIFaces;
 
-		public DynamicMethod[] vDynMeths;  // virtual method entrypoints
-		public Type[] vMethTypes;          // virtual method delegate type
-		public DynamicMethod destroyMeth;  // destructor entrypoint
+		public DynamicMethod[] vDynMeths;    // virtual method entrypoints
+		public Type[] vMethTypes;            // virtual method delegate types
+		public DynamicMethod destroyMeth;    // destructor entrypoint
+		public DynamicMethod[][] iDynMeths;  // interface method entrypoints
+		public Type[][] iMethTypes;          // interface method types
+		                                     //   low-end [i] entries copied from rootward classes
+		                                     //   i = interface number from this.intfIndices[name]
+		                                     //   j = method of interface from iface.methods[name].vTableIndex
 
 		public TokenDeclSDTypeClass (TokenName name) : base (name)
 		{
@@ -2507,7 +2626,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			objFileWriter.Write (numInstStrings);
 			objFileWriter.Write (numInstVectors);
 			objFileWriter.Write (numInstSDTClasses);
-			objFileWriter.Write (numInstVirtFuncs);
+			objFileWriter.Write (numVirtFuncs);
 
 			if (extends == null) {
 				objFileWriter.Write ("");
@@ -2529,6 +2648,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				}
 			}
 			objFileWriter.Write (-1);
+
+			int numIFaces = iImplFunc.Length;
+			objFileWriter.Write (numIFaces);
+			for (int i = 0; i < numIFaces; i ++) {
+				objFileWriter.Write (iFaces[i].name.val);
+				TokenDeclFunc[] meths = iImplFunc[i];
+				int numMeths = 0;
+				if (meths != null) numMeths = meths.Length;
+				objFileWriter.Write (numMeths);
+				for (int j = 0; j < numMeths; j ++) {
+					TokenDeclFunc meth = meths[j];
+					objFileWriter.Write (meth.GetObjCodeName ());
+					objFileWriter.Write (meth.GetDelType ().decl.GetWholeSig ());
+				}
+			}
 		}
 
 		/**
@@ -2545,7 +2679,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			numInstStrings    = objFileReader.ReadInt32 ();
 			numInstVectors    = objFileReader.ReadInt32 ();
 			numInstSDTClasses = objFileReader.ReadInt32 ();
-			numInstVirtFuncs  = objFileReader.ReadInt32 ();
+			numVirtFuncs      = objFileReader.ReadInt32 ();
 
 			extendsStr = objFileReader.ReadString ();
 
@@ -2558,6 +2692,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				sm.methSig  = objFileReader.ReadString ();
 				stackedMethods.Add (sm);
 			}
+
+			int numIFaces = objFileReader.ReadInt32 ();
+			if (numIFaces > 0) {
+				iDynMeths  = new DynamicMethod[numIFaces][];
+				iMethTypes = new Type[numIFaces][];
+				stackedIFaces = new List<StackedIFace> ();
+				for (int i = 0; i < numIFaces; i ++) {
+					string iFaceName = objFileReader.ReadString ();
+					intfIndices[iFaceName] = i;
+					int numMeths  = objFileReader.ReadInt32 ();
+					iDynMeths[i]  = new DynamicMethod[numMeths];
+					iMethTypes[i] = new Type[numMeths];
+					for (int j = 0; j < numMeths; j ++) {
+						StackedIFace si;
+						si.iFaceIndex = i;
+						si.methIndex  = j;
+						si.methName   = objFileReader.ReadString ();
+						si.methSig    = objFileReader.ReadString ();
+						stackedIFaces.Add (si);
+					}
+				}
+			}
 		}
 
 		private struct StackedMethod {
@@ -2566,9 +2722,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			public string methSig;
 		}
 
+		private struct StackedIFace {
+			public int iFaceIndex;
+			public int methIndex;
+			public string methName;
+			public string methSig;
+		}
+
 		/**
 		 * @brief Called after all dynamic method code has been generated to fill in vDynMeths and vMethTypes
-		 *        Also fills in destroyMeth.
+		 *        Also fills in destroyMeth, iDynMeths, iMethTypes.
 		 */
 		public void FillVTables (ScriptObjCode scriptObjCode)
 		{
@@ -2580,19 +2743,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				extendsStr = null;
 			}
 
-			if ((numInstVirtFuncs > 0) && (stackedMethods != null)) {
+			if ((numVirtFuncs > 0) && (stackedMethods != null)) {
 
 				/*
 				 * Allocate arrays big enough for mine plus type we are extending.
 				 */
-				vDynMeths  = new DynamicMethod[numInstVirtFuncs];
-				vMethTypes = new Type[numInstVirtFuncs];
+				vDynMeths  = new DynamicMethod[numVirtFuncs];
+				vMethTypes = new Type[numVirtFuncs];
 
 				/*
 				 * Fill in low parts from type we are extending.
 				 */
 				if (extends != null) {
-					int n = extends.numInstVirtFuncs;
+					int n = extends.numVirtFuncs;
 					for (int i = 0; i < n; i ++) {
 						vDynMeths[i]  = extends.vDynMeths[i];
 						vMethTypes[i] = extends.vMethTypes[i];
@@ -2608,20 +2771,37 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					string methName  = sm.methName;
 					DynamicMethod dm = scriptObjCode.dynamicMethods[methName];
 					if (i == 0x7FFFFFFF) {
-						destroyMeth = dm;
-						continue;
+						destroyMeth   = dm;
+					} else {
+						vDynMeths[i]  = dm;
+						vMethTypes[i] = GetDynamicMethodDelegateType (dm, sm.methSig);
 					}
-					vDynMeths[i] = dm;
-					Type retType = dm.ReturnType;
-					ParameterInfo[] pi = dm.GetParameters ();
-					Type[] argTypes = new Type[pi.Length];
-					for (int j = 0; j < pi.Length; j ++) {
-						argTypes[j] = pi[j].ParameterType;
-					}
-					vMethTypes[i] = DelegateCommon.GetType (retType, argTypes, sm.methSig);
 				}
 				stackedMethods = null;
 			}
+
+			if (stackedIFaces != null) {
+				foreach (StackedIFace si in stackedIFaces) {
+					int i = si.iFaceIndex;
+					int j = si.methIndex;
+					string methName  = si.methName;
+					DynamicMethod dm = scriptObjCode.dynamicMethods[methName];
+					iDynMeths[i][j]  = dm;
+					iMethTypes[i][j] = GetDynamicMethodDelegateType (dm, si.methSig);
+				}
+				stackedIFaces = null;
+			}
+		}
+
+		private Type GetDynamicMethodDelegateType (DynamicMethod dm, string methSig)
+		{
+			Type retType = dm.ReturnType;
+			ParameterInfo[] pi = dm.GetParameters ();
+			Type[] argTypes = new Type[pi.Length];
+			for (int j = 0; j < pi.Length; j ++) {
+				argTypes[j] = pi[j].ParameterType;
+			}
+			return DelegateCommon.GetType (retType, argTypes, methSig);
 		}
 	}
 
@@ -2879,6 +3059,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 	public class TokenDeclSDTypeInterface : TokenDeclSDType {
 		public TokenName name;
+		public Dictionary<string, TokenDeclFunc> methods = new Dictionary<string, TokenDeclFunc> ();
 
 		public TokenDeclSDTypeInterface (TokenName name) : base (name)
 		{
@@ -2892,20 +3073,26 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public override Type GetSysType ()
 		{
-			throw new Exception ("not implemented");
+			// interfaces are implemented as arrays of delegates
+			// they are taken from iDynMeths[interfaceIndex] of a script-defined class object
+			return typeof (Delegate[]);
 		}
+
 		public override void WriteToFile (BinaryWriter objFileWriter)
 		{
-			throw new Exception ("not implemented");
+			objFileWriter.Write (this.file);
+			objFileWriter.Write (this.line);
+			objFileWriter.Write (this.posn);
+			objFileWriter.Write ((byte)INTERFACE);
 		}
+
 		public override void ReadFromFile (BinaryReader objFileReader, TextWriter asmFileWriter)
-		{
-			throw new Exception ("not implemented");
-		}
+		{ }
 	}
 
 	/**
 	 * @brief Script-defined type references.
+	 *        These occur in the source code wherever it specifies (eg, variable declaration) a script-defined type.
 	 */
 	public abstract class TokenTypeSDType : TokenType {
 		public TokenTypeSDType (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
@@ -3041,9 +3228,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			this.decl = decl;
 		}
 
+		public override string ToString ()
+		{
+			return decl.name.val;
+		}
 		public override Type ToSysType ()
 		{
-			return null;
+			return typeof (Delegate[]);
 		}
 	}
 

@@ -33,6 +33,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static FieldInfo  lslFloatValueFieldInfo     = typeof (LSL_Float).GetField ("value");
 		private static FieldInfo  lslIntegerValueFieldInfo   = typeof (LSL_Integer).GetField ("value");
 		private static FieldInfo  lslStringValueFieldInfo    = typeof (LSL_String).GetField ("m_string");
+		private static FieldInfo  sdtcITableFieldInfo        = typeof (XMRSDTypeClassInstance).GetField ("sdtcITable");
 		private static MethodInfo floatToStringMethodInfo    = typeof (TypeCast).GetMethod ("FloatToString",      new Type[] { typeof (SCRIPTFLOAT) });
 		private static MethodInfo intToStringMethodInfo      = typeof (TypeCast).GetMethod ("IntegerToString",    new Type[] { typeof (int) });
 		private static MethodInfo listToStringMethodInfo     = typeof (TypeCast).GetMethod ("ListToString",       new Type[] { typeof (LSL_List) });
@@ -42,7 +43,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static MethodInfo vectorToBoolMethodInfo     = typeof (TypeCast).GetMethod ("VectorToBool",       new Type[] { typeof (LSL_Vector) });
 		private static MethodInfo vectorToStringMethodInfo   = typeof (TypeCast).GetMethod ("VectorToString",     new Type[] { typeof (LSL_Vector) });
 		private static MethodInfo listOfOneObjMethodInfo     = typeof (TypeCast).GetMethod ("ListOfOneObj",       new Type[] { typeof (object) });
-		private static MethodInfo sdTypeClassCast2ClassMethodInfo  = typeof (XMRSDTypeClassInstance).GetMethod ("Cast2Class", new Type[] { typeof (object), typeof (string) });
+		private static MethodInfo sdTypeClassCastClass2ClassMethodInfo = typeof (XMRSDTypeClassInstance).GetMethod ("CastClass2Class", new Type[] { typeof (object),     typeof (string) });
+		private static MethodInfo sdTypeClassCastIFace2ClassMethodInfo = typeof (XMRSDTypeClassInstance).GetMethod ("CastIFace2Class", new Type[] { typeof (Delegate[]), typeof (string) });
+		private static MethodInfo sdTypeClassCastObj2IFaceMethodInfo   = typeof (XMRSDTypeClassInstance).GetMethod ("CastObj2IFace",   new Type[] { typeof (object),     typeof (string) });
 
 		/*
 		 * List of all allowed type casts and how to perform the casting.
@@ -143,7 +146,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 							                                             " to " + newType.ToString ());
 						}
 						scg.ilGen.Emit (OpCodes.Ldstr, newType.ToString ());
-						scg.ilGen.Emit (OpCodes.Call, sdTypeClassCast2ClassMethodInfo);
+						scg.ilGen.Emit (OpCodes.Call, sdTypeClassCastClass2ClassMethodInfo);
 						return;
 					}
 				}
@@ -151,6 +154,68 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				// not on same branch
 				scg.ErrorMsg (newType, "illegal to cast from " + oldType.ToString () + 
 				                                        " to " + newType.ToString ());
+				return;
+			}
+
+			/*
+			 * One script-defined interface type cannot be cast to another script-defined interface type.
+			 */
+			if ((oldType is TokenTypeSDTypeInterface) && (newType is TokenTypeSDTypeInterface)) {
+				scg.ErrorMsg (newType, "illegal to cast from " + oldType.ToString () + 
+				                                        " to " + newType.ToString ());
+				return;
+			}
+
+			/*
+			 * A script-defined class type can be implicitly cast to a script-defined interface type that it 
+			 * implements.  The result is an array of delegates that give the class's implementation of the 
+			 * various methods defined by the interface.
+			 */
+			if ((oldType is TokenTypeSDTypeClass) && (newType is TokenTypeSDTypeInterface)) {
+				TokenDeclSDTypeClass oldSDTC = ((TokenTypeSDTypeClass)oldType).decl;
+				int intfIndex;
+				if (!oldSDTC.intfIndices.TryGetValue (newType.ToString (), out intfIndex)) {
+					scg.ErrorMsg (newType, oldType.ToString () + " does not implement " + newType.ToString ());
+					intfIndex = -1;
+				}
+				scg.ilGen.Emit (OpCodes.Ldfld, sdtcITableFieldInfo);
+				scg.PushConstantI4 (intfIndex);
+				scg.ilGen.Emit (OpCodes.Ldelem, typeof (Delegate[]));
+				return;
+			}
+
+			/*
+			 * A script-defined interface type can be explicitly cast to a script-defined class type by 
+			 * extracting the Target property from element 0 of the delegate array that is the interface
+			 * object and making sure it casts to the correct script-defined class type.
+			 */
+			if ((oldType is TokenTypeSDTypeInterface) && (newType is TokenTypeSDTypeClass)) {
+				if (!explicitAllowed) {
+					scg.ErrorMsg (newType, "must explicitly cast from " + oldType.ToString () + 
+					                                             " to " + newType.ToString ());
+				}
+				scg.ilGen.Emit (OpCodes.Ldstr, newType.ToString ());
+				scg.ilGen.Emit (OpCodes.Call, sdTypeClassCastIFace2ClassMethodInfo);
+				return;
+			}
+
+			/*
+			 * A script-defined interface type can be implicitly cast to object.
+			 */
+			if ((oldType is TokenTypeSDTypeInterface) && (newType is TokenTypeObject)) {
+				return;
+			}
+
+			/*
+			 * An object can be explicitly cast to a script-defined interface.
+			 */
+			if ((oldType is TokenTypeObject) && (newType is TokenTypeSDTypeInterface)) {
+				if (!explicitAllowed) {
+					scg.ErrorMsg (newType, "must explicitly cast from " + oldType.ToString () + 
+					                                             " to " + newType.ToString ());
+				}
+				scg.ilGen.Emit (OpCodes.Ldstr, newType.ToString ());
+				scg.ilGen.Emit (OpCodes.Call, sdTypeClassCastObj2IFaceMethodInfo);
 				return;
 			}
 
@@ -191,7 +256,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					scg.ErrorMsg (newType, "must explicitly cast from object to " + newType.ToString ());
 				}
 				scg.ilGen.Emit (OpCodes.Ldstr, newType.ToString ());
-				scg.ilGen.Emit (OpCodes.Call, sdTypeClassCast2ClassMethodInfo);
+				scg.ilGen.Emit (OpCodes.Call, sdTypeClassCastClass2ClassMethodInfo);
 				return;
 			}
 

@@ -26,8 +26,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         /*
          * Our VTable array, used for calling virtual functions.
+         * And ITable array, used for calling our implementation of interface functions.
          */
         public Delegate[]     sdtcVTable;
+        public Delegate[][]   sdtcITable;
 
         /*
          * These arrays hold the insance variable values.
@@ -56,6 +58,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public XMRSDTypeClassInstance (XMRInstAbstract inst, string classname)
         {
+            Delegate[] thisMid = null;
             TokenDeclSDTypeClass clas = (TokenDeclSDTypeClass)inst.m_ObjCode.sdObjTypes[classname];
 
             xmrInst   = inst;
@@ -76,6 +79,52 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             /*
+             * Fill in interface vtables.
+             * There is one array of delegates for each implemented interface.
+             * The array of delegates IS the interface's object, ie, the 'this' value of the interface.
+             * To cast from the class type to the interface type, just get the correct array from the table.
+             * To cast from the interface type to the class type, just get Target of entry 0.
+             *
+             * So we end up with this:
+             *    sdtcITable[interfacenumber][methodofintfnumber] = delegate of this.ourimplementationofinterfacesmethod
+             */
+            if (clas.iDynMeths != null) {
+                int nIFaces = clas.iDynMeths.Length;
+                sdtcITable = new Delegate[nIFaces][];
+                for (int i = 0; i < nIFaces; i ++) {
+
+                    // get vector of entrypoints of our instance methods that implement that interface
+                    DynamicMethod[] iDynMeths = clas.iDynMeths[i];
+                    Type[]         iMethTypes = clas.iMethTypes[i];
+
+                    // allocate an array with a slot for each method the interface defines
+                    int nMeths = iDynMeths.Length;
+                    Delegate[] ivec;
+                    if (nMeths > 0) {
+                        // fill in the array with delegates that reference back to this class instance
+                        ivec = new Delegate[nMeths];
+                        for (int j = 0; j < nMeths; j ++) {
+                            ivec[j] = iDynMeths[j].CreateDelegate (iMethTypes[j], this);
+                        }
+                    } else {
+                        // just a marker interface with no methods,
+                        // allocate a one-element array and fill
+                        // with a dummy entry.  this will allow casting
+                        // back to the original class instance (this)
+                        // by reading Target of entry 0.
+                        if (thisMid == null) {
+                            thisMid = new Delegate[1];
+                            thisMid[0] = markerInterfaceDummy.CreateDelegate (typeof (MarkerInterfaceDummy), this);
+                        }
+                        ivec = thisMid;
+                    }
+
+                    // save whatever we ended up allocating
+                    sdtcITable[i] = ivec;
+                }
+            }
+
+            /*
              * These arrays hold the script non-static instance variables.
              * Lots more shitty little mallocs...
              */
@@ -88,6 +137,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             sdtcStrings    = (clas.numInstStrings    > 0) ? new string      [clas.numInstStrings]   : noStrings;
             sdtcVectors    = (clas.numInstVectors    > 0) ? new LSL_Vector  [clas.numInstVectors]   : noVectors;
             sdtcSDTClasses = (clas.numInstSDTClasses > 0) ? new XMRSDTypeClassInstance[clas.numInstSDTClasses] : noSTDClasses;
+        }
+
+        private delegate void MarkerInterfaceDummy ();
+        private static DynamicMethod markerInterfaceDummy = MakeMarkerInterfaceDummy ();
+        private static DynamicMethod MakeMarkerInterfaceDummy ()
+        {
+            DynamicMethod dm = new DynamicMethod ("XMRSDTypeClassInstance.MarkerInterfaceDummy", null, null);
+            ILGenerator ilGen = dm.GetILGenerator ();
+            ilGen.Emit (OpCodes.Ret);
+            return dm;
         }
 
         // this can be called in any thread context
@@ -114,12 +173,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         /**
+         * @brief Perform runtime casting of script-defined interface object to
+         *        its corresponding script-defined class object.
+         * @param da = interface object (array of delegates pointing to class's implementations of interface's methods)
+         * @param classname = what class those implementations are supposedly part of
+         * @returns original script-defined class object
+         */
+        public static XMRSDTypeClassInstance CastIFace2Class (Delegate[] da, string classname)
+        {
+            return CastClass2Class (da[0].Target, classname);
+        }
+
+        /**
          * @brief Perform runtime casting of XMRSDTypeClassInstance's.
          * @param ob = XMRSDTypeClassInstance of unknown script-defined class to cast
          * @param classname = script-defined class to cast it to
          * @returns ob is a valid instance of classname; else exception thrown
          */
-        public static XMRSDTypeClassInstance Cast2Class (object ob, string classname)
+        public static XMRSDTypeClassInstance CastClass2Class (object ob, string classname)
         {
             /*
              * Let mono check to see if we at least have an XMRSDTypeClassInstance.
@@ -148,6 +219,32 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  */
             }
             return ci;
+        }
+
+        /**
+         * @brief Cast an arbitrary object to the given interface.
+         * @param ob = object to be cast of unknown type
+         * @returns ob cast to the interface type
+         */
+        public static Delegate[] CastObj2IFace (object ob, string ifacename)
+        {
+            if (ob == null) return null;
+
+            /*
+             * If it is already one of our delegates, extract the script-defined class object from it.
+             */
+            if (ob is Delegate[]) {
+                Delegate[] da = (Delegate[])ob;
+                ob = da[0].Target;
+            }
+
+            /*
+             * Now that we have a presumed script-defined class object, cast that to the requested interface
+             * by picking the array of delegates that corresponds to the requested interface.
+             */
+            XMRSDTypeClassInstance ci = (XMRSDTypeClassInstance)ob;
+            int iFaceIndex = ci.sdtcClass.intfIndices[ifacename];
+            return ci.sdtcITable[iFaceIndex];
         }
     }
 }

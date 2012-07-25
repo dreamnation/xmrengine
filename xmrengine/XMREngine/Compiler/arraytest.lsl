@@ -24,7 +24,7 @@ delegate void VERIFY(array,list s,string);
 array zz;
 DUMPARRAY da;
 
-class KlassOne : Klass {
+class KlassOne : Klass, Printable {
     destructor ()
     {
         SaySomething ("KlassOne is dieing");
@@ -36,7 +36,7 @@ class KlassOne : Klass {
     }
 }
 
-class Klass {
+class Klass : Printable {
     integer x;
     static integer y;
 
@@ -66,6 +66,11 @@ class Klass {
     }
 }
 
+interface Printable {
+    Print ();
+    string ToString ();
+}
+
 default
 {
     touch_start(integer num)
@@ -77,9 +82,13 @@ default
         k.PrintTwice ();
         SaySomething ("k string " + k.ToString ());
 
-        Klass k1 = new KlassOne ();
+        KlassOne k1 = new KlassOne ();
         k1.PrintTwice ();
         SaySomething ("k1 string " + k1.ToString ());
+
+	Printable pr = k;
+	pr.Print();
+	SaySomething ("printable k string " + pr.ToString ());
 
         SaySomething("existing array:");
         da(-1);

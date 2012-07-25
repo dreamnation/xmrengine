@@ -501,6 +501,48 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 	}
 
+	// The value is the entrypoint of a script-defined type's interface method combined with
+	// the pointer used to access the method.  Thus there is one of these per call site.
+	public class CompValuIntfMeth : CompValu {
+		private TokenDeclFunc func;
+		private CompValu baseRVal;
+
+		public CompValuIntfMeth (TokenDeclFunc declFunc, CompValu baseRVal) : base (declFunc.GetDelType ())
+		{
+			this.func     = declFunc;  // which element of the baseRVal vector to be accessed
+			this.baseRVal = baseRVal;  // the vector of delegates implementing the interface
+		}
+
+		public override void PushVal (ScriptCodeGen scg)
+		{
+			baseRVal.PushVal (scg);                                 // push pointer to delegate array on stack
+			scg.PushConstantI4 (func.vTableIndex);                  // select which delegate to access
+			scg.ilGen.Emit (OpCodes.Ldelem, typeof (Delegate));     // push delegate on stack
+			scg.ilGen.Emit (OpCodes.Castclass, type.ToSysType ());  // cast to correct delegate class
+		}
+		public override void PushRef (ScriptCodeGen scg)
+		{
+			throw new Exception ("cannot get ref to interface method");
+		}
+		public override void PopPost (ScriptCodeGen scg)
+		{
+			throw new Exception ("cannot store into interface method");
+		}
+
+		public override void CallPre (ScriptCodeGen scg)
+		{
+			// push interface method's delegate on stack
+			this.PushVal (scg);
+		}
+		public override void CallPost (ScriptCodeGen scg)
+		{
+			// call via delegate Invoke(...) method
+			TokenTypeSDTypeDelegate ttd = (TokenTypeSDTypeDelegate)type;
+			MethodInfo invokeMethodInfo = ttd.decl.GetInvokerInfo ();
+			scg.ilGen.Emit (OpCodes.Callvirt, invokeMethodInfo);
+		}
+	}
+
 	// The value is the entrypoint of an internal instance method
 	// such as XMR_Array.index()
 	public class CompValuIntInstMeth : CompValu {

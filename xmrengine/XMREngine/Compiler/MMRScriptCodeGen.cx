@@ -309,6 +309,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
+			 * Assign slots for all interface method prototypes.
+			 * These indices are used to index the array of delegates that holds a class' implementation of an 
+			 * interface.
+			 */
+			foreach (KeyValuePair<string, TokenDeclSDType> kvpc in tokenScript.sdSrcTypes) {
+				TokenDeclSDType sdType = kvpc.Value;
+				if (!(sdType is TokenDeclSDTypeInterface)) continue;
+				TokenDeclSDTypeInterface sdtIFace = (TokenDeclSDTypeInterface)sdType;
+				int vti = 0;
+				foreach (KeyValuePair<string, TokenDeclFunc> kvpm in sdtIFace.methods) {
+					TokenDeclFunc im = kvpm.Value;
+					im.vTableIndex = vti ++;
+				}
+			}
+
+			/*
 			 * Assign slots for all instance fields and virtual methods of script-defined types.
 			 */
 			int maxExtends = tokenScript.sdSrcTypes.Count;
@@ -336,7 +352,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						sdtClass.numInstRotations = extends.numInstRotations;
 						sdtClass.numInstStrings   = extends.numInstStrings;
 						sdtClass.numInstVectors   = extends.numInstVectors;
-						sdtClass.numInstVirtFuncs = extends.numInstVirtFuncs;
+						sdtClass.numVirtFuncs     = extends.numVirtFuncs;
+						sdtClass.numInterfaces    = extends.numInterfaces;
 
 						int n = maxExtends;
 						for (TokenDeclSDTypeClass ex = extends; ex != null; ex = ex.extends) {
@@ -375,7 +392,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						TokenDeclFunc declFunc = kvpm.Value;
 						declFunc.vTableIndex = -1;
 						if ((declFunc.sdtFlags & ScriptReduce.SDT_ABSTRACT) != 0) {
-							declFunc.vTableIndex = sdtClass.numInstVirtFuncs ++;
+							declFunc.vTableIndex = sdtClass.numVirtFuncs ++;
 						}
 						if ((declFunc.sdtFlags & ScriptReduce.SDT_OVERRIDE) != 0) {
 							for (TokenDeclSDTypeClass sdtd = extends; sdtd != null; sdtd = sdtd.extends) {
@@ -390,9 +407,47 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 							}
 						}
 						if ((declFunc.sdtFlags & ScriptReduce.SDT_VIRTUAL)  != 0) {
-							declFunc.vTableIndex = sdtClass.numInstVirtFuncs ++;
+							declFunc.vTableIndex = sdtClass.numVirtFuncs ++;
 						}
 					}
+
+					/*
+					 * ... and assign implemented interface slots.
+					 * Note that our implementations of a given interface is completely independent of any 
+					 * rootward class's implementation of that same interface.
+					 */
+					int nIFaces        = sdtClass.numInterfaces + sdtClass.implements.Count;
+					sdtClass.iFaces    = new TokenDeclSDTypeInterface[nIFaces];
+					sdtClass.iImplFunc = new TokenDeclFunc[nIFaces][];
+					for (int i = 0; i < sdtClass.numInterfaces; i ++) {
+						sdtClass.iFaces[i]    = extends.iFaces[i];
+						sdtClass.iImplFunc[i] = extends.iImplFunc[i];
+					}
+					foreach (TokenDeclSDTypeInterface intf in sdtClass.implements) {
+						int i = sdtClass.numInterfaces ++;
+						sdtClass.iFaces[i] = intf;
+						sdtClass.intfIndices.Add (intf.name.val, i);
+						sdtClass.iImplFunc[i] = new TokenDeclFunc[intf.methods.Count];
+						foreach (KeyValuePair<string, TokenDeclFunc> kvp in intf.methods) {
+							TokenDeclFunc im = kvp.Value;           // interface method
+							string nameSig   = im.funcNameSig.val;  // name(argsig) to look for
+							TokenDeclFunc cm = null;                // class's implementation
+							for (TokenDeclSDTypeClass sdtd = sdtClass; sdtd != null; sdtd = sdtd.extends) {
+								if (sdtd.methods.TryGetValue (nameSig, out cm)) {
+									if (cm.retType.ToString () != im.retType.ToString ()) {
+										ErrorMsg (cm.retType, "class return type " + cm.retType.ToString () + 
+										              " different than interface " + im.retType.ToString ());
+									}
+									break;
+								}
+							}
+							if (cm == null) {
+								ErrorMsg (sdtClass, "does not implement " + intf.name.val + "." + nameSig);
+							}
+							sdtClass.iImplFunc[i][im.vTableIndex] = cm;
+						}
+					}
+
 					sdtClass.slotsAssigned = true;
 					didOne = true;
 				}
@@ -411,7 +466,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				/*
 				 * See if the class as it stands would be able to fill every slot of its vtable.
 				 */
-				bool[] filled = new bool[sdtClass.numInstVirtFuncs];
+				bool[] filled = new bool[sdtClass.numVirtFuncs];
 				int numFilled = 0;
 				for (TokenDeclSDTypeClass sdtc = sdtClass; sdtc != null; sdtc = sdtc.extends) {
 					foreach (TokenDeclFunc tdf in sdtc.methods.Values) {
@@ -423,7 +478,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						}
 					}
 				}
-				sdtClass.isAbstract = (numFilled < sdtClass.numInstVirtFuncs);
+				sdtClass.isAbstract = (numFilled < sdtClass.numVirtFuncs);
 
 				/*
 				 * If so, define a static class.new() method for every constructor defined for the class.
@@ -450,6 +505,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					}
 				}
 			}
+
+			if (youveAnError) return;
 
 			/*
 			 * Write fixed portion of object file.
@@ -2358,6 +2415,26 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
+			 * Maybe they are accessing a method of a script-defined interface.
+			 */
+			if (baseRVal.type is TokenTypeSDTypeInterface) {
+				TokenTypeSDTypeInterface sdtType = (TokenTypeSDTypeInterface)baseRVal.type;
+				TokenDeclSDTypeInterface sdtDecl = sdtType.decl;
+				if (argsig == null) {
+					ErrorMsg (lVal.field, "no field " + fieldName + " in " + sdtDecl.name.val);
+					return new CompValuVoid (lVal.field);
+				} else {
+					fieldName += argsig;
+					TokenDeclFunc declFunc;
+					if (sdtDecl.methods.TryGetValue (fieldName, out declFunc)) {
+						return new CompValuIntfMeth (declFunc, baseRVal);
+					}
+					ErrorMsg (lVal.field, "no method " + fieldName + " in " + sdtDecl.name.val);
+					return new CompValuVoid (lVal.field);
+				}
+			}
+
+			/*
 			 * Since we only have a few types with fields, just pound them out.
 			 */
 			if (baseRVal.type is TokenTypeArray) {
@@ -3246,9 +3323,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Default for 'object' type is 'undef'.
-			 * Likewise for script-defined classes.
+			 * Likewise for script-defined classes and interfaces.
 			 */
-			if ((type is TokenTypeObject) || (type is TokenTypeSDTypeClass)) {
+			if ((type is TokenTypeObject) || (type is TokenTypeSDTypeClass) || (type is TokenTypeSDTypeInterface)) {
 				ilGen.Emit (OpCodes.Ldnull);
 				return;
 			}
