@@ -598,8 +598,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					}
 					tokdeclcl.methods.Add (tokenDeclFunc.funcNameSig.val, tokenDeclFunc);
 
-					MakeNewobjMethod (tokdeclcl, tokenDeclFunc);
-
 					haveExplicitConstructor = true;
 
 					continue;
@@ -731,33 +729,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				}
 
 				tokdeclcl.methods.Add (tokenDeclFunc.funcNameSig.val, tokenDeclFunc);
-
-				MakeNewobjMethod (tokdeclcl, tokenDeclFunc);
 			}
 
 			/*
 			 * Skip over the closing brace.
 			 */
 			token = token.nextToken;
-		}
-
-		/**
-		 * @brief Now for a little craziness...
-		 *        We create a static method that actually does the newobj and calls the 
-		 *        XMRSDTypeClassInstance() constructor then finally calls this script-level
-		 *        constructor.  It gets referenced by 'new classname' to create the object.
-		 *        We don't give it a body, GenerateNewobjBody() just knows how to gen it.
-		 */
-		private void MakeNewobjMethod (TokenDeclSDTypeClass tokdeclcl, TokenDeclFunc tokenDeclFunc)
-		{
-			TokenDeclFunc newobjDeclFunc = new TokenDeclFunc (tokenDeclFunc, tokenScript);
-			newobjDeclFunc.retType       = tokdeclcl.MakeRefToken (newobjDeclFunc);
-			newobjDeclFunc.argDecl       = tokenDeclFunc.argDecl;
-			string nameSig               = "new" + tokenDeclFunc.argDecl.GetArgSig ();
-			newobjDeclFunc.funcNameSig   = new TokenName (newobjDeclFunc, nameSig);
-			newobjDeclFunc.sdtClass      = tokdeclcl;
-			newobjDeclFunc.sdtFlags      = SDT_STATIC;
-			tokdeclcl.methods.Add (newobjDeclFunc.funcNameSig.val, newobjDeclFunc);
 		}
 
 		/**

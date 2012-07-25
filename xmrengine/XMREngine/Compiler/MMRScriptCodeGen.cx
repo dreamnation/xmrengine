@@ -309,7 +309,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
-			 * Assign slots for all fields and virtual methods of script-defined types.
+			 * Assign slots for all instance fields and virtual methods of script-defined types.
 			 */
 			int maxExtends = tokenScript.sdSrcTypes.Count;
 			bool didOne;
@@ -397,6 +397,59 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					didOne = true;
 				}
 			} while (didOne);
+
+			/*
+			 * For all classes that define all the methods needed for the class, ie, they aren't abstract,
+			 * define a static class.new() method with same args as the constructor(s).  This will allow the
+			 * class to be instantiated via the new operator.
+			 */
+			foreach (KeyValuePair<string, TokenDeclSDType> kvpc in tokenScript.sdSrcTypes) {
+				TokenDeclSDType sdType = kvpc.Value;
+				if (!(sdType is TokenDeclSDTypeClass)) continue;
+				TokenDeclSDTypeClass sdtClass = (TokenDeclSDTypeClass)sdType;
+
+				/*
+				 * See if the class as it stands would be able to fill every slot of its vtable.
+				 */
+				bool[] filled = new bool[sdtClass.numInstVirtFuncs];
+				int numFilled = 0;
+				for (TokenDeclSDTypeClass sdtc = sdtClass; sdtc != null; sdtc = sdtc.extends) {
+					foreach (TokenDeclFunc tdf in sdtc.methods.Values) {
+						if ((tdf.vTableIndex >= 0) && ((tdf.sdtFlags & ScriptReduce.SDT_ABSTRACT) == 0)) {
+							if (!filled[tdf.vTableIndex]) {
+								filled[tdf.vTableIndex] = true;
+								numFilled ++;
+							}
+						}
+					}
+				}
+				sdtClass.isAbstract = (numFilled < sdtClass.numInstVirtFuncs);
+
+				/*
+				 * If so, define a static class.new() method for every constructor defined for the class.
+				 * Note that the reducer made sure there is at least a default constructor for every class.
+				 * We don't give tne function a body here, fortunately GenerateNewobjBody() just knows how 
+			 	 * to generate teh code.
+				 */
+				if (!sdtClass.isAbstract) {
+					List<TokenDeclFunc> newobjDeclFuncs = new List<TokenDeclFunc> ();
+					foreach (TokenDeclFunc ctorDeclFunc in sdtClass.methods.Values) {
+						if (ctorDeclFunc.funcNameSig.val.StartsWith ("constructor(")) {
+							TokenDeclFunc newobjDeclFunc = new TokenDeclFunc (ctorDeclFunc, tokenScript);
+							newobjDeclFunc.retType       = sdtClass.MakeRefToken (newobjDeclFunc);
+							newobjDeclFunc.argDecl       = ctorDeclFunc.argDecl;
+							string nameSig               = "new" + ctorDeclFunc.argDecl.GetArgSig ();
+							newobjDeclFunc.funcNameSig   = new TokenName (newobjDeclFunc, nameSig);
+							newobjDeclFunc.sdtClass      = sdtClass;
+							newobjDeclFunc.sdtFlags      = ScriptReduce.SDT_STATIC;
+							newobjDeclFuncs.Add (newobjDeclFunc);
+						}
+					}
+					foreach (TokenDeclFunc newobjDeclFunc in newobjDeclFuncs) {
+						sdtClass.methods.Add (newobjDeclFunc.funcNameSig.val, newobjDeclFunc);
+					}
+				}
+			}
 
 			/*
 			 * Write fixed portion of object file.
