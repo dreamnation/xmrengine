@@ -53,7 +53,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
             ScriptEventCode evc = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), 
                                                                      evt.EventName);
-            if (!m_HaveEventHandlers[(int)evc]) {
+            if (((int)evc >= 0) && !m_HaveEventHandlers[(int)evc]) {
                 return;
             }
 
@@ -75,13 +75,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 /*
                  * Only so many of each event type allowed to queue.
                  */
-                int maxAllowed = MAXEVENTQUEUE;
-                if (evc == ScriptEventCode.timer) maxAllowed = 1;
-                if (m_EventCounts[(int)evc] >= maxAllowed)
-                {
-                    return;
+                if ((int)evc >= 0) {
+                    int maxAllowed = MAXEVENTQUEUE;
+                    if (evc == ScriptEventCode.timer) maxAllowed = 1;
+                    if (m_EventCounts[(int)evc] >= maxAllowed)
+                    {
+                        return;
+                    }
+                    m_EventCounts[(int)evc] ++;
                 }
-                m_EventCounts[(int)evc] ++;
 
                 /*
                  * Put event on end of instance's event queue.
@@ -322,7 +324,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                             m_EventQueue.RemoveFirst();
                             evc = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), 
                                                                evt.EventName);
-                            m_EventCounts[(int)evc] --;
+                            if ((int)evc >= 0) m_EventCounts[(int)evc] --;
                         }
 
                         /*
@@ -455,7 +457,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Silly to even try if there is no handler defined for this event.
              */
-            if (m_ObjCode.scriptEventHandlerTable[this.stateCode,(int)eventCode] == null) {
+            if (((int)eventCode >= 0) && (m_ObjCode.scriptEventHandlerTable[this.stateCode,(int)eventCode] == null)) {
                 return null;
             }
 

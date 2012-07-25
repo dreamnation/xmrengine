@@ -87,6 +87,26 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             while (true) {
 
                 /*
+                 * Before running any event handler, run any script-defined type destructors.
+                 */
+                while (true) {
+                    XMRSDTypeClassInstance ci;
+                    lock (sw.m_sdtcDestroyQueue) {
+                        if (sw.m_sdtcDestroyQueue.Count == 0) {
+                            sw.m_hasSDTCDestructors = false;
+                            break;
+                        }
+                        ci = sw.m_sdtcDestroyQueue.Dequeue ();
+                    }
+                    try {
+                        ci.RunDestructor ();
+                    } catch (ScriptChangeStateException) {
+                        // ignore any state changes by the destructor
+                    }
+                }
+                if (sw.eventCode == ScriptEventCode.SDT_Destroy) break;
+                    
+                /*
                  * Process event given by 'stateCode' and 'eventCode'.
                  * The event handler should call CheckRun() as often as convenient.
                  */

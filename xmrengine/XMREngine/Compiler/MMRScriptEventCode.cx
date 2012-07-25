@@ -18,6 +18,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	 */
 	public enum ScriptEventCode : int {
 
+		// used to indicate there are script-defined type destructors to run
+		SDT_Destroy          = -2,
+
 		// used by XMRInstance to indicate no event being processed
 		None                 = -1,
 
