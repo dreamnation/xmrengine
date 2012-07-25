@@ -90,6 +90,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             sdtcSDTClasses = (clas.numInstSDTClasses > 0) ? new XMRSDTypeClassInstance[clas.numInstSDTClasses] : noSTDClasses;
         }
 
+	////???? SHOULD THESE BE SOMEHOW QUEUED TO A SCRIPT ENGINE THREAD ????////
+        ~XMRSDTypeClassInstance ()
+        {
+            for (TokenDeclSDTypeClass ac = sdtcClass; ac != null; ac = ac.extends) {
+                if (ac.destroyMeth != null) {
+                    try {
+                        ac.destroyMeth.Invoke (this, null);
+                    } catch { }
+                }
+            }
+        }
+
         /**
          * @brief Perform runtime casting of XMRSDTypeClassInstance's.
          * @param ob = XMRSDTypeClassInstance of unknown script-defined class to cast

@@ -606,14 +606,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				}
 
 				/*
-				 * [ abstract | override | virtual ] destructor ( ) { <body> }
+				 * destructor ( ) { <body> }
 				 */
 				if (token is TokenKwDestructor) {
-					if ((flags & SDT_STATIC) != 0) {
-						ErrorMsg (token, "destructors can't be static");
+					if (flags != 0) {
+						ErrorMsg (token, "destructors can't be abstract/override/static/virtual");
 					}
 					token = token.nextToken;
-					TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, (flags & SDT_ABSTRACT) != 0, 
+					TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, false, 
 					                                             new TokenTypeVoid (token), 
 					                                             new TokenName (token.prevToken, "destructor"));
 					if (tokenDeclFunc == null) continue;
@@ -2494,6 +2494,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public DynamicMethod[] vDynMeths;  // virtual method entrypoints
 		public Type[] vMethTypes;          // virtual method delegate type
+		public DynamicMethod destroyMeth;  // destructor entrypoint
 
 		public TokenDeclSDTypeClass (TokenName name) : base (name)
 		{
@@ -2544,6 +2545,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					objFileWriter.Write (meth.GetObjCodeName ());
 					objFileWriter.Write (meth.GetDelType ().decl.GetWholeSig ());
 				}
+				if (kvp.Key == "destructor()") {
+					objFileWriter.Write (0x7FFFFFFF);
+					objFileWriter.Write (meth.GetObjCodeName ());
+					objFileWriter.Write (meth.GetDelType ().decl.GetWholeSig ());
+				}
 			}
 			objFileWriter.Write (-1);
 		}
@@ -2585,6 +2591,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		/**
 		 * @brief Called after all dynamic method code has been generated to fill in vDynMeths and vMethTypes
+		 *        Also fills in destroyMeth.
 		 */
 		public void FillVTables (ScriptObjCode scriptObjCode)
 		{
@@ -2623,6 +2630,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					int i = sm.methVTI;
 					string methName  = sm.methName;
 					DynamicMethod dm = scriptObjCode.dynamicMethods[methName];
+					if (i == 0x7FFFFFFF) {
+						destroyMeth = dm;
+						continue;
+					}
 					vDynMeths[i] = dm;
 					Type retType = dm.ReturnType;
 					ParameterInfo[] pi = dm.GetParameters ();
