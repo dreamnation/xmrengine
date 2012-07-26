@@ -535,9 +535,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						/*
 						 * Set up reference to base constructor.
 						 */
-						TokenLValIField baseCtor = new TokenLValIField (token);
-						baseCtor.baseRVal        = new TokenLValName (new TokenName (token, "base"));
-						baseCtor.field           = new TokenName (token, "constructor");
+						TokenRValBaseField baseCtor = new TokenRValBaseField (token, 
+						                              new TokenName (token, "constructor"));
 
 						/*
 						 * Parse any base constructor call as if it were the first statement of the
@@ -545,7 +544,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						 */
 						if (token is TokenKwColon) {
 							token = token.nextToken;
-							if ((token is TokenName) && (((TokenName)token).val == "base")) {
+							if (token is TokenKwBase) {
 								token = token.nextToken;
 							}
 							if (!(token is TokenKwParOpen)) {
@@ -691,14 +690,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				tokenDeclFunc.body.function = tokenDeclFunc;
 
 				if (tokdeclcl.extends != null) {
-					TokenLValIField meth = new TokenLValIField (token);
-					meth.baseRVal        = new TokenLValName (new TokenName (token, "base"));
-					meth.field           = new TokenName (token, "constructor");
-					TokenRValCall rvc    = new TokenRValCall (token);
-					rvc.meth             = meth;
-					TokenStmtRVal bcc    = new TokenStmtRVal (token);
-					bcc.rVal             = rvc;
-					bcc.nextToken        = null;
+					TokenRValBaseField meth = new TokenRValBaseField (token, 
+					                          new TokenName (token, "constructor"));
+					TokenRValCall rvc       = new TokenRValCall (token);
+					rvc.meth                = meth;
+					TokenStmtRVal bcc       = new TokenStmtRVal (token);
+					bcc.rVal                = rvc;
+					bcc.nextToken           = null;
 					tokenDeclFunc.body.statements = bcc;
 				}
 
@@ -2206,6 +2204,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				field.fieldName = (TokenName)token.nextToken.nextToken;
 				token = token.nextToken.nextToken.nextToken;
 				return field;
+			}
+
+			/*
+			 * Maybe we have 'this' referring to the object of the instance method.
+			 */
+			if (token is TokenKwThis) {
+				TokenRValThis zhis = new TokenRValThis (token);
+				token = token.nextToken;
+				return zhis;
+			}
+
+			/*
+			 * Maybe we have 'base' referring to a field/method of the extended class.
+			 */
+			if (token is TokenKwBase) {
+				if (!(token.nextToken is TokenKwDot) || !(token.nextToken.nextToken is TokenName)) {
+					ErrorMsg (token, "base must be followed by . then field or method name");
+					TokenRValThis zhis = new TokenRValThis (token);
+					token = token.nextToken;
+					return zhis;
+				}
+				TokenRValBaseField baseField = new TokenRValBaseField (token, (TokenName)token.nextToken.nextToken);
+				token = token.nextToken.nextToken.nextToken;
+				return baseField;
 			}
 
 			/*
@@ -3727,6 +3749,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	}
 
 	/**
+	 * @brief 'base.' being used to reference a field/method of the extended class.
+	 */
+	public class TokenRValBaseField : TokenRVal {
+		public TokenName field;
+		public TokenRValBaseField (Token original, TokenName field) : base (original)
+		{
+			this.field = field;
+		}
+	}
+
+	/**
 	 * @brief calling a function or method, ie, may have side-effects
 	 */
 	public class TokenRValCall : TokenRVal {
@@ -4145,6 +4178,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			writeSrc (">");
 		}
 #endif
+	}
+
+	/**
+	 * @brief 'this' is being used as an rval inside an instance method.
+	 */
+	public class TokenRValThis : TokenRVal {
+		public TokenRValThis (Token original) : base (original) { }
 	}
 
 	/**

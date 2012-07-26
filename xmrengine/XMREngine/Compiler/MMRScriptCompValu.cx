@@ -421,20 +421,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	public class CompValuInstMeth : CompValu {
 		private TokenDeclFunc func;
 		private CompValu baseRVal;
+		private bool ignVirt;
 
 		private static FieldInfo vTableFieldInfo = typeof (XMRSDTypeClassInstance).GetField ("sdtcVTable");
 
-		public CompValuInstMeth (TokenDeclFunc declFunc, CompValu baseRVal) : base (declFunc.GetDelType ())
+		public CompValuInstMeth (TokenDeclFunc declFunc, CompValu baseRVal, bool ignVirt) : base (declFunc.GetDelType ())
 		{
 			this.func     = declFunc;
 			this.baseRVal = baseRVal;
+			this.ignVirt  = ignVirt;
 		}
 
 		public override void PushVal (ScriptCodeGen scg)
 		{
 			if ((func.sdtFlags & ScriptReduce.SDT_STATIC) != 0) throw new Exception ("dont use for statics");
 
-			if (func.vTableIndex < 0) {
+			if (ignVirt || (func.vTableIndex < 0)) {
 
 				/*
 				 * Non-virtual instance method, create a delegate that references the method.
@@ -477,7 +479,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			if ((func.sdtFlags & ScriptReduce.SDT_STATIC) != 0) throw new Exception ("dont use for statics");
 
-			if (func.vTableIndex < 0) {
+			if (ignVirt || (func.vTableIndex < 0)) {
 				baseRVal.PushVal (scg);                                 // 'this' being passed directly to method
 			} else {
 				baseRVal.PushVal (scg);                                 // 'this' selecting the instance
@@ -489,7 +491,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		public override void CallPost (ScriptCodeGen scg)
 		{
-			if (func.vTableIndex < 0) {
+			if (ignVirt || (func.vTableIndex < 0)) {
 				// non-virt instance, just call function directly
 				scg.ilGen.Emit (OpCodes.Call, func.ilGen);
 			} else {

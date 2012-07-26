@@ -732,6 +732,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             Dictionary<string, System.Reflection.ConstructorInfo> kws = new Dictionary<string, System.Reflection.ConstructorInfo> ();
 
             kws.Add ("abstract",    GetTokenCtor (typeof (TokenKwAbstract)));
+            kws.Add ("base",        GetTokenCtor (typeof (TokenKwBase)));
             kws.Add ("class",       GetTokenCtor (typeof (TokenKwClass)));
             kws.Add ("constructor", GetTokenCtor (typeof (TokenKwConstructor)));
             kws.Add ("delegate",    GetTokenCtor (typeof (TokenKwDelegate)));
@@ -740,6 +741,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             kws.Add ("new",         GetTokenCtor (typeof (TokenKwNew)));
             kws.Add ("override",    GetTokenCtor (typeof (TokenKwOverride)));
             kws.Add ("static",      GetTokenCtor (typeof (TokenKwStatic)));
+            kws.Add ("this",        GetTokenCtor (typeof (TokenKwThis)));
             kws.Add ("virtual",     GetTokenCtor (typeof (TokenKwVirtual)));
             kws.Add ("void",        GetTokenCtor (typeof (TokenTypeVoid)));
 
@@ -937,6 +939,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
     DEFTOKENKW(Hash     , "#",   Null, Null)
 
     DEFTOKENKW(Abstract   , "abstract",    Null, Null)
+    DEFTOKENKW(Base       , "base",        Null, Null)
     DEFTOKENKW(Break      , "break",       Null, Null)
     DEFTOKENKW(Case       , "case",        Null, Null)
     DEFTOKENKW(Catch      , "catch",       Null, Null)
@@ -963,6 +966,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
     DEFTOKENKW(State      , "state",       Null, Null)
     DEFTOKENKW(Static     , "static",      Null, Null)
     DEFTOKENKW(Switch     , "switch",      Null, Null)
+    DEFTOKENKW(This       , "this",        Null, Null)
     DEFTOKENKW(Throw      , "throw",       Null, Null)
     DEFTOKENKW(Try        , "try",         Null, Null)
     DEFTOKENKW(Undef      , "undef",       Null, Null)

@@ -926,39 +926,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			StartFunctionBody (declFunc);
 
 			/*
-			 * For SDTypeClass instance methods, scripts see a 'this' pointer to the instance 
-			 * which is arg 0 in the object code.  Also set up a 'base' pointer if this class 
-			 * extends another script-defined type.
-			 *
-			 * For others (global functions and static methods), the script does not see a 'this',
-			 * although arg 0 in the object code points to the script's XMRInstance.
-			 */
-			if (IsSDTInstMethod ()) {
-				TokenName    thisName = new TokenName (declFunc, "this");
-				TokenType    thisType = declFunc.sdtClass.MakeRefToken (declFunc);
-				CompValu     thisLoc  = new CompValuArg (thisType, 0, true);
-				TokenDeclVar thisVar  = new TokenDeclVar (thisName, null);
-				thisVar.type     = thisType;
-				thisVar.name     = thisName;
-				thisVar.location = thisLoc;
-				NewLocalVariable (thisVar);
-				AddVarDefinition (thisName, thisLoc);
-
-				TokenDeclSDTypeClass ext = declFunc.sdtClass.extends;
-				if (ext != null) {
-					TokenName    baseName = new TokenName (declFunc, "base");
-					TokenType    baseType = ext.MakeRefToken (declFunc);
-					CompValu     baseLoc  = new CompValuArg (baseType, 0, true);
-					TokenDeclVar baseVar  = new TokenDeclVar (baseName, null);
-					baseVar.type     = baseType;
-					baseVar.name     = baseName;
-					baseVar.location = baseLoc;
-					NewLocalVariable (baseVar);
-					AddVarDefinition (baseName, baseLoc);
-				}
-			}
-
-			/*
 			 * Define all arguments as named variables so script body can reference them.
 			 * The argument indices need to have +1 added to them because XMRInstance or XMRSDTypeClassInstance 
 			 * is spliced in at arg 0.  Account for their heap usage just like they were local variables.
@@ -2464,7 +2431,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 								ErrorMsg (lVal.field, "non-static reference to static method " + fieldName);
 								return new CompValuVoid (lVal.field);
 							}
-							return new CompValuInstMeth (declFunc, baseRVal);
+							return new CompValuInstMeth (declFunc, baseRVal, false);
 						}
 					}
 					ErrorMsg (lVal.field, "no method " + fieldName + " in " + sdtDecl.name.val);
@@ -2642,21 +2609,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private CompValu GenerateFromRVal (TokenRVal rVal, string argsig)
 		{
 			errorMessageToken = rVal;
-			if (rVal is TokenRValAsnPost)  return GenerateFromRValAsnPost  ((TokenRValAsnPost)rVal);
-			if (rVal is TokenRValAsnPre)   return GenerateFromRValAsnPre   ((TokenRValAsnPre)rVal);
-			if (rVal is TokenRValCall)     return GenerateFromRValCall     ((TokenRValCall)rVal);
-			if (rVal is TokenRValCast)     return GenerateFromRValCast     ((TokenRValCast)rVal);
-			if (rVal is TokenRValConst)    return GenerateFromRValConst    ((TokenRValConst)rVal);
-			if (rVal is TokenRValCVSField) return GenerateFromRValCVSField ((TokenRValCVSField)rVal);
-			if (rVal is TokenRValIsType)   return GenerateFromRValIsType   ((TokenRValIsType)rVal);
-			if (rVal is TokenRValList)     return GenerateFromRValList     ((TokenRValList)rVal);
-			if (rVal is TokenRValOpBin)    return GenerateFromRValOpBin    ((TokenRValOpBin)rVal);
-			if (rVal is TokenRValOpUn)     return GenerateFromRValOpUn     ((TokenRValOpUn)rVal);
-			if (rVal is TokenRValParen)    return GenerateFromRValParen    ((TokenRValParen)rVal);
-			if (rVal is TokenRValRot)      return GenerateFromRValRot      ((TokenRValRot)rVal);
-			if (rVal is TokenRValUndef)    return GenerateFromRValUndef    ((TokenRValUndef)rVal);
-			if (rVal is TokenRValVec)      return GenerateFromRValVec      ((TokenRValVec)rVal);
-			if (rVal is TokenLVal)         return GenerateFromLVal         ((TokenLVal)rVal, argsig);
+			if (rVal is TokenRValAsnPost)   return GenerateFromRValAsnPost   ((TokenRValAsnPost)rVal);
+			if (rVal is TokenRValAsnPre)    return GenerateFromRValAsnPre    ((TokenRValAsnPre)rVal);
+			if (rVal is TokenRValBaseField) return GenerateFromRValBaseField ((TokenRValBaseField)rVal, argsig);
+			if (rVal is TokenRValCall)      return GenerateFromRValCall      ((TokenRValCall)rVal);
+			if (rVal is TokenRValCast)      return GenerateFromRValCast      ((TokenRValCast)rVal);
+			if (rVal is TokenRValConst)     return GenerateFromRValConst     ((TokenRValConst)rVal);
+			if (rVal is TokenRValCVSField)  return GenerateFromRValCVSField  ((TokenRValCVSField)rVal);
+			if (rVal is TokenRValIsType)    return GenerateFromRValIsType    ((TokenRValIsType)rVal);
+			if (rVal is TokenRValList)      return GenerateFromRValList      ((TokenRValList)rVal);
+			if (rVal is TokenRValOpBin)     return GenerateFromRValOpBin     ((TokenRValOpBin)rVal);
+			if (rVal is TokenRValOpUn)      return GenerateFromRValOpUn      ((TokenRValOpUn)rVal);
+			if (rVal is TokenRValParen)     return GenerateFromRValParen     ((TokenRValParen)rVal);
+			if (rVal is TokenRValRot)       return GenerateFromRValRot       ((TokenRValRot)rVal);
+			if (rVal is TokenRValThis)      return GenerateFromRValThis      ((TokenRValThis)rVal, argsig);
+			if (rVal is TokenRValUndef)     return GenerateFromRValUndef     ((TokenRValUndef)rVal);
+			if (rVal is TokenRValVec)       return GenerateFromRValVec       ((TokenRValVec)rVal);
+			if (rVal is TokenLVal)          return GenerateFromLVal          ((TokenLVal)rVal, argsig);
 			throw new Exception ("bad rval class " + rVal.GetType ().ToString ());
 		}
 
@@ -2949,6 +2918,54 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		/**
+		 * @brief using 'base' within a script-defined instance method to refer to an instance field/method 
+		 *        of the class being extended.
+		 */
+		private CompValu GenerateFromRValBaseField (TokenRValBaseField baseField, string argsig)
+		{
+			string fieldName = baseField.field.val;
+
+			TokenDeclSDTypeClass sdtDecl = curDeclFunc.sdtClass;
+			if ((sdtDecl == null) || ((curDeclFunc.sdtFlags & ScriptReduce.SDT_STATIC) != 0)) {
+				ErrorMsg (baseField, "cannot use 'base' outside instance method body");
+				return new CompValuVoid (baseField);
+			}
+			if (argsig == null) {
+				for (TokenDeclSDTypeClass sdtd = sdtDecl.extends; sdtd != null; sdtd = sdtd.extends) {
+					TokenDeclVar declVar;
+					if (sdtd.fields.TryGetValue (fieldName, out declVar)) {
+						if ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) != 0) {
+							ErrorMsg (baseField, "non-static reference to static field " + fieldName);
+							return new CompValuVoid (baseField);
+						}
+						return new CompValuInstField (declVar, 
+						                              new CompValuArg (sdtd.MakeRefToken (baseField), 
+						                                               0));
+					}
+				}
+				ErrorMsg (baseField, "no field " + fieldName + " rootward of " + sdtDecl.name.val);
+				return new CompValuVoid (baseField);
+			} else {
+				fieldName += argsig;
+				for (TokenDeclSDTypeClass sdtd = sdtDecl; sdtd != null; sdtd = sdtd.extends) {
+					TokenDeclFunc declFunc;
+					if (sdtd.methods.TryGetValue (fieldName, out declFunc)) {
+						if ((declFunc.sdtFlags & ScriptReduce.SDT_STATIC) != 0) {
+							ErrorMsg (baseField, "non-static reference to static method " + fieldName);
+							return new CompValuVoid (baseField);
+						}
+						return new CompValuInstMeth (declFunc, 
+						                             new CompValuArg (sdtd.MakeRefToken (baseField), 
+						                                              0), 
+						                             true);
+					}
+				}
+				ErrorMsg (baseField, "no method " + fieldName + " rootward of " + sdtDecl.name.val);
+				return new CompValuVoid (baseField);
+			}
+		}
+
+		/**
 		 * @brief Generate code that calls a function or object's method.
 		 * @returns where the call's return value is stored (a TokenTypeVoid if void)
 		 */
@@ -3222,6 +3239,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			zRVal = GenerateFromRVal (rValRot.zRVal);
 			wRVal = GenerateFromRVal (rValRot.wRVal);
 			return new CompValuRot (new TokenTypeRot (rValRot), xRVal, yRVal, zRVal, wRVal);
+		}
+
+		/**
+		 * @brief Using 'this' as a pointer to the current script-defined instance object.
+		 *        The value is located in arg #0 of the current instance method.
+		 */
+		private CompValu GenerateFromRValThis (TokenRValThis zhis, string argsig)
+		{
+			if ((curDeclFunc.sdtClass == null) || ((curDeclFunc.sdtFlags & ScriptReduce.SDT_STATIC) != 0)) {
+				ErrorMsg (zhis, "cannot use 'this' outside instance method body");
+				return new CompValuVoid (zhis);
+			}
+			return new CompValuArg (curDeclFunc.sdtClass.MakeRefToken (zhis), 0);
 		}
 
 		/**
