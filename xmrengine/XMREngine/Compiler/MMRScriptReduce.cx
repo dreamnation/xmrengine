@@ -289,7 +289,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						 * global function definition
 						 */
 						token = tokenType;
-						TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, false);
+						TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, false, false);
 						if (tokenDeclFunc == null) continue;
 						if (tokenScript.funcs.ContainsKey (tokenName.val)) {
 							ErrorMsg (tokenName, "duplicate function name");
@@ -317,7 +317,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						continue;
 					}
 					token = tokenName;
-					TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, false);
+					TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, false, false);
 					if (tokenDeclFunc == null) continue;
 					if (tokenScript.funcs.ContainsKey (tokenName.val)) {
 						ErrorMsg (tokenName, "duplicate function name");
@@ -625,7 +625,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						 * instance method definition
 						 */
 						token = tokenType;
-						TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, (flags & SDT_ABSTRACT) != 0);
+						TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, (flags & SDT_ABSTRACT) != 0, true);
 						if (tokenDeclFunc == null) continue;
 						tokenDeclFunc.sdtClass = tokdeclcl;
 						tokenDeclFunc.sdtFlags = flags;
@@ -655,7 +655,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						continue;
 					}
 					token = tokenName;
-					TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, (flags & SDT_ABSTRACT) != 0);
+					TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, (flags & SDT_ABSTRACT) != 0, true);
 					if (tokenDeclFunc == null) continue;
 					tokenDeclFunc.sdtClass = tokdeclcl;
 					tokenDeclFunc.sdtFlags = flags;
@@ -846,12 +846,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						continue;
 					}
 
-					/*
-					 * <type> <name> (
-					 * interface method prototype
-					 */
 					token = tokenType;
-					TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, true);
+					TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, true, false);
 					if (tokenDeclFunc == null) continue;
 					if (tokdeclin.methods.ContainsKey (tokenDeclFunc.funcNameSig.val)) {
 						ErrorMsg (tokenName, "duplicate method name");
@@ -874,7 +870,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						continue;
 					}
 					token = tokenName;
-					TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, true);
+					TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, true, false);
 					if (tokenDeclFunc == null) continue;
 					if (tokdeclin.methods.ContainsKey (tokenDeclFunc.funcNameSig.val)) {
 						ErrorMsg (tokenName, "duplicate method name");
@@ -920,7 +916,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					ErrorMsg (tokenStateBody, "eof parsing state body");
 					return null;
 				}
-				TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, false);
+				TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, false, false);
 				if (tokenDeclFunc == null) return null;
 				if (!(tokenDeclFunc.retType is TokenTypeVoid)) {
 					ErrorMsg (tokenDeclFunc.retType, "event handlers don't have return types");
@@ -937,11 +933,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 * @brief Parse a function declaration, including its arg list and body
 		 * @param token = points to function return type token (or function name token if return type void)
 		 * @param abs = false: concrete function; true: abstract declaration
+		 * @param imp = allow implemented interface specs
 		 * @returns null: error parsing function definition
 		 *          else: function declaration
 		 *          token = advanced just past function, ie, just past the closing brace
 		 */
-		private TokenDeclFunc ParseDeclFunc (ref Token token, bool abs)
+		private TokenDeclFunc ParseDeclFunc (ref Token token, bool abs, bool imp)
 		{
 			TokenType retType;
 			if (token is TokenType) {
@@ -958,7 +955,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 			TokenName simpleName = (TokenName)token;
 			token = token.nextToken;
-			return ParseDeclFunc (ref token, abs, retType, simpleName);
+			return ParseDeclFunc (ref token, abs, imp, retType, simpleName);
 		}
 
 		/**
@@ -966,13 +963,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 *        This version enters with token pointing to the '('
 		 * @param token = points to the '(' of the arg list
 		 * @param abs = false: concrete function; true: abstract declaration
+		 * @param imp = allow implemented interface specs
 		 * @param retType = return type (TokenTypeVoid if void, never null)
 		 * @param simpleName = function name without any signature
 		 * @returns null: error parsing remainder of function definition
 		 *          else: function declaration
 		 *          token = advanced just past function, ie, just past the closing brace
 		 */
-		private TokenDeclFunc ParseDeclFunc (ref Token token, bool abs, TokenType retType, TokenName simpleName)
+		private TokenDeclFunc ParseDeclFunc (ref Token token, bool abs, bool imp, TokenType retType, TokenName simpleName)
 		{
 			TokenDeclFunc tokenDeclFunc = new TokenDeclFunc (simpleName, tokenScript);
 			tokenDeclFunc.retType       = retType;
@@ -980,6 +978,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			if (tokenDeclFunc.argDecl == null) return null;
 			tokenDeclFunc.funcNameSig   = new TokenName (simpleName, 
 			                                             simpleName.val + tokenDeclFunc.argDecl.GetArgSig ());
+
+			if (token is TokenKwColon) {
+				do {
+					token = token.nextToken;
+					if (!(token is TokenTypeSDTypeInterface)) {
+						ErrorMsg (token, "expecting interface type");
+						token = SkipPastSemi (token);
+						return null;
+					}
+					TokenTypeSDTypeInterface intfType = (TokenTypeSDTypeInterface)token;
+					token = token.nextToken;
+					TokenName methName = simpleName;
+					if ((token is TokenKwDot) && (token.nextToken is TokenName)) {
+						methName = (TokenName)token.nextToken;
+						token = token.nextToken.nextToken;
+					}
+					TokenIntfImpl intfImpl = new TokenIntfImpl (intfType, methName);
+					intfImpl.nextToken = tokenDeclFunc.implements;
+					tokenDeclFunc.implements = intfImpl;
+				} while (token is TokenKwComma);
+				if (!imp) {
+					ErrorMsg (tokenDeclFunc.implements, "cannot implement interface method");
+				}
+			}
 
 			if (token is TokenKwSemi) {
 				if (!abs) {
@@ -3274,6 +3296,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public LinkedList<TokenDeclVar> localVars = new LinkedList<TokenDeclVar> ();
 		                                       // all local variables declared by this function
 		                                       // - doesn't include argument variables
+		public TokenIntfImpl implements;       // if script-defined type method, what interface method(s) this func implements
 
 		public int vTableIndex = -1;           // if script-defined type method, vtable index
 		                                       //  <0: non-virtual; >=0: virtual
@@ -3477,6 +3500,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 #endif
 	}
 
+	/**
+	 * @brief Indicates an interface type.method that is implemented by the function
+	 */
+	public class TokenIntfImpl : Token {
+		public TokenTypeSDTypeInterface intfType;
+		public TokenName methName;
+		public TokenIntfImpl (TokenTypeSDTypeInterface intfType, TokenName methName) : base (intfType)
+		{
+			this.intfType = intfType;
+			this.methName = methName;
+		}
+	}
 
 	/**
 	 * @brief any expression that can go on left side of an "="

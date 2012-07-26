@@ -423,31 +423,89 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						sdtClass.iFaces[i]    = extends.iFaces[i];
 						sdtClass.iImplFunc[i] = extends.iImplFunc[i];
 					}
+
 					foreach (TokenDeclSDTypeInterface intf in sdtClass.implements) {
 						int i = sdtClass.numInterfaces ++;
 						sdtClass.iFaces[i] = intf;
 						sdtClass.intfIndices.Add (intf.name.val, i);
 						sdtClass.iImplFunc[i] = new TokenDeclFunc[intf.methods.Count];
-						foreach (KeyValuePair<string, TokenDeclFunc> kvp in intf.methods) {
-							TokenDeclFunc im = kvp.Value;           // interface method
-							string nameSig   = im.funcNameSig.val;  // name(argsig) to look for
-							TokenDeclFunc cm = null;                // class's implementation
-							for (TokenDeclSDTypeClass sdtd = sdtClass; sdtd != null; sdtd = sdtd.extends) {
-								if (sdtd.methods.TryGetValue (nameSig, out cm)) {
-									if (cm.retType.ToString () != im.retType.ToString ()) {
-										ErrorMsg (cm.retType, "class return type " + cm.retType.ToString () + 
-										              " different than interface " + im.retType.ToString ());
-									}
+					}
+
+					foreach (TokenDeclFunc classMeth in sdtClass.methods.Values) {
+						for (TokenIntfImpl intfImpl = classMeth.implements; intfImpl != null; intfImpl = (TokenIntfImpl)intfImpl.nextToken) {
+
+							/*
+							 * One of the class methods implements an interface method.
+							 */
+							TokenDeclSDTypeInterface intfType = intfImpl.intfType.decl;
+							TokenName                methName = intfImpl.methName;
+							string                methNameSig = methName.val + classMeth.argDecl.GetArgSig ();
+							TokenDeclFunc intfMeth;
+							if (!intfType.methods.TryGetValue (methNameSig, out intfMeth)) {
+								ErrorMsg (intfImpl, "interface does not define method " + methNameSig);
+								continue;
+							}
+
+							/*
+							 * See if this class was declared to implement that interface.
+							 */
+							bool found = false;
+							foreach (TokenDeclSDTypeInterface intf in sdtClass.implements) {
+								if (intf == intfType) {
+									found = true;
 									break;
 								}
 							}
-							if (cm == null) {
-								ErrorMsg (sdtClass, "does not implement " + intf.name.val + "." + nameSig);
+							if (!found) {
+								ErrorMsg (intfImpl, "class does not implement " + intfType.name.val);
+								continue;
 							}
-							sdtClass.iImplFunc[i][im.vTableIndex] = cm;
+
+							/*
+							 * Get index in iFaces[] and iImplFunc[] arrays.
+							 * Start scanning from the end in case one of our rootward classes also implements the interface.
+							 * We should always be successful because we know by now that this class implements the interface.
+							 */
+							int i;
+							for (i = sdtClass.numInterfaces; -- i >= 0;) {
+								if (sdtClass.iFaces[i] == intfType) break;
+							}
+
+							/*
+							 * Now remember which of the class methods implements that interface method.
+							 */
+							int j = intfMeth.vTableIndex;
+							if (sdtClass.iImplFunc[i][j] != null) {
+								ErrorMsg (intfImpl, "also implemented by " + sdtClass.iImplFunc[i][j].funcNameSig.val);
+								continue;
+							}
+							sdtClass.iImplFunc[i][j] = classMeth;
 						}
 					}
 
+					/*
+					 * Now make sure this class implements all methods for all declared interfaces.
+					 */
+					for (int i = sdtClass.numInterfaces - sdtClass.implements.Count; i < sdtClass.numInterfaces; i ++) {
+						TokenDeclFunc[] implementations = sdtClass.iImplFunc[i];
+						for (int j = implementations.Length; -- j >= 0;) {
+							if (implementations[j] == null) {
+								TokenDeclSDTypeInterface intf = sdtClass.iFaces[i];
+								TokenDeclFunc meth = null;
+								foreach (KeyValuePair<string, TokenDeclFunc> kvp in intf.methods) {
+									if (kvp.Value.vTableIndex == j) {
+										meth = kvp.Value;
+										break;
+									}
+								}
+								ErrorMsg (sdtClass, "does not implement " + intf.name.val + "." + meth.funcNameSig.val);
+							}
+						}
+					}
+
+					/*
+					 * All slots for this class have been assigned.
+					 */
 					sdtClass.slotsAssigned = true;
 					didOne = true;
 				}

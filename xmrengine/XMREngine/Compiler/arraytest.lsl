@@ -25,7 +25,11 @@ array zz;
 DUMPARRAY da;
 
 class KlassOne : Klass, Printable {
-    override string ToString ()
+    void Print () : Printable.Print
+    {
+        SaySomething ("KlassOne.Printable");
+    }
+    override string ToString () : Printable.ToString
     {
         return "zhis is KlassOne";
     }
@@ -40,7 +44,7 @@ class Klass : Printable {
         this.x = 99;
     }
 
-    void Print ()
+    void Print () : Printable
     {
         SaySomething ("this.x=" + this.x);
         SaySomething ("Klass.y=" + Klass.y);
@@ -50,7 +54,7 @@ class Klass : Printable {
         this.Print ();
         this.Print ();
     }
-    virtual string ToString ()
+    virtual string ToString () : Printable
     {
         return "zhis is Klass";
     }
@@ -76,9 +80,9 @@ default
         k1.PrintTwice ();
         SaySomething ("k1 string " + k1.ToString ());
 
-	Printable pr = k;
-	pr.Print();
-	SaySomething ("printable k string " + pr.ToString ());
+    Printable pr = k;
+    pr.Print();
+    SaySomething ("printable k string " + pr.ToString ());
 
         SaySomething("existing array:");
         da(-1);
