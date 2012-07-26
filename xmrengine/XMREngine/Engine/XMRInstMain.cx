@@ -216,11 +216,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             DELEGATE
         }
 
-        // Queue of script-defined type destructors to run
-        public Queue<XMRSDTypeClassInstance> m_sdtcDestroyQueue = new Queue<XMRSDTypeClassInstance> ();
-        public bool m_hasSDTCDestructors = false;
-        public static EventParams s_SDT_Destroy = new EventParams ("SDT_Destroy", zeroObjectArray, zeroDetectParams);
-
         // Scripts start suspended now. This means that event queues will
         // accept events, but will not actually run them until the core
         // tells it it's OK. This is needed to prevent loss of link messages

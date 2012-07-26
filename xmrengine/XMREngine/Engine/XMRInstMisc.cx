@@ -317,25 +317,5 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             TokenDeclSDTypeDelegate dt = (TokenDeclSDTypeDelegate)m_ObjCode.sdObjTypes[sig];
             return dm.CreateDelegate (dt.GetSysType (), targ);
         }
-
-        /**
-         * @brief The garbage collector is trying to free a script-defined type instance.
-         *        But it has a script-defined destructor so we have to queue it to the
-         *        microthread for execution.
-         */
-        public override void QueueSDTypeClassDestructor (XMRSDTypeClassInstance inst)
-        {
-            bool queueEvent;
-
-            lock (m_sdtcDestroyQueue) {
-                queueEvent = (m_sdtcDestroyQueue.Count == 0);
-                m_sdtcDestroyQueue.Enqueue (inst);
-                m_hasSDTCDestructors = true;
-            }
-
-            if (queueEvent) {
-                PostEvent (s_SDT_Destroy);
-            }
-        }
     }
 }

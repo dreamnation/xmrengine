@@ -604,32 +604,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				}
 
 				/*
-				 * destructor ( ) { <body> }
-				 */
-				if (token is TokenKwDestructor) {
-					if (flags != 0) {
-						ErrorMsg (token, "destructors can't be abstract/override/static/virtual");
-					}
-					token = token.nextToken;
-					TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, false, 
-					                                             new TokenTypeVoid (token), 
-					                                             new TokenName (token.prevToken, "destructor"));
-					if (tokenDeclFunc == null) continue;
-					tokenDeclFunc.sdtClass = tokdeclcl;
-					tokenDeclFunc.sdtFlags = flags;
-					if (tokenDeclFunc.argDecl.names.Length > 0) {
-						ErrorMsg (tokenDeclFunc.argDecl.names[0], "destructors don't have any arguments");
-						continue;
-					}
-					if (tokdeclcl.methods.ContainsKey (tokenDeclFunc.funcNameSig.val)) {
-						ErrorMsg (tokenDeclFunc.funcNameSig, "duplicate destructor");
-						continue;
-					}
-					tokdeclcl.methods.Add (tokenDeclFunc.funcNameSig.val, tokenDeclFunc);
-					continue;
-				}
-
-				/*
 				 * [ abstract | override | static | virtual ] <type> <name> <funcargs> <funcbody>
 				 * method with explicit return type
 				 */
@@ -2585,7 +2559,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public DynamicMethod[] vDynMeths;    // virtual method entrypoints
 		public Type[] vMethTypes;            // virtual method delegate types
-		public DynamicMethod destroyMeth;    // destructor entrypoint
 		public DynamicMethod[][] iDynMeths;  // interface method entrypoints
 		public Type[][] iMethTypes;          // interface method types
 		                                     //   low-end [i] entries copied from rootward classes
@@ -2638,11 +2611,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				TokenDeclFunc meth = kvp.Value;
 				if (meth.vTableIndex >= 0) {
 					objFileWriter.Write (meth.vTableIndex);
-					objFileWriter.Write (meth.GetObjCodeName ());
-					objFileWriter.Write (meth.GetDelType ().decl.GetWholeSig ());
-				}
-				if (kvp.Key == "destructor()") {
-					objFileWriter.Write (0x7FFFFFFF);
 					objFileWriter.Write (meth.GetObjCodeName ());
 					objFileWriter.Write (meth.GetDelType ().decl.GetWholeSig ());
 				}
@@ -2731,7 +2699,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		/**
 		 * @brief Called after all dynamic method code has been generated to fill in vDynMeths and vMethTypes
-		 *        Also fills in destroyMeth, iDynMeths, iMethTypes.
+		 *        Also fills in iDynMeths, iMethTypes.
 		 */
 		public void FillVTables (ScriptObjCode scriptObjCode)
 		{
@@ -2770,12 +2738,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					int i = sm.methVTI;
 					string methName  = sm.methName;
 					DynamicMethod dm = scriptObjCode.dynamicMethods[methName];
-					if (i == 0x7FFFFFFF) {
-						destroyMeth   = dm;
-					} else {
-						vDynMeths[i]  = dm;
-						vMethTypes[i] = GetDynamicMethodDelegateType (dm, sm.methSig);
-					}
+					vDynMeths[i]  = dm;
+					vMethTypes[i] = GetDynamicMethodDelegateType (dm, sm.methSig);
 				}
 				stackedMethods = null;
 			}

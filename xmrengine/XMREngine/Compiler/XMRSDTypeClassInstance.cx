@@ -149,29 +149,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return dm;
         }
 
-        // this can be called in any thread context
-        ~XMRSDTypeClassInstance ()
-        {
-            for (TokenDeclSDTypeClass ac = sdtcClass; ac != null; ac = ac.extends) {
-                if (ac.destroyMeth != null) {
-                    xmrInst.QueueSDTypeClassDestructor (this);
-                    return;
-                }
-            }
-        }
-        // this is called back in the script's microthread
-        // similar to an event handler being called
-        public void RunDestructor ()
-        {
-            for (TokenDeclSDTypeClass ac = sdtcClass; ac != null; ac = ac.extends) {
-                if (ac.destroyMeth != null) {
-                    try {
-                        ac.destroyMeth.Invoke (this, null);
-                    } catch { }
-                }
-            }
-        }
-
         /**
          * @brief Perform runtime casting of script-defined interface object to
          *        its corresponding script-defined class object.

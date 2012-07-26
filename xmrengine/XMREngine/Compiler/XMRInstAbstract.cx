@@ -88,6 +88,5 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public abstract XMR_Array XMRosParseJSON (string s);
 
         public abstract Delegate GetScriptMethodDelegate (string name, string sig, object targ);
-        public abstract void QueueSDTypeClassDestructor (XMRSDTypeClassInstance inst);
     }
 }

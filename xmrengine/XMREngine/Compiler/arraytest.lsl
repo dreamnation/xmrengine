@@ -25,11 +25,6 @@ array zz;
 DUMPARRAY da;
 
 class KlassOne : Klass, Printable {
-    destructor ()
-    {
-        SaySomething ("KlassOne is dieing");
-    }
-
     override string ToString ()
     {
         return "zhis is KlassOne";
@@ -43,11 +38,6 @@ class Klass : Printable {
     constructor ()
     {
         this.x = 99;
-    }
-
-    destructor ()
-    {
-        SaySomething ("Klass is dieing");
     }
 
     void Print ()
