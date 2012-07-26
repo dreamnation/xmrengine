@@ -136,6 +136,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private BinaryWriter objFileWriter = null;
 		private TokenScript tokenScript = null;
 		public  int tempCompValuNum = 0;
+		private TokenDeclSDTypeClass currentSDTClass = null;
 
 		private Dictionary<string, int> stateIndices = null;
 		private Stack<Dictionary<string, CompValu>> scriptVariablesStack = null;
@@ -159,6 +160,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			try {
 				PerformCompilation ();
+			} catch {
+				// if we've an error, just punt on any exception
+				// it's probably just a null reference from something
+				// not being filled in etc.
+				if (!youveAnError) throw;
 			} finally {
 				objFileWriter = null;
 				scriptObjCode = null;
@@ -233,7 +239,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				TokenDeclVar declVar = kvp.Value;
 
 				/*
-				 * Omit 'constant' variables as they were handled by the reducer.
+				 * Omit 'constant' variables as they are coded inline so don't need a slot.
 				 */
 				if (declVar.constant) continue;
 
@@ -277,7 +283,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					TokenDeclVar declVar = kvpf.Value;
 
 					/*
-					 * Omit 'constant' variables as they were handled by the reducer.
+					 * Omit 'constant' variables as they are coded inline so don't need a slot.
 					 */
 					if (declVar.constant) continue;
 
@@ -352,7 +358,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						TokenLValIField left = new TokenLValIField (field.init);  // this.field
 						left.baseRVal = new TokenRValThis (field.init);
 						left.field = field.name;
-						Token op = new TokenKwAssign (field.init);                // = initvalue
+						TokenKw op = new TokenKwAssign (field.init);              // = initvalue
 						TokenRValOpBin rVal = new TokenRValOpBin (left, op, field.init);
 						TokenStmtRVal stmt = new TokenStmtRVal (field.init);      // wrap in a statement
 						stmt.rVal = rVal;
@@ -574,6 +580,62 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			} while (didOne);
 
 			/*
+			 * Compute final values for all variables/fields declared as 'constant'.
+			 * Note that there may be forward references.
+			 */
+			do {
+				didOne = false;
+				foreach (TokenDeclVar tdv in tokenScript.vars.Values) {
+					if (tdv.constant && !(tdv.init is TokenRValConst)) {
+						tdv.init = tdv.init.TryComputeConstant (LookupInitConstants, ref didOne);
+					}
+				}
+				foreach (KeyValuePair<string, TokenDeclSDType> kvpc in tokenScript.sdSrcTypes) {
+					TokenDeclSDType sdType = kvpc.Value;
+					if (!(sdType is TokenDeclSDTypeClass)) continue;
+					currentSDTClass = (TokenDeclSDTypeClass)sdType;
+					foreach (TokenDeclVar tdv in currentSDTClass.fields.Values) {
+						if (tdv.constant && !(tdv.init is TokenRValConst)) {
+							tdv.init = tdv.init.TryComputeConstant (LookupInitConstants, ref didOne);
+						}
+					}
+				}
+				currentSDTClass = null;
+			} while (didOne);
+
+			/*
+			 * Now we should be able to assign all those constants their type and location.
+			 */
+			foreach (TokenDeclVar tdv in tokenScript.vars.Values) {
+				if (tdv.constant) {
+					if (tdv.init is TokenRValConst) {
+						TokenRValConst rvc = (TokenRValConst)tdv.init;
+						tdv.type = rvc.tokType;
+						tdv.location = rvc.GetCompValu ();
+						AddVarDefinition (tdv.name, tdv.location);
+					} else {
+						ErrorMsg (tdv, "value is not constant");
+					}
+				}
+			}
+			foreach (KeyValuePair<string, TokenDeclSDType> kvpc in tokenScript.sdSrcTypes) {
+				TokenDeclSDType sdType = kvpc.Value;
+				if (!(sdType is TokenDeclSDTypeClass)) continue;
+				currentSDTClass = (TokenDeclSDTypeClass)sdType;
+				foreach (TokenDeclVar tdv in currentSDTClass.fields.Values) {
+					if (tdv.constant) {
+						if (tdv.init is TokenRValConst) {
+							TokenRValConst rvc = (TokenRValConst)tdv.init;
+							tdv.type = rvc.tokType;
+							tdv.location = rvc.GetCompValu ();
+						} else {
+							ErrorMsg (tdv, "value is not constant");
+						}
+					}
+				}
+			}
+
+			/*
 			 * For all classes that define all the methods needed for the class, ie, they aren't abstract,
 			 * define a static class.new() method with same args as the constructor(s).  This will allow the
 			 * class to be instantiated via the new operator.
@@ -626,8 +688,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				}
 			}
 
-			if (youveAnError) return;
-
 			/*
 			 * Write fixed portion of object file.
 			 */
@@ -654,9 +714,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			foreach (KeyValuePair<string, TokenDeclVar> kvp in tokenScript.vars) {
 				TokenDeclVar declVar = kvp.Value;
-				if (!declVar.constant) {
-					WriteOutGblAssignment ("", declVar);
-				}
+				WriteOutGblAssignment ("", declVar);
 			}
 			foreach (KeyValuePair<string, TokenDeclSDType> kvpc in tokenScript.sdSrcTypes) {
 				TokenDeclSDType sdType = kvpc.Value;
@@ -688,15 +746,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * during compilation of the functions/methods themselves.
 			 */
 			for (int pass = 0; pass < 2; pass ++) {
-				foreach (KeyValuePair<string, TokenDeclFunc> kvp in tokenScript.funcs) {
-					TokenDeclFunc declFunc = kvp.Value;
+				foreach (TokenDeclFunc declFunc in tokenScript.funcs.Values) {
 					if (pass == 0) GenerateMethodHeader (declFunc);
 					          else GenerateMethodBody   (declFunc);
 				}
-				foreach (KeyValuePair<string, TokenDeclSDType> kvpc in tokenScript.sdSrcTypes) {
-					TokenDeclSDType sdType = kvpc.Value;
+				foreach (TokenDeclSDType sdType in tokenScript.sdSrcTypes.Values) {
 					if (sdType is TokenDeclSDTypeClass) {
 						TokenDeclSDTypeClass sdtClass = (TokenDeclSDTypeClass)sdType;
+						if (pass > 0) PushSDTClassFieldsAndMethods (sdtClass);
 						foreach (KeyValuePair<string, TokenDeclFunc> kvpm in sdtClass.methods) {
 							TokenDeclFunc declFunc = kvpm.Value;
 							if ((declFunc.sdtFlags & ScriptReduce.SDT_ABSTRACT) == 0) {
@@ -704,6 +761,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 								          else GenerateMethodBody   (declFunc);
 							}
 						}
+						if (pass > 0) PopVarDefnBlock ();
 					}
 				}
 			}
@@ -751,16 +809,56 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		private void WriteOutGblAssignment (string pfx, TokenDeclVar declVar)
 		{
-			CompValuGlobalVar gblVar = (CompValuGlobalVar)declVar.location;
-			objFileWriter.Write (pfx + declVar.name.val);    // string
-			objFileWriter.Write (declVar.vTableArray.Name);  // string
-			objFileWriter.Write (declVar.vTableIndex);       // int
-			TokenDeclVar htDeclVar = declVar.heapTracker;
-			if (htDeclVar != null) {
-				CompValu htGblVar = (CompValuGlobalVar)htDeclVar.location;
-				objFileWriter.Write (pfx + htDeclVar.name.val);
-				objFileWriter.Write (htDeclVar.vTableArray.Name);
-				objFileWriter.Write (htDeclVar.vTableIndex);
+			if (!declVar.constant) {
+				CompValuGlobalVar gblVar = (CompValuGlobalVar)declVar.location;
+				objFileWriter.Write (pfx + declVar.name.val);    // string
+				objFileWriter.Write (declVar.vTableArray.Name);  // string
+				objFileWriter.Write (declVar.vTableIndex);       // int
+				TokenDeclVar htDeclVar = declVar.heapTracker;
+				if (htDeclVar != null) {
+					CompValu htGblVar = (CompValuGlobalVar)htDeclVar.location;
+					objFileWriter.Write (pfx + htDeclVar.name.val);
+					objFileWriter.Write (htDeclVar.vTableArray.Name);
+					objFileWriter.Write (htDeclVar.vTableIndex);
+				}
+			}
+		}
+
+		/**
+		 * @brief Create a variable definition frame consisting of all the static
+		 *        fields and methods of a script-defined class.  This will allow
+		 *        those fields and methods to be accessed by their name without
+		 *        needing the class name prefix, ie, <name> will work just as well
+		 *        as <class>.<name>.  This is used when generating code for the
+		 *        methods in the class.
+		 *
+		 *        Note that we don't enter instance fields and methods, they
+		 *        require an explicit 'this.' to reference them.
+		 */
+		private void PushSDTClassFieldsAndMethods (TokenDeclSDTypeClass sdtClass)
+		{
+			PushVarDefnBlock ();
+
+			/*
+			 * Add the static fields.
+			 * Their location is in the global variables arrays.
+			 */
+			foreach (TokenDeclVar tdv in sdtClass.fields.Values) {
+				if ((tdv.sdtFlags & ScriptReduce.SDT_STATIC) != 0) {
+					AddVarDefinition (tdv.name, tdv.location);
+				}
+			}
+
+			/*
+			 * Add the static methods.
+			 * Their location was entered in the globalVariables[] dictionary by GenerateMethodHeader().
+			 */
+			foreach (TokenDeclFunc tdf in sdtClass.methods.Values) {
+				if ((tdf.sdtFlags & ScriptReduce.SDT_STATIC) != 0) {
+					string fullName = sdtClass.name.val + "." + tdf.funcNameSig.val;
+					CompValu location = globalVariables[fullName];
+					AddVarDefinition (tdf.funcNameSig, location);
+				}
 			}
 		}
 
@@ -1144,10 +1242,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 				// init real global variables
 				foreach (KeyValuePair<string, TokenDeclVar> kvp in tokenScript.vars) {
-					TokenDeclVar declVar = kvp.Value;
-					if (!declVar.constant) {
-						InitStaticVar (kvp.Value);
-					}
+					InitStaticVar (kvp.Value);
 				}
 
 				// init script-defined class static fields
@@ -1284,16 +1379,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void InitStaticVar (TokenDeclVar declVar)
 		{
-			CompValu loc = declVar.location;
-			loc.PopPre (this);
-			if (declVar.init != null) {
-				CompValu rVal = GenerateFromRVal (declVar.init, loc.GetArgSig ());
-				rVal.PushVal (this, declVar.type);
-			} else {
-				PushVarDefaultValue (declVar);
+			if (!declVar.constant) {
+				CompValu loc = declVar.location;
+				loc.PopPre (this);
+				if (declVar.init != null) {
+					CompValu rVal = GenerateFromRVal (declVar.init, loc.GetArgSig ());
+					rVal.PushVal (this, declVar.type);
+				} else {
+					PushVarDefaultValue (declVar);
+				}
+				loc.PopPost (this);
+				DebitHeapLeft (declVar, false, declVar);
 			}
-			loc.PopPost (this);
-			DebitHeapLeft (declVar, false, declVar);
 		}
 
 		/**
@@ -2593,7 +2690,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		/**
-		 * @brief we have an L-value token that is a function, method or variable name.
+		 * @brief We have an L-value token that is a function, method or variable name.
 		 * @param lVal = name we are looking for
 		 * @param argsig = null: just look for name as a variable
 		 *                 else: look for name as a function/method being called with the given argument types
@@ -2606,6 +2703,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			string namesig = name;
 			if (argsig != null) namesig += argsig;
 
+			/*
+			 * Look in variable stack for the given name.
+			 */
 			foreach (Dictionary<string, CompValu> vars in scriptVariablesStack) {
 				CompValu defn;
 				if (vars.TryGetValue (namesig, out defn)) {
@@ -2616,7 +2716,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				}
 			}
 
-			ErrorMsg (lVal, "undefined function/method/variable " + name);
+			/*
+			 * If not found, try one of the built-in constants.
+			 */
+			ScriptConst scriptConst = ScriptConst.Lookup (namesig);
+			if (scriptConst == null) scriptConst = ScriptConst.Lookup (name);
+			if (scriptConst != null) return scriptConst.rVal;
+
+			/*
+			 * Who knows what the name is referring to.
+			 */
+			ErrorMsg (lVal, "undefined constant/function/method/variable " + namesig);
 			return new CompValuVoid (lVal);
 		}
 
@@ -2687,13 +2797,25 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private CompValu GenerateFromRVal (TokenRVal rVal, string argsig)
 		{
 			errorMessageToken = rVal;
+
+			/*
+			 * Maybe the expression can be converted to a constant.
+			 */
+			bool didOne;
+			do {
+				didOne = false;
+				rVal = rVal.TryComputeConstant (LookupBodyConstants, ref didOne);
+			} while (didOne);
+
+			/*
+			 * Generate code for the computation and return resulting type and location.
+			 */
 			if (rVal is TokenRValAsnPost)   return GenerateFromRValAsnPost   ((TokenRValAsnPost)rVal);
 			if (rVal is TokenRValAsnPre)    return GenerateFromRValAsnPre    ((TokenRValAsnPre)rVal);
 			if (rVal is TokenRValBaseField) return GenerateFromRValBaseField ((TokenRValBaseField)rVal, argsig);
 			if (rVal is TokenRValCall)      return GenerateFromRValCall      ((TokenRValCall)rVal);
 			if (rVal is TokenRValCast)      return GenerateFromRValCast      ((TokenRValCast)rVal);
 			if (rVal is TokenRValConst)     return GenerateFromRValConst     ((TokenRValConst)rVal);
-			if (rVal is TokenRValCVSField)  return GenerateFromRValCVSField  ((TokenRValCVSField)rVal);
 			if (rVal is TokenRValIsType)    return GenerateFromRValIsType    ((TokenRValIsType)rVal);
 			if (rVal is TokenRValList)      return GenerateFromRValList      ((TokenRValList)rVal);
 			if (rVal is TokenRValOpBin)     return GenerateFromRValOpBin     ((TokenRValOpBin)rVal);
@@ -2704,6 +2826,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (rVal is TokenRValUndef)     return GenerateFromRValUndef     ((TokenRValUndef)rVal);
 			if (rVal is TokenRValVec)       return GenerateFromRValVec       ((TokenRValVec)rVal);
 			if (rVal is TokenLVal)          return GenerateFromLVal          ((TokenLVal)rVal, argsig);
+
 			throw new Exception ("bad rval class " + rVal.GetType ().ToString ());
 		}
 
@@ -3209,15 +3332,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				return new CompValuString (new TokenTypeStr (rValConst), (string)(rValConst.val));
 			}
 			throw new Exception ("unknown constant type " + rValConst.val.GetType ());
-		}
-
-		/**
-		 * @brief One of the non-scalar predefined constants
-		 * @returns where the constants value is stored
-		 */
-		private CompValu GenerateFromRValCVSField (TokenRValCVSField rValCVSF)
-		{
-			return rValCVSF.cvsf;
 		}
 
 		/**
@@ -3832,6 +3946,149 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			throw new Exception ("unhandled opcode " + opcode.ToString ());
+		}
+
+		/**
+		 * @brief This is called while trying to compute the value of constant initializers.
+		 *        It is passed a name and that name is looked up in the constant tables.
+		 */
+		private TokenRVal LookupInitConstants (TokenRVal rVal, ref bool didOne)
+		{
+			/*
+			 * If it is a static field of a script-defined type, look it up and hopefully we find a constant there.
+			 */
+			TokenDeclVar gblVar;
+			if (rVal is TokenLValSField) {
+				TokenLValSField lvsf = (TokenLValSField)rVal;
+				if (lvsf.baseType is TokenTypeSDTypeClass) {
+					TokenDeclSDTypeClass sdtClass = ((TokenTypeSDTypeClass)lvsf.baseType).decl;
+					if (sdtClass.fields.TryGetValue (lvsf.fieldName.val, out gblVar)) {
+						if (gblVar.constant && (gblVar.init is TokenRValConst)) {
+							didOne = true;
+							return gblVar.init;
+						}
+					}
+				}
+				return rVal;
+			}
+
+			/*
+			 * Only other thing we handle is stand-alone names.
+			 */
+			if (!(rVal is TokenLValName)) return rVal;
+			string name = ((TokenLValName)rVal).name.val;
+
+			/*
+			 * If we are doing the initializations for a script-defined type,
+			 * look for the constant among the fields for that type.
+			 */
+			if ((currentSDTClass != null) && currentSDTClass.fields.TryGetValue (name, out gblVar)) {
+				if (gblVar.constant && (gblVar.init is TokenRValConst)) {
+					didOne = true;
+					return gblVar.init;
+				}
+				return rVal;
+			}
+
+			/*
+			 * Look it up as a script-defined global variable.
+			 * Then if the variable is defined as a constant and has a constant value,
+			 * we are successful.  If it is defined as something else, return failure.
+			 */
+			if (tokenScript.vars.TryGetValue (name, out gblVar)) {
+				if (gblVar.constant && (gblVar.init is TokenRValConst)) {
+					didOne = true;
+					return gblVar.init;
+				}
+				return rVal;
+			}
+
+			/*
+			 * Maybe it is a built-in symbolic constant.
+			 */
+			ScriptConst scriptConst = ScriptConst.Lookup (name);
+			if (scriptConst != null) {
+				CompValu val = scriptConst.rVal;
+				if (val is CompValuFloat)   rVal = new TokenRValConst (rVal, ((CompValuFloat)val).x);
+				if (val is CompValuInteger) rVal = new TokenRValConst (rVal, ((CompValuInteger)val).x);
+				if (val is CompValuString)  rVal = new TokenRValConst (rVal, ((CompValuString)val).x);
+				if (rVal is TokenRValConst) {
+					didOne = true;
+					return rVal;
+				}
+			}
+
+			/*
+			 * Don't know what it is, return failure.
+			 */
+			return rVal;
+		}
+
+		/**
+		 * @brief This is called while trying to compute the value of constant initializers.
+		 *        It is passed a name and that name is looked up in the constant tables.
+		 */
+		private TokenRVal LookupBodyConstants (TokenRVal rVal, ref bool didOne)
+		{
+			/*
+			 * If it is a static field of a script-defined type, look it up and hopefully we find a constant there.
+			 */
+			TokenDeclVar gblVar;
+			if (rVal is TokenLValSField) {
+				TokenLValSField lvsf = (TokenLValSField)rVal;
+				if (lvsf.baseType is TokenTypeSDTypeClass) {
+					TokenDeclSDTypeClass sdtClass = ((TokenTypeSDTypeClass)lvsf.baseType).decl;
+					if (sdtClass.fields.TryGetValue (lvsf.fieldName.val, out gblVar)) {
+						if (gblVar.constant && (gblVar.init is TokenRValConst)) {
+							didOne = true;
+							return gblVar.init;
+						}
+					}
+				}
+				return rVal;
+			}
+
+			/*
+			 * Only other thing we handle is stand-alone names.
+			 */
+			if (!(rVal is TokenLValName)) return rVal;
+			string name = ((TokenLValName)rVal).name.val;
+
+			/*
+			 * Scan through the variable stack and hopefully we find a constant there.
+			 * But we stop as soon as we get a match because that's what the script is referring to.
+			 */
+			CompValu val;
+			foreach (Dictionary<string, CompValu> vars in scriptVariablesStack) {
+				if (vars.TryGetValue (name, out val)) goto foundit;
+			}
+
+			/*
+			 * Maybe it is a built-in symbolic constant.
+			 */
+			ScriptConst scriptConst = ScriptConst.Lookup (name);
+			if (scriptConst != null) {
+				val = scriptConst.rVal;
+				goto foundit;
+			}
+
+			/*
+			 * Don't know what it is, return failure.
+			 */
+			return rVal;
+
+			/*
+			 * Found a CompValu.  If it's a simple constant, then use it.
+			 * Otherwise tell caller we failed to simplify.
+			 */
+		foundit:
+			if (val is CompValuFloat)   rVal = new TokenRValConst (rVal, ((CompValuFloat)val).x);
+			if (val is CompValuInteger) rVal = new TokenRValConst (rVal, ((CompValuInteger)val).x);
+			if (val is CompValuString)  rVal = new TokenRValConst (rVal, ((CompValuString)val).x);
+			if (rVal is TokenRValConst) {
+				didOne = true;
+			}
+			return rVal;
 		}
 
 		/**

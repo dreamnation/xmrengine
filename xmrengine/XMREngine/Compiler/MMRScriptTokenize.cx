@@ -1023,24 +1023,36 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         }
 
 #define DEFBINOP3(name,op) \
-        public static object name (object left, object right)       \
-        {                                                           \
-            if ((left is int) && (right is int)) {                  \
-                return (int)left op (int)right;                     \
-            }                                                       \
-            if ((left is int) && (right is SCRIPTFLOAT)) {          \
-                return (int)left op (SCRIPTFLOAT)right;             \
-            }                                                       \
-            if ((left is SCRIPTFLOAT) && (right is int)) {          \
-                return (SCRIPTFLOAT)left op (int)right;             \
-            }                                                       \
-            if ((left is SCRIPTFLOAT) && (right is SCRIPTFLOAT)) {  \
-                return (SCRIPTFLOAT)left op (SCRIPTFLOAT)right;     \
-            }                                                       \
-            if ((left is string) && (right is string)) {            \
-                return (string)left op (string)right;               \
-            }                                                       \
-            return null;                                            \
+        public static object name (object left, object right)                       \
+        {                                                                           \
+            if ((left is SCRIPTFLOAT) && (right is SCRIPTFLOAT)) {                  \
+                return (SCRIPTFLOAT)left op (SCRIPTFLOAT)right;                     \
+            }                                                                       \
+            if ((left is SCRIPTFLOAT) && (right is int)) {                          \
+                return (SCRIPTFLOAT)left op (int)right;                             \
+            }                                                                       \
+            if ((left is SCRIPTFLOAT) && (right is string)) {                       \
+                return TypeCast.FloatToString((SCRIPTFLOAT)left) op (string)right;  \
+            }                                                                       \
+            if ((left is int) && (right is SCRIPTFLOAT)) {                          \
+                return (int)left op (SCRIPTFLOAT)right;                             \
+            }                                                                       \
+            if ((left is int) && (right is int)) {                                  \
+                return (int)left op (int)right;                                     \
+            }                                                                       \
+            if ((left is int) && (right is string)) {                               \
+                return TypeCast.IntegerToString((int)left) op (string)right;        \
+            }                                                                       \
+            if ((left is string) && (right is SCRIPTFLOAT)) {                       \
+                return (string)left op TypeCast.FloatToString((SCRIPTFLOAT)right);  \
+            }                                                                       \
+            if ((left is string) && (right is int)) {                               \
+                return (string)left op TypeCast.IntegerToString ((int)right);       \
+            }                                                                       \
+            if ((left is string) && (right is string)) {                            \
+                return (string)left op (string)right;                               \
+            }                                                                       \
+            return null;                                                            \
         }
 
 #define DEFUNOP1(name,op) \

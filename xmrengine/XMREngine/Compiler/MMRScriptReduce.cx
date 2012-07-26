@@ -270,6 +270,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 				/*
 				 * <type> <name> <funcargs> <funcbody>
+				 * global function returning specified type
 				 */
 				if (token is TokenType) {
 					TokenType tokenType = (TokenType)token;
@@ -282,24 +283,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					}
 					TokenName tokenName = (TokenName)token;
 					token = token.nextToken;
-					if (token is TokenKwParOpen) {
-
-						/*
-						 * <type> <name> (
-						 * global function definition
-						 */
-						token = tokenType;
-						TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, false, false);
-						if (tokenDeclFunc == null) continue;
-						if (tokenScript.funcs.ContainsKey (tokenName.val)) {
-							ErrorMsg (tokenName, "duplicate function name");
-							continue;
-						}
-						tokenScript.funcs.Add (tokenName.val, tokenDeclFunc);
+					if (!(token is TokenKwParOpen)) {
+						ErrorMsg (token, "<type> <name> must be followed by ; = or (");
+						token = SkipPastSemi (token);
 						continue;
 					}
-					ErrorMsg (token, "<type> <name> must be followed by ; = or (");
-					token = SkipPastSemi (token);
+					token = tokenType;
+					TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, false, false);
+					if (tokenDeclFunc == null) continue;
+					if (tokenScript.funcs.ContainsKey (tokenName.val)) {
+						ErrorMsg (tokenName, "duplicate function name");
+						continue;
+					}
+					tokenScript.funcs.Add (tokenName.val, tokenDeclFunc);
 					continue;
 				}
 
@@ -448,20 +444,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			while (!(token is TokenKwBrcClose)) {
 
 				/*
-				 * constant <name> = <rval> ;
-				 */
-				if (token is TokenKwConst) {
-					ParseDeclVar (ref token, tokdeclcl.fields);
-					continue;
-				}
-
-				/*
 				 * Maybe there is a 'static' prefix.
 				 */
 				uint flags = 0;
 				if (token is TokenKwStatic) {
 					flags |= SDT_STATIC;
 					token = token.nextToken;
+				}
+
+				/*
+				 * [ static ] constant <name> = <rval> ;
+				 */
+				if (token is TokenKwConst) {
+					TokenDeclVar var = ParseDeclVar (ref token, tokdeclcl.fields);
+					if (var != null) var.sdtFlags |= SDT_STATIC;
+					continue;
 				}
 
 				/*
@@ -601,36 +598,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				 * method with explicit return type
 				 */
 				if (token is TokenType) {
-					TokenType tokenType = (TokenType)token;
-
-					token = token.nextToken;
-					if (!(token is TokenName)) {
-						ErrorMsg (token, "expecting field/method name");
-						token = SkipPastSemi (token);
-						continue;
-					}
-					TokenName tokenName = (TokenName)token;
-					token = token.nextToken;
-					if (token is TokenKwParOpen) {
-
-						/*
-						 * <type> <name> (
-						 * instance method definition
-						 */
-						token = tokenType;
-						TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, (flags & SDT_ABSTRACT) != 0, true);
-						if (tokenDeclFunc == null) continue;
-						tokenDeclFunc.sdtClass = tokdeclcl;
-						tokenDeclFunc.sdtFlags = flags;
-						if (tokdeclcl.methods.ContainsKey (tokenDeclFunc.funcNameSig.val)) {
-							ErrorMsg (tokenName, "duplicate method name");
-							continue;
-						}
-						tokdeclcl.methods.Add (tokenDeclFunc.funcNameSig.val, tokenDeclFunc);
-						continue;
-					}
-					ErrorMsg (token, "<type> <name> must be followed by ; = or (");
-					token = SkipPastSemi (token);
+					ParseSDTClassMethodDecl (ref token, flags, tokdeclcl);
 					continue;
 				}
 
@@ -639,24 +607,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				 * method returning void
 				 */
 				if (token is TokenName) {
-					TokenName tokenName = (TokenName)token;
-					token = token.nextToken;
-					if (!(token is TokenKwParOpen)) {
-						ErrorMsg (token, "looking for open paren after assuming " + 
-						                 tokenName.val + " is a method name");
-						token = SkipPastSemi (token);
-						continue;
-					}
-					token = tokenName;
-					TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, (flags & SDT_ABSTRACT) != 0, true);
-					if (tokenDeclFunc == null) continue;
-					tokenDeclFunc.sdtClass = tokdeclcl;
-					tokenDeclFunc.sdtFlags = flags;
-					if (tokdeclcl.methods.ContainsKey (tokenDeclFunc.funcNameSig.val)) {
-						ErrorMsg (tokenName, "duplicate method name");
-						continue;
-					}
-					tokdeclcl.methods.Add (tokenDeclFunc.funcNameSig.val, tokenDeclFunc);
+					ParseSDTClassMethodDecl (ref token, flags, tokdeclcl);
 					continue;
 				}
 
@@ -701,6 +652,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * Skip over the closing brace.
 			 */
 			token = token.nextToken;
+		}
+
+		/**
+		 * @brief Parse a method definition for a script-defined type class.
+		 * @param token = points to return type (or method name for implicit return type of void)
+		 * @param flags = abstract/override/static/virtual flags
+		 * @param tokdeclcl = which script-defined type class this method is in
+		 * @returns with method parsed and cataloged (or error message(s) printed)
+		 */
+		private void ParseSDTClassMethodDecl (ref Token token, uint flags, TokenDeclSDTypeClass tokdeclcl)
+		{
+			TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, 
+			                                             (flags & SDT_ABSTRACT) != 0, 
+			                                             (flags & SDT_STATIC) == 0);
+			if (tokenDeclFunc != null) {
+				tokenDeclFunc.sdtClass = tokdeclcl;
+				tokenDeclFunc.sdtFlags = flags;
+				string funcNameSig = tokenDeclFunc.funcNameSig.val;
+				if (tokdeclcl.methods.ContainsKey (funcNameSig)) {
+					ErrorMsg (tokenDeclFunc.funcNameSig, "duplicate method name " + funcNameSig);
+				} else {
+					tokdeclcl.methods.Add (funcNameSig, tokenDeclFunc);
+				}
+			}
 		}
 
 		/**
@@ -1562,8 +1537,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			/*
 			 * Handle constant declaration.
 			 * It ends up in the declared variables list for the statement block just like
-			 * any other variable, except it has .constant = true and its value is an
-			 * TokenRValConst.
+			 * any other variable, except it has .constant = true.
+			 * The code generator will test that the initialization expression is constant.
 			 *
 			 * 	constant <name> = <value> ;
 			 */
@@ -1584,13 +1559,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				token = token.nextToken;
 				TokenRVal rVal = ParseRVal (ref token, semiOnly);
 				if (rVal == null) return null;
-				if (!(rVal is TokenRValConst)) {
-					ErrorMsg (tokenDeclVar, "constant value not constant float,integer,string");
-					token = SkipPastSemi (token);
-					return null;
-				}
-				tokenDeclVar.type = TokenType.FromSysType (tokenDeclVar, 
-				                                           ((TokenRValConst)rVal).val.GetType ());
 				tokenDeclVar.init = rVal;
 				tokenDeclVar.constant = true;
 			}
@@ -2117,79 +2085,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			}
 
 			/*
-			 * Reference to such as the <name> defined by 'constant <name> = <value> ;'
-			 */
-			if (token is TokenName) {
-				TokenRValConst rValConst = TryUserDefConst (ref token);
-				if (rValConst != null) return rValConst;
-			}
-
-			/*
-			 * Built-in symbolic constants.
-			 */
-			if (token is TokenName) {
-				ScriptConst scriptConst = ScriptConst.Lookup (((TokenName)token).val);
-				if (scriptConst != null) {
-					CompValu val = scriptConst.rVal;
-					TokenRVal rVal = null;
-
-					/*
-					 * Decode these types as TokenRValConst's so they will combine with other constants at
-					 * compile time.
-					 */
-					if (val is CompValuFloat)   rVal = new TokenRValConst (token, ((CompValuFloat)val).x);
-					if (val is CompValuInteger) rVal = new TokenRValConst (token, ((CompValuInteger)val).x);
-					if (val is CompValuString)  rVal = new TokenRValConst (token, ((CompValuString)val).x);
-
-					/*
-					 * If tere is no TokenRValConst equivalent for this one, just keep the CompValu as is.
-					 */
-					if (val is CompValuSField) {
-						object v = ((CompValuSField)val).field.GetValue(null);
-
-						// Handle the basic types LSL_Constants contains
-						if (v is string) {
-							rVal =  new TokenRValConst (token, v);
-						} else if (v is float) {
-							rVal =  new TokenRValConst (token, v);
-						} else if (v is int) {
-							rVal =  new TokenRValConst (token, v);
-						} else if (v is LSL_Vector) {
-							LSL_Vector vec = (LSL_Vector)v;
-							TokenRValVec rValVec =  new TokenRValVec (token);
-							rValVec.xRVal = new TokenRValConst(token, vec.x);
-							rValVec.yRVal = new TokenRValConst(token, vec.y);
-							rValVec.zRVal = new TokenRValConst(token, vec.z);
-							rVal = rValVec;
-						} else if (v is LSL_Rotation) {
-							LSL_Rotation rot = (LSL_Rotation)v;
-							TokenRValRot rValRot =  new TokenRValRot (token);
-							rValRot.xRVal = new TokenRValConst(token, rot.x);
-							rValRot.yRVal = new TokenRValConst(token, rot.y);
-							rValRot.zRVal = new TokenRValConst(token, rot.z);
-							rValRot.wRVal = new TokenRValConst(token, rot.s);
-							rVal = rValRot;
-						} else {
-							rVal = new TokenRValCVSField (token, (CompValuSField)val);
-						}
-					}
-
-					/*
-					 * We should have been able to decode it somehow!
-					 */
-					if (rVal == null) {
-						throw new Exception ("unhandled ScriptConst type " + val.GetType());
-					}
-
-					/*
-					 * Advance pointer past the name token and return ref to the constant.
-					 */
-					token = token.nextToken;
-					return rVal;
-				}
-			}
-
-			/*
 			 * Maybe we have <type>.<name> referencing a static field or method of some type.
 			 */
 			if ((token is TokenType) && (token.nextToken is TokenKwDot) && (token.nextToken.nextToken is TokenName)) {
@@ -2285,30 +2180,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		}
 
 		/**
-		 * @brief See if the given token (already known to be a TokenName) references a user-defined constant,
-		 *        eg, something declared like 'integer constant FOO = 3;'
-		 * @param token = points to the TokenName
-		 * @returns null: it's not such a constant
-		 *          else: corresponding constant value
-		 *                token advanced past the name
-		 */
-		private TokenRValConst TryUserDefConst (ref Token token)
-		{
-			string name = ((TokenName)token).val;
-			TokenDeclVar declVar = null;
-
-			for (TokenStmtBlock stmtBlock = currentStmtBlock; stmtBlock != null; stmtBlock = stmtBlock.outerStmtBlock) {
-				if (stmtBlock.variables.TryGetValue (name, out declVar)) goto found;
-			}
-			if (tokenScript.vars.TryGetValue (name, out declVar)) goto found;
-			return null;
-		found:
-			if (!declVar.constant) return null;
-			token = token.nextToken;
-			return (TokenRValConst)(declVar.init);
-		}
-
-		/**
 		 * @brief decode binary operator token
 		 * @param token = points to token to decode
 		 * @returns null: invalid operator token
@@ -2339,42 +2210,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		}
 
 		/**
-		 * @brief If the operands are constants and the operator can do it here, perform the operation and return the
-		 *        result as a new constant token.  Otherwise, return an R-value expression token that will be used to
+		 * @brief Return an R-value expression token that will be used to
 		 *        generate code to perform the operation at runtime.
 		 * @param left  = left-hand operand
 		 * @param binOp = operator
 		 * @param right = right-hand operand
-		 * @returns resultant constant or expression
+		 * @returns resultant expression
 		 */
 		private TokenRVal PerformBinOp (TokenRVal left, BinOp binOp, TokenRVal right)
 		{
-			/*
-			 * Maybe both operands are constants and the operator knows how to handle them.
-			 * If so, perform computation and return the resultant constant.
-			 */
-			if ((left is TokenRValConst) && (right is TokenRValConst)) {
-				object val;
-				try {
-					val = binOp.token.binOpConst (((TokenRValConst)left).val, ((TokenRValConst)right).val);
-				} catch {
-					val = null;
-				}
-				if (val != null) {
-					return new TokenRValConst (binOp.token, val);
-				}
-				////???? throw exception or print warning ????////
-			}
-
-			/*
-			 * Otherwise, output token that encapsulates the expression for code generation.
-			 */
 			return new TokenRValOpBin (left, binOp.token, right);
 		}
 
 		/**
-		 * @brief If the operand is a constant and the operator can do it here, perform the operation and return the
-		 *        result as a new constant token.  Otherwise, return an R-value expression token that will be used to
+		 * @brief Return an R-value expression token that will be used to
 		 *        generate code to perform the operation at runtime.
 		 * @param unOp  = operator
 		 * @param right = right-hand operand
@@ -2382,27 +2231,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		private TokenRVal PerformUnOp (Token unOp, TokenRVal right)
 		{
-			/*
-			 * Maybe the operand is a constant and the operator knows how to handle them.
-			 * If so, perform computation and return the resultant constant.
-			 */
-			if (right is TokenRValConst) {
-				object val;
-				try {
-					val = ((TokenKw)unOp).unOpConst (((TokenRValConst)right).val);
-				} catch {
-					val = null;
-				}
-				if (val != null) {
-					return new TokenRValConst (unOp, val);
-				}
-				////???? throw exception or print warning ????////
-			}
-
-			/*
-			 * Otherwise, output token that encapsulates the expression for code generation.
-			 */
-			return new TokenRValOpUn (unOp, right);
+			return new TokenRValOpUn ((TokenKw)unOp, right);
 		}
 
 		/**
@@ -2423,7 +2252,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			token = token.nextToken;
 			tokenRValParen.rVal = ParseRVal (ref token, parCloseOnly);
 			if (tokenRValParen.rVal == null) return null;
-			if (tokenRValParen.rVal is TokenRValConst) return tokenRValParen.rVal;
 			tokenRValParen.sideEffects = tokenRValParen.rVal.sideEffects;
 			return tokenRValParen;
 		}
@@ -3669,6 +3497,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	/**
 	 * @brief any expression that can go on right side of "="
 	 */
+	public delegate TokenRVal TCCLookup (TokenRVal rVal, ref bool didOne);
 	public class TokenRVal : Token {
 		public bool sideEffects = false;  // the value (or some sub-value) has side effects
 		                                  // - constants are always false
@@ -3677,6 +3506,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		                                  // - any assignment operator (=, +=, etc) always true
 		                                  // - all others inherit from their operands
 		public TokenRVal (Token original) : base (original) { }
+
+		/**
+		 * @brief If the result of the expression is a constant,
+		 *        create a TokenRValConst equivalent, set didOne, and return that.
+		 *        Otherwise, just return the original without changing didOne.
+		 */
+		public virtual TokenRVal TryComputeConstant (TCCLookup lookup, ref bool didOne)
+		{
+			return lookup (this, ref didOne);
+		}
 	}
 
 	/**
@@ -3823,6 +3662,36 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		}
 
 		/**
+		 * @brief If operand is constant, maybe we can say the whole thing is a constant.
+		 */
+		public override TokenRVal TryComputeConstant (TCCLookup lookup, ref bool didOne)
+		{
+			rVal = rVal.TryComputeConstant (lookup, ref didOne);
+			if (rVal is TokenRValConst) {
+				try {
+					object val = ((TokenRValConst)rVal).val;
+					if (castTo is TokenTypeFloat) {
+						if (val is int)         val = (SCRIPTFLOAT)(int)val;
+						if (val is string)      val = new LSL_Float ((string)val).value;
+					}
+					if (castTo is TokenTypeInt) {
+						if (val is SCRIPTFLOAT) val = (int)(SCRIPTFLOAT)val;
+						if (val is string)      val = new LSL_Integer ((string)val).value;
+					}
+					if (castTo is TokenTypeStr) {
+						if (val is SCRIPTFLOAT) val = TypeCast.FloatToString ((SCRIPTFLOAT)val);
+						if (val is int)         val = TypeCast.IntegerToString ((int)val);
+					}
+					TokenRVal rValConst = new TokenRValConst (castTo, val);
+					didOne = true;
+					return rValConst;
+				} catch {
+				}
+			}
+			return this;
+		}
+
+		/**
 		 * @brief Serialization/Deserialization.
 		 */
 		public TokenRValCast (Token original) : base (original) { }
@@ -3855,15 +3724,31 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	public class TokenRValConst : TokenRVal {
 		public object val;	// always a system type (int, SCRIPTFLOAT, string)
 		public TokenRValConstType type;
+		public TokenType tokType;
+
 		public TokenRValConst (Token original, object value) : base (original) {
 			val = value;
-			     if (val is int) type = TokenRValConstType.INT;
-			else if (val is SCRIPTFLOAT) type = TokenRValConstType.FLOAT;
-			else if (val is string) type = TokenRValConstType.STRING;
+			     if (val is int)         { type = TokenRValConstType.INT;    tokType = new TokenTypeInt   (this); }
+			else if (val is SCRIPTFLOAT) { type = TokenRValConstType.FLOAT;  tokType = new TokenTypeFloat (this); }
+			else if (val is string)      { type = TokenRValConstType.STRING; tokType = new TokenTypeStr   (this); }
 			else throw new Exception ("invalid constant type " + val.GetType ());
 		}
 
-		public TokenRValConst (Token original) : base (original) { }
+		public CompValu GetCompValu ()
+		{
+			switch (type) {
+				case TokenRValConstType.FLOAT:  { return new CompValuFloat   (tokType, (SCRIPTFLOAT)val); }
+				case TokenRValConstType.INT:    { return new CompValuInteger (tokType, (int)val);         }
+				case TokenRValConstType.STRING: { return new CompValuString  (tokType, (string)val);      }
+				default: throw new Exception ("unknown type");
+			}
+		}
+
+		public override TokenRVal TryComputeConstant (TCCLookup lookup, ref bool didOne)
+		{
+			// gotta end somewhere
+			return this;
+		}
 
 		public override void WriteOut (TokenWriter writer)
 		{
@@ -3916,13 +3801,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			writeSrc (sb.ToString ());
 		}
 #endif
-	}
-
-	public class TokenRValCVSField : TokenRVal {
-		public CompValuSField cvsf;
-		public TokenRValCVSField (Token original, CompValuSField cvsf) : base (original) {
-			this.cvsf = cvsf;
-		}
 	}
 
 	/**
@@ -4011,16 +3889,36 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	 */
 	public class TokenRValOpBin : TokenRVal {
 		public TokenRVal rValLeft;
-		public Token opcode;
+		public TokenKw opcode;
 		public TokenRVal rValRight;
 
-		public TokenRValOpBin (TokenRVal left, Token op, TokenRVal right) : base (op)
+		public TokenRValOpBin (TokenRVal left, TokenKw op, TokenRVal right) : base (op)
 		{
 			rValLeft  = left;
 			opcode    = op;
 			rValRight = right;
 
 			CalcSideEffects();
+		}
+
+		/**
+		 * @brief If both operands are constants, maybe we can say the whole thing is a constant.
+		 */
+		public override TokenRVal TryComputeConstant (TCCLookup lookup, ref bool didOne)
+		{
+			rValLeft  = rValLeft.TryComputeConstant  (lookup, ref didOne);
+			rValRight = rValRight.TryComputeConstant (lookup, ref didOne);
+			if ((rValLeft is TokenRValConst) && (rValRight is TokenRValConst)) {
+				try {
+					object val = opcode.binOpConst (((TokenRValConst)rValLeft).val, 
+					                                ((TokenRValConst)rValRight).val);
+					TokenRVal rValConst = new TokenRValConst (opcode, val);
+					didOne = true;
+					return rValConst;
+				} catch {
+				}
+			}
+			return this;
 		}
 
 		/**
@@ -4038,7 +3936,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public override void ReadIn (TokenReader reader)
 		{
 			rValLeft  = (TokenRVal)reader.ReadToken ();
-			opcode    =            reader.ReadToken ();
+			opcode    = (TokenKw)  reader.ReadToken ();
 			rValRight = (TokenRVal)reader.ReadToken ();
 
 			CalcSideEffects();
@@ -4068,14 +3966,32 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	 * @brief an unary operator and its one operand
 	 */
 	public class TokenRValOpUn : TokenRVal {
-		public Token opcode;
+		public TokenKw opcode;
 		public TokenRVal rVal;
 
-		public TokenRValOpUn (Token op, TokenRVal right) : base (op)
+		public TokenRValOpUn (TokenKw op, TokenRVal right) : base (op)
 		{
 			opcode      = op;
 			rVal        = right;
 			sideEffects = right.sideEffects;
+		}
+
+		/**
+		 * @brief If operand is constant, maybe we can say the whole thing is a constant.
+		 */
+		public override TokenRVal TryComputeConstant (TCCLookup lookup, ref bool didOne)
+		{
+			rVal = rVal.TryComputeConstant (lookup, ref didOne);
+			if (rVal is TokenRValConst) {
+				try {
+					object val = opcode.unOpConst (((TokenRValConst)rVal).val);
+					TokenRVal rValConst = new TokenRValConst (opcode, val);
+					didOne = true;
+					return rValConst;
+				} catch {
+				}
+			}
+			return this;
 		}
 
 		/**
@@ -4091,7 +4007,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public override void ReadIn (TokenReader reader)
 		{
-			opcode      = reader.ReadToken ();
+			opcode      = (TokenKw)  reader.ReadToken ();
 			rVal        = (TokenRVal)reader.ReadToken ();
 			sideEffects = rVal.sideEffects;
 		}
@@ -4113,6 +4029,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenRVal rVal;
 
 		public TokenRValParen (Token original) : base (original) { }
+
+		/**
+		 * @brief If operand is constant, we can say the whole thing is a constant.
+		 */
+		public override TokenRVal TryComputeConstant (TCCLookup lookup, ref bool didOne)
+		{
+			rVal = rVal.TryComputeConstant (lookup, ref didOne);
+			if (rVal is TokenRValConst) {
+				didOne = true;
+				return rVal;
+			}
+			return this;
+		}
 
 		public override void WriteOut (TokenWriter writer)
 		{

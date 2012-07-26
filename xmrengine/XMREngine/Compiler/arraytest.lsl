@@ -1,3 +1,4 @@
+xmroption advflowctl;
 xmrOption arrayS;
 xmroption objects;
 
@@ -24,6 +25,9 @@ delegate void VERIFY(array,list s,string);
 array zz;
 DUMPARRAY da;
 
+constant c0 = 99;
+constant c1 = Klass.c2 + 12;
+
 class KlassOne : Klass, Printable {
     void Print () : Printable.Print
     {
@@ -36,6 +40,11 @@ class KlassOne : Klass, Printable {
 }
 
 class Klass : Printable {
+    constant c2 = c3 + 34;
+    constant c6 = c0 + c1 + c2 + c3 + c4 + c5;
+    constant c4 = 56;
+    constant c5 = c0 + 98;
+
     integer x;
     static integer y;
 
@@ -44,10 +53,15 @@ class Klass : Printable {
         this.x = 99;
     }
 
+    static void SayIt (string x)
+    {
+        SaySomething ("SayIt: " + x);
+    }
+
     void Print () : Printable
     {
-        SaySomething ("this.x=" + this.x);
-        SaySomething ("Klass.y=" + Klass.y);
+        SayIt ("this.x=" + this.x);
+        SayIt ("Klass.y=" + Klass.y);
     }
     PrintTwice ()
     {
@@ -65,10 +79,20 @@ interface Printable {
     string ToString ();
 }
 
+constant c3 = 45 + Klass.c4;
+
 default
 {
     touch_start(integer num)
     {
+        SaySomething ("c0 = " + c0);
+        SaySomething ("c1 = " + c1);
+        SaySomething ("c2 = " + Klass.c2);
+        SaySomething ("c3 = " + c3);
+        SaySomething ("c4 = " + Klass.c4);
+        SaySomething ("c5 = " + Klass.c5);
+        SaySomething ("c6 = " + Klass.c6);
+
         VERIFY ver = Verify;
         AwfulSig(ZERO_ROTATION, ZERO_VECTOR, "", 0, []);
 
@@ -80,9 +104,9 @@ default
         k1.PrintTwice ();
         SaySomething ("k1 string " + k1.ToString ());
 
-    Printable pr = k;
-    pr.Print();
-    SaySomething ("printable k string " + pr.ToString ());
+        Printable pr = k;
+        pr.Print();
+        SaySomething ("printable k string " + pr.ToString ());
 
         SaySomething("existing array:");
         da(-1);
