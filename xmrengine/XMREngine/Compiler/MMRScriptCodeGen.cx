@@ -309,6 +309,68 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
+			 * For all classes that define instance fields with initializers, 
+			 * create a ".instancefieldinit.()" instance method that fills them all in.
+			 * This method will then be called at the beginning of all constructors
+			 * defined for the class.
+			 */
+			foreach (KeyValuePair<string, TokenDeclSDType> kvpc in tokenScript.sdSrcTypes) {
+				TokenDeclSDType sdType = kvpc.Value;
+				if (!(sdType is TokenDeclSDTypeClass)) continue;
+				TokenDeclSDTypeClass sdtClass = (TokenDeclSDTypeClass)sdType;
+
+				/*
+				 * Define an instance function .instancefieldinit.() with no args and a void return value.
+				 */
+				TokenDeclFunc fiFunc = new TokenDeclFunc (sdtClass.name, tokenScript);
+				fiFunc.retType = new TokenTypeVoid (fiFunc);
+				fiFunc.funcNameSig = new TokenName (fiFunc, ".instancefieldinit.()");
+				fiFunc.sdtClass = sdtClass;
+
+				TokenArgDecl fiArgs = new TokenArgDecl (sdtClass.name);
+				fiArgs.types = new TokenType[0];
+				fiArgs.names = new TokenName[0];
+				fiArgs.locns = new CompValu[0];
+				fiFunc.argDecl = fiArgs;
+
+				/*
+				 * Start it with an empty statment block { }.
+				 */
+				TokenStmtBlock fiBody = new TokenStmtBlock (sdtClass.name);
+				fiBody.function = fiFunc;
+				fiFunc.body = fiBody;
+
+				/*
+				 * Scan the class definition for non-constant instance fields with initializers.
+				 */
+				foreach (TokenDeclVar field in sdtClass.fields.Values) {
+					if (!field.constant && ((field.sdtFlags & ScriptReduce.SDT_STATIC) == 0) && (field.init != null)) {
+
+						/*
+						 * Make up an assignment statement and add it to the statement block.
+						 */
+						TokenLValIField left = new TokenLValIField (field.init);  // this.field
+						left.baseRVal = new TokenRValThis (field.init);
+						left.field = field.name;
+						Token op = new TokenKwAssign (field.init);                // = initvalue
+						TokenRValOpBin rVal = new TokenRValOpBin (left, op, field.init);
+						TokenStmtRVal stmt = new TokenStmtRVal (field.init);      // wrap in a statement
+						stmt.rVal = rVal;
+						stmt.nextToken = fiBody.statements;                       // add to body
+						fiBody.statements = stmt;
+					}
+				}
+
+				/*
+				 * If any initializers found, add function definition to class's list of methods.
+				 * Otherwise, let function get garbage collected.
+				 */
+				if (fiBody.statements != null) {
+					sdtClass.methods.Add (fiFunc.funcNameSig.val, fiFunc);
+				}
+			}
+
+			/*
 			 * Assign slots for all interface method prototypes.
 			 * These indices are used to index the array of delegates that holds a class' implementation of an 
 			 * interface.
@@ -1108,6 +1170,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 				//skipGblInit:
 				ilGen.MarkLabel (skipGblInitLabel);
+			}
+
+			/*
+			 * If this is a script-defined type constructor, call the base constructor and call
+			 * this class's .instancefieldinit.() method.
+			 */
+			if ((curDeclFunc.sdtClass != null) && curDeclFunc.funcNameSig.val.StartsWith ("constructor(")) {
+				if (curDeclFunc.baseCtorCall != null) {
+					GenerateFromRValCall (curDeclFunc.baseCtorCall);
+				}
+				TokenDeclFunc ifim;
+				if (curDeclFunc.sdtClass.methods.TryGetValue (".instancefieldinit.()", out ifim)) {
+					new CallLabel (this);
+					ilGen.Emit (OpCodes.Ldarg_0);
+					ilGen.Emit (OpCodes.Call, ifim.ilGen);
+				}
 			}
 
 			/*

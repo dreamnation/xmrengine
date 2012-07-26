@@ -530,7 +530,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 					TokenDeclFunc saveDeclFunc = currentDeclFunc;
 					currentDeclFunc = tokenDeclFunc;
-					TokenStmtRVal baseCtorCall = null;
 					try {
 						/*
 						 * Set up reference to base constructor.
@@ -552,9 +551,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 								token = SkipPastSemi (token);
 								continue;
 							}
-							baseCtorCall      = new TokenStmtRVal (token);
-							baseCtorCall.rVal = ParseRValCall (ref token, baseCtor);
-							if (baseCtorCall.rVal == null) continue;
+							TokenRValCall rvc = ParseRValCall (ref token, baseCtor);
+							if (rvc == null) continue;
+							if (tokdeclcl.extends != null) {
+								tokenDeclFunc.baseCtorCall = rvc;
+							} else {
+								ErrorMsg (rvc, "base constructor call cannot be specified if not extending anything");
+							}
 						} else if (tokdeclcl.extends != null) {
 
 							/*
@@ -563,8 +566,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 							 */
 							TokenRValCall rvc = new TokenRValCall (token);
 							rvc.meth          = baseCtor;
-							baseCtorCall      = new TokenStmtRVal (token);
-							baseCtorCall.rVal = rvc;
+							tokenDeclFunc.baseCtorCall = rvc;
 						}
 
 						/*
@@ -575,14 +577,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						if (tokenDeclFunc.argDecl == null) continue;
 					} finally {
 						currentDeclFunc = saveDeclFunc;
-					}
-
-					/*
-					 * If there is a base constructor call, slip it in as first statement of constructor body.
-					 */
-					if (baseCtorCall != null) {
-						baseCtorCall.nextToken = tokenDeclFunc.body.statements;
-						tokenDeclFunc.body.statements = baseCtorCall;
 					}
 
 					/*
@@ -3319,6 +3313,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		                                       // all local variables declared by this function
 		                                       // - doesn't include argument variables
 		public TokenIntfImpl implements;       // if script-defined type method, what interface method(s) this func implements
+		public TokenRValCall baseCtorCall;     // if script-defined type constructor, call to base constructor, if any
 
 		public int vTableIndex = -1;           // if script-defined type method, vtable index
 		                                       //  <0: non-virtual; >=0: virtual
