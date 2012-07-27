@@ -10,7 +10,7 @@ using System.Reflection;
 
 namespace OpenSim.Region.ScriptEngine.XMREngine {
 
-	public class InternalFuncDict : Dictionary<string, TokenDeclVar> {
+	public class InternalFuncDict : VarDict {
 
 		/**
 		 * @brief build dictionary of internal functions from an interface.
@@ -59,10 +59,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 					/*
 					 * Add the TokenDeclVar struct to the dictionary.
-					 * Key = name(arg1type,arg2type,...)
-					 * ... where the types are the LSL-style types such as 'key', 'rotation', etc.
 					 */
-					this.Add (inclSig ? key : ifaceMethod.Name, declFunc);
+					this.AddEntry (declFunc);
 				} catch (Exception except) {
 
 					string msg = except.ToString ();

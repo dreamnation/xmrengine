@@ -37,8 +37,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * Static tables that there only needs to be one copy of for all.
 		 */
 		private static Dictionary<string, BinOpStr> binOpStrings = BinOpStr.DefineBinOps ();
-		private static Dictionary<string, CompValu> inlineFunctions = CompValuInline.CreateDictionary ();
-		private static Dictionary<string, TokenDeclVar> legalEventHandlers = CreateLegalEventHandlers ();
+		private static VarDict inlineFunctions = TokenDeclInline.CreateDictionary ();
+		private static VarDict legalEventHandlers = CreateLegalEventHandlers ();
+		private static TokenType[]     zeroArgs      = new TokenType[0];
 		private static TokenTypeBool   tokenTypeBool = new TokenTypeBool   (null);
 		private static TokenTypeFloat  tokenTypeFlt  = new TokenTypeFloat  (null);
 		private static TokenTypeInt    tokenTypeInt  = new TokenTypeInt    (null);
@@ -139,8 +140,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private TokenDeclSDTypeClass currentSDTClass = null;
 
 		private Dictionary<string, int> stateIndices = null;
-		private Stack<Dictionary<string, CompValu>> scriptVariablesStack = null;
-		private Dictionary<string, CompValu> globalVariables = null;
+		private Stack<VarDict> scriptVariablesStack = null;
+		private VarDict globalVariables = null;
 
 		// code generation output
 		public ScriptObjCode scriptObjCode = null;
@@ -223,11 +224,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Set up stack of dictionaries to translate function and variable names to their declaration.
 			 * This stack is used for function/variable names that stand alone, ie, no '.' involved in the
 			 * reference.
-			 * Then push the first element on the stack that will get the built-in functions.
-			 * Then push the second element on the stack that will get any script-defined global variables.
+			 * Then push the first element on the stack that will get any script-defined global variables.
 			 */
-			scriptVariablesStack = new Stack<Dictionary<string, CompValu>> ();
-			scriptVariablesStack.Push (inlineFunctions);
+			scriptVariablesStack = new Stack<VarDict> ();
 			globalVariables = PushVarDefnBlock ();
 
 			/*
@@ -235,8 +234,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Global variables are simply elements of those arrays at runtime, thus we don't need to create
 			 * an unique class for each script, we can just use XMRInstance as is for all.
 			 */
-			foreach (KeyValuePair<string, TokenDeclVar> kvp in tokenScript.vars) {
-				TokenDeclVar declVar = kvp.Value;
+			foreach (TokenDeclVar declVar in tokenScript.vars) {
 
 				/*
 				 * Omit 'constant' variables as they are coded inline so don't need a slot.
@@ -251,7 +249,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				/*
 				 * Add its name to top-level variable definition stack so code can see it.
 				 */
-				AddVarDefinition (declVar.name, declVar.location);
+				AddVarDefinition (declVar);
 
 				/*
 				 * If it references heap, add it to list of global vars that reference heap.  We use 
@@ -279,8 +277,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				if (!(sdType is TokenDeclSDTypeClass)) continue;
 				TokenDeclSDTypeClass sdtClass = (TokenDeclSDTypeClass)sdType;
 
-				foreach (KeyValuePair<string, TokenDeclVar> kvpf in sdtClass.fields) {
-					TokenDeclVar declVar = kvpf.Value;
+				foreach (TokenDeclVar declVar in sdtClass.members) {
+					if (declVar.retType != null) continue;  // ignore methods
 
 					/*
 					 * Omit 'constant' variables as they are coded inline so don't need a slot.
@@ -349,7 +347,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				/*
 				 * Scan the class definition for non-constant instance fields with initializers.
 				 */
-				foreach (TokenDeclVar field in sdtClass.fields.Values) {
+				foreach (TokenDeclVar field in sdtClass.members) {
 					if (!field.constant && ((field.sdtFlags & ScriptReduce.SDT_STATIC) == 0) && (field.init != null)) {
 
 						/*
@@ -372,7 +370,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				 * Otherwise, let function get garbage collected.
 				 */
 				if (fiBody.statements != null) {
-					sdtClass.methods.Add (fiFunc.funcNameSig.val, fiFunc);
+					sdtClass.members.AddEntry (fiFunc);
 				}
 			}
 
@@ -386,8 +384,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				if (!(sdType is TokenDeclSDTypeInterface)) continue;
 				TokenDeclSDTypeInterface sdtIFace = (TokenDeclSDTypeInterface)sdType;
 				int vti = 0;
-				foreach (KeyValuePair<string, TokenDeclVar> kvpm in sdtIFace.methods) {
-					TokenDeclVar im = kvpm.Value;
+				foreach (TokenDeclVar im in sdtIFace.methods) {
 					im.vTableIndex = vti ++;
 				}
 			}
@@ -438,8 +435,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 * Extended class's slots all assigned, assign our non-static fields 
 					 * slots in the XMRSDTypeClassInstance arrays.
 					 */
-					foreach (KeyValuePair<string, TokenDeclVar> kvpf in sdtClass.fields) {
-						TokenDeclVar declVar = kvpf.Value;
+					foreach (TokenDeclVar declVar in sdtClass.members) {
+						if (declVar.retType != null) continue;
 						if (declVar.constant) continue;
 						if ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) != 0) continue;
 						declVar.type.AssignSDTClassFieldSlot (declVar, sdtClass);
@@ -456,8 +453,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					/*
 					 * ... and assign virtual method vtable slots.
 					 */
-					foreach (KeyValuePair<string, TokenDeclVar> kvpm in sdtClass.methods) {
-						TokenDeclVar declFunc = kvpm.Value;
+					foreach (TokenDeclVar declFunc in sdtClass.members) {
 						declFunc.vTableIndex = -1;
 						if ((declFunc.sdtFlags & ScriptReduce.SDT_ABSTRACT) != 0) {
 							declFunc.vTableIndex = sdtClass.numVirtFuncs ++;
@@ -465,13 +461,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						if ((declFunc.sdtFlags & ScriptReduce.SDT_OVERRIDE) != 0) {
 							for (TokenDeclSDTypeClass sdtd = extends; sdtd != null; sdtd = sdtd.extends) {
 								TokenDeclVar overridden;
-								if (sdtd.methods.TryGetValue (kvpm.Key, out overridden)) {
+								overridden = FindExactWithRet (sdtd.members, declFunc.name, declFunc.retType, declFunc.argDecl.types);
+								if (overridden != null) {
 									declFunc.vTableIndex = overridden.vTableIndex;
 									break;
 								}
 							}
 							if (declFunc.vTableIndex < 0) {
-								ErrorMsg (declFunc, "can't find overidden method");
+								ErrorMsg (declFunc, "can't find overridden method");
 							}
 						}
 						if ((declFunc.sdtFlags & ScriptReduce.SDT_VIRTUAL)  != 0) {
@@ -499,18 +496,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						sdtClass.iImplFunc[i] = new TokenDeclVar[intf.methods.Count];
 					}
 
-					foreach (TokenDeclVar classMeth in sdtClass.methods.Values) {
+					foreach (TokenDeclVar classMeth in sdtClass.members) {
 						for (TokenIntfImpl intfImpl = classMeth.implements; intfImpl != null; intfImpl = (TokenIntfImpl)intfImpl.nextToken) {
 
 							/*
 							 * One of the class methods implements an interface method.
 							 */
 							TokenDeclSDTypeInterface intfType = intfImpl.intfType.decl;
-							TokenName                methName = intfImpl.methName;
-							string                methNameSig = methName.val + classMeth.argDecl.GetArgSig ();
-							TokenDeclVar intfMeth;
-							if (!intfType.methods.TryGetValue (methNameSig, out intfMeth)) {
-								ErrorMsg (intfImpl, "interface does not define method " + methNameSig);
+							TokenDeclVar intfMeth = FindExactWithRet (intfType.methods, intfImpl.methName, classMeth.retType, classMeth.argDecl.types);
+							if (intfMeth == null) {
+								ErrorMsg (intfImpl, "interface does not define method " + intfImpl.methName.val + classMeth.argDecl.GetArgSig ());
 								continue;
 							}
 
@@ -560,9 +555,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 							if (implementations[j] == null) {
 								TokenDeclSDTypeInterface intf = sdtClass.iFaces[i];
 								TokenDeclVar meth = null;
-								foreach (KeyValuePair<string, TokenDeclVar> kvp in intf.methods) {
-									if (kvp.Value.vTableIndex == j) {
-										meth = kvp.Value;
+								foreach (TokenDeclVar im in intf.methods) {
+									if (im.vTableIndex == j) {
+										meth = im;
 										break;
 									}
 								}
@@ -585,7 +580,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			do {
 				didOne = false;
-				foreach (TokenDeclVar tdv in tokenScript.vars.Values) {
+				foreach (TokenDeclVar tdv in tokenScript.vars) {
 					if (tdv.constant && !(tdv.init is TokenRValConst)) {
 						tdv.init = tdv.init.TryComputeConstant (LookupInitConstants, ref didOne);
 					}
@@ -594,7 +589,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					TokenDeclSDType sdType = kvpc.Value;
 					if (!(sdType is TokenDeclSDTypeClass)) continue;
 					currentSDTClass = (TokenDeclSDTypeClass)sdType;
-					foreach (TokenDeclVar tdv in currentSDTClass.fields.Values) {
+					foreach (TokenDeclVar tdv in currentSDTClass.members) {
 						if (tdv.constant && !(tdv.init is TokenRValConst)) {
 							tdv.init = tdv.init.TryComputeConstant (LookupInitConstants, ref didOne);
 						}
@@ -606,13 +601,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Now we should be able to assign all those constants their type and location.
 			 */
-			foreach (TokenDeclVar tdv in tokenScript.vars.Values) {
+			foreach (TokenDeclVar tdv in tokenScript.vars) {
 				if (tdv.constant) {
 					if (tdv.init is TokenRValConst) {
 						TokenRValConst rvc = (TokenRValConst)tdv.init;
 						tdv.type = rvc.tokType;
 						tdv.location = rvc.GetCompValu ();
-						AddVarDefinition (tdv.name, tdv.location);
+						AddVarDefinition (tdv);
 					} else {
 						ErrorMsg (tdv, "value is not constant");
 					}
@@ -622,7 +617,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				TokenDeclSDType sdType = kvpc.Value;
 				if (!(sdType is TokenDeclSDTypeClass)) continue;
 				currentSDTClass = (TokenDeclSDTypeClass)sdType;
-				foreach (TokenDeclVar tdv in currentSDTClass.fields.Values) {
+				foreach (TokenDeclVar tdv in currentSDTClass.members) {
 					if (tdv.constant) {
 						if (tdv.init is TokenRValConst) {
 							TokenRValConst rvc = (TokenRValConst)tdv.init;
@@ -651,8 +646,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				bool[] filled = new bool[sdtClass.numVirtFuncs];
 				int numFilled = 0;
 				for (TokenDeclSDTypeClass sdtc = sdtClass; sdtc != null; sdtc = sdtc.extends) {
-					foreach (TokenDeclVar tdf in sdtc.methods.Values) {
-						if ((tdf.vTableIndex >= 0) && ((tdf.sdtFlags & ScriptReduce.SDT_ABSTRACT) == 0)) {
+					foreach (TokenDeclVar tdf in sdtc.members) {
+						if ((tdf.retType != null) && (tdf.vTableIndex >= 0) && ((tdf.sdtFlags & ScriptReduce.SDT_ABSTRACT) == 0)) {
 							if (!filled[tdf.vTableIndex]) {
 								filled[tdf.vTableIndex] = true;
 								numFilled ++;
@@ -670,8 +665,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				 */
 				if (!sdtClass.isAbstract) {
 					List<TokenDeclVar> newobjDeclFuncs = new List<TokenDeclVar> ();
-					foreach (TokenDeclVar ctorDeclFunc in sdtClass.methods.Values) {
-						if (ctorDeclFunc.funcNameSig.val.StartsWith ("constructor(")) {
+					foreach (TokenDeclVar ctorDeclFunc in sdtClass.members) {
+						if ((ctorDeclFunc.funcNameSig != null) && ctorDeclFunc.funcNameSig.val.StartsWith ("constructor(")) {
 							TokenDeclVar newobjDeclFunc = new TokenDeclVar (ctorDeclFunc, null, tokenScript);
 							newobjDeclFunc.retType       = sdtClass.MakeRefToken (newobjDeclFunc);
 							newobjDeclFunc.argDecl       = ctorDeclFunc.argDecl;
@@ -683,7 +678,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						}
 					}
 					foreach (TokenDeclVar newobjDeclFunc in newobjDeclFuncs) {
-						sdtClass.methods.Add (newobjDeclFunc.funcNameSig.val, newobjDeclFunc);
+						sdtClass.members.AddEntry (newobjDeclFunc);
 					}
 				}
 			}
@@ -712,17 +707,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * For debugging, we also write out global variable array slot assignments.
 			 */
-			foreach (KeyValuePair<string, TokenDeclVar> kvp in tokenScript.vars) {
-				TokenDeclVar declVar = kvp.Value;
+			foreach (TokenDeclVar declVar in tokenScript.vars) {
 				WriteOutGblAssignment ("", declVar);
 			}
 			foreach (KeyValuePair<string, TokenDeclSDType> kvpc in tokenScript.sdSrcTypes) {
 				TokenDeclSDType sdType = kvpc.Value;
 				if (!(sdType is TokenDeclSDTypeClass)) continue;
 				TokenDeclSDTypeClass sdtClass = (TokenDeclSDTypeClass)sdType;
-				foreach (KeyValuePair<string, TokenDeclVar> kvpf in sdtClass.fields) {
-					TokenDeclVar declVar = kvpf.Value;
-					if ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) != 0) {
+				foreach (TokenDeclVar declVar in sdtClass.members) {
+					if ((declVar.retType == null) && ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) != 0)) {
 						WriteOutGblAssignment (sdtClass.name.val + ".", declVar);
 					}
 				}
@@ -746,7 +739,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * during compilation of the functions/methods themselves.
 			 */
 			for (int pass = 0; pass < 2; pass ++) {
-				foreach (TokenDeclVar declFunc in tokenScript.funcs.Values) {
+				foreach (TokenDeclVar declFunc in tokenScript.funcs) {
 					if (pass == 0) GenerateMethodHeader (declFunc);
 					          else GenerateMethodBody   (declFunc);
 				}
@@ -754,9 +747,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					if (sdType is TokenDeclSDTypeClass) {
 						TokenDeclSDTypeClass sdtClass = (TokenDeclSDTypeClass)sdType;
 						if (pass > 0) PushSDTClassFieldsAndMethods (sdtClass);
-						foreach (KeyValuePair<string, TokenDeclVar> kvpm in sdtClass.methods) {
-							TokenDeclVar declFunc = kvpm.Value;
-							if ((declFunc.sdtFlags & ScriptReduce.SDT_ABSTRACT) == 0) {
+						foreach (TokenDeclVar declFunc in sdtClass.members) {
+							if ((declFunc.retType != null) && ((declFunc.sdtFlags & ScriptReduce.SDT_ABSTRACT) == 0)) {
 								if (pass == 0) GenerateMethodHeader (declFunc);
 								          else GenerateMethodBody   (declFunc);
 							}
@@ -830,7 +822,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 *        those fields and methods to be accessed by their name without
 		 *        needing the class name prefix, ie, <name> will work just as well
 		 *        as <class>.<name>.  This is used when generating code for the
-		 *        methods in the class.
+		 *        methods in the class and any field initializers.
 		 *
 		 *        Note that we don't enter instance fields and methods, they
 		 *        require an explicit 'this.' to reference them.
@@ -839,25 +831,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			PushVarDefnBlock ();
 
-			/*
-			 * Add the static fields.
-			 * Their location is in the global variables arrays.
-			 */
-			foreach (TokenDeclVar tdv in sdtClass.fields.Values) {
+			foreach (TokenDeclVar tdv in sdtClass.members) {
 				if ((tdv.sdtFlags & ScriptReduce.SDT_STATIC) != 0) {
-					AddVarDefinition (tdv.name, tdv.location);
-				}
-			}
-
-			/*
-			 * Add the static methods.
-			 * Their location was entered in the globalVariables[] dictionary by GenerateMethodHeader().
-			 */
-			foreach (TokenDeclVar tdf in sdtClass.methods.Values) {
-				if ((tdf.sdtFlags & ScriptReduce.SDT_STATIC) != 0) {
-					string fullName = sdtClass.name.val + "." + tdf.funcNameSig.val;
-					CompValu location = globalVariables[fullName];
-					AddVarDefinition (tdf.funcNameSig, location);
+					AddVarDefinition (tdv);
 				}
 			}
 		}
@@ -903,28 +879,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Make sure event handler name is valid and that number and type of arguments is correct.
 			 * Apparently some scripts exist with fewer than correct number of args in their declaration 
 			 * so allow for that.  It is ok because the handlers are called with the arguments in an
-			 * object[] array, and we just won't access the missing argments in the vector.
+			 * object[] array, and we just won't access the missing argments in the vector.  But the 
+			 * specified types must match one of the prototypes in legalEventHandlers.
 			 */
-			if (!legalEventHandlers.ContainsKey (eventname)) {
-				ErrorMsg (declFunc, "unknown event handler " + eventname);
+			TokenDeclVar protoDeclFunc = legalEventHandlers.FindExact (eventname, argDecl.types);
+			if (protoDeclFunc == null) {
+				ErrorMsg (declFunc, "unknown event handler " + eventname + argDecl.GetArgSig ());
 				return;
-			}
-			TokenDeclVar protoDeclFunc = legalEventHandlers[eventname];
-			if (nargs > protoDeclFunc.argDecl.types.Length) {
-				ErrorMsg (declFunc, eventname + "(...) supposed to have " + protoDeclFunc.argDecl.types.Length + 
-				                    " arg(s), not " + nargs);
-				nargs = protoDeclFunc.argDecl.types.Length;
-			}
-
-			/*
-			 * In any case, for arguments that were specified, they must be of correct type.
-			 */
-			for (int i = 0; i < nargs; i ++) {
-				if (protoDeclFunc.argDecl.types[i].ToSysType () != argDecl.types[i].ToSysType ()) {
-					ErrorMsg (declFunc, eventname + "(... " + argDecl.types[i].ToString () + " " + 
-					                    argDecl.names[i] + " ...) should be " + 
-					                    protoDeclFunc.argDecl.types[i].ToString ());
-				}
 			}
 
 			/*
@@ -988,18 +949,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					local.PopPost (this, stkTokType);              // pop stack type into argtype
 
 					/*
-					 * Account for any heap usage by this local variable from now on to end of function.
+					 * Make it look like a local variable.
 					 */
 					TokenDeclVar argVar = new TokenDeclVar (argDecl.names[i], null, tokenScript);
 					argVar.type = argDecl.types[i];
 					argVar.name = argDecl.names[i];
 					argVar.location = local;
+
+					/*
+					 * Account for any heap usage by this local variable from now on to end of function.
+					 */
 					NewLocalVariable (argVar);
 
 					/*
 					 * The argument is now defined as a local variable accessible to the function body.
 					 */
-					AddVarDefinition (argDecl.names[i], local);
+					AddVarDefinition (argVar);
 				}
 			}
 
@@ -1046,17 +1011,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			                                    objFileWriter);
 
 			/*
+			 * This says how to generate a call to the function and to get a delegate.
+			 */
+			declFunc.location = new CompValuGlobalMeth (declFunc);
+
+			/*
 			 * For script-global functions, make it a global variable so GenerateFromLValName() will see it,
 			 * using the name <functionname>(<argsig>).
-			 * For script-defined type methods, do likewise so GenerateFromLValSField() will see it,
-			 * using the name <sdtclassname>.<methodnsme>(<argsig>).
 			 */
-			TokenName funcName = declFunc.funcNameSig;
-			if (declFunc.sdtClass != null) {
-				funcName = new TokenName (funcName, declFunc.sdtClass.name.val + "." + funcName.val);
+			if (declFunc.sdtClass == null) {
+				AddVarDefinition (declFunc);
 			}
-			CompValu globalMeth = new CompValuGlobalMeth (declFunc);
-			AddVarDefinition (funcName, globalMeth);
 
 			curDeclFunc = null;
 		}
@@ -1100,7 +1065,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				argVar.name = argDecl.names[i];
 				argVar.location = arg;
 				NewLocalVariable (argVar);
-				AddVarDefinition (argDecl.names[i], arg);
+				AddVarDefinition (argVar);
 			}
 
 			/*
@@ -1162,8 +1127,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			for (int i = 0; i < nArgs; i ++) {
 				ilGen.Emit (OpCodes.Ldarg, i + 1);
 			}
-			string ctorNameSig = "constructor" + newobjFunc.argDecl.GetArgSig ();
-			TokenDeclVar ctorFunc = newobjFunc.sdtClass.methods[ctorNameSig];
+			TokenDeclVar ctorFunc = newobjFunc.sdtClass.members.FindExact ("constructor", newobjFunc.argDecl.types);
 			ilGen.Emit (OpCodes.Call, ctorFunc.ilGen);
 
 			/*
@@ -1241,8 +1205,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ilGen.Emit (OpCodes.Stfld, heapLeftFieldInfo);   // instance.heapLeft
 
 				// init real global variables
-				foreach (KeyValuePair<string, TokenDeclVar> kvp in tokenScript.vars) {
-					InitStaticVar (kvp.Value);
+				foreach (TokenDeclVar v in tokenScript.vars) {
+					InitStaticVar (v);
 				}
 
 				// init script-defined class static fields
@@ -1250,9 +1214,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					TokenDeclSDType sdType = kvpc.Value;
 					if (!(sdType is TokenDeclSDTypeClass)) continue;
 					TokenDeclSDTypeClass sdtClass = (TokenDeclSDTypeClass)sdType;
-					foreach (KeyValuePair<string, TokenDeclVar> kvpf in sdtClass.fields) {
-						TokenDeclVar declVar = kvpf.Value;
-						if ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) != 0) {
+					foreach (TokenDeclVar declVar in sdtClass.members) {
+						if ((declVar.retType == null) && ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) != 0)) {
 							InitStaticVar (declVar);
 						}
 					}
@@ -1275,8 +1238,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				if (curDeclFunc.baseCtorCall != null) {
 					GenerateFromRValCall (curDeclFunc.baseCtorCall);
 				}
-				TokenDeclVar ifim;
-				if (curDeclFunc.sdtClass.methods.TryGetValue (".instancefieldinit.()", out ifim)) {
+				TokenDeclVar ifim = curDeclFunc.sdtClass.members.FindExact (".instancefieldinit.", zeroArgs);
+				if (ifim != null) {
 					new CallLabel (this);
 					ilGen.Emit (OpCodes.Ldarg_0);
 					ilGen.Emit (OpCodes.Call, ifim.ilGen);
@@ -1383,7 +1346,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				CompValu loc = declVar.location;
 				loc.PopPre (this);
 				if (declVar.init != null) {
-					CompValu rVal = GenerateFromRVal (declVar.init, loc.GetArgSig ());
+					CompValu rVal = GenerateFromRVal (declVar.init, loc.GetArgTypes ());
 					rVal.PushVal (this, declVar.type);
 				} else {
 					PushVarDefaultValue (declVar);
@@ -2406,9 +2369,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				tryStmt.catchStmt.isCatch = true;		// jumps out of catch require Leave opcode
 										// rethrow allowed
 										// return statements not allowed
-				CompValuTemp catchVarLoc = new CompValuTemp (tokenTypeStr, tryStmt.catchVar.val, this);
-				Dictionary<string, CompValu> frame = PushVarDefnBlock ();
-				frame.Add (tryStmt.catchVar.val, catchVarLoc);
+				CompValu catchVarLoc = new CompValuTemp (tokenTypeStr, tryStmt.catchVar.name.val, this);
+				tryStmt.catchVar.location = catchVarLoc;
+				VarDict frame = PushVarDefnBlock ();
+				frame.AddEntry (tryStmt.catchVar);
 				ScriptMyLabel catchLabel = ilGen.DefineLabel ("catchlbl_" + tryStmt.Unique);
 				ScriptMyLocal excLocal = ilGen.DeclareLocal (typeof (Exception), "catchexc_" + tryStmt.Unique);
 
@@ -2511,7 +2475,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			if (declVar.init != null) {
 				local.PopPre (this);
-				CompValu rVal = GenerateFromRVal (declVar.init, local.GetArgSig ());
+				CompValu rVal = GenerateFromRVal (declVar.init, local.GetArgTypes ());
 				rVal.PushVal (this, declVar.type);
 				local.PopPost (this);
 				DebitHeapLeft (declVar, true, declVar.init);
@@ -2520,7 +2484,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Now it's ok for subsequent expressions in the block to reference the local variable.
 			 */
-			AddVarDefinition (declVar.name, local);
+			AddVarDefinition (declVar);
 		}
 
 		/**
@@ -2530,7 +2494,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			return GenerateFromLVal (lVal, null);
 		}
-		private CompValu GenerateFromLVal (TokenLVal lVal, string argsig)
+		private CompValu GenerateFromLVal (TokenLVal lVal, TokenType[] argsig)
 		{
 			if (lVal is TokenLValArEle)  return GenerateFromLValArEle  ((TokenLValArEle)lVal);
 			if (lVal is TokenLValIField) return GenerateFromLValIField ((TokenLValIField)lVal, argsig);
@@ -2573,7 +2537,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief we have an L-value token that is an instance field/method within a struct.
 		 * @returns a CompValu giving the type and location of the field/method in the struct.
 		 */
-		private CompValu GenerateFromLValIField (TokenLValIField lVal, string argsig)
+		private CompValu GenerateFromLValIField (TokenLValIField lVal, TokenType[] argsig)
 		{
 			CompValu baseRVal = GenerateFromRVal (lVal.baseRVal);
 			string fieldName = lVal.field.val;
@@ -2584,34 +2548,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (baseRVal.type is TokenTypeSDTypeClass) {
 				TokenTypeSDTypeClass sdtType = (TokenTypeSDTypeClass)baseRVal.type;
 				TokenDeclSDTypeClass sdtDecl = sdtType.decl;
-				if (argsig == null) {
-					for (TokenDeclSDTypeClass sdtd = sdtDecl; sdtd != null; sdtd = sdtd.extends) {
-						TokenDeclVar declVar;
-						if (sdtd.fields.TryGetValue (fieldName, out declVar)) {
-							if ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) != 0) {
-								ErrorMsg (lVal.field, "non-static reference to static field " + fieldName);
-								return new CompValuVoid (lVal.field);
-							}
-							return new CompValuInstField (declVar, baseRVal);
+				for (TokenDeclSDTypeClass sdtd = sdtDecl; sdtd != null; sdtd = sdtd.extends) {
+					TokenDeclVar declVar = FindSingleMember (sdtd.members, lVal.field, argsig);
+					if (declVar != null) {
+						if ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) != 0) {
+							ErrorMsg (lVal.field, "non-static reference to static member " + fieldName + ArgSigString (argsig));
+							return new CompValuVoid (lVal.field);
 						}
+						return (declVar.retType == null) ? (CompValu)new CompValuInstField (declVar, baseRVal) 
+						                                 : (CompValu)new CompValuInstMeth (declVar, baseRVal, false);
 					}
-					ErrorMsg (lVal.field, "no field " + fieldName + " in " + sdtDecl.name.val);
-					return new CompValuVoid (lVal.field);
-				} else {
-					fieldName += argsig;
-					for (TokenDeclSDTypeClass sdtd = sdtDecl; sdtd != null; sdtd = sdtd.extends) {
-						TokenDeclVar declFunc;
-						if (sdtd.methods.TryGetValue (fieldName, out declFunc)) {
-							if ((declFunc.sdtFlags & ScriptReduce.SDT_STATIC) != 0) {
-								ErrorMsg (lVal.field, "non-static reference to static method " + fieldName);
-								return new CompValuVoid (lVal.field);
-							}
-							return new CompValuInstMeth (declFunc, baseRVal, false);
-						}
-					}
-					ErrorMsg (lVal.field, "no method " + fieldName + " in " + sdtDecl.name.val);
-					return new CompValuVoid (lVal.field);
 				}
+				ErrorMsg (lVal.field, "no member " + fieldName + ArgSigString (argsig) + " in " + sdtDecl.name.val);
+				return new CompValuVoid (lVal.field);
 			}
 
 			/*
@@ -2624,12 +2573,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					ErrorMsg (lVal.field, "no field " + fieldName + " in " + sdtDecl.name.val);
 					return new CompValuVoid (lVal.field);
 				} else {
-					fieldName += argsig;
-					TokenDeclVar declFunc;
-					if (sdtDecl.methods.TryGetValue (fieldName, out declFunc)) {
+					TokenDeclVar declFunc = FindSingleMember (sdtDecl.methods, lVal.field, argsig);
+					if (declFunc != null) {
 						return new CompValuIntfMeth (declFunc, baseRVal);
 					}
-					ErrorMsg (lVal.field, "no method " + fieldName + " in " + sdtDecl.name.val);
+					ErrorMsg (lVal.field, "no method " + fieldName + ArgSigString (argsig) + " in " + sdtDecl.name.val);
 					return new CompValuVoid (lVal.field);
 				}
 			}
@@ -2697,36 +2645,44 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 *                       eg, "(string,integer,list)"
 		 * @returns a CompValu giving the type and location of the function, method or variable.
 		 */
-		private CompValu GenerateFromLValName (TokenLValName lVal, string argsig)
+		private CompValu GenerateFromLValName (TokenLValName lVal, TokenType[] argsig)
 		{
 			string name = lVal.name.val;
-			string namesig = name;
-			if (argsig != null) namesig += argsig;
 
 			/*
 			 * Look in variable stack for the given name.
 			 */
-			foreach (Dictionary<string, CompValu> vars in scriptVariablesStack) {
-				CompValu defn;
-				if (vars.TryGetValue (namesig, out defn)) {
-					return defn;
-				}
-				if (vars.TryGetValue (name, out defn)) {
-					return defn;
+			foreach (VarDict vars in scriptVariablesStack) {
+
+				// first look for it possibly with an argument signature
+				// so we pick the correct overloaded method
+				TokenDeclVar var = FindSingleMember (vars, lVal.name, argsig);
+				if (var != null) return var.location;
+
+				// if that fails, try it without the argument signature
+				// delegates get entered like any other variable, ie, 
+				// no signature on their name.
+				if (argsig != null) {
+					var = FindSingleMember (vars, lVal.name, null);
+					if (var != null) return var.location;
 				}
 			}
 
 			/*
-			 * If not found, try one of the built-in constants.
+			 * If not found, try one of the built-in constants or functions.
 			 */
-			ScriptConst scriptConst = ScriptConst.Lookup (namesig);
-			if (scriptConst == null) scriptConst = ScriptConst.Lookup (name);
-			if (scriptConst != null) return scriptConst.rVal;
+			if (argsig == null) {
+				ScriptConst scriptConst = ScriptConst.Lookup (name);
+				if (scriptConst != null) return scriptConst.rVal;
+			} else {
+				TokenDeclVar inline = FindSingleMember (inlineFunctions, lVal.name, argsig);
+				if (inline != null) return inline.location;
+			}
 
 			/*
 			 * Who knows what the name is referring to.
 			 */
-			ErrorMsg (lVal, "undefined constant/function/method/variable " + namesig);
+			ErrorMsg (lVal, "undefined constant/function/method/variable " + name + ArgSigString (argsig));
 			return new CompValuVoid (lVal);
 		}
 
@@ -2734,7 +2690,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief we have an L-value token that is a static field/method within a struct.
 		 * @returns a CompValu giving the type and location of the field/method in the struct.
 		 */
-		private CompValu GenerateFromLValSField (TokenLValSField lVal, string argsig)
+		private CompValu GenerateFromLValSField (TokenLValSField lVal, TokenType[] argsig)
 		{
 			TokenType stType = lVal.baseType;
 			string fieldName = lVal.fieldName.val;
@@ -2745,37 +2701,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (stType is TokenTypeSDTypeClass) {
 				TokenTypeSDTypeClass sdtType = (TokenTypeSDTypeClass)stType;
 				TokenDeclSDTypeClass sdtDecl = sdtType.decl;
-				if (argsig == null) {
-					for (TokenDeclSDTypeClass sdtd = sdtDecl; sdtd != null; sdtd = sdtd.extends) {
-						TokenDeclVar declVar;
-						if (sdtd.fields.TryGetValue (fieldName, out declVar)) {
-							if ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) == 0) {
-								ErrorMsg (lVal.fieldName, "static reference to non-static field " + fieldName);
-								return new CompValuVoid (lVal.fieldName);
-							}
-							return declVar.location;
+				for (TokenDeclSDTypeClass sdtd = sdtDecl; sdtd != null; sdtd = sdtd.extends) {
+					TokenDeclVar declFunc = FindSingleMember (sdtd.members, lVal.fieldName, argsig);
+					if (declFunc != null) {
+						if ((declFunc.sdtFlags & ScriptReduce.SDT_STATIC) == 0) {
+							ErrorMsg (lVal.fieldName, "static reference to non-static member " + fieldName + ArgSigString (argsig));
+							return new CompValuVoid (lVal.fieldName);
 						}
+						return declFunc.location;
 					}
-					ErrorMsg (lVal.fieldName, "no field " + fieldName + " in " + sdtDecl.name.val);
-					return new CompValuVoid (lVal.fieldName);
-				} else {
-					fieldName += argsig;
-					for (TokenDeclSDTypeClass sdtd = sdtDecl; sdtd != null; sdtd = sdtd.extends) {
-						TokenDeclVar declFunc;
-						if (sdtd.methods.TryGetValue (fieldName, out declFunc)) {
-							if ((declFunc.sdtFlags & ScriptReduce.SDT_STATIC) == 0) {
-								ErrorMsg (lVal.fieldName, "static reference to non-static method " + fieldName);
-								return new CompValuVoid (lVal.fieldName);
-							}
-							return globalVariables[sdtd.name.val + "." + fieldName];
-						}
-					}
-					ErrorMsg (lVal.fieldName, "no method " + fieldName + " in " + sdtDecl.name.val);
-					return new CompValuVoid (lVal.fieldName);
 				}
 			}
 
-			ErrorMsg (lVal.fieldName, "type " + stType.ToString () + " does not define field/method " + fieldName);
+			ErrorMsg (lVal.fieldName, "no member " + fieldName + ArgSigString (argsig) + " in " + stType.ToString ());
 			return new CompValuVoid (lVal.fieldName);
 		}
 
@@ -2794,7 +2732,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			return GenerateFromRVal (rVal, null);
 		}
-		private CompValu GenerateFromRVal (TokenRVal rVal, string argsig)
+		private CompValu GenerateFromRVal (TokenRVal rVal, TokenType[] argsig)
 		{
 			errorMessageToken = rVal;
 
@@ -2863,7 +2801,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					ErrorMsg (token, "invalid L-value for =");
 					left = GenerateFromRVal (token.rValLeft);
 				} else {
-					right = GenerateFromRVal (token.rValRight, left.GetArgSig ());
+					right = GenerateFromRVal (token.rValRight, left.GetArgTypes ());
 					leftLVal.PopPre (this);
 					right.PushVal (this, leftLVal.type);  // push (leftLVal.type)right
 					leftLVal.PopPost (this);              // pop to leftLVal
@@ -3122,7 +3060,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief using 'base' within a script-defined instance method to refer to an instance field/method 
 		 *        of the class being extended.
 		 */
-		private CompValu GenerateFromRValBaseField (TokenRValBaseField baseField, string argsig)
+		private CompValu GenerateFromRValBaseField (TokenRValBaseField baseField, TokenType[] argsig)
 		{
 			string fieldName = baseField.field.val;
 
@@ -3131,39 +3069,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ErrorMsg (baseField, "cannot use 'base' outside instance method body");
 				return new CompValuVoid (baseField);
 			}
-			if (argsig == null) {
-				for (TokenDeclSDTypeClass sdtd = sdtDecl.extends; sdtd != null; sdtd = sdtd.extends) {
-					TokenDeclVar declVar;
-					if (sdtd.fields.TryGetValue (fieldName, out declVar)) {
-						if ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) != 0) {
-							ErrorMsg (baseField, "non-static reference to static field " + fieldName);
-							return new CompValuVoid (baseField);
-						}
-						return new CompValuInstField (declVar, 
-						                              new CompValuArg (sdtd.MakeRefToken (baseField), 
-						                                               0));
+
+			for (TokenDeclSDTypeClass sdtd = sdtDecl; sdtd != null; sdtd = sdtd.extends) {
+				TokenDeclVar declVar = FindSingleMember (sdtd.members, baseField.field, argsig);
+				if (declVar != null) {
+					if ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) != 0) {
+						ErrorMsg (baseField, "non-static reference to static member " + fieldName + ArgSigString (argsig));
+						return new CompValuVoid (baseField);
 					}
+					TokenType baseType = sdtd.MakeRefToken (baseField);
+					CompValu  basePtr  = new CompValuArg (baseType, 0);
+					return (declVar.retType == null) ? (CompValu)new CompValuInstField (declVar, basePtr) : 
+					                                   (CompValu)new CompValuInstMeth (declVar, basePtr, true);
 				}
-				ErrorMsg (baseField, "no field " + fieldName + " rootward of " + sdtDecl.name.val);
-				return new CompValuVoid (baseField);
-			} else {
-				fieldName += argsig;
-				for (TokenDeclSDTypeClass sdtd = sdtDecl; sdtd != null; sdtd = sdtd.extends) {
-					TokenDeclVar declFunc;
-					if (sdtd.methods.TryGetValue (fieldName, out declFunc)) {
-						if ((declFunc.sdtFlags & ScriptReduce.SDT_STATIC) != 0) {
-							ErrorMsg (baseField, "non-static reference to static method " + fieldName);
-							return new CompValuVoid (baseField);
-						}
-						return new CompValuInstMeth (declFunc, 
-						                             new CompValuArg (sdtd.MakeRefToken (baseField), 
-						                                              0), 
-						                             true);
-					}
-				}
-				ErrorMsg (baseField, "no method " + fieldName + " rootward of " + sdtDecl.name.val);
-				return new CompValuVoid (baseField);
 			}
+
+			ErrorMsg (baseField, "no member " + fieldName + ArgSigString (argsig) + " rootward of " + sdtDecl.name.val);
+			return new CompValuVoid (baseField);
 		}
 
 		/**
@@ -3174,10 +3096,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			CompValu method, result;
 			CompValu[] argRVals;
-			CompValuInline inline;
 			int i, nargs;
-			string argsigst;
-			StringBuilder argsigsb;
 			TokenType retType;
 			TokenType[] argTypes;
 
@@ -3187,33 +3106,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Might as well build the argument signature from the argument types, too.
 			 */
 			nargs = call.nArgs;
-			argsigsb = new StringBuilder ("(");
 			argRVals = new CompValu[nargs];
+			argTypes = new TokenType[nargs];
 			if (nargs > 0) {
 				i = 0;
 				for (TokenRVal arg = call.args; arg != null; arg = (TokenRVal)arg.nextToken) {
 					argRVals[i] = GenerateFromRVal (arg);
-					if (i > 0) argsigsb.Append (",");
-					argsigsb.Append (argRVals[i].type.ToString ());
+					argTypes[i] = argRVals[i].type;
 					i ++;
 				}
 			}
-			argsigsb.Append (")");
-			argsigst = argsigsb.ToString ();
 
 			/*
-			 * Get function/method's entrypoint that matches the argument signature.
+			 * Get function/method's entrypoint that matches the call argument types.
 			 */
-			method = GenerateFromRVal (call.meth, argsigst);
+			method = GenerateFromRVal (call.meth, argTypes);
 			if (method == null) return null;
 
 			/*
-			 * Inline functions are their own thing.
+			 * Inline functions know how to generate their own call.
 			 */
 			if (method is CompValuInline) {
-				inline = (CompValuInline)method;
-				result = SetupReturnLocation (inline.retType);
-				inline.codeGen (this, call, result, argRVals);
+				CompValuInline inline = (CompValuInline)method;
+				result = SetupReturnLocation (inline.declInline.retType);
+				inline.declInline.codeGen (this, call, result, argRVals);
 				return result;
 			}
 
@@ -3291,10 +3207,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * will select 'string ToString(integer x)'
 			 * instaead of 'string ToString(float x)' or anything else
 			 */
-			string argsig = null;
+			TokenType[] argsig = null;
 			TokenType outType = cast.castTo;
 			if (outType is TokenTypeSDTypeDelegate) {
-				argsig = ((TokenTypeSDTypeDelegate)outType).decl.GetArgSig ();
+				argsig = ((TokenTypeSDTypeDelegate)outType).decl.GetArgTypes ();
 			}
 
 			/*
@@ -3437,7 +3353,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief Using 'this' as a pointer to the current script-defined instance object.
 		 *        The value is located in arg #0 of the current instance method.
 		 */
-		private CompValu GenerateFromRValThis (TokenRValThis zhis, string argsig)
+		private CompValu GenerateFromRValThis (TokenRValThis zhis, TokenType[] argsig)
 		{
 			if ((curDeclFunc.sdtClass == null) || ((curDeclFunc.sdtFlags & ScriptReduce.SDT_STATIC) != 0)) {
 				ErrorMsg (zhis, "cannot use 'this' outside instance method body");
@@ -3689,9 +3605,41 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief create table of legal event handler prototypes.
 		 *        This is used to make sure script's event handler declrations are valid.
 		 */
-		private static Dictionary<string, TokenDeclVar> CreateLegalEventHandlers ()
+		private static VarDict CreateLegalEventHandlers ()
 		{
-			Dictionary<string, TokenDeclVar> leh = new InternalFuncDict (typeof (IEventHandlers), false);
+			/*
+			 * Get handler prototypes with full argument lists.
+			 */
+			VarDict leh = new InternalFuncDict (typeof (IEventHandlers), false);
+
+			/*
+			 * We want the scripts to be able to declare their handlers with
+			 * fewer arguments than the full argument lists.  So define additional 
+			 * prototypes with fewer arguments.
+			 */
+			TokenDeclVar[] fullArgProtos = new TokenDeclVar[leh.Count];
+			int i = 0;
+			foreach (TokenDeclVar fap in leh) fullArgProtos[i++] = fap;
+
+			foreach (TokenDeclVar fap in fullArgProtos) {
+				TokenArgDecl fal = fap.argDecl;
+				int fullArgCount = fal.types.Length;
+				for (i = 0; i < fullArgCount; i ++) {
+					TokenArgDecl shortArgList = new TokenArgDecl (null);
+					shortArgList.names = new TokenName[i];
+					shortArgList.types = new TokenType[i];
+					for (int j = 0; j < i; j ++) {
+						shortArgList.names[j] = fal.names[j];
+						shortArgList.types[j] = fal.types[j];
+					}
+					TokenDeclVar shortArgProto = new TokenDeclVar (null, null, null);
+					shortArgProto.retType      = fap.retType;
+					shortArgProto.argDecl      = shortArgList;
+					shortArgProto.funcNameSig  = new TokenName (null, fap.GetSimpleName () + shortArgList.GetArgSig ());
+					leh.AddEntry (shortArgProto);
+				}
+			}
+
 			return leh;
 		}
 
@@ -3850,9 +3798,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief maintain variable definition stack.
 		 * It translates a variable name string to its declaration.
 		 */
-		private Dictionary<string, CompValu> PushVarDefnBlock ()
+		private VarDict PushVarDefnBlock ()
 		{
-			Dictionary<string, CompValu> frame = new Dictionary<string, CompValu> ();
+			VarDict frame = new VarDict ();
 			scriptVariablesStack.Push (frame);
 			return frame;
 		}
@@ -3860,18 +3808,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			scriptVariablesStack.Pop ();
 		}
-		private void AddVarDefinition (TokenName name, CompValu var)
+		private void AddVarDefinition (TokenDeclVar var)
 		{
-			Dictionary<string, CompValu> vars = scriptVariablesStack.Peek ();
-			string namesig = name.val;
-
-			/*
-			 * Only allow one of each namesig.
-			 */
-			if (vars.ContainsKey (namesig)) {
-				ErrorMsg (name, "duplicate var definition " + namesig);
-			} else {
-				vars.Add (namesig, var);
+			VarDict vars = scriptVariablesStack.Peek ();
+			if (!vars.AddEntry (var)) {
+				string name = var.name.val;
+				if (var.funcNameSig != null) name = var.funcNameSig.val;
+				ErrorMsg (var, "duplicate definition " + name);
 			}
 		}
 
@@ -3962,7 +3905,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				TokenLValSField lvsf = (TokenLValSField)rVal;
 				if (lvsf.baseType is TokenTypeSDTypeClass) {
 					TokenDeclSDTypeClass sdtClass = ((TokenTypeSDTypeClass)lvsf.baseType).decl;
-					if (sdtClass.fields.TryGetValue (lvsf.fieldName.val, out gblVar)) {
+					gblVar = sdtClass.members.FindExact (lvsf.fieldName.val, null);
+					if (gblVar != null) {
 						if (gblVar.constant && (gblVar.init is TokenRValConst)) {
 							didOne = true;
 							return gblVar.init;
@@ -3982,12 +3926,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * If we are doing the initializations for a script-defined type,
 			 * look for the constant among the fields for that type.
 			 */
-			if ((currentSDTClass != null) && currentSDTClass.fields.TryGetValue (name, out gblVar)) {
-				if (gblVar.constant && (gblVar.init is TokenRValConst)) {
-					didOne = true;
-					return gblVar.init;
+			if (currentSDTClass != null) {
+				gblVar = currentSDTClass.members.FindExact (name, null);
+				if (gblVar != null) {
+					if (gblVar.constant && (gblVar.init is TokenRValConst)) {
+						didOne = true;
+						return gblVar.init;
+					}
+					return rVal;
 				}
-				return rVal;
 			}
 
 			/*
@@ -3995,7 +3942,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Then if the variable is defined as a constant and has a constant value,
 			 * we are successful.  If it is defined as something else, return failure.
 			 */
-			if (tokenScript.vars.TryGetValue (name, out gblVar)) {
+			gblVar = tokenScript.vars.FindExact (name, null);
+			if (gblVar != null) {
 				if (gblVar.constant && (gblVar.init is TokenRValConst)) {
 					didOne = true;
 					return gblVar.init;
@@ -4038,11 +3986,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				TokenLValSField lvsf = (TokenLValSField)rVal;
 				if (lvsf.baseType is TokenTypeSDTypeClass) {
 					TokenDeclSDTypeClass sdtClass = ((TokenTypeSDTypeClass)lvsf.baseType).decl;
-					if (sdtClass.fields.TryGetValue (lvsf.fieldName.val, out gblVar)) {
-						if (gblVar.constant && (gblVar.init is TokenRValConst)) {
-							didOne = true;
-							return gblVar.init;
-						}
+					gblVar = sdtClass.members.FindExact (lvsf.fieldName.val, null);
+					if ((gblVar != null) && gblVar.constant && (gblVar.init is TokenRValConst)) {
+						didOne = true;
+						return gblVar.init;
 					}
 				}
 				return rVal;
@@ -4059,8 +4006,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * But we stop as soon as we get a match because that's what the script is referring to.
 			 */
 			CompValu val;
-			foreach (Dictionary<string, CompValu> vars in scriptVariablesStack) {
-				if (vars.TryGetValue (name, out val)) goto foundit;
+			foreach (VarDict vars in scriptVariablesStack) {
+				TokenDeclVar var = vars.FindExact (name, null);
+				if (var != null) {
+					val = var.location;
+					goto foundit;
+				}
 			}
 
 			/*
@@ -4120,6 +4071,63 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			return (curDeclFunc.sdtClass != null) && 
 			       ((curDeclFunc.sdtFlags & ScriptReduce.SDT_STATIC) == 0);
+		}
+
+		/**
+		 * @brief Look for a single member that matches the given name and argument signature
+		 * @param where = which dictionary to look in
+		 * @param name = basic name of the field or method, eg, "Printable"
+		 * @param argsig = argument types the method is being called with, eg, "(string)"
+		 *                 or null to find a field
+		 * @returns null: no member found
+		 *          else: the member found
+		 */
+		private TokenDeclVar FindSingleMember (VarDict where, TokenName name, TokenType[] argsig)
+		{
+			TokenDeclVar[] callables = where.FindCallables (name.val, argsig);
+			if (callables == null) return null;
+			if (callables.Length > 1) {
+				ErrorMsg (name, "more than one matching member");
+				for (int i = 0; i < callables.Length; i ++) {
+					ErrorMsg (callables[i], "  " + callables[i].argDecl.GetArgSig ());
+				}
+			}
+			return callables[0];
+		}
+
+		/**
+		 * @brief Find an exact function name and argument signature match.
+		 *        Also verify that the return value type is an exact match.
+		 * @param where = which method dictionary to look in
+		 * @param name = basic name of the method, eg, "Printable"
+		 * @param ret = expected return value type
+		 * @param argsig = argument types the method is being called with, eg, "(string)"
+		 * @returns null: no exact match found
+		 *          else: the matching function
+		 */
+		private TokenDeclVar FindExactWithRet (VarDict where, TokenName name, TokenType ret, TokenType[] argsig)
+		{
+			TokenDeclVar func = where.FindExact (name.val, argsig);
+			if ((func != null) && (func.retType.ToString () != ret.ToString ())) {
+				ErrorMsg (name, "return type mismatch, have " + func.retType.ToString () + ", expect " + ret.ToString ());
+			}
+			return func;
+		}
+
+		/**
+		 * @brief Convert a list of argument types to printable string, eg, "(list,string,float,integer)"
+		 *        If given a null, return "" indicating it is a field not a method
+		 */
+		private static string ArgSigString (TokenType[] argsig)
+		{
+			if (argsig == null) return "";
+			StringBuilder sb = new StringBuilder ("(");
+			for (int i = 0; i < argsig.Length; i ++) {
+				if (i > 0) sb.Append (",");
+				sb.Append (argsig[i].ToString ());
+			}
+			sb.Append (")");
+			return sb.ToString ();
 		}
 
 		/**

@@ -15,7 +15,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 	public class ScriptConst {
 
-		private static Dictionary<string, ScriptConst> scriptConstants = null;
+		private static Dictionary<string, ScriptConst> scriptConstants = Init ();
 
 		/**
 		 * @brief look up the value of a given built-in constant.
@@ -25,17 +25,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		public static ScriptConst Lookup (string name)
 		{
-			if (scriptConstants == null) {
-				Init ();
-			}
-			//MB();
-			if (scriptConstants.ContainsKey (name)) {
-				return scriptConstants[name];
-			}
-			return null;
+			ScriptConst sc;
+			if (!scriptConstants.TryGetValue (name, out sc)) sc = null;
+			return sc;
 		}
 
-		private static void Init ()
+		private static Dictionary<string, ScriptConst> Init ()
 		{
 			Dictionary<string, ScriptConst> sc = new Dictionary<string, ScriptConst> ();
 
@@ -108,8 +103,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				} catch { }
 			}
 
-			//MB();
-			scriptConstants = sc;
+			return sc;
 		}
 
 		/*

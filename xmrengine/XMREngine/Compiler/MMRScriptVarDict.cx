@@ -52,40 +52,79 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				for (int i = at.Length; -- i >= 0;) {
 					int c = (hc < 0) ? 1 : 0;
 					hc  = hc * 2 + c;
-					hc *= at[i].ToString ().GetHashCode ();
+					hc ^= at[i].ToString ().GetHashCode ();
 				}
 				return hc;
 			}
 		}
 
 		private Dictionary<string, Dictionary<ArgTypes, TokenDeclVar>> master = new Dictionary<string, Dictionary<ArgTypes, TokenDeclVar>> ();
+		private int count = 0;
 
 		public bool AddEntry (TokenDeclVar var)
 		{
+			/*
+			 * Make sure we have a sub-dictionary based on the bare name (ie, no signature)
+			 */
 			Dictionary<ArgTypes, TokenDeclVar> typedic;
 			if (!master.TryGetValue (var.name.val, out typedic)) {
 				typedic = new Dictionary<ArgTypes, TokenDeclVar> ();
 				master.Add (var.name.val, typedic);
 			}
 
+			/*
+			 * See if there is an entry in the sub-dictionary that matches the argument signature.
+			 * Note that fields have null argument lists.
+			 * Methods always have a non-null argument list, even if only 0 entries long.
+			 */
 			ArgTypes types;
-			types.argTypes = var.argDecl.types;
+			types.argTypes = (var.argDecl == null) ? null : var.argDecl.types;
 			if (typedic.ContainsKey (types)) return false;
+
+			/*
+			 * It is unique, add to its name-specific sub-dictionary.
+			 */
 			typedic.Add (types, var);
+			count ++;
 			return true;
 		}
 
-		public TokenDeclVar CanBeCalledBy (string name, TokenType[] argTypes)
+		public int Count { get { return count; } }
+
+		/**
+		 * @brief Find all functions/variables that are callable
+		 * @param name = name of function/variable to look for
+		 * @param argTypes = the argument types the function is being called with
+		 *                   null to look for a variable
+		 * @returns null: no matching function/variable found
+		 *          else: list of matching functions/variables
+		 *                for variables, always of length 1
+		 */
+		private List<TokenDeclVar> found = new List<TokenDeclVar> ();
+		public TokenDeclVar[] FindCallables (string name, TokenType[] argTypes)
 		{
+			TokenDeclVar var = FindExact (name, argTypes);
+			if (var != null) return new TokenDeclVar[] { var };
+
 			Dictionary<ArgTypes, TokenDeclVar> typedic;
 			if (!master.TryGetValue (name, out typedic)) return null;
+
+			found.Clear ();
 			foreach (KeyValuePair<ArgTypes, TokenDeclVar> kvp in typedic) {
-				if (kvp.Key.CanBeCalledBy (argTypes)) return kvp.Value;
+				if (kvp.Key.CanBeCalledBy (argTypes)) found.Add (kvp.Value);
 			}
-			return null;
+			return (found.Count > 0) ? found.ToArray () : null;
 		}
 
-		public TokenDeclVar LookupExact (string name, TokenType[] argTypes)
+		/**
+		 * @brief Find exact matching function/variable
+		 * @param name = name of function to look for
+		 * @param argTypes = argument types the function was declared with
+		 *                   null to look for a variable
+		 * @returns null: no matching function/variable found
+		 *          else: the matching function/variable
+		 */
+		public TokenDeclVar FindExact (string name, TokenType[] argTypes)
 		{
 			Dictionary<ArgTypes, TokenDeclVar> typedic;
 			if (!master.TryGetValue (name, out typedic)) return null;
@@ -105,16 +144,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		private class VarDictEnumerator : IEnumerator {
-			private Dictionary<string, Dictionary<ArgTypes, TokenDeclVar>> master;
-
 			private IEnumerator masterEnum;
 			private IEnumerator typedicEnum;
 
 			public VarDictEnumerator (Dictionary<string, Dictionary<ArgTypes, TokenDeclVar>> master)
 			{
-				this.master = master;
 				masterEnum = master.Values.GetEnumerator ();
-				Reset ();
 			}
 
 			// IEnumerator

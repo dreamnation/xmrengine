@@ -416,6 +416,67 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 	}
 
+	// The value is in a script-global variable = ScriptModule instance variable
+	public class CompValuGlobalVar : CompValu {
+		private TokenDeclVar declVar;
+
+		public CompValuGlobalVar (TokenDeclVar declVar, ScriptObjCode scriptObjCode) : base (declVar.type)
+		{
+			this.declVar = declVar;
+			declVar.type.AssignGlobalVarSlot (declVar, scriptObjCode);
+		}
+		public override void PushVal (ScriptCodeGen scg)
+		{
+			scg.PushXMRInst ();
+			EmitFieldPushVal (scg, declVar);
+		}
+		public override void PushRef (ScriptCodeGen scg)
+		{
+			scg.PushXMRInst ();
+			EmitFieldPushRef (scg, declVar);
+		}
+		public override void PopPre (ScriptCodeGen scg)
+		{
+			scg.PushXMRInst ();
+			EmitFieldPopPre (scg, declVar);
+		}
+		public override void PopPost (ScriptCodeGen scg)
+		{
+			EmitFieldPopPost (scg, declVar);
+		}
+	}
+
+	// This represents the type and location of an internally-defined function
+	// that a script can call
+	public class CompValuInline : CompValu {
+		public TokenDeclInline declInline;
+
+		public CompValuInline (TokenDeclInline declInline) : base (declInline.GetDelType ())
+		{
+			this.declInline = declInline;
+		}
+
+		public override void PushVal (ScriptCodeGen scg)
+		{
+			scg.ErrorMsg (declInline, "cannot use built-in for delegate, wrap it");
+			scg.ilGen.Emit (OpCodes.Ldnull);
+		}
+		public override void PushRef (ScriptCodeGen scg)
+		{
+			scg.ErrorMsg (declInline, "cannot use built-in for delegate, wrap it");
+			scg.ilGen.Emit (OpCodes.Ldnull);
+		}
+		public override void PopPre (ScriptCodeGen scg)
+		{
+			scg.ErrorMsg (declInline, "cannot use built-in for delegate, wrap it");
+		}
+		public override void PopPost (ScriptCodeGen scg)
+		{
+			scg.ErrorMsg (declInline, "cannot use built-in for delegate, wrap it");
+			scg.ilGen.Emit (OpCodes.Pop);
+		}
+	}
+
 	// The value is the entrypoint of a script-defined type's instance method combined with
 	// the pointer used to access the method.  Thus there is one of these per call site.
 	public class CompValuInstMeth : CompValu {
@@ -608,36 +669,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			scg.ErrorMsg (type, "cannot store into read-only property");
 			scg.ilGen.Emit (OpCodes.Pop);
-		}
-	}
-
-	// The value is in a script-global variable = ScriptModule instance variable
-	public class CompValuGlobalVar : CompValu {
-		private TokenDeclVar declVar;
-
-		public CompValuGlobalVar (TokenDeclVar declVar, ScriptObjCode scriptObjCode) : base (declVar.type)
-		{
-			this.declVar = declVar;
-			declVar.type.AssignGlobalVarSlot (declVar, scriptObjCode);
-		}
-		public override void PushVal (ScriptCodeGen scg)
-		{
-			scg.PushXMRInst ();
-			EmitFieldPushVal (scg, declVar);
-		}
-		public override void PushRef (ScriptCodeGen scg)
-		{
-			scg.PushXMRInst ();
-			EmitFieldPushRef (scg, declVar);
-		}
-		public override void PopPre (ScriptCodeGen scg)
-		{
-			scg.PushXMRInst ();
-			EmitFieldPopPre (scg, declVar);
-		}
-		public override void PopPost (ScriptCodeGen scg)
-		{
-			EmitFieldPopPost (scg, declVar);
 		}
 	}
 
