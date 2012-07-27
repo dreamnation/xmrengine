@@ -38,7 +38,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private static Dictionary<string, BinOpStr> binOpStrings = BinOpStr.DefineBinOps ();
 		private static Dictionary<string, CompValu> inlineFunctions = CompValuInline.CreateDictionary ();
-		private static Dictionary<string, TokenDeclFunc> legalEventHandlers = CreateLegalEventHandlers ();
+		private static Dictionary<string, TokenDeclVar> legalEventHandlers = CreateLegalEventHandlers ();
 		private static TokenTypeBool   tokenTypeBool = new TokenTypeBool   (null);
 		private static TokenTypeFloat  tokenTypeFlt  = new TokenTypeFloat  (null);
 		private static TokenTypeInt    tokenTypeInt  = new TokenTypeInt    (null);
@@ -131,7 +131,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private BreakContTarg curContTarg  = null;
 		private int nStates = 0;
 		private Token errorMessageToken = null;
-		private TokenDeclFunc curDeclFunc = null;
+		private TokenDeclVar curDeclFunc = null;
 		private TokenStmtBlock curStmtBlock = null;
 		private BinaryWriter objFileWriter = null;
 		private TokenScript tokenScript = null;
@@ -260,7 +260,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				 */
 				if ((declVar.type is TokenTypeList) ||
 				    (declVar.type is TokenTypeStr)) {
-					TokenDeclVar htDeclVar = new TokenDeclVar (declVar, null);
+					TokenDeclVar htDeclVar = new TokenDeclVar (declVar, null, tokenScript);
 					htDeclVar.type = new TokenTypeInt (declVar);
 					htDeclVar.name = new TokenName (declVar, "__htg_" + declVar.name.val);
 					htDeclVar.location = new CompValuGlobalVar (htDeclVar, scriptObjCode);
@@ -305,7 +305,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 */
 					if ((declVar.type is TokenTypeList) ||
 					    (declVar.type is TokenTypeStr)) {
-						TokenDeclVar htDeclVar = new TokenDeclVar (declVar, null);
+						TokenDeclVar htDeclVar = new TokenDeclVar (declVar, null, tokenScript);
 						htDeclVar.type = new TokenTypeInt (declVar);
 						htDeclVar.name = new TokenName (declVar, "__hts_" + declVar.name.val);
 						htDeclVar.location = new CompValuGlobalVar (htDeclVar, scriptObjCode);
@@ -328,7 +328,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				/*
 				 * Define an instance function .instancefieldinit.() with no args and a void return value.
 				 */
-				TokenDeclFunc fiFunc = new TokenDeclFunc (sdtClass.name, tokenScript);
+				TokenDeclVar fiFunc = new TokenDeclVar (sdtClass.name, null, tokenScript);
 				fiFunc.retType = new TokenTypeVoid (fiFunc);
 				fiFunc.funcNameSig = new TokenName (fiFunc, ".instancefieldinit.()");
 				fiFunc.sdtClass = sdtClass;
@@ -386,8 +386,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				if (!(sdType is TokenDeclSDTypeInterface)) continue;
 				TokenDeclSDTypeInterface sdtIFace = (TokenDeclSDTypeInterface)sdType;
 				int vti = 0;
-				foreach (KeyValuePair<string, TokenDeclFunc> kvpm in sdtIFace.methods) {
-					TokenDeclFunc im = kvpm.Value;
+				foreach (KeyValuePair<string, TokenDeclVar> kvpm in sdtIFace.methods) {
+					TokenDeclVar im = kvpm.Value;
 					im.vTableIndex = vti ++;
 				}
 			}
@@ -445,7 +445,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						declVar.type.AssignSDTClassFieldSlot (declVar, sdtClass);
 						if ((declVar.type is TokenTypeList) ||
 						    (declVar.type is TokenTypeStr)) {
-							TokenDeclVar htDeclVar = new TokenDeclVar (declVar, null);
+							TokenDeclVar htDeclVar = new TokenDeclVar (declVar, null, tokenScript);
 							htDeclVar.type = new TokenTypeInt (declVar);
 							htDeclVar.name = new TokenName (declVar, "__hti_" + declVar.name.val);
 							htDeclVar.type.AssignSDTClassFieldSlot (htDeclVar, sdtClass);
@@ -456,15 +456,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					/*
 					 * ... and assign virtual method vtable slots.
 					 */
-					foreach (KeyValuePair<string, TokenDeclFunc> kvpm in sdtClass.methods) {
-						TokenDeclFunc declFunc = kvpm.Value;
+					foreach (KeyValuePair<string, TokenDeclVar> kvpm in sdtClass.methods) {
+						TokenDeclVar declFunc = kvpm.Value;
 						declFunc.vTableIndex = -1;
 						if ((declFunc.sdtFlags & ScriptReduce.SDT_ABSTRACT) != 0) {
 							declFunc.vTableIndex = sdtClass.numVirtFuncs ++;
 						}
 						if ((declFunc.sdtFlags & ScriptReduce.SDT_OVERRIDE) != 0) {
 							for (TokenDeclSDTypeClass sdtd = extends; sdtd != null; sdtd = sdtd.extends) {
-								TokenDeclFunc overridden;
+								TokenDeclVar overridden;
 								if (sdtd.methods.TryGetValue (kvpm.Key, out overridden)) {
 									declFunc.vTableIndex = overridden.vTableIndex;
 									break;
@@ -486,7 +486,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 */
 					int nIFaces        = sdtClass.numInterfaces + sdtClass.implements.Count;
 					sdtClass.iFaces    = new TokenDeclSDTypeInterface[nIFaces];
-					sdtClass.iImplFunc = new TokenDeclFunc[nIFaces][];
+					sdtClass.iImplFunc = new TokenDeclVar[nIFaces][];
 					for (int i = 0; i < sdtClass.numInterfaces; i ++) {
 						sdtClass.iFaces[i]    = extends.iFaces[i];
 						sdtClass.iImplFunc[i] = extends.iImplFunc[i];
@@ -496,10 +496,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						int i = sdtClass.numInterfaces ++;
 						sdtClass.iFaces[i] = intf;
 						sdtClass.intfIndices.Add (intf.name.val, i);
-						sdtClass.iImplFunc[i] = new TokenDeclFunc[intf.methods.Count];
+						sdtClass.iImplFunc[i] = new TokenDeclVar[intf.methods.Count];
 					}
 
-					foreach (TokenDeclFunc classMeth in sdtClass.methods.Values) {
+					foreach (TokenDeclVar classMeth in sdtClass.methods.Values) {
 						for (TokenIntfImpl intfImpl = classMeth.implements; intfImpl != null; intfImpl = (TokenIntfImpl)intfImpl.nextToken) {
 
 							/*
@@ -508,7 +508,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 							TokenDeclSDTypeInterface intfType = intfImpl.intfType.decl;
 							TokenName                methName = intfImpl.methName;
 							string                methNameSig = methName.val + classMeth.argDecl.GetArgSig ();
-							TokenDeclFunc intfMeth;
+							TokenDeclVar intfMeth;
 							if (!intfType.methods.TryGetValue (methNameSig, out intfMeth)) {
 								ErrorMsg (intfImpl, "interface does not define method " + methNameSig);
 								continue;
@@ -555,12 +555,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 * Now make sure this class implements all methods for all declared interfaces.
 					 */
 					for (int i = sdtClass.numInterfaces - sdtClass.implements.Count; i < sdtClass.numInterfaces; i ++) {
-						TokenDeclFunc[] implementations = sdtClass.iImplFunc[i];
+						TokenDeclVar[] implementations = sdtClass.iImplFunc[i];
 						for (int j = implementations.Length; -- j >= 0;) {
 							if (implementations[j] == null) {
 								TokenDeclSDTypeInterface intf = sdtClass.iFaces[i];
-								TokenDeclFunc meth = null;
-								foreach (KeyValuePair<string, TokenDeclFunc> kvp in intf.methods) {
+								TokenDeclVar meth = null;
+								foreach (KeyValuePair<string, TokenDeclVar> kvp in intf.methods) {
 									if (kvp.Value.vTableIndex == j) {
 										meth = kvp.Value;
 										break;
@@ -651,7 +651,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				bool[] filled = new bool[sdtClass.numVirtFuncs];
 				int numFilled = 0;
 				for (TokenDeclSDTypeClass sdtc = sdtClass; sdtc != null; sdtc = sdtc.extends) {
-					foreach (TokenDeclFunc tdf in sdtc.methods.Values) {
+					foreach (TokenDeclVar tdf in sdtc.methods.Values) {
 						if ((tdf.vTableIndex >= 0) && ((tdf.sdtFlags & ScriptReduce.SDT_ABSTRACT) == 0)) {
 							if (!filled[tdf.vTableIndex]) {
 								filled[tdf.vTableIndex] = true;
@@ -669,10 +669,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 	 * to generate teh code.
 				 */
 				if (!sdtClass.isAbstract) {
-					List<TokenDeclFunc> newobjDeclFuncs = new List<TokenDeclFunc> ();
-					foreach (TokenDeclFunc ctorDeclFunc in sdtClass.methods.Values) {
+					List<TokenDeclVar> newobjDeclFuncs = new List<TokenDeclVar> ();
+					foreach (TokenDeclVar ctorDeclFunc in sdtClass.methods.Values) {
 						if (ctorDeclFunc.funcNameSig.val.StartsWith ("constructor(")) {
-							TokenDeclFunc newobjDeclFunc = new TokenDeclFunc (ctorDeclFunc, tokenScript);
+							TokenDeclVar newobjDeclFunc = new TokenDeclVar (ctorDeclFunc, null, tokenScript);
 							newobjDeclFunc.retType       = sdtClass.MakeRefToken (newobjDeclFunc);
 							newobjDeclFunc.argDecl       = ctorDeclFunc.argDecl;
 							string nameSig               = "new" + ctorDeclFunc.argDecl.GetArgSig ();
@@ -682,7 +682,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 							newobjDeclFuncs.Add (newobjDeclFunc);
 						}
 					}
-					foreach (TokenDeclFunc newobjDeclFunc in newobjDeclFuncs) {
+					foreach (TokenDeclVar newobjDeclFunc in newobjDeclFuncs) {
 						sdtClass.methods.Add (newobjDeclFunc.funcNameSig.val, newobjDeclFunc);
 					}
 				}
@@ -746,7 +746,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * during compilation of the functions/methods themselves.
 			 */
 			for (int pass = 0; pass < 2; pass ++) {
-				foreach (TokenDeclFunc declFunc in tokenScript.funcs.Values) {
+				foreach (TokenDeclVar declFunc in tokenScript.funcs.Values) {
 					if (pass == 0) GenerateMethodHeader (declFunc);
 					          else GenerateMethodBody   (declFunc);
 				}
@@ -754,8 +754,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					if (sdType is TokenDeclSDTypeClass) {
 						TokenDeclSDTypeClass sdtClass = (TokenDeclSDTypeClass)sdType;
 						if (pass > 0) PushSDTClassFieldsAndMethods (sdtClass);
-						foreach (KeyValuePair<string, TokenDeclFunc> kvpm in sdtClass.methods) {
-							TokenDeclFunc declFunc = kvpm.Value;
+						foreach (KeyValuePair<string, TokenDeclVar> kvpm in sdtClass.methods) {
+							TokenDeclVar declFunc = kvpm.Value;
 							if ((declFunc.sdtFlags & ScriptReduce.SDT_ABSTRACT) == 0) {
 								if (pass == 0) GenerateMethodHeader (declFunc);
 								          else GenerateMethodBody   (declFunc);
@@ -771,14 +771,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Each event handler is a private static method named __seh_default_<eventname>.
 			 * Splice in a default state_entry() handler if none defined so we can init global vars.
 			 */
-			TokenDeclFunc defaultStateEntry = null;
+			TokenDeclVar defaultStateEntry = null;
 			for (defaultStateEntry = tokenScript.defaultState.body.eventFuncs;
 			     defaultStateEntry != null;
-			     defaultStateEntry = (TokenDeclFunc)defaultStateEntry.nextToken) {
+			     defaultStateEntry = (TokenDeclVar)defaultStateEntry.nextToken) {
 				if (defaultStateEntry.funcNameSig.val == "state_entry()") break;
 			}
 			if (defaultStateEntry == null) {
-				defaultStateEntry               = new TokenDeclFunc (tokenScript.defaultState.body, tokenScript);
+				defaultStateEntry               = new TokenDeclVar (tokenScript.defaultState.body, null, tokenScript);
 				defaultStateEntry.retType       = new TokenTypeVoid (tokenScript.defaultState.body);
 				defaultStateEntry.funcNameSig   = new TokenName     (tokenScript.defaultState.body, "state_entry()");
 				defaultStateEntry.argDecl       = new TokenArgDecl  (tokenScript.defaultState.body);
@@ -853,7 +853,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Add the static methods.
 			 * Their location was entered in the globalVariables[] dictionary by GenerateMethodHeader().
 			 */
-			foreach (TokenDeclFunc tdf in sdtClass.methods.Values) {
+			foreach (TokenDeclVar tdf in sdtClass.methods.Values) {
 				if ((tdf.sdtFlags & ScriptReduce.SDT_STATIC) != 0) {
 					string fullName = sdtClass.name.val + "." + tdf.funcNameSig.val;
 					CompValu location = globalVariables[fullName];
@@ -889,11 +889,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void GenerateStateEventHandlers (string statename, TokenStateBody body)
 		{
 			for (Token t = body.eventFuncs; t != null; t = t.nextToken) {
-				GenerateEventHandler (statename, (TokenDeclFunc)t);
+				GenerateEventHandler (statename, (TokenDeclVar)t);
 			}
 		}
 
-		private void GenerateEventHandler (string statename, TokenDeclFunc declFunc)
+		private void GenerateEventHandler (string statename, TokenDeclVar declFunc)
 		{
 			string eventname = declFunc.GetSimpleName ();
 			TokenArgDecl argDecl = declFunc.argDecl;
@@ -909,7 +909,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ErrorMsg (declFunc, "unknown event handler " + eventname);
 				return;
 			}
-			TokenDeclFunc protoDeclFunc = legalEventHandlers[eventname];
+			TokenDeclVar protoDeclFunc = legalEventHandlers[eventname];
 			if (nargs > protoDeclFunc.argDecl.types.Length) {
 				ErrorMsg (declFunc, eventname + "(...) supposed to have " + protoDeclFunc.argDecl.types.Length + 
 				                    " arg(s), not " + nargs);
@@ -990,7 +990,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					/*
 					 * Account for any heap usage by this local variable from now on to end of function.
 					 */
-					TokenDeclVar argVar = new TokenDeclVar (argDecl.names[i], null);
+					TokenDeclVar argVar = new TokenDeclVar (argDecl.names[i], null, tokenScript);
 					argVar.type = argDecl.types[i];
 					argVar.name = argDecl.names[i];
 					argVar.location = local;
@@ -1013,7 +1013,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief generate header for an arbitrary script-defined global function.
 		 * @param declFunc = function being defined
 		 */
-		private void GenerateMethodHeader (TokenDeclFunc declFunc)
+		private void GenerateMethodHeader (TokenDeclVar declFunc)
 		{
 			curDeclFunc = declFunc;
 
@@ -1067,7 +1067,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @param argDecl = argument declarations
 		 * @param body = function's code body
 		 */
-		private void GenerateMethodBody (TokenDeclFunc declFunc)
+		private void GenerateMethodBody (TokenDeclVar declFunc)
 		{
 			/*
 			 * Now for some craziness...
@@ -1095,7 +1095,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			for (int i = 0; i < nargs; i ++) {
 				CompValu arg = new CompValuArg (argDecl.types[i], i + 1);
 				argDecl.locns[i] = arg;
-				TokenDeclVar argVar = new TokenDeclVar (argDecl.names[i], null);
+				TokenDeclVar argVar = new TokenDeclVar (argDecl.names[i], null, tokenScript);
 				argVar.type = argDecl.types[i];
 				argVar.name = argDecl.names[i];
 				argVar.location = arg;
@@ -1109,7 +1109,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			GenerateFuncBody ();
 		}
 
-		private void StartFunctionBody (TokenDeclFunc declFunc)
+		private void StartFunctionBody (TokenDeclVar declFunc)
 		{
 			/*
 			 * Start current function being processed.
@@ -1139,7 +1139,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 *        supposed to return the allocated and constructed XMRSDTypeClassInstance
 		 *        object pointer.
 		 */
-		private void GenerateNewobjBody (TokenDeclFunc newobjFunc)
+		private void GenerateNewobjBody (TokenDeclVar newobjFunc)
 		{
 			ScriptMyILGen ilGen = newobjFunc.ilGen;
 			ilGen.BegMethod ();
@@ -1163,7 +1163,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ilGen.Emit (OpCodes.Ldarg, i + 1);
 			}
 			string ctorNameSig = "constructor" + newobjFunc.argDecl.GetArgSig ();
-			TokenDeclFunc ctorFunc = newobjFunc.sdtClass.methods[ctorNameSig];
+			TokenDeclVar ctorFunc = newobjFunc.sdtClass.methods[ctorNameSig];
 			ilGen.Emit (OpCodes.Call, ctorFunc.ilGen);
 
 			/*
@@ -1275,7 +1275,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				if (curDeclFunc.baseCtorCall != null) {
 					GenerateFromRValCall (curDeclFunc.baseCtorCall);
 				}
-				TokenDeclFunc ifim;
+				TokenDeclVar ifim;
 				if (curDeclFunc.sdtClass.methods.TryGetValue (".instancefieldinit.()", out ifim)) {
 					new CallLabel (this);
 					ilGen.Emit (OpCodes.Ldarg_0);
@@ -2600,7 +2600,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				} else {
 					fieldName += argsig;
 					for (TokenDeclSDTypeClass sdtd = sdtDecl; sdtd != null; sdtd = sdtd.extends) {
-						TokenDeclFunc declFunc;
+						TokenDeclVar declFunc;
 						if (sdtd.methods.TryGetValue (fieldName, out declFunc)) {
 							if ((declFunc.sdtFlags & ScriptReduce.SDT_STATIC) != 0) {
 								ErrorMsg (lVal.field, "non-static reference to static method " + fieldName);
@@ -2625,7 +2625,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					return new CompValuVoid (lVal.field);
 				} else {
 					fieldName += argsig;
-					TokenDeclFunc declFunc;
+					TokenDeclVar declFunc;
 					if (sdtDecl.methods.TryGetValue (fieldName, out declFunc)) {
 						return new CompValuIntfMeth (declFunc, baseRVal);
 					}
@@ -2761,7 +2761,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				} else {
 					fieldName += argsig;
 					for (TokenDeclSDTypeClass sdtd = sdtDecl; sdtd != null; sdtd = sdtd.extends) {
-						TokenDeclFunc declFunc;
+						TokenDeclVar declFunc;
 						if (sdtd.methods.TryGetValue (fieldName, out declFunc)) {
 							if ((declFunc.sdtFlags & ScriptReduce.SDT_STATIC) == 0) {
 								ErrorMsg (lVal.fieldName, "static reference to non-static method " + fieldName);
@@ -3149,7 +3149,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			} else {
 				fieldName += argsig;
 				for (TokenDeclSDTypeClass sdtd = sdtDecl; sdtd != null; sdtd = sdtd.extends) {
-					TokenDeclFunc declFunc;
+					TokenDeclVar declFunc;
 					if (sdtd.methods.TryGetValue (fieldName, out declFunc)) {
 						if ((declFunc.sdtFlags & ScriptReduce.SDT_STATIC) != 0) {
 							ErrorMsg (baseField, "non-static reference to static method " + fieldName);
@@ -3689,9 +3689,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief create table of legal event handler prototypes.
 		 *        This is used to make sure script's event handler declrations are valid.
 		 */
-		private static Dictionary<string, TokenDeclFunc> CreateLegalEventHandlers ()
+		private static Dictionary<string, TokenDeclVar> CreateLegalEventHandlers ()
 		{
-			Dictionary<string, TokenDeclFunc> leh = new InternalFuncDict (typeof (IEventHandlers), false);
+			Dictionary<string, TokenDeclVar> leh = new InternalFuncDict (typeof (IEventHandlers), false);
 			return leh;
 		}
 
@@ -3770,7 +3770,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			if ((var.type is TokenTypeList) ||
 			    (var.type is TokenTypeStr)) {
-				TokenDeclVar htVar = new TokenDeclVar (var, null);
+				TokenDeclVar htVar = new TokenDeclVar (var, null, tokenScript);
 				htVar.type         = new TokenTypeInt (var);
 				htVar.name         = new TokenName (var, "__htl_" + var.name.val);
 				htVar.location     = new CompValuTemp (htVar.type, htVar.name.val, this);

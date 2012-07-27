@@ -1291,16 +1291,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             declVar.vTableIndex = sdtClass.numInstLists ++;
         }
     }
-    public class TokenTypeMeth : TokenType {
-        public TokenDeclFunc[] funcs;
-        public TokenTypeMeth (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
-        public TokenTypeMeth (Token original) : base (original)
-        {
-            ///??? this.typ = build a type from retType + argTypes ???///
-        }
-        public override Type ToSysType () { return null; }
-        public override string ToString () { return "method"; }
-    }
     public class TokenTypeObject : TokenType {
         private static readonly FieldInfo gblObjectsFieldInfo  = typeof (XMRInstAbstract).GetField ("gblObjects");
         private static readonly FieldInfo sdtcObjectsFieldInfo = typeof (XMRSDTypeClassInstance).GetField ("sdtcObjects");

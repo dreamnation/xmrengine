@@ -10,7 +10,7 @@ using System.Reflection;
 
 namespace OpenSim.Region.ScriptEngine.XMREngine {
 
-	public class InternalFuncDict : Dictionary<string, TokenDeclFunc> {
+	public class InternalFuncDict : Dictionary<string, TokenDeclVar> {
 
 		/**
 		 * @brief build dictionary of internal functions from an interface.
@@ -37,7 +37,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				try {
 
 					/*
-					 * Create a corresponding TokenDeclFunc struct.
+					 * Create a corresponding TokenDeclVar struct.
 					 */
 					System.Reflection.ParameterInfo[] parameters = ifaceMethod.GetParameters ();
 					TokenArgDecl argDecl = new TokenArgDecl (null);
@@ -52,13 +52,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						key += argDecl.types[i].ToString ();
 					}
 					key += ")";
-					TokenDeclFunc declFunc = new TokenDeclFunc (null, null);
-					declFunc.retType       = TokenType.FromSysType (null, ifaceMethod.ReturnType);
-					declFunc.argDecl       = argDecl;
-					declFunc.funcNameSig   = new TokenName (null, key);
+					TokenDeclVar declFunc = new TokenDeclVar (null, null, null);
+					declFunc.retType      = TokenType.FromSysType (null, ifaceMethod.ReturnType);
+					declFunc.argDecl      = argDecl;
+					declFunc.funcNameSig  = new TokenName (null, key);
 
 					/*
-					 * Add the TokenDeclFunc struct to the dictionary.
+					 * Add the TokenDeclVar struct to the dictionary.
 					 * Key = name(arg1type,arg2type,...)
 					 * ... where the types are the LSL-style types such as 'key', 'rotation', etc.
 					 */

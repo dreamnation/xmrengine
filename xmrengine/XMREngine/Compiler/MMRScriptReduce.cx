@@ -118,7 +118,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 * Instance variables.
 		 */
 		private bool errors = false;
-		private TokenDeclFunc currentDeclFunc = null;
+		private TokenDeclVar currentDeclFunc = null;
 		private TokenScript tokenScript;
 		private TokenStmtBlock currentStmtBlock = null;
 
@@ -289,7 +289,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						continue;
 					}
 					token = tokenType;
-					TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, false, false);
+					TokenDeclVar tokenDeclFunc = ParseDeclFunc (ref token, false, false);
 					if (tokenDeclFunc == null) continue;
 					if (tokenScript.funcs.ContainsKey (tokenName.val)) {
 						ErrorMsg (tokenName, "duplicate function name");
@@ -313,7 +313,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						continue;
 					}
 					token = tokenName;
-					TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, false, false);
+					TokenDeclVar tokenDeclFunc = ParseDeclFunc (ref token, false, false);
 					if (tokenDeclFunc == null) continue;
 					if (tokenScript.funcs.ContainsKey (tokenName.val)) {
 						ErrorMsg (tokenName, "duplicate function name");
@@ -507,8 +507,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						ErrorMsg (token, "constructors can't be abstract/override/static/virtual");
 					}
 
-					TokenDeclFunc tokenDeclFunc = new TokenDeclFunc (token, tokenScript);
-					tokenDeclFunc.retType       = new TokenTypeVoid (token);
+					TokenDeclVar tokenDeclFunc = new TokenDeclVar (token, null, tokenScript);
+					tokenDeclFunc.retType      = new TokenTypeVoid (token);
 
 					token = token.nextToken;
 					if (!(token is TokenKwParOpen)) {
@@ -525,7 +525,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					tokenDeclFunc.sdtClass      = tokdeclcl;
 					tokenDeclFunc.sdtFlags      = flags;
 
-					TokenDeclFunc saveDeclFunc = currentDeclFunc;
+					TokenDeclVar saveDeclFunc = currentDeclFunc;
 					currentDeclFunc = tokenDeclFunc;
 					try {
 						/*
@@ -622,7 +622,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * If script didn't specify any constructor, create a default no-argument one.
 			 */
 			if (!haveExplicitConstructor) {
-				TokenDeclFunc tokenDeclFunc = new TokenDeclFunc (token, tokenScript);
+				TokenDeclVar tokenDeclFunc  = new TokenDeclVar (token, null, tokenScript);
 				tokenDeclFunc.retType       = new TokenTypeVoid (token);
 				tokenDeclFunc.argDecl       = new TokenArgDecl (token);
 				tokenDeclFunc.argDecl.types = new TokenType[0];
@@ -663,9 +663,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		private void ParseSDTClassMethodDecl (ref Token token, uint flags, TokenDeclSDTypeClass tokdeclcl)
 		{
-			TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, 
-			                                             (flags & SDT_ABSTRACT) != 0, 
-			                                             (flags & SDT_STATIC) == 0);
+			TokenDeclVar tokenDeclFunc = ParseDeclFunc (ref token, 
+			                                            (flags & SDT_ABSTRACT) != 0, 
+			                                            (flags & SDT_STATIC) == 0);
 			if (tokenDeclFunc != null) {
 				tokenDeclFunc.sdtClass = tokdeclcl;
 				tokenDeclFunc.sdtFlags = flags;
@@ -814,7 +814,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					}
 
 					token = tokenType;
-					TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, true, false);
+					TokenDeclVar tokenDeclFunc = ParseDeclFunc (ref token, true, false);
 					if (tokenDeclFunc == null) continue;
 					if (tokdeclin.methods.ContainsKey (tokenDeclFunc.funcNameSig.val)) {
 						ErrorMsg (tokenName, "duplicate method name");
@@ -837,7 +837,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						continue;
 					}
 					token = tokenName;
-					TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, true, false);
+					TokenDeclVar tokenDeclFunc = ParseDeclFunc (ref token, true, false);
 					if (tokenDeclFunc == null) continue;
 					if (tokdeclin.methods.ContainsKey (tokenDeclFunc.funcNameSig.val)) {
 						ErrorMsg (tokenName, "duplicate method name");
@@ -883,7 +883,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					ErrorMsg (tokenStateBody, "eof parsing state body");
 					return null;
 				}
-				TokenDeclFunc tokenDeclFunc = ParseDeclFunc (ref token, false, false);
+				TokenDeclVar tokenDeclFunc = ParseDeclFunc (ref token, false, false);
 				if (tokenDeclFunc == null) return null;
 				if (!(tokenDeclFunc.retType is TokenTypeVoid)) {
 					ErrorMsg (tokenDeclFunc.retType, "event handlers don't have return types");
@@ -905,7 +905,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 *          else: function declaration
 		 *          token = advanced just past function, ie, just past the closing brace
 		 */
-		private TokenDeclFunc ParseDeclFunc (ref Token token, bool abs, bool imp)
+		private TokenDeclVar ParseDeclFunc (ref Token token, bool abs, bool imp)
 		{
 			TokenType retType;
 			if (token is TokenType) {
@@ -937,14 +937,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 *          else: function declaration
 		 *          token = advanced just past function, ie, just past the closing brace
 		 */
-		private TokenDeclFunc ParseDeclFunc (ref Token token, bool abs, bool imp, TokenType retType, TokenName simpleName)
+		private TokenDeclVar ParseDeclFunc (ref Token token, bool abs, bool imp, TokenType retType, TokenName simpleName)
 		{
-			TokenDeclFunc tokenDeclFunc = new TokenDeclFunc (simpleName, tokenScript);
-			tokenDeclFunc.retType       = retType;
-			tokenDeclFunc.argDecl       = ParseFuncArgs (ref token);
+			TokenDeclVar tokenDeclFunc = new TokenDeclVar (simpleName, null, tokenScript);
+			tokenDeclFunc.retType      = retType;
+			tokenDeclFunc.argDecl      = ParseFuncArgs (ref token);
 			if (tokenDeclFunc.argDecl == null) return null;
-			tokenDeclFunc.funcNameSig   = new TokenName (simpleName, 
-			                                             simpleName.val + tokenDeclFunc.argDecl.GetArgSig ());
+			tokenDeclFunc.funcNameSig  = new TokenName (simpleName, 
+			                                            simpleName.val + tokenDeclFunc.argDecl.GetArgSig ());
 
 			if (token is TokenKwColon) {
 				do {
@@ -978,7 +978,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				}
 				token = token.nextToken;
 			} else {
-				TokenDeclFunc saveDeclFunc = currentDeclFunc;
+				TokenDeclVar saveDeclFunc = currentDeclFunc;
 				currentDeclFunc = tokenDeclFunc;
 				tokenDeclFunc.body = ParseStmtBlock (ref token);
 				currentDeclFunc = saveDeclFunc;
@@ -1532,7 +1532,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		private TokenDeclVar ParseDeclVar (ref Token token, Dictionary<string, TokenDeclVar> variables)
 		{
-			TokenDeclVar tokenDeclVar = new TokenDeclVar (token.nextToken, currentDeclFunc);
+			TokenDeclVar tokenDeclVar = new TokenDeclVar (token.nextToken, currentDeclFunc, tokenScript);
 
 			/*
 			 * Handle constant declaration.
@@ -2395,14 +2395,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenDeclSDTypeClass extends;
 		public bool isAbstract;
 		public List<TokenDeclSDTypeInterface> implements = new List<TokenDeclSDTypeInterface> ();
-		public Dictionary<string, TokenDeclVar>  fields  = new Dictionary<string, TokenDeclVar>  ();
-		public Dictionary<string, TokenDeclFunc> methods = new Dictionary<string, TokenDeclFunc> ();
+		public Dictionary<string, TokenDeclVar>   fields = new Dictionary<string, TokenDeclVar> ();
+		public Dictionary<string, TokenDeclVar>  methods = new Dictionary<string, TokenDeclVar> ();
 
 		public Dictionary<string, int> intfIndices = new Dictionary<string, int> ();
-		public TokenDeclFunc[][] iImplFunc;  // iImplFunc[i][j]:
-		                                     //   low-end [i] entries copied from rootward classes
-		                                     //   i = interface number from this.intfIndices[name]
-		                                     //   j = method of interface from iface.methods[name].vTableIndex
+		public TokenDeclVar[][] iImplFunc;  // iImplFunc[i][j]:
+		                                    //   low-end [i] entries copied from rootward classes
+		                                    //   i = interface number from this.intfIndices[name]
+		                                    //   j = method of interface from iface.methods[name].vTableIndex
 		public TokenDeclSDTypeInterface[] iFaces;  // array of implemented interfaces
 		                                           //   low-end entries copied from rootward classes
 
@@ -2473,8 +2473,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				objFileWriter.Write (extends.name.val);
 			}
 
-			foreach (KeyValuePair<string, TokenDeclFunc> kvp in methods) {
-				TokenDeclFunc meth = kvp.Value;
+			foreach (TokenDeclVar meth in methods.Values) {
 				if (meth.vTableIndex >= 0) {
 					objFileWriter.Write (meth.vTableIndex);
 					objFileWriter.Write (meth.GetObjCodeName ());
@@ -2487,12 +2486,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			objFileWriter.Write (numIFaces);
 			for (int i = 0; i < numIFaces; i ++) {
 				objFileWriter.Write (iFaces[i].name.val);
-				TokenDeclFunc[] meths = iImplFunc[i];
+				TokenDeclVar[] meths = iImplFunc[i];
 				int numMeths = 0;
 				if (meths != null) numMeths = meths.Length;
 				objFileWriter.Write (numMeths);
 				for (int j = 0; j < numMeths; j ++) {
-					TokenDeclFunc meth = meths[j];
+					TokenDeclVar meth = meths[j];
 					objFileWriter.Write (meth.GetObjCodeName ());
 					objFileWriter.Write (meth.GetDelType ().decl.GetWholeSig ());
 				}
@@ -2889,7 +2888,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 	public class TokenDeclSDTypeInterface : TokenDeclSDType {
 		public TokenName name;
-		public Dictionary<string, TokenDeclFunc> methods = new Dictionary<string, TokenDeclFunc> ();
+		public Dictionary<string, TokenDeclVar> methods = new Dictionary<string, TokenDeclVar> ();
 
 		public TokenDeclSDTypeInterface (TokenName name) : base (name)
 		{
@@ -3123,133 +3122,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	}
 
 	/**
-	 * @brief encapsulates a function definition
-	 */
-	public class TokenDeclFunc : Token {
-
-		public TokenType retType;              // new TokenTypeVoid (token) if void; NEVER null
-		public TokenName funcNameSig;          // function name including argumet signature, eg, "PrintStuff(list,string)"
-		public TokenArgDecl argDecl;           // argument list prototypes
-		public TokenStmtBlock body;            // statements (null iff abstract)
-		public TokenScript tokenScript;        // what script this function is part of
-		public TokenDeclSDTypeClass sdtClass;  // null: script global function
-		                                       // else: method is part of this script-defined type
-		public uint sdtFlags;                  // abstract/override/static/virtual
-		public Dictionary<string, TokenStmtLabel> labels = new Dictionary<string, TokenStmtLabel> ();
-		                                       // all labels defined in the function
-		public LinkedList<TokenDeclVar> localVars = new LinkedList<TokenDeclVar> ();
-		                                       // all local variables declared by this function
-		                                       // - doesn't include argument variables
-		public TokenIntfImpl implements;       // if script-defined type method, what interface method(s) this func implements
-		public TokenRValCall baseCtorCall;     // if script-defined type constructor, call to base constructor, if any
-
-		public int vTableIndex = -1;           // if script-defined type method, vtable index
-		                                       //  <0: non-virtual; >=0: virtual
-		public ScriptMyILGen ilGen;            // codegen stores emitted code here
-
-		public TokenDeclFunc (Token original, TokenScript ts) : base (original)
-		{
-			tokenScript = ts;
-		}
-
-		/**
-		 * @brief The bare function name, ie, without any signature info
-		 */
-		public string GetSimpleName ()
-		{
-			string nameWithSig = funcNameSig.val;
-			string simpleName  = nameWithSig.Substring (0, nameWithSig.IndexOf ('('));
-			return simpleName;
-		}
-
-		/**
-		 * @brief The function name as it appears in the object code,
-		 *        ie, including "__fun_", script-defined type name if any,
-		 *        bare function name and argument signature, 
-		 *        eg, "__fun_MyClass.PrintStuff(string)"
-		 */
-		public string GetObjCodeName ()
-		{
-                        string objCodeName  = "__fun_";
-                        if (sdtClass != null) {
-                                objCodeName += sdtClass.name.val + ".";
-                        }
-                        objCodeName += funcNameSig.val;
-			return objCodeName;
-		}
-
-		/**
-		 * @brief Get delegate type.
-		 *        This is the function's script-visible type,
-		 *        It includes return type and all script-visible argument types.
-		 */
-		private TokenTypeSDTypeDelegate delType;
-		public TokenTypeSDTypeDelegate GetDelType ()
-		{
-			if (delType == null) {
-				delType = new TokenTypeSDTypeDelegate (this, retType, argDecl.types, tokenScript);
-			}
-			return delType;
-		}
-
-		public override void WriteOut (TokenWriter writer)
-		{
-			writer.Write (retType);
-			writer.Write (funcNameSig);
-			writer.Write (argDecl);
-			writer.Write (body);
-
-			////???? the below probably should be rederived when reconstructed
-			writer.Write (labels.Count);
-			foreach (KeyValuePair<string, TokenStmtLabel> kvp in labels) {
-				writer.Write (kvp.Value);
-			}
-			writer.Write (localVars.Count);
-			foreach (TokenDeclVar val in localVars) {
-				writer.Write (val);
-			}
-		}
-
-		public override void ReadIn (TokenReader reader)
-		{
-			retType     = (TokenType)     reader.ReadToken ();
-			funcNameSig = (TokenName)     reader.ReadToken ();
-			argDecl     = (TokenArgDecl)  reader.ReadToken ();
-			body        = (TokenStmtBlock)reader.ReadToken ();
-
-			////???? the below probably should be rederived when reconstructed
-
-			int nLabels = reader.ReadInt ();
-			while (-- nLabels >= 0) {
-				TokenStmtLabel label = (TokenStmtLabel)reader.ReadToken ();
-				labels[label.name.val] = label;
-			}
-			int nLocals = reader.ReadInt ();
-			while (-- nLocals >= 0) {
-				TokenDeclVar local = (TokenDeclVar)reader.ReadToken ();
-				localVars.AddLast (local);
-			}
-		}
-
-#ifdef SECRET_STUFF
-		public override void Reconst (SrcWriter writeSrc)
-		{
-			if (!(retType is TokenTypeVoid)) {
-				writeSrc (retType.ToString () + " ");
-			}
-			writeSrc (GetSimpleName () + " (");
-			for (int i = 0; i < argDecl.types.Length; i ++) {
-				if (i > 0) writeSrc (", ");
-				writeSrc (argDecl.types[i].ToString () + " " + argDecl.names[i].val);
-			}
-			writeSrc (")\n");
-			body.Reconst (writeSrc);
-			writeSrc ("\n");
-		}
-#endif
-	}
-
-	/**
 	 * @brief encapsulate a state declaration in a single token
 	 */
 	public class TokenDeclState : Token {
@@ -3286,31 +3158,130 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	}
 
 	public class TokenDeclVar : Token {
+		public TokenName name;                 // vars: name; funcs: bare name, ie, no signature
+		public TokenRVal init;                 // vars: null if none; funcs: null
+		public bool constant;                  // vars: 'constant'; funcs: undefined
+		public uint sdtFlags;                  // SDT_<*> flags
 
-		public TokenType type;
-		public TokenName name;
-		public TokenRVal init;  // null if none
-		public bool constant;
-		public uint sdtFlags;
-
-		public CompValu location;  // used by codegen to keep track of location
+		public CompValu location;              // used by codegen to keep track of location
 		public FieldInfo vTableArray;
-		public int vTableIndex;
+		public int vTableIndex = -1;           // local vars: not used (-1)
+		                                       // global vars: which slot in gbl<Type>s[] array it is stored
+		                                       // instance vars: which slot in inst<Types>s[] array it is stored
+		                                       // static vars: which slot in gbl<Type>s[] array it is stored
+		                                       // global funcs: not used (-1)
+		                                       // virt funcs: which slot in vTable[] array it is stored
+		                                       // instance func: not used (-1)
 
-		public TokenDeclVar heapTracker;
+		public TokenDeclVar heapTracker;       // shadow variable that keeps track of this var's heap usage
+		                                       // ... or null if not necessary
+
+		public TokenScript tokenScript;        // what script this function is part of
+		public TokenDeclSDTypeClass sdtClass;  // null: script global function
+		                                       // else: method is part of this script-defined type
+
+		// function-only data:
+
+		public TokenType retType;              // vars: null; funcs: TokenTypeVoid if void
+		public TokenArgDecl argDecl;           // vars: null; funcs: argument list prototypes
+		public TokenStmtBlock body;            // vars: null; funcs: statements (null iff abstract)
+		public Dictionary<string, TokenStmtLabel> labels = new Dictionary<string, TokenStmtLabel> ();
+		                                       // all labels defined in the function
+		public LinkedList<TokenDeclVar> localVars = new LinkedList<TokenDeclVar> ();
+		                                       // all local variables declared by this function
+		                                       // - doesn't include argument variables
+		public TokenIntfImpl implements;       // if script-defined type method, what interface method(s) this func implements
+		public TokenRValCall baseCtorCall;     // if script-defined type constructor, call to base constructor, if any
+
+		public ScriptMyILGen ilGen;            // codegen stores emitted code here
 
 		/**
-		 * @brief Set up a variable declaration statement token.
+		 * @brief Set up a variable declaration token.
 		 * @param original = original source token that triggered definition
 		 *                   (for error messages)
 		 * @param func = null: global variable
 		 *               else: local to the given function
 		 */
-		public TokenDeclVar (Token original, TokenDeclFunc func) : base (original)
+		public TokenDeclVar (Token original, TokenDeclVar func, TokenScript ts) : base (original)
 		{
 			if (func != null) {
 				func.localVars.AddLast (this);
 			}
+			tokenScript = ts;
+		}
+
+		/**
+		 * @brief Get/Set overall type
+		 *        For vars, this is the type of the location
+		 *        For funcs, this is the delegate type
+		 */
+		private TokenType _type;
+		public TokenType type {
+			get {
+				if (_type == null) {
+					GetDelType ();
+				}
+				return _type;
+			}
+			set {
+				_type = value;
+			}
+		}
+
+		/***************************\
+		 *  FUNCTION-only methods  *
+		\***************************/
+
+		private TokenName _funcNameSig;  // vars: null; funcs: function name including argumet signature, eg, "PrintStuff(list,string)"
+		public TokenName funcNameSig {
+			get {
+				return _funcNameSig;
+			}
+			set {
+				_funcNameSig = value;
+				int i = value.val.IndexOf ('(');
+				name = new TokenName (value, value.val.Substring (0, i));
+			}
+		}
+
+		/**
+		 * @brief The bare function name, ie, without any signature info
+		 */
+		public string GetSimpleName ()
+		{
+			return name.val;
+		}
+
+		/**
+		 * @brief The function name as it appears in the object code,
+		 *        ie, including "__fun_", script-defined type name if any,
+		 *        bare function name and argument signature, 
+		 *        eg, "__fun_MyClass.PrintStuff(string)"
+		 */
+		public string GetObjCodeName ()
+		{
+                        string objCodeName  = "__fun_";
+                        if (sdtClass != null) {
+                                objCodeName += sdtClass.name.val + ".";
+                        }
+                        objCodeName += funcNameSig.val;
+			return objCodeName;
+		}
+
+		/**
+		 * @brief Get delegate type.
+		 *        This is the function's script-visible type,
+		 *        It includes return type and all script-visible argument types.
+		 * @returns null for vars; else delegate type for funcs
+		 */
+		public TokenTypeSDTypeDelegate GetDelType ()
+		{
+			if (argDecl == null) return null;
+			if (_type == null) {
+				_type = new TokenTypeSDTypeDelegate (this, retType, argDecl.types, tokenScript);
+			}
+			if (!(_type is TokenTypeSDTypeDelegate)) return null;
+			return (TokenTypeSDTypeDelegate)_type;
 		}
 
 		/**
@@ -3323,6 +3294,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			writer.Write (type);
 			writer.Write (name);
 			writer.Write (init);
+
+			writer.Write (retType);
+			writer.Write (funcNameSig);
+			writer.Write (argDecl);
+			writer.Write (body);
+
+			////???? the below probably should be rederived when reconstructed
+			writer.Write (labels.Count);
+			foreach (KeyValuePair<string, TokenStmtLabel> kvp in labels) {
+				writer.Write (kvp.Value);
+			}
+			writer.Write (localVars.Count);
+			foreach (TokenDeclVar val in localVars) {
+				writer.Write (val);
+			}
 		}
 
 		public override void ReadIn (TokenReader reader)
@@ -3330,17 +3316,49 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			type = (TokenType)reader.ReadToken ();
 			name = (TokenName)reader.ReadToken ();
 			init = (TokenRVal)reader.ReadToken ();
+
+			retType     = (TokenType)     reader.ReadToken ();
+			funcNameSig = (TokenName)     reader.ReadToken ();
+			argDecl     = (TokenArgDecl)  reader.ReadToken ();
+			body        = (TokenStmtBlock)reader.ReadToken ();
+
+			////???? the below probably should be rederived when reconstructed
+
+			int nLabels = reader.ReadInt ();
+			while (-- nLabels >= 0) {
+				TokenStmtLabel label = (TokenStmtLabel)reader.ReadToken ();
+				labels[label.name.val] = label;
+			}
+			int nLocals = reader.ReadInt ();
+			while (-- nLocals >= 0) {
+				TokenDeclVar local = (TokenDeclVar)reader.ReadToken ();
+				localVars.AddLast (local);
+			}
 		}
 
 #ifdef SECRET_STUFF
 		public override void Reconst (SrcWriter writeSrc)
 		{
-			writeSrc (type.ToString () + " " + name.val);
-			if (init != null) {
-				writeSrc (" = ");
-				init.Reconst (writeSrc);
+			if (argDecl == null) {
+				writeSrc (type.ToString () + " " + name.val);
+				if (init != null) {
+					writeSrc (" = ");
+					init.Reconst (writeSrc);
+				}
+				writeSrc (";");
+			} else {
+				if (!(retType is TokenTypeVoid)) {
+					writeSrc (retType.ToString () + " ");
+				}
+				writeSrc (GetSimpleName () + " (");
+				for (int i = 0; i < argDecl.types.Length; i ++) {
+					if (i > 0) writeSrc (", ");
+					writeSrc (argDecl.types[i].ToString () + " " + argDecl.names[i].val);
+				}
+				writeSrc (")\n");
+				body.Reconst (writeSrc);
+				writeSrc ("\n");
 			}
-			writeSrc (";");
 		}
 #endif
 	}
@@ -4176,8 +4194,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	 * @brief encapsulates the whole script in a single token
 	 */
 	public class TokenScript : Token {
-		public Dictionary<string, TokenDeclVar>    vars       = new Dictionary<string, TokenDeclVar>    ();
-		public Dictionary<string, TokenDeclFunc>   funcs      = new Dictionary<string, TokenDeclFunc>   ();
+		public Dictionary<string, TokenDeclVar>    vars = new Dictionary<string, TokenDeclVar> ();
+		public Dictionary<string, TokenDeclVar>   funcs = new Dictionary<string, TokenDeclVar> ();
 		public TokenDeclState defaultState;
 		public Dictionary<string, TokenDeclState>  states     = new Dictionary<string, TokenDeclState>  ();
 		public Dictionary<string, TokenDeclSDType> sdSrcTypes = new Dictionary<string, TokenDeclSDType> ();
@@ -4187,16 +4205,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public override void WriteOut (TokenWriter writer)
 		{
 			int numVars = 0;
-			foreach (KeyValuePair<string, TokenDeclVar> kvp in vars) {
-				if (!kvp.Value.constant) numVars ++;
+			foreach (TokenDeclVar var in vars.Values) {
+				if (!var.constant) numVars ++;
 			}
 			writer.Write (numVars);
-			foreach (KeyValuePair<string, TokenDeclVar> kvp in vars) {
-				if (!kvp.Value.constant) writer.Write (kvp.Value);
+			foreach (TokenDeclVar var in vars.Values) {
+				if (!var.constant) writer.Write (var);
 			}
 			writer.Write (funcs.Count);
-			foreach (KeyValuePair<string, TokenDeclFunc> kvp in funcs) {
-				writer.Write (kvp.Value);
+			foreach (TokenDeclVar func in funcs.Values) {
+				writer.Write (func);
 			}
 			writer.Write (defaultState);
 			writer.Write (states.Count);
@@ -4214,7 +4232,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			}
 			int nFuncs = reader.ReadInt ();
 			while (-- nFuncs >= 0) {
-				TokenDeclFunc func = (TokenDeclFunc)reader.ReadToken ();
+				TokenDeclVar func = (TokenDeclVar)reader.ReadToken ();
 				funcs[func.funcNameSig.val] = func;
 			}
 			defaultState = (TokenDeclState)reader.ReadToken ();
@@ -4239,8 +4257,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			/*
 			 * Functions.
 			 */
-			foreach (KeyValuePair<string, TokenDeclFunc> kvp in funcs) {
-				TokenDeclFunc declFunc = kvp.Value;
+			foreach (KeyValuePair<string, TokenDeclVar> kvp in funcs) {
+				TokenDeclVar declFunc = kvp.Value;
 				declFunc.Reconst (writeSrc);
 			}
 
@@ -4261,7 +4279,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	 */
 	public class TokenStateBody : Token {
 
-		public TokenDeclFunc eventFuncs;
+		public TokenDeclVar eventFuncs;
 
 		public int index = -1;  // (codegen) row in ScriptHandlerEventTable (0=default)
 
@@ -4278,10 +4296,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public override void ReadIn (TokenReader reader)
 		{
-			TokenDeclFunc lastT, thisT;
+			TokenDeclVar lastT, thisT;
 
 			lastT = null;
-			while ((thisT = (TokenDeclFunc)reader.ReadToken ()) != null) {
+			while ((thisT = (TokenDeclVar)reader.ReadToken ()) != null) {
 				if (lastT == null) {
 					eventFuncs = thisT;
 				} else {
@@ -4319,7 +4337,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public Token statements;               // null-terminated list of statements, can also have TokenDeclVar's in here
 		public TokenStmtBlock outerStmtBlock;  // next outer stmtBlock or null if top-level, ie, function definition
-		public TokenDeclFunc function;         // function it is part of
+		public TokenDeclVar function;          // function it is part of
 		public Dictionary<string, TokenDeclVar> variables = new Dictionary<string, TokenDeclVar> ();  // variables declared herein
 		public bool isTry;                     // true iff it's a try statement block
 		public bool isCatch;                   // true iff it's a catch statement block
@@ -4356,7 +4374,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				lastT = thisT;
 			}
 			outerStmtBlock = (TokenStmtBlock)reader.ReadToken ();
-			function = (TokenDeclFunc)reader.ReadToken ();
+			function = (TokenDeclVar)reader.ReadToken ();
 			int nVars = reader.ReadInt ();
 			while (-- nVars >= 0) {
 				TokenDeclVar var = (TokenDeclVar)reader.ReadToken ();

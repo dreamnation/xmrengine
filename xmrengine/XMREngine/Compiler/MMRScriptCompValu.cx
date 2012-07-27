@@ -362,9 +362,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	// There is just one of these created when the function is being compiled as there is only one value
 	// of the function.
 	public class CompValuGlobalMeth : CompValu {
-		private TokenDeclFunc func;
+		private TokenDeclVar func;
 
-		public CompValuGlobalMeth (TokenDeclFunc declFunc) : base (declFunc.GetDelType ())
+		public CompValuGlobalMeth (TokenDeclVar declFunc) : base (declFunc.GetDelType ())
 		{
 			this.func = declFunc;
 		}
@@ -419,13 +419,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	// The value is the entrypoint of a script-defined type's instance method combined with
 	// the pointer used to access the method.  Thus there is one of these per call site.
 	public class CompValuInstMeth : CompValu {
-		private TokenDeclFunc func;
+		private TokenDeclVar func;
 		private CompValu baseRVal;
 		private bool ignVirt;
 
 		private static FieldInfo vTableFieldInfo = typeof (XMRSDTypeClassInstance).GetField ("sdtcVTable");
 
-		public CompValuInstMeth (TokenDeclFunc declFunc, CompValu baseRVal, bool ignVirt) : base (declFunc.GetDelType ())
+		public CompValuInstMeth (TokenDeclVar declFunc, CompValu baseRVal, bool ignVirt) : base (declFunc.GetDelType ())
 		{
 			this.func     = declFunc;
 			this.baseRVal = baseRVal;
@@ -506,10 +506,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	// The value is the entrypoint of a script-defined type's interface method combined with
 	// the pointer used to access the method.  Thus there is one of these per call site.
 	public class CompValuIntfMeth : CompValu {
-		private TokenDeclFunc func;
+		private TokenDeclVar func;
 		private CompValu baseRVal;
 
-		public CompValuIntfMeth (TokenDeclFunc declFunc, CompValu baseRVal) : base (declFunc.GetDelType ())
+		public CompValuIntfMeth (TokenDeclVar declFunc, CompValu baseRVal) : base (declFunc.GetDelType ())
 		{
 			this.func     = declFunc;  // which element of the baseRVal vector to be accessed
 			this.baseRVal = baseRVal;  // the vector of delegates implementing the interface
