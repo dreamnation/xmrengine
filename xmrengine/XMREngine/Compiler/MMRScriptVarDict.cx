@@ -1,0 +1,144 @@
+/***************************************************\
+ *  COPYRIGHT 2012, Mike Rieker, Beverly, MA, USA  *
+ *  All rights reserved.                           *
+\***************************************************/
+
+using System;
+using System.Collections;
+using System.Collections.Generic;
+
+/**
+ * @brief Collection of variable/function/method definitions
+ */
+
+namespace OpenSim.Region.ScriptEngine.XMREngine
+{
+	public class VarDict : IEnumerable {
+
+		private struct ArgTypes {
+			public TokenType[] argTypes;
+
+			public bool CanBeCalledBy (TokenType[] calledBy)
+			{
+				if ((argTypes == null) && (calledBy == null)) return true;
+				if ((argTypes == null) || (calledBy == null)) return false;
+				if (argTypes.Length != calledBy.Length) return false;
+				for (int i = argTypes.Length; -- i >= 0;) {
+					if (!argTypes[i].IsAssignableFrom (calledBy[i])) return false;
+				}
+				return true;
+			}
+
+			public override bool Equals (Object that)
+			{
+				if (that == null) return false;
+				if (that.GetType () != typeof (ArgTypes)) return false;
+				TokenType[] at = this.argTypes;
+				TokenType[] bt = ((ArgTypes)that).argTypes;
+				if ((at == null) && (bt == null)) return true;
+				if ((at == null) || (bt == null)) return false;
+				if (at.Length != bt.Length) return false;
+				for (int i = at.Length; -- i >= 0;) {
+					if (at[i].ToString () != bt[i].ToString ()) return false;
+				}
+				return true;
+			}
+
+			public override int GetHashCode ()
+			{
+				TokenType[] at = this.argTypes;
+				if (at == null) return -1;
+				int hc = 0;
+				for (int i = at.Length; -- i >= 0;) {
+					int c = (hc < 0) ? 1 : 0;
+					hc  = hc * 2 + c;
+					hc *= at[i].ToString ().GetHashCode ();
+				}
+				return hc;
+			}
+		}
+
+		private Dictionary<string, Dictionary<ArgTypes, TokenDeclVar>> master = new Dictionary<string, Dictionary<ArgTypes, TokenDeclVar>> ();
+
+		public bool AddEntry (TokenDeclVar var)
+		{
+			Dictionary<ArgTypes, TokenDeclVar> typedic;
+			if (!master.TryGetValue (var.name.val, out typedic)) {
+				typedic = new Dictionary<ArgTypes, TokenDeclVar> ();
+				master.Add (var.name.val, typedic);
+			}
+
+			ArgTypes types;
+			types.argTypes = var.argDecl.types;
+			if (typedic.ContainsKey (types)) return false;
+			typedic.Add (types, var);
+			return true;
+		}
+
+		public TokenDeclVar CanBeCalledBy (string name, TokenType[] argTypes)
+		{
+			Dictionary<ArgTypes, TokenDeclVar> typedic;
+			if (!master.TryGetValue (name, out typedic)) return null;
+			foreach (KeyValuePair<ArgTypes, TokenDeclVar> kvp in typedic) {
+				if (kvp.Key.CanBeCalledBy (argTypes)) return kvp.Value;
+			}
+			return null;
+		}
+
+		public TokenDeclVar LookupExact (string name, TokenType[] argTypes)
+		{
+			Dictionary<ArgTypes, TokenDeclVar> typedic;
+			if (!master.TryGetValue (name, out typedic)) return null;
+			ArgTypes types;
+			types.argTypes = argTypes;
+			TokenDeclVar var;
+			if (!typedic.TryGetValue (types, out var)) return null;
+			return var;
+		}
+
+		// foreach goes through all the TokenDeclVars that were added
+
+		// IEnumerable
+		public IEnumerator GetEnumerator ()
+		{
+			return new VarDictEnumerator (this.master);
+		}
+
+		private class VarDictEnumerator : IEnumerator {
+			private Dictionary<string, Dictionary<ArgTypes, TokenDeclVar>> master;
+
+			private IEnumerator masterEnum;
+			private IEnumerator typedicEnum;
+
+			public VarDictEnumerator (Dictionary<string, Dictionary<ArgTypes, TokenDeclVar>> master)
+			{
+				this.master = master;
+				masterEnum = master.Values.GetEnumerator ();
+				Reset ();
+			}
+
+			// IEnumerator
+			public void Reset ()
+			{
+				masterEnum.Reset ();
+				typedicEnum = null;
+			}
+
+			// IEnumerator
+			public bool MoveNext ()
+			{
+				while ((typedicEnum == null) || !typedicEnum.MoveNext ()) {
+					typedicEnum = null;
+					if (!masterEnum.MoveNext ()) return false;
+					Dictionary<ArgTypes, TokenDeclVar> ctd;
+					ctd = (Dictionary<ArgTypes, TokenDeclVar>)masterEnum.Current;
+					typedicEnum = ctd.Values.GetEnumerator ();
+				}
+				return true;
+			}
+
+			// IEnumerator
+			public object Current { get { return typedicEnum.Current; } }
+		}
+	}
+}

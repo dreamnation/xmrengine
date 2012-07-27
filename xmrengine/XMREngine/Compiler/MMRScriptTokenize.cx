@@ -1181,6 +1181,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public abstract Type ToSysType ();
 
         /**
+         * @brief Can the given type be implicitly cast to this type?
+         */
+        public abstract bool IsAssignableFrom (TokenType src);
+
+        /**
          * @brief Return the equivalent LSL wrapping type.
          *
          *  null: normal
@@ -1216,6 +1221,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public TokenTypeArray (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
         public TokenTypeArray (Token original) : base (original) { }
         public override Type ToSysType () { return typeof (XMR_Array); }
+        public override bool IsAssignableFrom (TokenType src) { return (src is TokenTypeArray); }
         public override string ToString () { return "array"; }
         public override void AssignGlobalVarSlot (TokenDeclVar declVar, ScriptObjCode scriptObjCode)
         {
@@ -1232,6 +1238,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public TokenTypeBool (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
         public TokenTypeBool (Token original) : base (original) { }
         public override Type ToSysType () { return typeof (bool); }
+        public override bool IsAssignableFrom (TokenType src) { return true; }
         public override string ToString () { return "bool"; }
     }
     public class TokenTypeFloat : TokenType {
@@ -1241,6 +1248,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public TokenTypeFloat (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
         public TokenTypeFloat (Token original) : base (original) { }
         public override Type ToSysType () { return typeof (SCRIPTFLOAT); }
+        public override bool IsAssignableFrom (TokenType src) { return (src is TokenTypeFloat) || (src is TokenTypeInt); }
         public override string ToString () { return "float"; }
         public override void AssignGlobalVarSlot (TokenDeclVar declVar, ScriptObjCode scriptObjCode)
         {
@@ -1260,6 +1268,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public TokenTypeInt (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
         public TokenTypeInt (Token original) : base (original) { }
         public override Type ToSysType () { return typeof (int); }
+        public override bool IsAssignableFrom (TokenType src) { return (src is TokenTypeBool) || (src is TokenTypeInt); }
         public override string ToString () { return "integer"; }
         public override void AssignGlobalVarSlot (TokenDeclVar declVar, ScriptObjCode scriptObjCode)
         {
@@ -1279,6 +1288,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public TokenTypeList (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
         public TokenTypeList (Token original) : base (original) { }
         public override Type ToSysType () { return typeof (LSL_List); }
+        public override bool IsAssignableFrom (TokenType src) { return (src is TokenTypeList); }
         public override string ToString () { return "list"; }
         public override void AssignGlobalVarSlot (TokenDeclVar declVar, ScriptObjCode scriptObjCode)
         {
@@ -1298,6 +1308,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public TokenTypeObject (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
         public TokenTypeObject (Token original) : base (original) { }
         public override Type ToSysType () { return typeof (object); }
+        public override bool IsAssignableFrom (TokenType src) { return true; }
         public override string ToString () { return "object"; }
         public override void AssignGlobalVarSlot (TokenDeclVar declVar, ScriptObjCode scriptObjCode)
         {
@@ -1317,6 +1328,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public TokenTypeRot (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
         public TokenTypeRot (Token original) : base (original) { }
         public override Type ToSysType () { return typeof (LSL_Rotation); }
+        public override bool IsAssignableFrom (TokenType src) { return (src is TokenTypeRot); }
         public override string ToString () { return "rotation"; }
         public override void AssignGlobalVarSlot (TokenDeclVar declVar, ScriptObjCode scriptObjCode)
         {
@@ -1336,6 +1348,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public TokenTypeStr (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
         public TokenTypeStr (Token original) : base (original) { }
         public override Type ToSysType () { return typeof (string); }
+        public override bool IsAssignableFrom (TokenType src) { return true; }
         public override string ToString () { return "string"; }
         public override void AssignGlobalVarSlot (TokenDeclVar declVar, ScriptObjCode scriptObjCode)
         {
@@ -1355,6 +1368,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public TokenTypeVec (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { } 
         public TokenTypeVec (Token original) : base (original) { }
         public override Type ToSysType () { return typeof (LSL_Vector); }
+        public override bool IsAssignableFrom (TokenType src) { return (src is TokenTypeVec); }
         public override string ToString () { return "vector"; }
         public override void AssignGlobalVarSlot (TokenDeclVar declVar, ScriptObjCode scriptObjCode)
         {
@@ -1371,6 +1385,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public TokenTypeVoid (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
         public TokenTypeVoid (Token original) : base (original) { }
         public override Type ToSysType () { return typeof (void); }
+        public override bool IsAssignableFrom (TokenType src) { return false; }
         public override string ToString () { return "void"; }
     }
 
