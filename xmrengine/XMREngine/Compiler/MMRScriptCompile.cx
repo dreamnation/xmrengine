@@ -37,8 +37,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 #ifdef SECRET_STUFF
             bool decode = false;
             string asmFileName = null;
-            string srcFileName = null;
 #endif
+            bool plaintext = false;
             string objFileName = null;
             List<string> sourceFileNames = new List<string> ();
 
@@ -72,17 +72,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     GenKey ();
                     return;
                 }
+                if (arg == "-plaintext") {
+                    plaintext = true;
+                    continue;
+                }
 #endif
                 if (arg == "-out") {
                     objFileName = args[++i];
                     continue;
                 }
-#ifdef SECRET_STUFF
-                if (arg == "-src") {
-                    srcFileName = args[++i];
-                    continue;
-                }
-#endif
                 if (arg == "-version") {
                     goto version;
                 }
@@ -97,7 +95,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     goto usage;
                 }
 
-                DecodeFile (sourceFileNames[0], asmFileName, objFileName, srcFileName);
+                DecodeFile (sourceFileNames[0], asmFileName, objFileName, plaintext);
                 return;
             }
 #endif
@@ -105,7 +103,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Normal compilation function, make sure an output
              * file was specified (where we will write the encrypted
-             * abstract syntax tree).
+             * object file).
              */
             if (objFileName == null) {
                 Console.WriteLine ("missing -out option");
@@ -113,7 +111,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             /*
-             * Reduce to produce abstract syntax tree.
+             * Read whole source into memory.
              */
             StringBuilder sourceBuilder = new StringBuilder ();
             if (sourceFileNames.Count == 0) {
@@ -124,53 +122,41 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     sourceBuilder.Append (File.ReadAllText (sourceFileName));
                 }
             }
-            TokenScript tokenScript = GenAbsSynTree (sourceBuilder.ToString(),
-                                                     StandAloneErrorMessage,
-                                                     null);
-            if (tokenScript == null) {
-                Console.WriteLine ("Compilation detected errors.");
+            string source = sourceBuilder.ToString ();
+
+            /*
+             * Parse source string into tokens.
+             */
+            TokenBegin tokenBegin = TokenBegin.Construct(StandAloneErrorMessage, source);
+            if (tokenBegin == null) {
+                Console.WriteLine ("Parsing errors.");
                 Environment.Exit (1);
             }
 
-#ifdef SECRET_STUFF
             /*
-             * Maybe they want reconstructed source from tokens.
+             * Create abstract syntax tree from raw tokens.
              */
-            if (srcFileName != null) {
-                Console.WriteLine ("Reconstructing source to " + srcFileName);
-                StreamWriter reconstStream = File.CreateText (srcFileName);
-                try {
-                    ScriptReconst.Reconst (tokenScript, reconstStream);
-                } finally {
-                    reconstStream.Close ();
-                }
+            TokenScript tokenScript = ScriptReduce.Reduce(tokenBegin);
+            if (tokenScript == null) {
+                Console.WriteLine ("Reduction errors.");
+                Environment.Exit (1);
             }
-#endif
 
             /*
-             * Serialize the AST out to the object file.
-             * Compress and encrypt while we are at it.
+             * Attempt to compile AST to object code.
              */
-            Stream encFileStream = File.Create (objFileName);
-            encFileStream.Write (version, 0, version.Length);
-            encFileStream = Encrypt (encFileStream);
-            BinaryWriter encBinaryWriter = new BinaryWriter (encFileStream);
+            Stream objFileStream = new FileStream (objFileName, FileMode.Create);
+            if (!plaintext) objFileStream = Encrypt (objFileStream);
+            BinaryWriter objFileWriter = new BinaryWriter (objFileStream);
+            bool ok;
             try {
-                TokenWriter tokenWriter = new TokenWriter (encBinaryWriter);
-                tokenWriter.Write (tokenScript);
+                ok = ScriptCodeGen.CodeGen(tokenScript, objFileWriter);
             } finally {
-                encBinaryWriter.Close ();
+                objFileWriter.Close ();
             }
-
-            /*
-             * Attempt to compile AST to generate error messages.
-             */
-            MemoryStream memFileStream = new MemoryStream ();
-            BinaryWriter memFileWriter = new BinaryWriter (memFileStream);
-            if (!ScriptCodeGen.CodeGen(tokenScript, memFileWriter))
-            {
+            if (!ok) {
                 File.Delete (objFileName);
-                Console.WriteLine ("Compilation detected errors.");
+                Console.WriteLine ("Compilation errors.");
                 Environment.Exit (1);
             }
 
@@ -179,33 +165,29 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
 #ifdef SECRET_STUFF
             if (asmFileName != null) {
-                memFileWriter.Flush ();
-                memFileStream.Seek (0, SeekOrigin.Begin);
-                BinaryReader objFileReader = new BinaryReader (memFileStream);
+                objFileStream = new FileStream (objFileName, FileMode.Open);
+                if (!plaintext) objFileStream = Decrypt (objFileStream);
+                BinaryReader objFileReader = new BinaryReader (objFileStream);
                 TextWriter asmFileWriter = (asmFileName != "-") ? File.CreateText (asmFileName) : Console.Out;
-
                 try {
                     ScriptCodeGen.PerformGeneration ("", objFileReader, asmFileWriter);
                 } finally {
                     objFileReader.Close ();
-                    if (asmFileWriter != null) {
-                        asmFileWriter.Flush ();
-                        asmFileWriter.Close ();
-                    }
+                    asmFileWriter.Flush ();
+                    asmFileWriter.Close ();
                 }
             }
 #endif
-            memFileStream.Close ();
             return;
 
 usage:
             Console.WriteLine ("");
-            Console.WriteLine ("xmrengcomp.exe -out <outputxmrbinfile> [<inputsourcefile> ...]");
+            Console.WriteLine ("xmrengcomp.exe -out <outputxmrobjfile> [<inputsourcefile> ...]");
             Console.WriteLine ("               omit inputsourcefiles to read from stdin");
             Console.WriteLine ("xmrengcomp.exe -version");
 #ifdef SECRET_STUFF
             Console.WriteLine ("xmrengcomp.exe -genkey");
-            Console.WriteLine ("xmrengcomp.exe -decode [-asm <outputxmrasmfile>] [-out <outputxmrobjfile>] [-src <outputsourcefile>] <inputbinaryfile>");
+            Console.WriteLine ("xmrengcomp.exe -decode [-asm <outputxmrasmfile>] [-out <outputxmrobjfile>] [-plaintext] <inputbinaryfile>");
 #endif
 version:
             Console.WriteLine ("");
@@ -232,86 +214,16 @@ version:
          * @param objFileName = null: don't bother writing decrypted CIL object file
          *                      else: name of decrypted CIL object file to write
          */
-        private static void DecodeFile (string decodeFileName, string asmFileName, string objFileName, string srcFileName)
+        private static void DecodeFile (string decodeFileName, string asmFileName, string objFileName, bool plaintext)
         {
             /*
              * Open file to decode.
              */
             Stream decodeFileStream = File.OpenRead (decodeFileName);
+            if (!plaintext) decodeFileStream = Decrypt (decodeFileStream);
 
             /*
-             * See if it begins with XMRBinary magic string.
-             * If so, it is an encrypted abstract syntax tree file.
-             */
-            byte[] ver = new byte[version.Length];
-            if ((decodeFileStream.Read (ver, 0, ver.Length) == ver.Length) &&
-                memeq (ver, version, ver.Length)) {
-                Console.WriteLine(decodeFileName + " is an abstract syntax tree file.");
-
-                /*
-                 * Set up decrypt function.
-                 */
-                decodeFileStream = Decrypt (decodeFileStream);
-
-                /*
-                 * Deserialize to re-create abstract syntax tree.
-                 */
-                BinaryReader decodeBinaryReader = new BinaryReader (decodeFileStream);
-                TokenReader tokenReader = new TokenReader (decodeBinaryReader, StandAloneErrorMessage);
-                TokenScript tokenScript = (TokenScript)tokenReader.ReadToken ();
-                decodeBinaryReader.Close ();
-
-                /*
-                 * Reconstruct source from abstract syntax tree.
-                 */
-                if (srcFileName != null) {
-                    Console.WriteLine ("Reconstructing source to " + srcFileName);
-                    StreamWriter reconstStream = File.CreateText (srcFileName);
-                    try {
-                        ScriptReconst.Reconst (tokenScript, reconstStream);
-                    } finally {
-                        reconstStream.Close ();
-                    }
-                }
-
-                /*
-                 * Generate CIL object file to detect compilation errors.
-                 */
-                MemoryStream memoryFileStream = new MemoryStream ();
-                BinaryWriter memFileWriter = new BinaryWriter (memoryFileStream);
-                if (!ScriptCodeGen.CodeGen(tokenScript, memFileWriter))
-                {
-                    Console.WriteLine ("Compilation detected errors.");
-                    return;
-                }
-                memoryFileStream.Flush ();
-
-                /*
-                 * Maybe write the decrypted CIL object file out.
-                 * This is the same file as used by the script engine loader.
-                 */
-                if (objFileName != null) {
-                    Console.WriteLine("Creating object file " + objFileName);
-                    Stream objFileStream = File.Create (objFileName);
-                    byte[] objByteArray = memoryFileStream.GetBuffer ();
-                    objFileStream.Write (objByteArray, 0, objByteArray.Length);
-                    objFileStream.Close ();
-                }
-
-                decodeFileStream = memoryFileStream;
-            } else {
-
-                /*
-                 * Otherwise, assume it is a decrypted CIL object file.
-                 */
-                Console.WriteLine(decodeFileName + " is a CIL object file.");
-                if (objFileName != null) {
-                    Console.WriteLine("Not creating object file " + objFileName + " because input is an object file.");
-                }
-            }
-
-            /*
-             * In any case, at this point, decodeFileStream = CIL object file.
+             * decodeFileStream = CIL object file.
              * If given an asmFileName, disassemble it.
              */
             TextWriter asmFileWriter = null;
@@ -324,7 +236,6 @@ version:
              * Read object file to check it for errors.
              * Maybe also write disassembly to a file for debugging.
              */
-            decodeFileStream.Seek (0, SeekOrigin.Begin);
             BinaryReader objFileReader = new BinaryReader (decodeFileStream);
             try {
                 ScriptCodeGen.PerformGeneration ("__assetID__", objFileReader, asmFileWriter);
@@ -415,7 +326,9 @@ version:
                                              bool forceRecompile,
                                              TokenErrorMessage errorMessage)
         {
+            bool oldObjFile = false;
             Stream objFileStream = null;
+            Stream webStream = null;
             StreamWriter asmFileWriter = null;
             string envar = null;
             string fname = Path.Combine (scriptBasePath, assetID);
@@ -426,8 +339,9 @@ version:
              */
             if (!forceRecompile && File.Exists (objFileName)) {
                 objFileStream = File.OpenRead (objFileName);
+                oldObjFile = true;
             } else if (source == "") {
-                throw new Exception("source file empty");
+                throw new Exception ("source file empty");
             } else {
 
                 /*
@@ -440,37 +354,84 @@ version:
                 }
 
                 /*
-                 * Create abstract syntax tree from raw tokens.
+                 * Parse source string into tokens.
                  */
-                TokenScript tokenScript = GenAbsSynTree(source, errorMessage, fname);
-                if (tokenScript == null)
-                {
-                    m_log.DebugFormat("[XMREngine]: compile error on {0}", assetID);
+                TokenBegin tokenBegin = TokenBegin.Construct(errorMessage, source);
+                if (tokenBegin == null) {
+                    m_log.Debug ("[XMREngine]: parsing errors on " + assetID);
                     return null;
                 }
 
                 /*
-                 * Scan abstract syntax tree to write object file.
+                 * Create object file one way or another.
                  */
-                objFileStream = File.Create (objFileName);
-                BinaryWriter objFileWriter = new BinaryWriter (objFileStream);
-                if (!ScriptCodeGen.CodeGen(tokenScript, objFileWriter))
-                {
+                try {
+                    objFileStream = File.Create (objFileName + ".tmp");
+
+                    /*
+                     * If source is 'XMROption' 'fetchbinary' ...,
+                     * read xmrobj file from the given URL.
+                     */
+                    if ((tokenBegin.nextToken is TokenName) &&
+                        (((TokenName)tokenBegin.nextToken).val == "XMROption") &&
+                        (tokenBegin.nextToken.nextToken is TokenName) &&
+                        (((TokenName)tokenBegin.nextToken.nextToken).val == "fetchbinary")) {
+
+                        /*
+                         * Open web stream.
+                         */
+                        webStream = FetchBinary (tokenBegin.nextToken.nextToken.nextToken, errorMessage);
+                        if (webStream == null) return null;
+
+                        /*
+                         * Copy object from web and write to .xmrobj file.
+                         */
+                        byte[] buffer = new byte[32768];
+                        int len;
+                        while ((len = webStream.Read (buffer, 0, buffer.Length)) > 0) {
+                            objFileStream.Write (buffer, 0, len);
+                        }
+                    } else {
+
+                        /*
+                         * Create abstract syntax tree from raw tokens.
+                         */
+                        TokenScript tokenScript = ScriptReduce.Reduce(tokenBegin);
+                        if (tokenScript == null) {
+                            m_log.Debug ("[XMREngine]: reduction errors on " + assetID);
+                            return null;
+                        }
+
+                        /*
+                         * Compile abstract syntax tree to write object file.
+                         */
+                        BinaryWriter objFileWriter = new BinaryWriter (objFileStream);
+                        bool ok = ScriptCodeGen.CodeGen(tokenScript, objFileWriter);
+                        if (!ok) m_log.Debug ("[XMREngine]: compile error on " + assetID);
+                        if (!ok) {
+                            objFileStream.Close ();
+                            return null;
+                        }
+                    }
                     objFileStream.Close ();
-                    File.Delete (objFileName);
-                    m_log.DebugFormat("[XMREngine]: compile error on {0}", assetID);
-                    return null;
+
+                    /*
+                     * File has been completely written.
+                     * If there is an old one laying around, delete it now.
+                     * Then re-open the new file for reading from the beginning.
+                     */
+                    File.Replace (objFileName + ".tmp", objFileName, null);
+                    objFileStream = File.OpenRead (objFileName);
+                } finally {
+
+                    /*
+                     * In case something went wrong writing temp file, delete it.
+                     */
+                    File.Delete (objFileName + ".tmp");
                 }
 
                 /*
-                 * Return a reader so the loader can load the file.
-                 * Rewind the plaintext object file.
-                 */
-                objFileStream.Flush ();
-                objFileStream.Seek (0, SeekOrigin.Begin);
-
-                /*
-                 * Since we just compiled from source, maybe save disassembly.
+                 * Since we just wrote the .xmrobj file, maybe save disassembly.
                  */
                 envar = Environment.GetEnvironmentVariable ("MMRScriptCompileSaveILGen");
                 if ((envar != null) && ((envar[0] & 1) != 0)) {
@@ -496,6 +457,14 @@ version:
                 }
             }
 
+            /*
+             * Maybe an old object file has reached its expiration date.
+             */
+            if (oldObjFile && (scriptObjCode != null) && scriptObjCode.IsExpired ()) {
+                m_log.Debug ("[XMREngine]: expiration reached on " + assetID + ", reloading");
+                scriptObjCode = Compile (source, assetID, scriptBasePath, true, errorMessage);
+            }
+
             return scriptObjCode;
         }
 
@@ -509,62 +478,6 @@ version:
             return fname + ".xmrobj";
         }
 #endif
-
-        /**
-         * @brief Generate abstract syntax tree from source code
-         * @param source = entire source code in one string
-         * @param errorMessage = where to write error messages to
-         * @param fname = null: for stand-alone compiler
-         *                else: where to save test .xmrbin file
-         * @returns null: error
-         *          else: abstract syntax tree
-         */
-        public static TokenScript GenAbsSynTree(string source, 
-                                                TokenErrorMessage errorMessage,
-                                                string fname)
-        {
-            /*
-             * Parse source string into tokens.
-             */
-            TokenBegin tokenBegin = TokenBegin.Construct(errorMessage, source);
-            if (tokenBegin == null)
-            {
-                return null;
-            }
-
-            /*
-             * If source is 'XMROption' 'fetchbinary' ...,
-             * read AST file from the given URL.
-             */
-#ifndef STANDALONE_COMPILER
-            if ((tokenBegin.nextToken is TokenName) &&
-                (((TokenName)tokenBegin.nextToken).val == "XMROption") &&
-                (tokenBegin.nextToken.nextToken is TokenName) &&
-                (((TokenName)tokenBegin.nextToken.nextToken).val == "fetchbinary")) {
-
-                return FetchBinary (tokenBegin.nextToken.nextToken.nextToken,
-                                    errorMessage);
-            }
-            string envar = Environment.GetEnvironmentVariable ("MMRUseExternalCompiler");
-            if ((envar != null) && (envar != "")) {
-
-                /*
-                 * To test external compiler, run source through it
-                 * then load the temp .xmrbin file.
-                 */
-                RunSourceThroughExternalCompiler (envar, source, fname + ".xmrbin");
-                TokenStr tok  = new TokenStr (errorMessage, "", 0, 0, "file://" + fname + ".xmrbin");
-                tok.nextToken = new TokenKwSemi (errorMessage, "", 0, 0);
-                tok.nextToken.nextToken = new TokenEnd (errorMessage, "", 0, 0);
-                return FetchBinary (tok, errorMessage);
-            }
-#endif
-
-            /*
-             * Create abstract syntax tree from raw tokens.
-             */
-            return ScriptReduce.Reduce(tokenBegin);
-        }
 
         /*
          * Data for encryption.
@@ -603,6 +516,8 @@ version:
         // returns stream to write plaintext data to
         private static Stream Encrypt (Stream stream)
         {
+            stream.Write (version, 0, version.Length);
+
             if (encryption) {
                 RSACryptoServiceProvider rsa = new RSACryptoServiceProvider ();
                 RSAParameters rsap = new RSAParameters ();
@@ -708,16 +623,15 @@ version:
         }
 
         /**
-         * @brief Read binary from a webserver somewhere out there and write to object file.
+         * @brief Read xmrobj file from a webserver somewhere out there and write to object file.
          * @param token = tokens after 'XMROption' 'fetchbinary'
          * @param errorMessage = where to write error messages
          * @returns null: some error
-         *          else: abstract syntax tree
+         *          else: object file stream
          */
-        private static TokenScript FetchBinary (Token token, TokenErrorMessage errorMessage)
+        private static Stream FetchBinary (Token token, TokenErrorMessage errorMessage)
         {
             bool error = false;
-            bool nocache = false;
             WebResponse response = null;
             Stream webStream = null;
             string url = null;
@@ -726,7 +640,6 @@ version:
 
             /*
              * Parse parameters:
-             *    nocache
              *    "url"
              *    ;
              */
@@ -737,15 +650,6 @@ version:
                         urlToken = (TokenStr)token;
                     } else {
                         errorMessage (token, "only one url string allowed");
-                        error = true;
-                    }
-                    continue;
-                }
-                if (token is TokenName) {
-                    if (((TokenName)token).val == "nocache") {
-                        nocache = true;
-                    } else {
-                        errorMessage (token, "unknown keyword");
                         error = true;
                     }
                     continue;
@@ -782,30 +686,11 @@ version:
                 }
 
                 /*
-                 * Make sure we have "XMRBinary(COMPILED_VERSION)".
-                 */
-                byte[] ver = new byte[version.Length];
-                if ((webStream.Read (ver, 0, ver.Length) != ver.Length) ||
-                     !memeq (ver, version, ver.Length)) {
-                    throw new Exception ("bad xmrbinary version, expect " + 
-                                         new ASCIIEncoding ().GetString (version) + 
-                                         ", but is " + 
-                                         new ASCIIEncoding ().GetString (ver));
-                }
-
-                /*
                  * The rest of the stream is compressed & encrypted.
                  */
-                webStream = Decrypt (webStream);
-
-                /*
-                 * Deserialize to re-create abstract syntax tree.
-                 */
-                BinaryReader webBinaryReader = new BinaryReader (webStream);
-                TokenReader tokenReader = new TokenReader (webBinaryReader, errorMessage);
-                TokenScript tokenScript = (TokenScript)tokenReader.ReadToken ();
-                webBinaryReader.Close ();
-                return tokenScript;
+                Stream readerStream = Decrypt (webStream);
+                webStream = null;
+                return readerStream;
             } catch (Exception e) {
 
                 /*
@@ -926,6 +811,12 @@ version:
         // returns stream to read plaintext data from
         private static Stream Decrypt (Stream stream)
         {
+            byte[] ver = new byte[version.Length];
+            int len = stream.Read (ver, 0, ver.Length);
+            if ((len < version.Length) || !memeq (ver, version, ver.Length)) {
+                throw new Exception ("script object version mismatch");
+            }
+
             if (encryption) {
                 RSACryptoServiceProvider rsa = new RSACryptoServiceProvider ();
                 RSAParameters rsap = new RSAParameters ();

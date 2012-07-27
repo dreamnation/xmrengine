@@ -46,5 +46,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		public Dictionary<string, DynamicMethod> dynamicMethods;
 		                                // all dyanmic methods that could be encountered by checkpointing
+
+		public bool IsExpired ()
+		{
+			return false;
+		}
 	}
 }

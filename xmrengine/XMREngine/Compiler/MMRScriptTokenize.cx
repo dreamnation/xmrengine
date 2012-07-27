@@ -79,30 +79,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         }
 
         /**
-         * @brief Serializable derivations must override this method.
-         * @param writer = tokenwriter that the token gets written to.
-         */
-        public virtual void WriteOut (TokenWriter writer)
-        {
-            throw new Exception (this.GetType() + " missing WriteOut() method");
-        }
-
-        public virtual void ReadIn (TokenReader reader)
-        {
-            throw new Exception (this.GetType() + " missing ReadIn() method");
-        }
-
-        /*
-         * Reconstruct source
-         */
-#ifdef SECRET_STUFF
-        public virtual void Reconst (SrcWriter writeSrc)
-        {
-            throw new Exception (this.GetType() + " missing Reconst() method");
-        }
-#endif
-
-        /**
          * @brief output an error message associated with this token
          *        sends the message to the token's error object
          * @param message = error message string
@@ -760,19 +736,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         {
             this.val = val;
         }
-
-        /**
-         * @brief Serialization/Deserialization.
-         */
-        public TokenFloat (Token original) : base (original) { }
-        public override void WriteOut (TokenWriter writer)
-        {
-            writer.Write (val);
-        }
-        public override void ReadIn (TokenReader reader)
-        {
-            val = reader.ReadScriptFloat ();
-        }
     }
 
     public class TokenInt : Token {
@@ -780,19 +743,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public TokenInt (TokenErrorMessage emsg, string file, int line, int posn, int val) : base (emsg, file, line, posn)
         {
             this.val = val;
-        }
-
-        /**
-         * @brief Serialization/Deserialization.
-         */
-        public TokenInt (Token original) : base (original) { }
-        public override void WriteOut (TokenWriter writer)
-        {
-            writer.Write (val);
-        }
-        public override void ReadIn (TokenReader reader)
-        {
-            val = reader.ReadInt ();
         }
     }
 
@@ -810,19 +760,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         {
             return this.val;
         }
-
-        /**
-         * @brief Serialization/Deserialization.
-         */
-        public TokenName (Token original) : base (original) { }
-        public override void WriteOut (TokenWriter writer)
-        {
-            writer.Write (val);
-        }
-        public override void ReadIn (TokenReader reader)
-        {
-            val = reader.ReadString ();
-        }
     }
 
     public class TokenStr : Token {
@@ -831,31 +768,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         {
             this.val = val;
         }
-
-        /**
-         * @brief Serialization/Deserialization.
-         */
-        public TokenStr (Token original) : base (original) { }
-        public override void WriteOut (TokenWriter writer)
-        {
-            writer.Write (val);
-        }
-        public override void ReadIn (TokenReader reader)
-        {
-            val = reader.ReadString ();
-        }
-    }
-
-    /*
-     * This class is inherited by tokens that carry no information that needs to be serialized/deserialized.
-     * All their information is in their actual type and file/line/posn info which is always saved/restored.
-     * Keywords are a good example as they have no value other than their actual type.
-     */
-    public class TokenNS : Token {
-        public TokenNS (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
-        public TokenNS (Token original) : base (original)  { }
-        public override void WriteOut (TokenWriter writer) { }
-        public override void ReadIn   (TokenReader reader) { }
     }
 
     /*
@@ -869,7 +781,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
     public delegate object TokenRValConstBinOpDelegate (object left, object right);
     public delegate object TokenRValConstUnOpDelegate  (object right);
 
-    public class TokenKw : TokenNS {
+    public class TokenKw : Token {
         public TokenRValConstBinOpDelegate binOpConst;
         public TokenRValConstUnOpDelegate  unOpConst;
         public TokenKw (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
@@ -1107,7 +1019,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
     /*
      * Various datatypes.
      */
-    public abstract class TokenType : TokenNS {
+    public abstract class TokenType : Token {
 
         public TokenType (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
         public TokenType (Token original) : base (original) { }

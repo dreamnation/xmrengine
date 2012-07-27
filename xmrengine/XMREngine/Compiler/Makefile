@@ -12,8 +12,8 @@ SADLLFILES = \
 	MMRScriptObjCode.cs \
 	MMRScriptReduce.cs \
 	MMRScriptTokenize.cs \
-	MMRScriptTokenReadWrite.cs \
 	MMRScriptTypeCast.cs \
+	MMRScriptVarDict.cs \
 	XMRArray.cs \
 	XMRInstAbstract.cs \
 	XMRSDTypeClassInstance.cs
