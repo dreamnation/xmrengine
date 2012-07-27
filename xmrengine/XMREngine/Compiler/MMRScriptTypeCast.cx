@@ -223,7 +223,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * If the basic types are the same, there is no conceptual casting needed.
 			 * However, there may be wraping/unwraping to/from the LSL wrappers.
 			 */
-			if (oldType.ToSysType () == newType.ToSysType ()) {
+			string oldString = oldType.ToString ();
+			string newString = newType.ToString ();
+			if (oldString == newString) {
 				if (oldType.ToLSLWrapType () != newType.ToLSLWrapType ()) {
 					LSLUnwrap (scg.ilGen, oldType);
 					LSLWrap (scg.ilGen, newType);
@@ -274,10 +276,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Some actual conversion is needed, see if it is in table of legal casts.
 			 */
-			string oldString = oldType.ToString ();
-			string newString = newType.ToString ();
 			string key = oldString + " " + newString;
-
 			if (!legalTypeCasts.TryGetValue (key, out castDelegate)) {
 				key = oldString + "*" + newString;
 				if (!explicitAllowed || !legalTypeCasts.TryGetValue (key, out castDelegate)) {
@@ -287,7 +286,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
-			 * Ok, output cast.  But make sure it is in native form without any LSL wrapping.
+			 * Ok, output cast.  But make sure it is in native form without any LSL wrapping
+			 * before passing to our casting routine.  Then if caller is expecting an LSL-
+			 * wrapped value on the stack upon return, box it up after our casting.
 			 */
 			LSLUnwrap (scg.ilGen, oldType);
 			castDelegate (scg.ilGen);
@@ -326,6 +327,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 		}
 
+		/**
+		 * @brief These routines output code to perform casting.
+		 *        They can assume there are no LSL wrapped values on input
+		 *        and they should not output an LSL wrapped value.
+		 */
 		private static void TypeCastArray2Object (ScriptMyILGen ilGen)
 		{
 		}
@@ -525,6 +531,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public static string   VectorToString   (LSL_Vector x)   { return x.ToString (); }
 		public static LSL_List ListOfOneObj     (object x)       { return new LSL_List (new object[1] { x }); }
 
+		/*
+		 * These are used by event handler entrypoints to remove any LSL wrapping
+		 * from the argument list and return the unboxed/unwrapped value.
+		 */
 		public static SCRIPTFLOAT EHArgUnwrapFloat (object x)
 		{
 			if (x is LSL_Float) return (SCRIPTFLOAT)(LSL_Float)x;

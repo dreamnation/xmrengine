@@ -2979,30 +2979,36 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			/*
 			 * See if we already have a matching declared one cataloged.
 			 */
-			if (tokenScript != null) {
-				int nArgs = argTypes.Length;
-				foreach (TokenDeclSDType decl in tokenScript.sdSrcTypes.Values) {
-					if (decl is TokenDeclSDTypeDelegate) {
-						decldel         = (TokenDeclSDTypeDelegate)decl;
-						TokenType   rt  = decldel.GetRetType  ();
-						TokenType[] ats = decldel.GetArgTypes ();
-						if ((rt.ToSysType () == retType.ToSysType ()) && (ats.Length == nArgs)) {
-							for (int i = 0; i < nArgs; i ++) {
-								if (ats[i].ToSysType () != argTypes[i].ToSysType ()) goto nomatch;
-							}
-							this.decl = decldel;
-							return;
+			int nArgs = argTypes.Length;
+			foreach (TokenDeclSDType decl in tokenScript.sdSrcTypes.Values) {
+				if (decl is TokenDeclSDTypeDelegate) {
+					decldel         = (TokenDeclSDTypeDelegate)decl;
+					TokenType   rt  = decldel.GetRetType  ();
+					TokenType[] ats = decldel.GetArgTypes ();
+					if ((rt.ToString () == retType.ToString ()) && (ats.Length == nArgs)) {
+						for (int i = 0; i < nArgs; i ++) {
+							if (ats[i].ToString () != argTypes[i].ToString ()) goto nomatch;
 						}
+						this.decl = decldel;
+						return;
 					}
-				nomatch:;
 				}
+			nomatch:;
 			}
 
 			/*
 			 * No such luck, create a new anonymous declaration.
 			 */
-			string namestr = ".anondel." + (++ anonDeclDel);
-			TokenName name = new TokenName (t, namestr);
+			StringBuilder sb = new StringBuilder (".anon.delegate.");
+			sb.Append (retType.ToString ());
+			sb.Append ("(");
+			bool first = true;
+			foreach (TokenType at in argTypes) {
+				if (!first) sb.Append (",");
+				sb.Append (at.ToString ());
+			}
+			sb.Append (")");
+			TokenName name = new TokenName (t, sb.ToString ());
 			decldel        = new TokenDeclSDTypeDelegate (name);
 			decldel.SetRetArgTypes (retType, argTypes);
 			this.decl = decldel;
