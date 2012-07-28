@@ -141,7 +141,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		private Dictionary<string, int> stateIndices = null;
 		private Stack<VarDict> scriptVariablesStack = null;
-		private VarDict globalVariables = null;
 
 		// code generation output
 		public ScriptObjCode scriptObjCode = null;
@@ -227,7 +226,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Then push the first element on the stack that will get any script-defined global variables.
 			 */
 			scriptVariablesStack = new Stack<VarDict> ();
-			globalVariables = PushVarDefnBlock ();
+			PushVarDefnBlock ();
 
 			/*
 			 * Assign all global variables a slot in its corresponding XMRInstance.gbl<Type>s[] array.
@@ -247,7 +246,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				declVar.location = new CompValuGlobalVar (declVar, scriptObjCode);
 
 				/*
-				 * Add its name to top-level variable definition stack so code can see it.
+				 * Add its name to top-level variable definition stack frame so code can see it.
 				 */
 				AddVarDefinition (declVar);
 
@@ -417,6 +416,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						sdtClass.numInstRotations = extends.numInstRotations;
 						sdtClass.numInstStrings   = extends.numInstStrings;
 						sdtClass.numInstVectors   = extends.numInstVectors;
+						sdtClass.numInstSDTClObjs = extends.numInstSDTClObjs;
 						sdtClass.numVirtFuncs     = extends.numVirtFuncs;
 						sdtClass.numInterfaces    = extends.numInterfaces;
 
@@ -432,14 +432,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					}
 
 					/*
-					 * Extended class's slots all assigned, assign our non-static fields 
+					 * Extended class's slots all assigned, assign our instance fields 
 					 * slots in the XMRSDTypeClassInstance arrays.
 					 */
 					foreach (TokenDeclVar declVar in sdtClass.members) {
 						if (declVar.retType != null) continue;
 						if (declVar.constant) continue;
 						if ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) != 0) continue;
-						declVar.type.AssignSDTClassFieldSlot (declVar, sdtClass);
+						if ((declVar.getProp == null) && (declVar.setProp == null)) {
+							declVar.type.AssignSDTClassFieldSlot (declVar, sdtClass);
+						}
 						if ((declVar.type is TokenTypeList) ||
 						    (declVar.type is TokenTypeStr)) {
 							TokenDeclVar htDeclVar = new TokenDeclVar (declVar, null, tokenScript);
@@ -452,26 +454,86 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 					/*
 					 * ... and assign virtual method vtable slots.
+					 *
+					 *                   - : error if any overidden method, doesn't need a slot
+					 *            abstract : error if any overidden method, alloc new slot but leave it empty
+					 *                 new : ignore any overidden method, doesn't need a slot
+					 *        new abstract : ignore any overidden method, alloc new slot but leave it empty
+					 *            override : must have overidden abstract/virtual, use old slot
+					 *   override abstract : must have overidden abstract, use old slot but it is still empty
+					 *              static : error if any overidden method, doesn't need a slot
+					 *          static new : ignore any overidden method, doesn't need a slot
+					 *             virtual : error if any overidden method, alloc new slot and fill it in
+					 *         virtual new : ignore any overidden method, alloc new slot and fill it in
+					 *    virtual override : must have overidden abstract/virtual, use old slot (same as plain override)
 					 */
 					foreach (TokenDeclVar declFunc in sdtClass.members) {
-						declFunc.vTableIndex = -1;
-						if ((declFunc.sdtFlags & ScriptReduce.SDT_ABSTRACT) != 0) {
-							declFunc.vTableIndex = sdtClass.numVirtFuncs ++;
-						}
-						if ((declFunc.sdtFlags & ScriptReduce.SDT_OVERRIDE) != 0) {
+						if (declFunc.retType == null) continue;
+
+						/*
+						 * See if there is a method in an extended class that this method overshadows.
+						 * If so, check for various conflicts.
+						 * In any case, SDT_NEW on our method means to ignore any overshadowed method.
+						 */
+						string name = sdtClass.name.val + "." + declFunc.funcNameSig.val;
+						uint declFlags = declFunc.sdtFlags;
+						TokenDeclVar overridden = null;
+						if ((declFlags & ScriptReduce.SDT_NEW) == 0) {
 							for (TokenDeclSDTypeClass sdtd = extends; sdtd != null; sdtd = sdtd.extends) {
-								TokenDeclVar overridden;
 								overridden = FindExactWithRet (sdtd.members, declFunc.name, declFunc.retType, declFunc.argDecl.types);
-								if (overridden != null) {
-									declFunc.vTableIndex = overridden.vTableIndex;
+								if (overridden != null) break;
+							}
+						}
+						if (overridden != null) do {
+							uint overFlags = overridden.sdtFlags;
+
+							/*
+							 * See if overridden method allows itself to be overidden.
+							 */
+							if ((overFlags & ScriptReduce.SDT_ABSTRACT) != 0) {
+								if ((declFlags & (ScriptReduce.SDT_ABSTRACT | ScriptReduce.SDT_OVERRIDE)) == 0) {
+									ErrorMsg (declFunc, name + " overshadows abstract " + overridden.sdtClass.name.val + " but is not marked abstract, new or override");
 									break;
 								}
+							} else if ((overFlags & (ScriptReduce.SDT_OVERRIDE | ScriptReduce.SDT_VIRTUAL)) != 0) {
+								if ((declFlags & (ScriptReduce.SDT_NEW | ScriptReduce.SDT_OVERRIDE)) == 0) {
+									ErrorMsg (declFunc, name + " overshadows virtual " + overridden.sdtClass.name.val + " but is not marked new or override");
+									break;
+								}
+							} else {
+								ErrorMsg (declFunc, name + " overshadows non-virtual " + overridden.sdtClass.name.val + " but is not marked new");
+								break;
 							}
-							if (declFunc.vTableIndex < 0) {
-								ErrorMsg (declFunc, "can't find overridden method");
+
+							/*
+							 * See if our method is capable of overriding the other method.
+							 */
+							if ((declFlags & ScriptReduce.SDT_ABSTRACT) != 0) {
+								if ((overFlags & ScriptReduce.SDT_ABSTRACT) == 0) {
+									ErrorMsg (declFunc, name + " abstract overshadows non-abstract " + overridden.sdtClass.name.val + " but is not marked new");
+									break;
+								}
+							} else if ((declFlags & ScriptReduce.SDT_OVERRIDE) != 0) {
+								if ((overFlags & (ScriptReduce.SDT_ABSTRACT | ScriptReduce.SDT_OVERRIDE | ScriptReduce.SDT_VIRTUAL)) == 0) {
+									ErrorMsg (declFunc, name + " override overshadows non-abstract/non-virtual " + overridden.sdtClass.name.val);
+									break;
+								}
+							} else {
+								ErrorMsg (declFunc, name + " overshadows " + overridden.sdtClass.name.val + " but is not marked new");
+								break;
 							}
+						} while (false);
+
+						/*
+						 * Now we can assign it a vtable slot if it needs one (ie, it is virtual).
+						 */
+						declFunc.vTableIndex = -1;
+						if (overridden != null) {
+							declFunc.vTableIndex = overridden.vTableIndex;
+						} else if ((declFlags & ScriptReduce.SDT_OVERRIDE) != 0) {
+							ErrorMsg (declFunc, name + " marked override but nothing matching found that it overrides");
 						}
-						if ((declFunc.sdtFlags & ScriptReduce.SDT_VIRTUAL)  != 0) {
+						if ((declFlags & (ScriptReduce.SDT_ABSTRACT | ScriptReduce.SDT_VIRTUAL)) != 0) {
 							declFunc.vTableIndex = sdtClass.numVirtFuncs ++;
 						}
 					}
@@ -629,6 +691,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					}
 				}
 			}
+			currentSDTClass = null;
 
 			/*
 			 * For all classes that define all the methods needed for the class, ie, they aren't abstract,
@@ -659,6 +722,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 				/*
 				 * If so, define a static class.new() method for every constructor defined for the class.
+				 * Give it the same access (private/protected/public) as the script declared for the constructor.
 				 * Note that the reducer made sure there is at least a default constructor for every class.
 				 * We don't give tne function a body here, fortunately GenerateNewobjBody() just knows how 
 			 	 * to generate teh code.
@@ -673,7 +737,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 							string nameSig               = "new" + ctorDeclFunc.argDecl.GetArgSig ();
 							newobjDeclFunc.funcNameSig   = new TokenName (newobjDeclFunc, nameSig);
 							newobjDeclFunc.sdtClass      = sdtClass;
-							newobjDeclFunc.sdtFlags      = ScriptReduce.SDT_STATIC;
+							newobjDeclFunc.sdtFlags      = ScriptReduce.SDT_STATIC | ctorDeclFunc.sdtFlags;
 							newobjDeclFuncs.Add (newobjDeclFunc);
 						}
 					}
@@ -698,7 +762,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			objFileWriter.Write (scriptObjCode.numGblRotations);
 			objFileWriter.Write (scriptObjCode.numGblStrings);
 			objFileWriter.Write (scriptObjCode.numGblVectors);
-			objFileWriter.Write (scriptObjCode.numGblSDTClasses);
+			objFileWriter.Write (scriptObjCode.numGblSDTClObjs);
 
 			objFileWriter.Write (nStates);
 			for (int i = 0; i < nStates; i ++) {
@@ -716,7 +780,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				if (!(sdType is TokenDeclSDTypeClass)) continue;
 				TokenDeclSDTypeClass sdtClass = (TokenDeclSDTypeClass)sdType;
 				foreach (TokenDeclVar declVar in sdtClass.members) {
-					if ((declVar.retType == null) && ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) != 0)) {
+					if ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) != 0) {
 						WriteOutGblAssignment (sdtClass.name.val + ".", declVar);
 					}
 				}
@@ -800,9 +864,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			scriptObjCode = null;
 		}
 
+		/**
+		 * @brief Write out what slot was assigned for a global or sdtclass static variable.
+		 *        Constants, functions, instance fields, methods, properties do not have slots in the global variables arrays.
+		 */
 		private void WriteOutGblAssignment (string pfx, TokenDeclVar declVar)
 		{
-			if (!declVar.constant) {
+			if (!declVar.constant && (declVar.retType == null) && (declVar.getProp == null) && (declVar.setProp == null)) {
 				CompValuGlobalVar gblVar = (CompValuGlobalVar)declVar.location;
 				objFileWriter.Write (pfx + declVar.name.val);    // string
 				objFileWriter.Write (declVar.vTableArray.Name);  // string
@@ -2541,7 +2609,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private CompValu GenerateFromLValIField (TokenLValIField lVal, TokenType[] argsig)
 		{
 			CompValu baseRVal = GenerateFromRVal (lVal.baseRVal);
-			string fieldName = lVal.field.val;
+			string fieldName = lVal.field.val + ArgSigString (argsig);
 
 			/*
 			 * Maybe they are accessing an instance field or method of a script-defined class.
@@ -2553,14 +2621,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					TokenDeclVar declVar = FindSingleMember (sdtd.members, lVal.field, argsig);
 					if (declVar != null) {
 						if ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) != 0) {
-							ErrorMsg (lVal.field, "non-static reference to static member " + fieldName + ArgSigString (argsig));
+							ErrorMsg (lVal.field, "non-static reference to static member " + fieldName);
 							return new CompValuVoid (lVal.field);
 						}
-						return (declVar.retType == null) ? (CompValu)new CompValuInstField (declVar, baseRVal) 
+						return (declVar.retType == null) ? (CompValu)new CompValuInstField (declVar, baseRVal, false) 
 						                                 : (CompValu)new CompValuInstMeth (declVar, baseRVal, false);
 					}
 				}
-				ErrorMsg (lVal.field, "no member " + fieldName + ArgSigString (argsig) + " in " + sdtDecl.name.val);
+				ErrorMsg (lVal.field, "no member " + fieldName + " in " + sdtDecl.name.val);
 				return new CompValuVoid (lVal.field);
 			}
 
@@ -2570,21 +2638,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (baseRVal.type is TokenTypeSDTypeInterface) {
 				TokenTypeSDTypeInterface sdtType = (TokenTypeSDTypeInterface)baseRVal.type;
 				TokenDeclSDTypeInterface sdtDecl = sdtType.decl;
-				if (argsig == null) {
-					ErrorMsg (lVal.field, "no field " + fieldName + " in " + sdtDecl.name.val);
-					return new CompValuVoid (lVal.field);
-				} else {
+				if (argsig != null) {
 					TokenDeclVar declFunc = FindSingleMember (sdtDecl.methods, lVal.field, argsig);
 					if (declFunc != null) {
 						return new CompValuIntfMeth (declFunc, baseRVal);
 					}
-					ErrorMsg (lVal.field, "no method " + fieldName + ArgSigString (argsig) + " in " + sdtDecl.name.val);
-					return new CompValuVoid (lVal.field);
 				}
+				ErrorMsg (lVal.field, "no member " + fieldName + " in " + sdtDecl.name.val);
+				return new CompValuVoid (lVal.field);
 			}
 
 			/*
-			 * Since we only have a few types with fields, just pound them out.
+			 * Since we only have a few built-in types with fields, just pound them out.
 			 */
 			if (baseRVal.type is TokenTypeArray) {
 
@@ -2596,7 +2661,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				}
 
 				// no arguments but with the parentheses, returning void
-				if (fieldName == "clear") {
+				if (fieldName == "clear()") {
 					TokenType retType = new TokenTypeVoid (lVal);
 					TokenType[] argTypes = new TokenType[0];
 					TokenTypeSDTypeDelegate ttd = new TokenTypeSDTypeDelegate (lVal, retType, argTypes, tokenScript);
@@ -2605,8 +2670,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 				// single integer argument, returning an object
 				MethodInfo mi = null;
-				if (fieldName == "index") mi = arrayIndexMethodInfo;
-				if (fieldName == "value") mi = arrayValueMethodInfo;
+				if (fieldName == "index(integer)") mi = arrayIndexMethodInfo;
+				if (fieldName == "value(integer)") mi = arrayValueMethodInfo;
 				if (mi != null) {
 					TokenType retType = new TokenTypeObject (lVal);
 					TokenType[] argTypes = new TokenType[] { new TokenTypeInt (lVal) };
@@ -2634,7 +2699,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				}
 			}
 
-			ErrorMsg (lVal, "type " + baseRVal.type + " does not define field " + fieldName);
+			ErrorMsg (lVal, "type " + baseRVal.type.ToString () + " does not define member " + fieldName);
 			return baseRVal;
 		}
 
@@ -2660,7 +2725,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				TokenDeclVar var = FindSingleMember (vars, lVal.name, argsig);
 				if (var != null) return var.location;
 
-				// if that fails, try it without the argument signature
+				// if that fails, try it without the argument signature.
 				// delegates get entered like any other variable, ie, 
 				// no signature on their name.
 				if (argsig != null) {
@@ -2694,7 +2759,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private CompValu GenerateFromLValSField (TokenLValSField lVal, TokenType[] argsig)
 		{
 			TokenType stType = lVal.baseType;
-			string fieldName = lVal.fieldName.val;
+			string fieldName = lVal.fieldName.val + ArgSigString (argsig);
 
 			/*
 			 * Maybe they are accessing a static field or method of a script-defined class.
@@ -2706,7 +2771,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					TokenDeclVar declFunc = FindSingleMember (sdtd.members, lVal.fieldName, argsig);
 					if (declFunc != null) {
 						if ((declFunc.sdtFlags & ScriptReduce.SDT_STATIC) == 0) {
-							ErrorMsg (lVal.fieldName, "static reference to non-static member " + fieldName + ArgSigString (argsig));
+							ErrorMsg (lVal.fieldName, "static reference to non-static member " + fieldName);
 							return new CompValuVoid (lVal.fieldName);
 						}
 						return declFunc.location;
@@ -2714,7 +2779,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				}
 			}
 
-			ErrorMsg (lVal.fieldName, "no member " + fieldName + ArgSigString (argsig) + " in " + stType.ToString ());
+			ErrorMsg (lVal.fieldName, "no member " + fieldName + " in " + stType.ToString ());
 			return new CompValuVoid (lVal.fieldName);
 		}
 
@@ -3080,7 +3145,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					}
 					TokenType baseType = sdtd.MakeRefToken (baseField);
 					CompValu  basePtr  = new CompValuArg (baseType, 0);
-					return (declVar.retType == null) ? (CompValu)new CompValuInstField (declVar, basePtr) : 
+					return (declVar.retType == null) ? (CompValu)new CompValuInstField (declVar, basePtr, true) : 
 					                                   (CompValu)new CompValuInstMeth (declVar, basePtr, true);
 				}
 			}
@@ -3472,7 +3537,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @param var = variable to get the default value for
 		 * @returns with value pushed on stack
 		 */
-		private void PushVarDefaultValue (TokenDeclVar var)
+		public void PushVarDefaultValue (TokenDeclVar var)
 		{
 			TokenType type = var.type;
 			if (type is TokenTypeArray) {
@@ -4085,15 +4150,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private TokenDeclVar FindSingleMember (VarDict where, TokenName name, TokenType[] argsig)
 		{
-			TokenDeclVar[] callables = where.FindCallables (name.val, argsig);
-			if (callables == null) return null;
-			if (callables.Length > 1) {
+			TokenDeclVar[] members = where.FindCallables (name.val, argsig);
+			if (members == null) return null;
+			if (members.Length > 1) {
 				ErrorMsg (name, "more than one matching member");
-				for (int i = 0; i < callables.Length; i ++) {
-					ErrorMsg (callables[i], "  " + callables[i].argDecl.GetArgSig ());
+				for (int i = 0; i < members.Length; i ++) {
+					ErrorMsg (members[i], "  " + members[i].argDecl.GetArgSig ());
 				}
 			}
-			return callables[0];
+			CheckAccess (members[0]);
+			return members[0];
 		}
 
 		/**
@@ -4112,7 +4178,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if ((func != null) && (func.retType.ToString () != ret.ToString ())) {
 				ErrorMsg (name, "return type mismatch, have " + func.retType.ToString () + ", expect " + ret.ToString ());
 			}
+			if (func != null) CheckAccess (func);
 			return func;
+		}
+
+		/**
+		 * @brief Check the private/protected/public access flags of a member.
+		 */
+		private void CheckAccess (TokenDeclVar var)
+		{
+			if ((var.sdtFlags & ScriptReduce.SDT_PRIVATE) != 0) {
+				if (curDeclFunc.sdtClass != var.sdtClass) {
+					ErrorMsg (var, "member private to class " + var.sdtClass.name.val);
+				}
+			}
+			if ((var.sdtFlags & ScriptReduce.SDT_PROTECTED) != 0) {
+				for (TokenDeclSDTypeClass sdtc = curDeclFunc.sdtClass; sdtc != var.sdtClass; sdtc = sdtc.extends) {
+					if (sdtc == null) {
+						ErrorMsg (var, "member protected by class " + var.sdtClass.name.val);
+						break;
+					}
+				}
+			}
 		}
 
 		/**
@@ -4255,17 +4342,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Fill in simple parts of scriptObjCode object.
 			 */
-			ScriptObjCode scriptObjCode    = new ScriptObjCode ();
-			scriptObjCode.expiryDays       = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblArrays     = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblFloats     = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblIntegers   = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblLists      = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblObjects    = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblRotations  = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblStrings    = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblVectors    = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblSDTClasses = objFileReader.ReadInt32 ();
+			ScriptObjCode scriptObjCode   = new ScriptObjCode ();
+			scriptObjCode.expiryDays      = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblArrays    = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblFloats    = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblIntegers  = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblLists     = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblObjects   = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblRotations = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblStrings   = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblVectors   = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblSDTClObjs = objFileReader.ReadInt32 ();
 
 			int nStates = objFileReader.ReadInt32 ();
 
@@ -4286,7 +4373,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				asmFileWriter.WriteLine ("  numGblRotations  {0}", scriptObjCode.numGblRotations);
 				asmFileWriter.WriteLine ("  numGblStrings    {0}", scriptObjCode.numGblStrings);
 				asmFileWriter.WriteLine ("  numGblVectors    {0}", scriptObjCode.numGblVectors);
-				asmFileWriter.WriteLine ("  numGblSDTClasses {0}", scriptObjCode.numGblSDTClasses);
+				asmFileWriter.WriteLine ("  numGblSDTClObjs  {0}", scriptObjCode.numGblSDTClObjs);
 			}
 
 			string gblName;

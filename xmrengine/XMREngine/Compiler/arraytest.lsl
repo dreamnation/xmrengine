@@ -29,47 +29,57 @@ DUMPARRAY da;
 constant c0 = 99;
 constant c1 = Klass.c2 + 12;
 
+integer _globalProperty;
+integer globalProperty { get { return _globalProperty + 42; } 
+                         set { _globalProperty = value; }
+                       }
+
 class KlassOne : Klass, Printable {
-    void Print () : Printable.Print
+    public integer k1Prop { get { return 2992; } 
+                            set { SaySomething ("please don't set k1Prop = " + value); }
+                          }
+
+    public override void Print () : Printable.Print
     {
         SaySomething ("KlassOne.Printable");
+        this.k1Prop = 2999;
     }
-    override string ToString () : Printable.ToString
+    public override string ToString () : Printable.ToString
     {
-        return "zhis is KlassOne";
+        return "zhis is KlassOne viss k1Prop=" + this.k1Prop;
     }
 }
 
 class Klass : Printable {
-    constant c2 = c3 + 34;
-    constant c6 = c0 + c1 + c2 + c3 + c4 + c5;
-    constant c4 = 56;
-    constant c5 = c0 + 98;
+    public constant c2 = c3 + 34;
+    public constant c6 = c0 + c1 + c2 + c3 + c4 + c5;
+    public constant c4 = 56;
+    public constant c5 = c0 + 98;
 
-    integer x;
-    static integer y;
+    public integer x;
+    public static integer y;
 
-    constructor ()
+    public constructor ()
     {
         this.x = 99;
     }
 
-    static void SayIt (string x)
+    public static void SayIt (string x)
     {
         SaySomething ("SayIt: " + x);
     }
 
-    void Print () : Printable
+    public virtual void Print () : Printable
     {
         SayIt ("this.x=" + this.x);
         SayIt ("Klass.y=" + Klass.y);
     }
-    PrintTwice ()
+    public PrintTwice ()
     {
         this.Print ();
         this.Print ();
     }
-    virtual string ToString () : Printable
+    public virtual string ToString () : Printable
     {
         return "zhis is Klass";
     }
@@ -93,6 +103,9 @@ default
         SaySomething ("c4 = " + Klass.c4);
         SaySomething ("c5 = " + Klass.c5);
         SaySomething ("c6 = " + Klass.c6);
+
+        globalProperty = 12345;
+        SaySomething ("globalProperty = " + globalProperty);
 
         VERIFY ver = Verify;
         AwfulSig(ZERO_ROTATION, ZERO_VECTOR, "", 0, []);

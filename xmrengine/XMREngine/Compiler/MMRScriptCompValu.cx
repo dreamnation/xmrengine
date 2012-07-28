@@ -423,26 +423,53 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public CompValuGlobalVar (TokenDeclVar declVar, ScriptObjCode scriptObjCode) : base (declVar.type)
 		{
 			this.declVar = declVar;
-			declVar.type.AssignGlobalVarSlot (declVar, scriptObjCode);
+			if ((declVar.getProp == null) && (declVar.setProp == null)) {
+				declVar.type.AssignGlobalVarSlot (declVar, scriptObjCode);
+			}
 		}
 		public override void PushVal (ScriptCodeGen scg)
 		{
-			scg.PushXMRInst ();
-			EmitFieldPushVal (scg, declVar);
+			if ((declVar.getProp == null) && (declVar.setProp == null)) {
+				scg.PushXMRInst ();
+				EmitFieldPushVal (scg, declVar);
+			} else if (declVar.getProp != null) {
+				declVar.getProp.location.CallPre (scg);
+				declVar.getProp.location.CallPost (scg);
+			} else {
+				scg.ErrorMsg (declVar, "cannot read a write-only property");
+				scg.PushVarDefaultValue (declVar);
+			}
 		}
 		public override void PushRef (ScriptCodeGen scg)
 		{
-			scg.PushXMRInst ();
-			EmitFieldPushRef (scg, declVar);
+			if ((declVar.getProp == null) && (declVar.setProp == null)) {
+				scg.PushXMRInst ();
+				EmitFieldPushRef (scg, declVar);
+			} else {
+				scg.ErrorMsg (declVar, "cannot get address of property");
+				scg.ilGen.Emit (OpCodes.Ldnull);
+			}
 		}
 		public override void PopPre (ScriptCodeGen scg)
 		{
-			scg.PushXMRInst ();
-			EmitFieldPopPre (scg, declVar);
+			if ((declVar.getProp == null) && (declVar.setProp == null)) {
+				scg.PushXMRInst ();
+				EmitFieldPopPre (scg, declVar);
+			} else if (declVar.setProp != null) {
+				declVar.setProp.location.CallPre (scg);
+			} else {
+				scg.ErrorMsg (declVar, "cannot write a read-only property");
+			}
 		}
 		public override void PopPost (ScriptCodeGen scg)
 		{
-			EmitFieldPopPost (scg, declVar);
+			if ((declVar.getProp == null) && (declVar.setProp == null)) {
+				EmitFieldPopPost (scg, declVar);
+			} else if (declVar.setProp != null) {
+				declVar.setProp.location.CallPost (scg);
+			} else {
+				scg.ErrorMsg (declVar, "cannot write a read-only property");
+			}
 		}
 	}
 
@@ -677,31 +704,66 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	public class CompValuInstField : CompValu {
 		private TokenDeclVar declVar;
 		private CompValu baseRVal;
+		private bool ignVirt;
+		private CompValu getPropLoc;
+		private CompValu setPropLoc;
 
-		public CompValuInstField (TokenDeclVar declVar, CompValu baseRVal) : base (declVar.type)
+		public CompValuInstField (TokenDeclVar declVar, CompValu baseRVal, bool ignVirt) : base (declVar.type)
 		{
 			this.declVar  = declVar;
 			this.baseRVal = baseRVal;
+			this.ignVirt  = ignVirt;
 		}
 
 		public override void PushVal (ScriptCodeGen scg)
 		{
-			baseRVal.PushVal (scg);
-			EmitFieldPushVal (scg, declVar);
+			if ((declVar.getProp == null) && (declVar.setProp == null)) {
+				baseRVal.PushVal (scg);
+				EmitFieldPushVal (scg, declVar);
+			} else if (declVar.getProp != null) {
+				if (getPropLoc == null) {
+					getPropLoc = new CompValuInstMeth (declVar.getProp, baseRVal, ignVirt);
+				}
+				getPropLoc.CallPre (scg);
+				getPropLoc.CallPost (scg);
+			} else {
+				scg.ErrorMsg (declVar, "cannot read a write-only property");
+				scg.PushVarDefaultValue (declVar);
+			}
 		}
 		public override void PushRef (ScriptCodeGen scg)
 		{
-			baseRVal.PushVal (scg);
-			EmitFieldPushRef (scg, declVar);
+			if ((declVar.getProp == null) && (declVar.setProp == null)) {
+				baseRVal.PushVal (scg);
+				EmitFieldPushRef (scg, declVar);
+			} else {
+				scg.ErrorMsg (declVar, "cannot get address of property");
+				scg.ilGen.Emit (OpCodes.Ldnull);
+			}
 		}
 		public override void PopPre (ScriptCodeGen scg)
 		{
-			baseRVal.PushVal (scg);
-			EmitFieldPopPre (scg, declVar);
+			if ((declVar.getProp == null) && (declVar.setProp == null)) {
+				baseRVal.PushVal (scg);
+				EmitFieldPopPre (scg, declVar);
+			} else if (declVar.setProp != null) {
+				if (setPropLoc == null) {
+					setPropLoc = new CompValuInstMeth (declVar.setProp, baseRVal, ignVirt);
+				}
+				setPropLoc.CallPre (scg);
+			} else {
+				scg.ErrorMsg (declVar, "cannot write a read-only property");
+			}
 		}
 		public override void PopPost (ScriptCodeGen scg)
 		{
-			EmitFieldPopPost (scg, declVar);
+			if ((declVar.getProp == null) && (declVar.setProp == null)) {
+				EmitFieldPopPost (scg, declVar);
+			} else if (declVar.setProp != null) {
+				setPropLoc.CallPost (scg);
+			} else {
+				scg.ilGen.Emit (OpCodes.Pop);
+			}
 		}
 	}
 

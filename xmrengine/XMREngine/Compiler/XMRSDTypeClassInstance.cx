@@ -44,7 +44,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public LSL_Rotation[] sdtcRotations;
         public string[]       sdtcStrings;
         public LSL_Vector[]   sdtcVectors;
-        public XMRSDTypeClassInstance[] sdtcSDTClasses;
+        public XMRSDTypeClassInstance[] sdtcSDTClObjs;
 
         private static XMR_Array[]    noArrays    = new XMR_Array[0];
         private static SCRIPTFLOAT[]  noFloats    = new SCRIPTFLOAT[0];
@@ -54,7 +54,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private static LSL_Rotation[] noRotations = new LSL_Rotation[0];
         private static string[]       noStrings   = new string[0];
         private static LSL_Vector[]   noVectors   = new LSL_Vector[0];
-        private static XMRSDTypeClassInstance[] noSTDClasses = new XMRSDTypeClassInstance[0];
+        private static XMRSDTypeClassInstance[] noSTDClObjs = new XMRSDTypeClassInstance[0];
 
         public XMRSDTypeClassInstance (XMRInstAbstract inst, string classname)
         {
@@ -128,15 +128,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * These arrays hold the script non-static instance variables.
              * Lots more shitty little mallocs...
              */
-            sdtcArrays     = (clas.numInstArrays     > 0) ? new XMR_Array   [clas.numInstArrays]    : noArrays;
-            sdtcFloats     = (clas.numInstFloats     > 0) ? new SCRIPTFLOAT [clas.numInstFloats]    : noFloats;
-            sdtcIntegers   = (clas.numInstIntegers   > 0) ? new int         [clas.numInstIntegers]  : noIntegers;
-            sdtcLists      = (clas.numInstLists      > 0) ? new LSL_List    [clas.numInstLists]     : noLists;
-            sdtcObjects    = (clas.numInstObjects    > 0) ? new object      [clas.numInstObjects]   : noObjects;
-            sdtcRotations  = (clas.numInstRotations  > 0) ? new LSL_Rotation[clas.numInstRotations] : noRotations;
-            sdtcStrings    = (clas.numInstStrings    > 0) ? new string      [clas.numInstStrings]   : noStrings;
-            sdtcVectors    = (clas.numInstVectors    > 0) ? new LSL_Vector  [clas.numInstVectors]   : noVectors;
-            sdtcSDTClasses = (clas.numInstSDTClasses > 0) ? new XMRSDTypeClassInstance[clas.numInstSDTClasses] : noSTDClasses;
+            sdtcArrays    = (clas.numInstArrays    > 0) ? new XMR_Array   [clas.numInstArrays]    : noArrays;
+            sdtcFloats    = (clas.numInstFloats    > 0) ? new SCRIPTFLOAT [clas.numInstFloats]    : noFloats;
+            sdtcIntegers  = (clas.numInstIntegers  > 0) ? new int         [clas.numInstIntegers]  : noIntegers;
+            sdtcLists     = (clas.numInstLists     > 0) ? new LSL_List    [clas.numInstLists]     : noLists;
+            sdtcObjects   = (clas.numInstObjects   > 0) ? new object      [clas.numInstObjects]   : noObjects;
+            sdtcRotations = (clas.numInstRotations > 0) ? new LSL_Rotation[clas.numInstRotations] : noRotations;
+            sdtcStrings   = (clas.numInstStrings   > 0) ? new string      [clas.numInstStrings]   : noStrings;
+            sdtcVectors   = (clas.numInstVectors   > 0) ? new LSL_Vector  [clas.numInstVectors]   : noVectors;
+            sdtcSDTClObjs = (clas.numInstSDTClObjs > 0) ? new XMRSDTypeClassInstance[clas.numInstSDTClObjs] : noSTDClObjs;
         }
 
         private delegate void MarkerInterfaceDummy ();

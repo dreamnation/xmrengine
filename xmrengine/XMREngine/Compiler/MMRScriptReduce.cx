@@ -30,10 +30,14 @@ using System.Text;
 namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 	public class ScriptReduce {
-		public const uint SDT_ABSTRACT = 1;
-		public const uint SDT_OVERRIDE = 2;
-		public const uint SDT_STATIC   = 4;
-		public const uint SDT_VIRTUAL  = 8;
+		public const uint SDT_PRIVATE   =   1;
+		public const uint SDT_PROTECTED =   2;
+		public const uint SDT_PUBLIC    =   4;
+		public const uint SDT_ABSTRACT  =   8;
+		public const uint SDT_NEW       =  16;
+		public const uint SDT_OVERRIDE  =  32;
+		public const uint SDT_STATIC    =  64;
+		public const uint SDT_VIRTUAL   = 128;
 
 		private static Dictionary<Type, int> precedence = PrecedenceInit ();
 
@@ -153,7 +157,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						t = t3.nextToken;
 						t1.prevToken.nextToken = t.nextToken;
 						t.nextToken.prevToken = t1.prevToken;
-						Console.WriteLine ("ScriptReduce*: expiryDays=" + tokenScript.expiryDays);
 					}
 				}
 			}
@@ -245,6 +248,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * Scan through the tokens until we reach the end.
 			 */
 			for (Token token = tokenBegin.nextToken; !(token is TokenEnd);) {
+				if (token is TokenKwSemi) {
+					token = token.nextToken;
+					continue;
+				}
 
 				/*
 				 * class <classdef> ... { ... }
@@ -287,6 +294,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				    ((token.nextToken.nextToken is TokenKwSemi) || 
 				     (token.nextToken.nextToken is TokenKwAssign))) {
 					ParseDeclVar (ref token, tokenScript.vars);
+					continue;
+				}
+
+				/*
+				 * <type> <name> { [ get { <body> } ] [ set { <body> } ] }
+				 */
+				if ((token is TokenType) &&
+				    (token.nextToken is TokenName) &&
+				    (token.nextToken.nextToken is TokenKwBrcOpen)) {
+					ParseProperty (ref token, tokenScript.vars, false);
 					continue;
 				}
 
@@ -460,155 +477,83 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 			// process declaration statements until '}'
 			while (!(token is TokenKwBrcClose)) {
-
-				/*
-				 * Maybe there is a 'static' prefix.
-				 */
-				uint flags = 0;
-				if (token is TokenKwStatic) {
-					flags |= SDT_STATIC;
+				if (token is TokenKwSemi) {
 					token = token.nextToken;
-				}
-
-				/*
-				 * [ static ] constant <name> = <rval> ;
-				 */
-				if (token is TokenKwConst) {
-					TokenDeclVar var = ParseDeclVar (ref token, tokdeclcl.members);
-					if (var != null) var.sdtFlags |= SDT_STATIC;
 					continue;
 				}
 
 				/*
-				 * [ static ] <type> <name> ;
-				 * [ static ] <type> <name> = <rval> ;
+				 * Check for all qualifiers.
+				 */
+				uint flags = ParseQualifierFlags (ref token);
+
+				/*
+				 * constant <name> = <rval> ;
+				 */
+				if (token is TokenKwConst) {
+					if ((flags & (SDT_ABSTRACT | SDT_NEW | SDT_OVERRIDE | SDT_VIRTUAL)) != 0) {
+						ErrorMsg (token, "cannot have abstract, new, override or virtual field");
+					}
+					TokenDeclVar var = ParseDeclVar (ref token, tokdeclcl.members);
+					if (var != null) {
+						var.sdtClass = tokdeclcl;
+						var.sdtFlags = flags | SDT_STATIC;
+					}
+					continue;
+				}
+
+				/*
+				 * <type> <name> ;
+				 * <type> <name> = <rval> ;
 				 */
 				if ((token is TokenType) &&
 				    (token.nextToken is TokenName) &&
 				    ((token.nextToken.nextToken is TokenKwSemi) || 
 				     (token.nextToken.nextToken is TokenKwAssign))) {
-					ParseDeclVar (ref token, tokdeclcl.members).sdtFlags = flags;
+					if ((flags & (SDT_ABSTRACT | SDT_NEW | SDT_OVERRIDE | SDT_VIRTUAL)) != 0) {
+						ErrorMsg (token, "cannot have abstract, new, override or virtual field");
+					}
+					TokenDeclVar var = ParseDeclVar (ref token, tokdeclcl.members);
+					if (var != null) {
+						var.sdtClass = tokdeclcl;
+						var.sdtFlags = flags;
+					}
 					continue;
 				}
 
 				/*
-				 * Maybe there is an 'abstract', 'override' or 'virtual' prefix.
+				 * <type> <name> { [ get { <body> } ] [ set { <body> } ] }
 				 */
-				while (true) {
-					if (token is TokenKwAbstract) {
-						if (flags != 0) ErrorMsg (token, "conflicting prefixes");
-						else flags |= SDT_ABSTRACT;
-						tokdeclcl.isAbstract = true;
-						token = token.nextToken;
-						continue;
+				if ((token is TokenType) &&
+				    (token.nextToken is TokenName) &&
+				    (token.nextToken.nextToken is TokenKwBrcOpen)) {
+					TokenDeclVar var = ParseProperty (ref token, tokdeclcl.members, (flags & SDT_ABSTRACT) != 0);
+					if (var != null) {
+						var.sdtClass = tokdeclcl;
+						var.sdtFlags = flags;
+						if (var.getProp != null) {
+							var.getProp.sdtClass = tokdeclcl;
+							var.getProp.sdtFlags = flags;
+						}
+						if (var.setProp != null) {
+							var.setProp.sdtClass = tokdeclcl;
+							var.setProp.sdtFlags = flags;
+						}
 					}
-					if (token is TokenKwOverride) {
-						if (flags != 0) ErrorMsg (token, "conflicting prefixes");
-						else flags |= SDT_OVERRIDE;
-						token = token.nextToken;
-						continue;
-					}
-					if (token is TokenKwVirtual) {
-						if (flags != 0) ErrorMsg (token, "conflicting prefixes");
-						else flags |= SDT_VIRTUAL;
-						token = token.nextToken;
-						continue;
-					}
-					break;
+					continue;
 				}
 
 				/*
 				 * 'constructor' '(' arglist ')' [ ':' [ 'base' ] '(' baseconstructorcall ')' ] '{' body '}'
 				 */
 				if (token is TokenKwConstructor) {
-					if (flags != 0) {
-						ErrorMsg (token, "constructors can't be abstract/override/static/virtual");
-					}
-
-					TokenDeclVar tokenDeclFunc = new TokenDeclVar (token, null, tokenScript);
-					tokenDeclFunc.retType      = new TokenTypeVoid (token);
-
-					token = token.nextToken;
-					if (!(token is TokenKwParOpen)) {
-						ErrorMsg (token, "expecting ( for constructor argument list");
-						token = SkipPastSemi (token);
-						continue;
-					}
-
-					tokenDeclFunc.argDecl       = ParseFuncArgs (ref token);
-					if (tokenDeclFunc.argDecl == null) continue;
-					string nameSig              = "constructor" + tokenDeclFunc.argDecl.GetArgSig ();
-
-					tokenDeclFunc.funcNameSig   = new TokenName (tokenDeclFunc, nameSig);
-					tokenDeclFunc.sdtClass      = tokdeclcl;
-					tokenDeclFunc.sdtFlags      = flags;
-
-					TokenDeclVar saveDeclFunc = currentDeclFunc;
-					currentDeclFunc = tokenDeclFunc;
-					try {
-						/*
-						 * Set up reference to base constructor.
-						 */
-						TokenRValBaseField baseCtor = new TokenRValBaseField (token, 
-						                              new TokenName (token, "constructor"));
-
-						/*
-						 * Parse any base constructor call as if it were the first statement of the
-						 * constructor itself.
-						 */
-						if (token is TokenKwColon) {
-							token = token.nextToken;
-							if (token is TokenKwBase) {
-								token = token.nextToken;
-							}
-							if (!(token is TokenKwParOpen)) {
-								ErrorMsg (token, "expecting ( for base constructor call arguments");
-								token = SkipPastSemi (token);
-								continue;
-							}
-							TokenRValCall rvc = ParseRValCall (ref token, baseCtor);
-							if (rvc == null) continue;
-							if (tokdeclcl.extends != null) {
-								tokenDeclFunc.baseCtorCall = rvc;
-							} else {
-								ErrorMsg (rvc, "base constructor call cannot be specified if not extending anything");
-							}
-						} else if (tokdeclcl.extends != null) {
-
-							/*
-							 * Caller didn't specify a constructor but we are extending, so we will 
-							 * call the extended class's default constructor.
-							 */
-							TokenRValCall rvc = new TokenRValCall (token);
-							rvc.meth          = baseCtor;
-							tokenDeclFunc.baseCtorCall = rvc;
-						}
-
-						/*
-						 * Parse the constructor body.
-						 */
-						tokenDeclFunc.body = ParseStmtBlock (ref token);
-						if (tokenDeclFunc.body == null) continue;
-						if (tokenDeclFunc.argDecl == null) continue;
-					} finally {
-						currentDeclFunc = saveDeclFunc;
-					}
-
-					/*
-					 * Add to list of methods defined by this class.
-					 * It has the name "constructor(argsig)".
-					 * Note that script can't call it directly via a call to a method named constructor
-					 * because constructor is a keyword.
-					 */
-					if (!tokdeclcl.members.AddEntry (tokenDeclFunc)) {
-						ErrorMsg (tokenDeclFunc, "duplicate constructor definition");
-					}
+					ParseSDTClassCtorDecl (ref token, flags, tokdeclcl);
 					haveExplicitConstructor = true;
 					continue;
 				}
 
 				/*
-				 * [ abstract | override | static | virtual ] <type> <name> <funcargs> <funcbody>
+				 * <type> <name> <funcargs> <funcbody>
 				 * method with explicit return type
 				 */
 				if (token is TokenType) {
@@ -617,7 +562,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				}
 
 				/*
-				 * [ abstract | override | static | virtual ] <name> <funcargs> <funcbody>
+				 * <name> <funcargs> <funcbody>
 				 * method returning void
 				 */
 				if (token is TokenName) {
@@ -644,7 +589,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				tokenDeclFunc.argDecl.locns = new CompValu[0];
 				tokenDeclFunc.funcNameSig   = new TokenName (token, "constructor()");
 				tokenDeclFunc.sdtClass      = tokdeclcl;
-				tokenDeclFunc.sdtFlags      = 0;
+				tokenDeclFunc.sdtFlags      = SDT_PUBLIC | SDT_NEW;
 				tokenDeclFunc.body          = new TokenStmtBlock (token);
 				tokenDeclFunc.body.function = tokenDeclFunc;
 
@@ -666,6 +611,261 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * Skip over the closing brace.
 			 */
 			token = token.nextToken;
+		}
+
+		/**
+		 * @brief Parse out abstract/override/private/protected/public/static/virtual keywords.
+		 */
+		private Dictionary<uint, Token> foundFlags = new Dictionary<uint, Token> ();
+		private uint ParseQualifierFlags (ref Token token)
+		{
+			foundFlags.Clear ();
+			while (true) {
+				if (token is TokenKwPrivate) {
+					token = AddQualifierFlag (token, SDT_PRIVATE, SDT_PROTECTED | SDT_PUBLIC);
+					continue;
+				}
+				if (token is TokenKwProtected) {
+					token = AddQualifierFlag (token, SDT_PROTECTED, SDT_PRIVATE | SDT_PUBLIC);
+					continue;
+				}
+				if (token is TokenKwPublic) {
+					token = AddQualifierFlag (token, SDT_PUBLIC, SDT_PRIVATE | SDT_PROTECTED);
+					continue;
+				}
+
+				if (token is TokenKwAbstract) {
+					token = AddQualifierFlag (token, SDT_ABSTRACT, SDT_STATIC | SDT_VIRTUAL);
+					continue;
+				}
+				if (token is TokenKwNew) {
+					token = AddQualifierFlag (token, SDT_NEW, SDT_OVERRIDE);
+					continue;
+				}
+				if (token is TokenKwOverride) {
+					token = AddQualifierFlag (token, SDT_OVERRIDE, SDT_NEW | SDT_STATIC);
+					continue;
+				}
+				if (token is TokenKwStatic) {
+					token = AddQualifierFlag (token, SDT_STATIC, SDT_ABSTRACT | SDT_OVERRIDE | SDT_VIRTUAL);
+					continue;
+				}
+				if (token is TokenKwVirtual) {
+					token = AddQualifierFlag (token, SDT_VIRTUAL, SDT_ABSTRACT | SDT_STATIC);
+					continue;
+				}
+				break;
+			}
+
+			uint flags = 0;
+			foreach (uint flag in foundFlags.Keys) flags |= flag;
+			if ((flags & (SDT_PRIVATE | SDT_PROTECTED | SDT_PUBLIC)) == 0) {
+				ErrorMsg (token, "must specify exactly one of private, protected or public");
+			}
+			return flags;
+		}
+		private Token AddQualifierFlag (Token token, uint add, uint confs)
+		{
+			while (confs != 0) {
+				uint conf = (uint)(confs & -confs);
+				Token confToken;
+				if (foundFlags.TryGetValue (conf, out confToken)) {
+					ErrorMsg (token, "conflicts with " + confToken.ToString ());
+				}
+				confs -= conf;
+			}
+			foundFlags[add] = token;
+			return token.nextToken;
+		}
+
+		/**
+		 * @brief Parse a property declaration.
+		 * @param token = points to the property type token on entry
+		 *                points just past the closing brace on return
+		 * @param members = dictionary to add property to
+		 * @param abs = true: property is abstract
+		 *             false: property is concrete
+		 * @returns null: parse failure
+		 *          else: property
+		 */
+		private TokenDeclVar ParseProperty (ref Token token, VarDict members, bool abs)
+		{
+			TokenType type = (TokenType)token;
+			TokenName name = (TokenName)token.nextToken;
+			TokenDeclVar getFunc = null;
+			TokenDeclVar setFunc = null;
+			token = token.nextToken.nextToken.nextToken;
+
+			while (!(token is TokenKwBrcClose)) {
+
+				/*
+				 * Maybe create a getter function.
+				 */
+				if (token is TokenKwGet) {
+					TokenArgDecl argDecl = new TokenArgDecl (token);
+					argDecl.names = new TokenName[0];
+					argDecl.types = new TokenType[0];
+					argDecl.locns = new CompValu[0];
+
+					getFunc = new TokenDeclVar (token, null, tokenScript);
+					getFunc.retType     = type;
+					getFunc.argDecl     = argDecl;
+					getFunc.funcNameSig = new TokenName (token, name.val + ".get.()");
+
+					token = token.nextToken;
+					if (!ParseFunctionBody (ref token, getFunc, abs)) {
+						getFunc = null;
+					} else if (!members.AddEntry (getFunc)) {
+						ErrorMsg (getFunc, "duplicate getter");
+					}
+					continue;
+				}
+
+				/*
+				 * Maybe create a setter function.
+				 */
+				if (token is TokenKwSet) {
+					TokenArgDecl argDecl = new TokenArgDecl (token);
+					argDecl.names = new TokenName[1];
+					argDecl.types = new TokenType[1];
+					argDecl.locns = new CompValu[1];
+					argDecl.names[0] = new TokenName (token, "value");
+					argDecl.types[0] = type;
+
+					setFunc = new TokenDeclVar (token, null, tokenScript);
+					setFunc.retType     = new TokenTypeVoid (token);
+					setFunc.argDecl     = argDecl;
+					setFunc.funcNameSig = new TokenName (token, name.val + ".set.(" + type.ToString () + ")");
+
+					token = token.nextToken;
+					if (!ParseFunctionBody (ref token, setFunc, abs)) {
+						setFunc = null;
+					} else if (!members.AddEntry (setFunc)) {
+						ErrorMsg (setFunc, "duplicate setter");
+					}
+					continue;
+				}
+				ErrorMsg (token, "expecting get or set");
+				token = SkipPastSemi (token);
+				return null;
+			}
+			token = token.nextToken;
+
+			if ((getFunc == null) && (setFunc == null)) {
+				ErrorMsg (name, "must specify at least one of get, set");
+				return null;
+			}
+
+			/*
+			 * Set up a variable for the property.
+			 */
+			TokenDeclVar tokenDeclVar = new TokenDeclVar (name, null, tokenScript);
+			tokenDeclVar.type    = type;
+			tokenDeclVar.name    = name;
+			tokenDeclVar.getProp = getFunc;
+			tokenDeclVar.setProp = setFunc;
+
+			/*
+			 * Can't be same name already in block.
+			 */
+			if (!members.AddEntry (tokenDeclVar)) {
+				ErrorMsg (tokenDeclVar, "duplicate variable " + name.val);
+				return null;
+			}
+			return tokenDeclVar;
+		}
+
+		/**
+		 * @brief Parse a constructor definition for a script-defined type class.
+		 * @param token = points to 'constructor' keyword
+		 * @param flags = abstract/override/static/virtual flags
+		 * @param tokdeclcl = which script-defined type class this method is in
+		 * @returns with method parsed and cataloged (or error message(s) printed)
+		 */
+		private void ParseSDTClassCtorDecl (ref Token token, uint flags, TokenDeclSDTypeClass tokdeclcl)
+		{
+			if ((flags & (SDT_ABSTRACT | SDT_OVERRIDE | SDT_STATIC | SDT_VIRTUAL)) != 0) {
+				ErrorMsg (token, "cannot have abstract, override, static or virtual constructor");
+			}
+
+			TokenDeclVar tokenDeclFunc = new TokenDeclVar (token, null, tokenScript);
+			tokenDeclFunc.retType      = new TokenTypeVoid (token);
+
+			token = token.nextToken;
+			if (!(token is TokenKwParOpen)) {
+				ErrorMsg (token, "expecting ( for constructor argument list");
+				token = SkipPastSemi (token);
+				return;
+			}
+
+			tokenDeclFunc.argDecl       = ParseFuncArgs (ref token);
+			if (tokenDeclFunc.argDecl == null) return;
+			string nameSig              = "constructor" + tokenDeclFunc.argDecl.GetArgSig ();
+
+			tokenDeclFunc.funcNameSig   = new TokenName (tokenDeclFunc, nameSig);
+			tokenDeclFunc.sdtClass      = tokdeclcl;
+			tokenDeclFunc.sdtFlags      = flags | SDT_NEW;
+
+			TokenDeclVar saveDeclFunc = currentDeclFunc;
+			currentDeclFunc = tokenDeclFunc;
+			try {
+				/*
+				 * Set up reference to base constructor.
+				 */
+				TokenRValBaseField baseCtor = new TokenRValBaseField (token, 
+				                              new TokenName (token, "constructor"));
+
+				/*
+				 * Parse any base constructor call as if it were the first statement of the
+				 * constructor itself.
+				 */
+				if (token is TokenKwColon) {
+					token = token.nextToken;
+					if (token is TokenKwBase) {
+						token = token.nextToken;
+					}
+					if (!(token is TokenKwParOpen)) {
+						ErrorMsg (token, "expecting ( for base constructor call arguments");
+						token = SkipPastSemi (token);
+						return;
+					}
+					TokenRValCall rvc = ParseRValCall (ref token, baseCtor);
+					if (rvc == null) return;
+					if (tokdeclcl.extends != null) {
+						tokenDeclFunc.baseCtorCall = rvc;
+					} else {
+						ErrorMsg (rvc, "base constructor call cannot be specified if not extending anything");
+					}
+				} else if (tokdeclcl.extends != null) {
+
+					/*
+					 * Caller didn't specify a constructor but we are extending, so we will 
+					 * call the extended class's default constructor.
+					 */
+					TokenRValCall rvc = new TokenRValCall (token);
+					rvc.meth          = baseCtor;
+					tokenDeclFunc.baseCtorCall = rvc;
+				}
+
+				/*
+				 * Parse the constructor body.
+				 */
+				tokenDeclFunc.body = ParseStmtBlock (ref token);
+				if (tokenDeclFunc.body == null) return;
+				if (tokenDeclFunc.argDecl == null) return;
+			} finally {
+				currentDeclFunc = saveDeclFunc;
+			}
+
+			/*
+			 * Add to list of methods defined by this class.
+			 * It has the name "constructor(argsig)".
+			 * Note that script can't call it directly via a call to a method named constructor
+			 * because constructor is a keyword.
+			 */
+			if (!tokdeclcl.members.AddEntry (tokenDeclFunc)) {
+				ErrorMsg (tokenDeclFunc, "duplicate constructor definition");
+			}
 		}
 
 		/**
@@ -979,27 +1179,43 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				}
 			}
 
-			if (token is TokenKwSemi) {
-				if (!abs) {
-					ErrorMsg (token, "expecting function body, not abstract");
-					token = SkipPastSemi (token);
-					return null;
-				}
-				token = token.nextToken;
-			} else {
-				TokenDeclVar saveDeclFunc = currentDeclFunc;
-				currentDeclFunc = tokenDeclFunc;
-				tokenDeclFunc.body = ParseStmtBlock (ref token);
-				currentDeclFunc = saveDeclFunc;
-				if (tokenDeclFunc.body == null) return null;
-				if (abs) {
-					ErrorMsg (tokenDeclFunc.body, "function declared abstract but has body");
-					tokenDeclFunc.body = null;
-				}
-			}
+			if (!ParseFunctionBody (ref token, tokenDeclFunc, abs)) return null;
 			if (tokenDeclFunc.argDecl == null) return null;
 			return tokenDeclFunc;
 		}
+
+		/**
+		 * @brief Parse function declaration's body
+		 * @param token = points to body, ie, ';' or '{'
+		 * @param tokenDeclFunc = function being declared
+		 * @param abs = false: concrete function; true: abstract declaration
+		 * @returns whether or not the function definition parsed correctly
+		 */
+		private bool ParseFunctionBody (ref Token token, TokenDeclVar tokenDeclFunc, bool abs)
+		{
+			if (token is TokenKwSemi) {
+				if (!abs) {
+					ErrorMsg (token, "concrete function must have body");
+					token = SkipPastSemi (token);
+					return false;
+				}
+				token = token.nextToken;
+				return true;
+			}
+
+			TokenDeclVar saveDeclFunc = currentDeclFunc;
+			currentDeclFunc = tokenDeclFunc;
+			tokenDeclFunc.body = ParseStmtBlock (ref token);
+			currentDeclFunc = saveDeclFunc;
+			if (tokenDeclFunc.body == null) return false;
+			if (abs) {
+				ErrorMsg (tokenDeclFunc.body, "abstract function must not have body");
+				tokenDeclFunc.body = null;
+				return false;
+			}
+			return true;
+		}
+
 
 		/**
 		 * @brief Parse statement
@@ -2424,7 +2640,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public int numInstRotations;  // number of non-static rotation fields
 		public int numInstStrings;    // number of non-static string fields
 		public int numInstVectors;    // number of non-static vector fields
-		public int numInstSDTClasses; // number of non-static sdt-class fields
+		public int numInstSDTClObjs;  // number of non-static sdt-class object fields
 		public int numVirtFuncs;      // number of virtual functions
 		public int numInterfaces;     // number of implemented interfaces
 
@@ -2473,7 +2689,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			objFileWriter.Write (numInstRotations);
 			objFileWriter.Write (numInstStrings);
 			objFileWriter.Write (numInstVectors);
-			objFileWriter.Write (numInstSDTClasses);
+			objFileWriter.Write (numInstSDTClObjs);
 			objFileWriter.Write (numVirtFuncs);
 
 			if (extends == null) {
@@ -2512,16 +2728,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		public override void ReadFromFile (BinaryReader objFileReader, TextWriter asmFileWriter)
 		{
-			numInstArrays     = objFileReader.ReadInt32 ();
-			numInstFloats     = objFileReader.ReadInt32 ();
-			numInstIntegers   = objFileReader.ReadInt32 ();
-			numInstLists      = objFileReader.ReadInt32 ();
-			numInstObjects    = objFileReader.ReadInt32 ();
-			numInstRotations  = objFileReader.ReadInt32 ();
-			numInstStrings    = objFileReader.ReadInt32 ();
-			numInstVectors    = objFileReader.ReadInt32 ();
-			numInstSDTClasses = objFileReader.ReadInt32 ();
-			numVirtFuncs      = objFileReader.ReadInt32 ();
+			numInstArrays    = objFileReader.ReadInt32 ();
+			numInstFloats    = objFileReader.ReadInt32 ();
+			numInstIntegers  = objFileReader.ReadInt32 ();
+			numInstLists     = objFileReader.ReadInt32 ();
+			numInstObjects   = objFileReader.ReadInt32 ();
+			numInstRotations = objFileReader.ReadInt32 ();
+			numInstStrings   = objFileReader.ReadInt32 ();
+			numInstVectors   = objFileReader.ReadInt32 ();
+			numInstSDTClObjs = objFileReader.ReadInt32 ();
+			numVirtFuncs     = objFileReader.ReadInt32 ();
 
 			extendsStr = objFileReader.ReadString ();
 
@@ -2928,8 +3144,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	}
 
 	public class TokenTypeSDTypeClass : TokenTypeSDType {
-		private static readonly FieldInfo gblSDTClassesFieldInfo  = typeof (XMRInstAbstract).GetField ("gblSDTClasses");
-		private static readonly FieldInfo sdtcSDTClassesFieldInfo = typeof (XMRSDTypeClassInstance).GetField ("sdtcSDTClasses");
+		private static readonly FieldInfo gblSDTClObjsFieldInfo  = typeof (XMRInstAbstract).GetField ("gblSDTClObjs");
+		private static readonly FieldInfo sdtcSDTClObjsFieldInfo = typeof (XMRSDTypeClassInstance).GetField ("sdtcSDTClObjs");
  
 		public TokenDeclSDTypeClass decl;
 		public TokenTypeSDTypeClass (Token t, TokenDeclSDTypeClass decl) : base (t)
@@ -2959,13 +3175,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		}
 		public override void AssignGlobalVarSlot (TokenDeclVar declVar, ScriptObjCode scriptObjCode)
 		{
-			declVar.vTableArray = gblSDTClassesFieldInfo;
-			declVar.vTableIndex = scriptObjCode.numGblSDTClasses ++;
+			declVar.vTableArray = gblSDTClObjsFieldInfo;
+			declVar.vTableIndex = scriptObjCode.numGblSDTClObjs ++;
 		}
 		public override void AssignSDTClassFieldSlot (TokenDeclVar declVar, TokenDeclSDTypeClass sdtClass)
 		{
-			declVar.vTableArray = sdtcSDTClassesFieldInfo;
-			declVar.vTableIndex = sdtClass.numInstSDTClasses ++;
+			declVar.vTableArray = sdtcSDTClObjsFieldInfo;
+			declVar.vTableIndex = sdtClass.numInstSDTClObjs ++;
 		}
 	}
 
@@ -2974,8 +3190,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		private static readonly FieldInfo sdtcObjectsFieldInfo = typeof (XMRSDTypeClassInstance).GetField ("sdtcObjects");
 
 		public TokenDeclSDTypeDelegate decl;
-
-		private static ulong anonDeclDel = 0;
 
 		/**
 		 * @brief create a reference to an explicitly declared delegate
@@ -3170,6 +3384,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenScript tokenScript;        // what script this function is part of
 		public TokenDeclSDTypeClass sdtClass;  // null: script global function
 		                                       // else: method is part of this script-defined type
+		public TokenDeclVar getProp;           // property get function
+		public TokenDeclVar setProp;           // property set function
 
 		// function-only data:
 
