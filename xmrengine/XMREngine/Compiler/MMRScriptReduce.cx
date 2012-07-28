@@ -34,10 +34,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public const uint SDT_PROTECTED =   2;
 		public const uint SDT_PUBLIC    =   4;
 		public const uint SDT_ABSTRACT  =   8;
-		public const uint SDT_NEW       =  16;
-		public const uint SDT_OVERRIDE  =  32;
-		public const uint SDT_STATIC    =  64;
-		public const uint SDT_VIRTUAL   = 128;
+		public const uint SDT_FINAL     =  16;
+		public const uint SDT_NEW       =  32;
+		public const uint SDT_OVERRIDE  =  64;
+		public const uint SDT_STATIC    = 128;
+		public const uint SDT_VIRTUAL   = 256;
 
 		private static Dictionary<Type, int> precedence = PrecedenceInit ();
 
@@ -510,8 +511,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				    (token.nextToken is TokenName) &&
 				    ((token.nextToken.nextToken is TokenKwSemi) || 
 				     (token.nextToken.nextToken is TokenKwAssign))) {
-					if ((flags & (SDT_ABSTRACT | SDT_NEW | SDT_OVERRIDE | SDT_VIRTUAL)) != 0) {
-						ErrorMsg (token, "cannot have abstract, new, override or virtual field");
+					if ((flags & (SDT_ABSTRACT | SDT_FINAL | SDT_NEW | SDT_OVERRIDE | SDT_VIRTUAL)) != 0) {
+						ErrorMsg (token, "cannot have abstract, final, new, override or virtual field");
 					}
 					TokenDeclVar var = ParseDeclVar (ref token, tokdeclcl.members);
 					if (var != null) {
@@ -635,7 +636,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				}
 
 				if (token is TokenKwAbstract) {
-					token = AddQualifierFlag (token, SDT_ABSTRACT, SDT_STATIC | SDT_VIRTUAL);
+					token = AddQualifierFlag (token, SDT_ABSTRACT, SDT_FINAL | SDT_STATIC | SDT_VIRTUAL);
+					continue;
+				}
+				if (token is TokenKwFinal) {
+					token = AddQualifierFlag (token, SDT_FINAL, SDT_ABSTRACT | SDT_VIRTUAL);
 					continue;
 				}
 				if (token is TokenKwNew) {
@@ -651,7 +656,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					continue;
 				}
 				if (token is TokenKwVirtual) {
-					token = AddQualifierFlag (token, SDT_VIRTUAL, SDT_ABSTRACT | SDT_STATIC);
+					token = AddQualifierFlag (token, SDT_VIRTUAL, SDT_ABSTRACT | SDT_NEW | SDT_STATIC);
 					continue;
 				}
 				break;

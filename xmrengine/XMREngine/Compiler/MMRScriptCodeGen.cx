@@ -465,7 +465,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 *          static new : ignore any overidden method, doesn't need a slot
 					 *             virtual : error if any overidden method, alloc new slot and fill it in
 					 *         virtual new : ignore any overidden method, alloc new slot and fill it in
-					 *    virtual override : must have overidden abstract/virtual, use old slot (same as plain override)
 					 */
 					foreach (TokenDeclVar declFunc in sdtClass.members) {
 						if (declFunc.retType == null) continue;
@@ -495,6 +494,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 									ErrorMsg (declFunc, name + " overshadows abstract " + overridden.sdtClass.name.val + " but is not marked abstract, new or override");
 									break;
 								}
+							} else if ((overFlags & ScriptReduce.SDT_FINAL) != 0) {
+								ErrorMsg (declFunc, name + " overshadows final " + overridden.sdtClass.name.val + " but is not marked new");
 							} else if ((overFlags & (ScriptReduce.SDT_OVERRIDE | ScriptReduce.SDT_VIRTUAL)) != 0) {
 								if ((declFlags & (ScriptReduce.SDT_NEW | ScriptReduce.SDT_OVERRIDE)) == 0) {
 									ErrorMsg (declFunc, name + " overshadows virtual " + overridden.sdtClass.name.val + " but is not marked new or override");

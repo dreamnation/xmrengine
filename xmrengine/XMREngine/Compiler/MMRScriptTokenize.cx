@@ -713,6 +713,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             kws.Add ("constructor", GetTokenCtor (typeof (TokenKwConstructor)));
             kws.Add ("delegate",    GetTokenCtor (typeof (TokenKwDelegate)));
             kws.Add ("destructor",  GetTokenCtor (typeof (TokenKwDestructor)));
+            kws.Add ("final",       GetTokenCtor (typeof (TokenKwFinal)));
             kws.Add ("get",         GetTokenCtor (typeof (TokenKwGet)));
             kws.Add ("interface",   GetTokenCtor (typeof (TokenKwInterface)));
             kws.Add ("new",         GetTokenCtor (typeof (TokenKwNew)));
@@ -869,6 +870,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
     DEFTOKENKW(Destructor , "destructor",  Null, Null)
     DEFTOKENKW(Do         , "do",          Null, Null)
     DEFTOKENKW(Else       , "else",        Null, Null)
+    DEFTOKENKW(Final      , "final",       Null, Null)
     DEFTOKENKW(Finally    , "finally",     Null, Null)
     DEFTOKENKW(For        , "for",         Null, Null)
     DEFTOKENKW(ForEach    , "foreach",     Null, Null)

@@ -1,0 +1,84 @@
+
+class <classname> : <extends>, <interface> ... {
+    <fieldquals> <fieldname> [ = <initvalue> ] ;
+
+    <accessquals> constructor ( <arglist> ) [ : [ base ] ( <callargs> ) ] { <methodbody> }
+
+    <methodquals> <type> <propertyname> { [ get { <methodbody> } ] [ set { <methodbody> } ] }
+
+    <methodquals> [ <rettype> ] <methodname> [ : <intftype> [ . <intfmeth> ] ]
+        ( <arglist> ) [ ; | { <methodbody> } ]
+}
+
+delegate [ <rettype> ] <delegatename> ( <arglist> ) ;
+
+interface <intfname> {
+    [ <rettype> ] <methodname> ( <arglist> ) ;
+}
+
+<methodquals> <type> <propertyname> { [ get { <methodbody> } ] [ set { <methodbody> } ] }
+
+    properties can be defined at top-level for global properties
+    properties can be defined abstract, instance, static, virtual within a class
+
+    <accessquals> := { public | protected | private }
+    <fieldquals>  := <accessquals> [ static ]
+    <methodquals> := <accessquals> [ <methodalloc> ]
+    <methodalloc> := abstract | new | new abstract | override | override abstract | 
+                     override final | static | static new | virtual | virtual new
+
+      - qualifier keywords can appear in any order, eg, public new abstract and abstract public new are equally valid
+      - exactly one of public, protected, private must be specified for each member of a class
+
+      - methodalloc can be any one of these combinations:
+                  (omitted) : error if any overshadowed method, cannot be overridden
+                   abstract : error if any overshadowed method, must be overridden
+                        new : ignore any overshadowed method, cannot be overridden
+               new abstract : ignore any overshadowed method, must be overridden
+                   override : must have overshadowed abstract/virtual, may be overidden
+          override abstract : must have overshadowed abstract, must be overridden
+             override final : must have overshadowed abstract/virtual, cannot be overridden
+                     static : error if any overshadowed method, cannot be overridden
+                 static new : ignore any overshadowed method, cannot be overridden
+                    virtual : error if any overshadowed method, may be overidden
+                virtual new : ignore any overshadowed method, may be overidden
+
+          'new' says to ignore any rootward overshadowed method.
+
+          'final' says to prohibit any non-new overiding by leafward methods that would 
+              otherwise allow it.  'override' is the only such case.
+
+      - fieldalloc can be any one of these combinations:
+           (omitted) : one per instance of allocated object
+              static : one shared by all instances of the object
+
+    <methodbody> : must use 'this' to refer to instance fields and methods
+                   can use 'base' to refer to extended class's fields and methods
+
+    'new <classname>' can be put in a delegate
+
+
+XMROption objects;  // to enable
+
+Keywords:
+
+    abstract    - declares a script-defined class's method as being abstract
+    base        - used to access fields and methods of rootward class
+    class       - declares a script-defined class's contents
+    constructor - declares a script-defined class's constructor method
+    delegate    - defines a type that can hold a function/method entrypoint
+    final       - declares that a script-defined class's method may not be overidden by leafward classes
+    get         - defines property's getter function
+    interface   - defines a script-defined interface's method prototypes
+    new         - allocates a new instance of a script-defined class and calls a constructor
+                - also used on member declaration to ignore any rootward definition override
+    override    - declares a script-defined class's method as overriding a rootward method
+    private     - declares a member can be accessed only from within class
+    protected   - declares a member can be accessed only from within class or a leafward class
+    public      - declares a member can be accessed anywhere
+    set         - defines property's setter function
+    static      - declares a script-defined class's method as being static
+    this        - used to access the current script-defined class's object instance
+    virtual     - declares a script-defined class's method may be overridden by leafward classes
+    void        - explicit void type definition
+
