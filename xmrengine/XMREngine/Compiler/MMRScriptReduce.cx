@@ -111,7 +111,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		public static TokenScript Reduce (TokenBegin tokenBegin)
 		{
-			return new ScriptReduce (tokenBegin.nextToken).tokenScript;
+			return new ScriptReduce (tokenBegin).tokenScript;
 		}
 
 		/*
@@ -128,13 +128,35 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 * @returns tokenScript = null: there were errors
 		 *                        else: successful
 		 */
-		private ScriptReduce (Token token)
+		private ScriptReduce (TokenBegin tokenBegin)
 		{
 			/*
 			 * Create a place to put the top-level script components,
 			 * eg, state bodies, functions, global variables.
 			 */
-			tokenScript = new TokenScript (token);
+			tokenScript = new TokenScript (tokenBegin.nextToken);
+
+			/*
+			 * 'XMROption' 'expiryDays' <integer> ';'
+			 */
+			for (Token t = tokenBegin; !(t is TokenEnd); t = t.nextToken) {
+				if ((t is TokenName) &&
+				    (t.nextToken is TokenName) && 
+				    (t.nextToken.nextToken is TokenInt) && 
+				    (t.nextToken.nextToken.nextToken is TokenKwSemi)) {
+					TokenName t1 = (TokenName)t;
+					TokenName t2 = (TokenName)t1.nextToken;
+					TokenInt  t3 = (TokenInt)t2.nextToken;
+					if ((t1.val.ToLower () == "xmroption") && 
+					    (t2.val.ToLower () == "expirydays")) {
+						tokenScript.expiryDays = t3.val;
+						t = t3.nextToken;
+						t1.prevToken.nextToken = t.nextToken;
+						t.nextToken.prevToken = t1.prevToken;
+						Console.WriteLine ("ScriptReduce*: expiryDays=" + tokenScript.expiryDays);
+					}
+				}
+			}
 
 			/*
 			 * 'class', 'delegate', 'instance' all define types.
@@ -147,7 +169,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			bool didOne;
 			do {
 				didOne = false;
-				for (Token t = token; !(t is TokenEnd); t = t.nextToken) {
+				for (Token t = tokenBegin; !(t is TokenEnd); t = t.nextToken) {
 					string name = null;
 					TokenDeclSDType decl = null;
 
@@ -203,7 +225,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 						// now scan through the entire source for other occurrences of 
 						// <name> and substitute in references to the declared type
-						for (Token u = token; !(u is TokenEnd); u = u.nextToken) {
+						for (Token u = tokenBegin; !(u is TokenEnd); u = u.nextToken) {
 							if ((u is TokenName) && (((TokenName)u).val == name)) {
 								Token r = decl.MakeRefToken (u);
 								r.nextToken = u.nextToken;
@@ -222,7 +244,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			/*
 			 * Scan through the tokens until we reach the end.
 			 */
-			while (!(token is TokenEnd)) {
+			for (Token token = tokenBegin.nextToken; !(token is TokenEnd);) {
 
 				/*
 				 * class <classdef> ... { ... }
@@ -3668,6 +3690,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	public class TokenScript : Token {
 		public VarDict    vars = new VarDict ();
 		public VarDict   funcs = new VarDict ();
+		public int  expiryDays = Int32.MaxValue;
 		public TokenDeclState defaultState;
 		public Dictionary<string, TokenDeclState>  states     = new Dictionary<string, TokenDeclState>  ();
 		public Dictionary<string, TokenDeclSDType> sdSrcTypes = new Dictionary<string, TokenDeclSDType> ();

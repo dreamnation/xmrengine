@@ -449,6 +449,9 @@ version:
             ScriptObjCode scriptObjCode = null;
             try {
                 scriptObjCode = ScriptCodeGen.PerformGeneration (assetID, objFileReader, asmFileWriter);
+                if (scriptObjCode != null) {
+                    scriptObjCode.fileDateUtc = File.GetLastWriteTimeUtc (objFileName);
+                }
             } finally {
                 objFileReader.Close ();
                 if (asmFileWriter != null) {

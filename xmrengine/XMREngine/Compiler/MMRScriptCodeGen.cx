@@ -689,6 +689,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			objFileWriter.Write (OBJECT_CODE_MAGIC.ToCharArray ());
 			objFileWriter.Write (COMPILED_VERSION_VALUE);
 
+			objFileWriter.Write (tokenScript.expiryDays);
 			objFileWriter.Write (scriptObjCode.numGblArrays);
 			objFileWriter.Write (scriptObjCode.numGblFloats);
 			objFileWriter.Write (scriptObjCode.numGblIntegers);
@@ -4255,6 +4256,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Fill in simple parts of scriptObjCode object.
 			 */
 			ScriptObjCode scriptObjCode    = new ScriptObjCode ();
+			scriptObjCode.expiryDays       = objFileReader.ReadInt32 ();
 			scriptObjCode.numGblArrays     = objFileReader.ReadInt32 ();
 			scriptObjCode.numGblFloats     = objFileReader.ReadInt32 ();
 			scriptObjCode.numGblIntegers   = objFileReader.ReadInt32 ();

@@ -1,6 +1,7 @@
 xmroption advflowctl;
 xmrOption arrayS;
 xmroption objects;
+xmrOPtion expIRYdays 5;
 
 DumpArray(integer shouldhave)
 {
