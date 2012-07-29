@@ -170,80 +170,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * done as a separate scan so they can cross-reference
 			 * each other.
 			 */
-			bool didOne;
-			do {
-				didOne = false;
-				for (Token t = tokenBegin; !(t is TokenEnd); t = t.nextToken) {
-					string name = null;
-					TokenDeclSDType decl = null;
-
-					// check for 'class' <name>
-					if (t is TokenKwClass) {
-						t = t.nextToken;
-						if (t is TokenName) {
-							name = ((TokenName)t).val;
-							decl = new TokenDeclSDTypeClass ((TokenName)t);
-						}
-					}
-
-					// check for 'delegate' [ <rettype> ] <name> '('
-					// note that the <rettype> could appear as a name token
-					// if it refers to a script-defined type that we haven't
-					// seen the definition for yet, so we need to check for
-					// the '(' after <name> to be sure we have the delegate's
-					// name.
-					if (t is TokenKwDelegate) {
-						t = t.nextToken;
-						if (t is TokenType) t = t.nextToken;
-						if ((t is TokenName) && (t.nextToken is TokenKwParOpen)) {
-							name = ((TokenName)t).val;
-							decl = new TokenDeclSDTypeDelegate ((TokenName)t);
-						}
-					}
-
-					// check for 'interface' <name>
-					if (t is TokenKwInterface) {
-						t = t.nextToken;
-						if (t is TokenName) {
-							name = ((TokenName)t).val;
-							decl = new TokenDeclSDTypeInterface ((TokenName)t);
-						}
-					}
-
-					// see if we found any one of those
-					if (name != null) {
-
-						// ok, substitute in declaration for <name> declaration token
-						// leave the 'class', 'delegate' and 'interface' keyword tokens
-						// alone so we will process the bodies later
-						decl.nextToken = t.nextToken;
-						decl.prevToken = t.prevToken;
-						t.prevToken.nextToken = decl;
-						t.nextToken.prevToken = decl;
-
-						// add it to known script-defined types.
-						// note that we can't get a duplicate here because we will
-						// substitute out all other occurences of this name in the
-						// next step.
-						tokenScript.sdSrcTypes.Add (name, decl);
-
-						// now scan through the entire source for other occurrences of 
-						// <name> and substitute in references to the declared type
-						for (Token u = tokenBegin; !(u is TokenEnd); u = u.nextToken) {
-							if ((u is TokenName) && (((TokenName)u).val == name)) {
-								Token r = decl.MakeRefToken (u);
-								r.nextToken = u.nextToken;
-								r.prevToken = u.prevToken;
-								u.prevToken.nextToken = r;
-								u.nextToken.prevToken = r;
-							}
-						}
-
-						// repeat after this pass in case of cross references
-						didOne = true;
-					}
-				}
-			} while (didOne);
+			ParseSDTypePreScanPassOne (tokenBegin, null);  // find definitions
+			ParseSDTypePreScanPassTwo (tokenBegin, null);  // find references
 
 			/*
 			 * Scan through the tokens until we reach the end.
@@ -398,6 +326,209 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * If any error messages were written out, set return value to null.
 			 */
 			if (errors) tokenScript = null;
+		}
+
+		/**
+		 * @prief Pre-scan the source for class, delegate and interface type definitions.
+		 *        Handle forward references and nested definitions.
+		 *        Catalog those types in the tokenScript.sdTypes dictionary.
+		 *        Replace any TokenName tokens that reference those types with corresponding 
+		 *        Token{Decl,Type}SDType{Class,Delegate,Interface} tokens.
+		 *        TokenDeclSDType... are used at the definition site, ie, right after the class/delegate/interface keyword.
+		 *        TokenTypeSDType... are used elsewhere in the code where it references the type.
+		 * @param tokenBegin = top-level case: the TokenBegin
+		 *                        nested case: before the TokenKwBrcOpen
+		 * @param outerSDType = null: top-level scan
+		 *                      else: scanning inside this type for nested definitions
+		 * @returns top-level case: the TokenEnd token
+		 *             nested case: the TokenKwBrcClose
+		 */
+		private Token ParseSDTypePreScanPassOne (Token tokenBegin, TokenDeclSDType outerSDType)
+		{
+			int braces = (outerSDType == null) ? 1 : 0;
+			Token t;
+
+			/*
+			 * Pass one is to build a catalog of all the definitions
+			 * and replace the definitions' TokenName tokens with
+			 * TokenDeclSDType{Class,Delegate,Interface} tokens.
+			 * Handle nested definitions.
+			 */
+			for (t = tokenBegin; !((t = t.nextToken) is TokenEnd);) {
+				string name = null;
+				TokenDeclSDType decl = null;
+
+				/*
+				 * Keep track of braces so we know when to stop a nested definition scan.
+				 * We see the opening brace of a nested class or interface and we
+				 * want to stop on and return right on the matching closing brace.
+				 */
+				if (t is TokenKwBrcOpen) {
+					braces ++;
+					continue;
+				}
+				if (t is TokenKwBrcClose) {
+					if (-- braces <= 0) break;
+					continue;
+				}
+
+				// check for 'class' <name>
+				if (t is TokenKwClass) {
+					t = t.nextToken;
+					if (t is TokenName) {
+						name = ((TokenName)t).val;
+						decl = new TokenDeclSDTypeClass ((TokenName)t);
+					}
+				}
+
+				// check for 'delegate' [ <rettype> ] <name> '('
+				// note that the <rettype> could appear as a name token
+				// if it refers to a script-defined type that we haven't
+				// seen the definition for yet, so we need to check for
+				// the '(' after <name> to be sure we have the delegate's
+				// name.
+				if (t is TokenKwDelegate) {
+					t = t.nextToken;
+					if ((t is TokenType) || ((t is TokenName) && !(t.nextToken is TokenKwParOpen))) {
+						t = t.nextToken;
+					}
+					if (t is TokenName) {
+						name = ((TokenName)t).val;
+						decl = new TokenDeclSDTypeDelegate ((TokenName)t);
+					}
+				}
+
+				// check for 'interface' <name>
+				if (t is TokenKwInterface) {
+					t = t.nextToken;
+					if (t is TokenName) {
+						name = ((TokenName)t).val;
+						decl = new TokenDeclSDTypeInterface ((TokenName)t);
+					}
+				}
+
+				// see if we found any one of those
+				if (name != null) {
+					decl.outerSDType = outerSDType;
+
+					// ok, substitute in declaration for <name> declaration token
+					// leave the 'class', 'delegate' and 'interface' keyword tokens
+					// alone so we will process the bodies later
+					decl.nextToken = t.nextToken;
+					decl.prevToken = t.prevToken;
+					t.prevToken.nextToken = decl;
+					t.nextToken.prevToken = decl;
+					t = decl;
+
+					// catalog it in the script-global directory using the long name
+					// also catalog it in the outer type's directory using the short name
+					string longName = decl.longName.val;
+					TokenDeclSDType dupDecl;
+					if (tokenScript.sdSrcTypesTryGetValue (longName, out dupDecl)) {
+						ErrorMsg (decl, "duplicate definition of type " + longName);
+						ErrorMsg (dupDecl, "previous definition here");
+					} else {
+						tokenScript.sdSrcTypesAdd (longName, decl);
+						if (outerSDType != null) {
+							outerSDType.innerSDTypes.Add (name, decl);
+						}
+					}
+
+					// classes and interfaces can contain nested definitios
+					if ((decl is TokenDeclSDTypeClass) || (decl is TokenDeclSDTypeInterface)) {
+						t = ParseSDTypePreScanPassOne (decl, decl);
+					}
+				}
+			}
+			return t;
+		}
+
+		private Token ParseSDTypePreScanPassTwo (Token tokenBegin, TokenDeclSDType outerSDType)
+		{
+			int braces = (outerSDType == null) ? 1 : 0;
+			Token t;
+
+			/*
+			 * Pass two is to replace all TokenName tokens that refer to the script-defined 
+			 * types with corresponding TokenTypeSDType{Class,Delegate,Interface} tokens.
+			 * Handle nested definitions.
+			 */
+			for (t = tokenBegin; !((t = t.nextToken) is TokenEnd);) {
+
+				/*
+				 * Keep track of braces so we know when to stop a nested definition scan.
+				 * We see the opening brace of a nested class or interface and we
+				 * want to stop on and return right on the matching closing brace.
+				 */
+				if (t is TokenKwBrcOpen) {
+					braces ++;
+					continue;
+				}
+				if (t is TokenKwBrcClose) {
+					if (-- braces <= 0) break;
+					continue;
+				}
+
+				/*
+				 * Check for beginning of class or interface definitions.
+				 * They can have nested definitions so add them to the stack.
+				 */
+				if ((t is TokenDeclSDTypeClass) || (t is TokenDeclSDTypeInterface)) {
+					t = ParseSDTypePreScanPassTwo (t, (TokenDeclSDType)t);
+					continue;
+				}
+
+				/*
+				 * For names not preceded by a '.', scan the definition stack for that name.
+				 */
+				if (!(t is TokenName)) continue;
+				if (t.prevToken is TokenKwDot) continue;
+
+				string tname = ((TokenName)t).val;
+				TokenDeclSDType defn = null;
+				for (TokenDeclSDType nt = outerSDType; nt != null; nt = nt.outerSDType) {
+					if (nt.innerSDTypes.TryGetValue (tname, out defn)) break;
+				}
+				if (defn == null) {
+					tokenScript.sdSrcTypesTryGetValue (tname, out defn);
+				}
+				if (defn == null) continue;
+
+				/*
+				 * Found the definition for the top-level name given.
+				 * If name is followed by '.' <innername>, try to find
+				 * the inner name.  If inner name not found, it is 
+				 * something like a static field or method name, so 
+				 * leave it alone.
+				 */
+				Token u;
+				for (u = t; (u = u.nextToken) is TokenKwDot;) {
+					if (!(u.nextToken is TokenName)) break;
+					TokenName innername = (TokenName)u.nextToken;
+					TokenDeclSDType innerdefn = null;
+					if (!defn.innerSDTypes.TryGetValue (innername.val, out innerdefn)) break;
+					defn = innerdefn;
+					u = innername;
+				}
+
+				/*
+				 * Create a reference in the source to the definition
+				 * that encapsulates the long dotted type name given in
+				 * the source, and replace the long dotted type name in
+				 * the source with the reference token.
+				 */
+				TokenTypeSDType refer = defn.MakeRefToken (u.prevToken);
+				refer.prevToken = t.prevToken;  // t points right at the first TokenName
+				refer.nextToken = u;            // u points just past the last TokenName
+				refer.prevToken.nextToken = refer;
+				refer.nextToken.prevToken = refer;
+
+				/*
+				 * Continue scanning immediately after this reference.
+				 */
+				t = refer;
+			}
+			return t;
 		}
 
 		/**
@@ -804,7 +935,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					setFunc.retType     = new TokenTypeVoid (token);
 					setFunc.argDecl     = argDecl;
 					setFunc.funcNameSig = new TokenName (token, name.val + ".set.(" + type.ToString () + ")");
-					getFunc.implements  = MakePropertyImplements (implements, ".set.");
+					setFunc.implements  = MakePropertyImplements (implements, ".set.");
 
 					token = token.nextToken;
 					if (!ParseFunctionBody (ref token, setFunc, abs)) {
@@ -2679,7 +2810,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		                                     // else points to defining script-defined type
 		public uint accessLevel;             // SDT_PRIVATE, SDT_PROTECTED or SDT_PUBLIC
 		                                     // ... all top-level types are SDT_PUBLIC
-		public Dictionary<string, TokenDeclSDType> innerClasses = new Dictionary<string, TokenDeclSDType> ();
+		public Dictionary<string, TokenDeclSDType> innerSDTypes = new Dictionary<string, TokenDeclSDType> ();
 		                                     // indexed by shortName
 
 		/*
@@ -3223,6 +3354,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			foreach (TokenType at in argTypes) {
 				if (!first) sb.Append (",");
 				sb.Append (at.ToString ());
+				first = false;
 			}
 			sb.Append (")");
 			string inlname = sb.ToString ();
@@ -3370,7 +3502,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * See if we already have a matching declared one cataloged.
 			 */
 			int nArgs = argTypes.Length;
-			foreach (TokenDeclSDType decl in tokenScript.sdSrcTypes.Values) {
+			foreach (TokenDeclSDType decl in tokenScript.sdSrcTypesValues) {
 				if (decl is TokenDeclSDTypeDelegate) {
 					decldel         = (TokenDeclSDTypeDelegate)decl;
 					TokenType   rt  = decldel.GetRetType  ();
@@ -3401,6 +3533,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			TokenName name = new TokenName (t, sb.ToString ());
 			decldel        = new TokenDeclSDTypeDelegate (name);
 			decldel.SetRetArgTypes (retType, argTypes);
+			tokenScript.sdSrcTypesAdd (name.val, decldel);
 			this.decl = decldel;
 		}
 
@@ -3586,6 +3719,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			}
 			set {
 				_type = value;
+			}
+		}
+
+		/**
+		 * @brief Full name: <fulltype>.<name>(<argsig>)
+		 *        (<argsig>) missing for fields/variables
+		 *        <fulltype>. missing for top-level functions/variables
+		 */
+		public string fullName {
+			get {
+				if (sdtClass == null) {
+					if (retType == null) return name.val;
+					return funcNameSig.val;
+				}
+				string ln = sdtClass.longName.val;
+				if (retType == null) return ln + "." + name.val;
+				return ln + "." + funcNameSig.val;
 			}
 		}
 
@@ -4064,9 +4214,41 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public int  expiryDays = Int32.MaxValue;
 		public TokenDeclState defaultState;
 		public Dictionary<string, TokenDeclState>  states     = new Dictionary<string, TokenDeclState>  ();
-		public Dictionary<string, TokenDeclSDType> sdSrcTypes = new Dictionary<string, TokenDeclSDType> ();
 
 		public TokenScript (Token original) : base (original) { }
+
+		private Dictionary<string, TokenDeclSDType> sdSrcTypes = new Dictionary<string, TokenDeclSDType> ();
+		private bool sdSrcTypesSealed = false;
+		public void sdSrcTypesSeal ()
+		{
+			sdSrcTypesSealed = true;
+		}
+		public bool sdSrcTypesTryGetValue (string key, out TokenDeclSDType value)
+		{
+			return sdSrcTypes.TryGetValue (key, out value);
+		}
+		public void sdSrcTypesAdd (string key, TokenDeclSDType value)
+		{
+			if (sdSrcTypesSealed) throw new Exception ("sdSrcTypes is sealed");
+			sdSrcTypes.Add (key, value);
+		}
+		public void sdSrcTypesReplace (string key, TokenDeclSDType value)
+		{
+			if (sdSrcTypesSealed) throw new Exception ("sdSrcTypes is sealed");
+			sdSrcTypes[key] = value;
+		}
+		public Dictionary<string, TokenDeclSDType>.ValueCollection sdSrcTypesValues
+		{
+			get {
+				return sdSrcTypes.Values;
+			}
+		}
+		public int sdSrcTypesCount
+		{
+			get {
+				return sdSrcTypes.Count;
+			}
+		}
 	}
 
 	/**

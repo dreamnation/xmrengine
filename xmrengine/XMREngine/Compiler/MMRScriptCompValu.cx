@@ -605,7 +605,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
-			baseRVal.PushVal (scg, errorAt);                                 // push pointer to delegate array on stack
+			baseRVal.PushVal (scg, errorAt);                        // push pointer to delegate array on stack
 			scg.PushConstantI4 (func.vTableIndex);                  // select which delegate to access
 			scg.ilGen.Emit (OpCodes.Ldelem, typeof (Delegate));     // push delegate on stack
 			scg.ilGen.Emit (OpCodes.Castclass, type.ToSysType ());  // cast to correct delegate class
@@ -689,20 +689,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	// The value is the entrypoint of an internal instance method
 	// such as XMR_Array.index()
 	public class CompValuIntInstMeth : CompValu {
+		private TokenTypeSDTypeDelegate delType;
 		private CompValu baseRVal;
-		private MethodInfo mi;
+		private MethodInfo methInfo;
 
-		public CompValuIntInstMeth (TokenTypeSDTypeDelegate type, CompValu baseRVal, MethodInfo mi) : base (type)
+		public CompValuIntInstMeth (TokenTypeSDTypeDelegate delType, CompValu baseRVal, MethodInfo methInfo) : base (delType)
 		{
+			this.delType  = delType;
 			this.baseRVal = baseRVal;
-			this.mi = mi;
+			this.methInfo = methInfo;
 		}
 
 		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
+			// its value, ie, without applying the (arglist), is a delegate...
 			baseRVal.PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Ldftn, mi);
-			scg.ilGen.Emit (OpCodes.Newobj, ((TokenTypeSDTypeDelegate)type).decl.GetConstructorInfo ());
+			scg.ilGen.Emit (OpCodes.Ldftn, methInfo);
+			scg.ilGen.Emit (OpCodes.Newobj, delType.decl.GetConstructorInfo ());
 		}
 		public override void PushRef (ScriptCodeGen scg, Token errorAt)
 		{
@@ -719,7 +722,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		public override void CallPost (ScriptCodeGen scg, Token errorAt)
 		{
-			scg.ilGen.Emit (OpCodes.Call, mi);
+			scg.ilGen.Emit (OpCodes.Call, methInfo);
 		}
 	}
 
@@ -727,18 +730,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	// such as XMR_Array.count
 	public class CompValuIntInstROProp : CompValu {
 		private CompValu baseRVal;
-		private MethodInfo mi;
+		private MethodInfo methInfo;
 
-		public CompValuIntInstROProp (TokenType type, CompValu baseRVal, MethodInfo mi) : base (type)
+		public CompValuIntInstROProp (TokenType valType, CompValu baseRVal, MethodInfo methInfo) : base (valType)
 		{
 			this.baseRVal = baseRVal;
-			this.mi = mi;
+			this.methInfo = methInfo;
 		}
 
 		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
 			baseRVal.PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Call, mi);
+			scg.ilGen.Emit (OpCodes.Call, methInfo);
 		}
 		public override void PushRef (ScriptCodeGen scg, Token errorAt)
 		{

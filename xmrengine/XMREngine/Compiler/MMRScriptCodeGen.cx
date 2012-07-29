@@ -218,6 +218,53 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
+			 * Make sure we have delegates for all script-defined functions and methods,
+			 * creating anonymous ones if needed.
+			 */
+			foreach (TokenDeclVar declFunc in tokenScript.funcs) {
+				if (declFunc.retType != null) declFunc.GetDelType ();
+			}
+			while (true) {
+				bool itIsAGoodDayToDie = true;
+				try {
+					foreach (TokenDeclSDType sdType in tokenScript.sdSrcTypesValues) {
+						itIsAGoodDayToDie = false;
+						if (sdType is TokenDeclSDTypeClass) {
+							TokenDeclSDTypeClass sdtClass = (TokenDeclSDTypeClass)sdType;
+							foreach (TokenDeclVar declFunc in sdtClass.members) {
+								if (declFunc.retType != null) {
+									declFunc.GetDelType ();
+									if (declFunc.funcNameSig.val.StartsWith ("constructor(")) {
+										// this is for the "new()" static method that we create below.
+										// See GenerateNewobjBody() etc.
+										new TokenTypeSDTypeDelegate (declFunc, sdtClass.MakeRefToken (declFunc), 
+												declFunc.argDecl.types, tokenScript);
+									}
+								}
+							}
+						}
+						if (sdType is TokenDeclSDTypeInterface) {
+							TokenDeclSDTypeInterface sdtIFace = (TokenDeclSDTypeInterface)sdType;
+							foreach (TokenDeclVar declFunc in sdtIFace.methsNProps) {
+								if (declFunc.retType != null) declFunc.GetDelType ();
+							}
+						}
+						itIsAGoodDayToDie = true;
+					}
+					break;
+				} catch (InvalidOperationException) {
+					if (!itIsAGoodDayToDie) throw;
+					// fetching the delegate created an anonymous entry in tokenScript.sdSrcTypesValues
+					// which made the foreach statement puque, so start over...
+				}
+			}
+
+			/*
+			 * No more types can be defined or we won't be able to write them to the object file.
+			 */
+			tokenScript.sdSrcTypesSeal ();
+
+			/*
 			 * Set up stack of dictionaries to translate function and variable names to their declaration.
 			 * This stack is used for function/variable names that stand alone, ie, no '.' involved in the
 			 * reference.
@@ -269,8 +316,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * simple name in general.  They can be referenced anywhere by <typename>.<fieldname>, see 
 			 * GenerateFromLValSField().
 			 */
-			foreach (KeyValuePair<string, TokenDeclSDType> kvpc in tokenScript.sdSrcTypes) {
-				TokenDeclSDType sdType = kvpc.Value;
+			foreach (TokenDeclSDType sdType in tokenScript.sdSrcTypesValues) {
 				if (!(sdType is TokenDeclSDTypeClass)) continue;
 				TokenDeclSDTypeClass sdtClass = (TokenDeclSDTypeClass)sdType;
 
@@ -315,8 +361,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * This method will then be called at the beginning of all constructors
 			 * defined for the class.
 			 */
-			foreach (KeyValuePair<string, TokenDeclSDType> kvpc in tokenScript.sdSrcTypes) {
-				TokenDeclSDType sdType = kvpc.Value;
+			foreach (TokenDeclSDType sdType in tokenScript.sdSrcTypesValues) {
 				if (!(sdType is TokenDeclSDTypeClass)) continue;
 				TokenDeclSDTypeClass sdtClass = (TokenDeclSDTypeClass)sdType;
 
@@ -378,8 +423,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Properties do not get a slot because they aren't called as such.  But their corresponding
 			 * <name>.get.() and <name>.set.(<type>) methods are in the table and they each get a slot.
 			 */
-			foreach (KeyValuePair<string, TokenDeclSDType> kvpc in tokenScript.sdSrcTypes) {
-				TokenDeclSDType sdType = kvpc.Value;
+			foreach (TokenDeclSDType sdType in tokenScript.sdSrcTypesValues) {
 				if (!(sdType is TokenDeclSDTypeInterface)) continue;
 				TokenDeclSDTypeInterface sdtIFace = (TokenDeclSDTypeInterface)sdType;
 				int vti = 0;
@@ -393,12 +437,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Assign slots for all instance fields and virtual methods of script-defined types.
 			 */
-			int maxExtends = tokenScript.sdSrcTypes.Count;
+			int maxExtends = tokenScript.sdSrcTypesCount;
 			bool didOne;
 			do {
 				didOne = false;
-				foreach (KeyValuePair<string, TokenDeclSDType> kvpc in tokenScript.sdSrcTypes) {
-					TokenDeclSDType sdType = kvpc.Value;
+				foreach (TokenDeclSDType sdType in tokenScript.sdSrcTypesValues) {
 					if (!(sdType is TokenDeclSDTypeClass)) continue;
 					TokenDeclSDTypeClass sdtClass = (TokenDeclSDTypeClass)sdType;
 					if (sdtClass.slotsAssigned) continue;
@@ -470,13 +513,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 */
 					foreach (TokenDeclVar declFunc in sdtClass.members) {
 						if (declFunc.retType == null) continue;
+						curDeclFunc = declFunc;
 
 						/*
 						 * See if there is a method in an extended class that this method overshadows.
 						 * If so, check for various conflicts.
 						 * In any case, SDT_NEW on our method means to ignore any overshadowed method.
 						 */
-						string declShortName = sdtClass.shortName.val + "." + declFunc.funcNameSig.val;
+						string declLongName = sdtClass.longName.val + "." + declFunc.funcNameSig.val;
 						uint declFlags = declFunc.sdtFlags;
 						TokenDeclVar overridden = null;
 						if ((declFlags & ScriptReduce.SDT_NEW) == 0) {
@@ -486,7 +530,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 							}
 						}
 						if (overridden != null) do {
-							string overShortName = overridden.sdtClass.shortName.val;
+							string overLongName = overridden.sdtClass.longName.val;
 							uint overFlags = overridden.sdtFlags;
 
 							/*
@@ -494,18 +538,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 							 */
 							if ((overFlags & ScriptReduce.SDT_ABSTRACT) != 0) {
 								if ((declFlags & (ScriptReduce.SDT_ABSTRACT | ScriptReduce.SDT_OVERRIDE)) == 0) {
-									ErrorMsg (declFunc, declShortName + " overshadows abstract " + overShortName + " but is not marked abstract, new or override");
+									ErrorMsg (declFunc, declLongName + " overshadows abstract " + overLongName + " but is not marked abstract, new or override");
 									break;
 								}
 							} else if ((overFlags & ScriptReduce.SDT_FINAL) != 0) {
-								ErrorMsg (declFunc, declShortName + " overshadows final " + overShortName + " but is not marked new");
+								ErrorMsg (declFunc, declLongName + " overshadows final " + overLongName + " but is not marked new");
 							} else if ((overFlags & (ScriptReduce.SDT_OVERRIDE | ScriptReduce.SDT_VIRTUAL)) != 0) {
 								if ((declFlags & (ScriptReduce.SDT_NEW | ScriptReduce.SDT_OVERRIDE)) == 0) {
-									ErrorMsg (declFunc, declShortName + " overshadows virtual " + overShortName + " but is not marked new or override");
+									ErrorMsg (declFunc, declLongName + " overshadows virtual " + overLongName + " but is not marked new or override");
 									break;
 								}
 							} else {
-								ErrorMsg (declFunc, declShortName + " overshadows non-virtual " + overShortName + " but is not marked new");
+								ErrorMsg (declFunc, declLongName + " overshadows non-virtual " + overLongName + " but is not marked new");
 								break;
 							}
 
@@ -514,16 +558,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 							 */
 							if ((declFlags & ScriptReduce.SDT_ABSTRACT) != 0) {
 								if ((overFlags & ScriptReduce.SDT_ABSTRACT) == 0) {
-									ErrorMsg (declFunc, declShortName + " abstract overshadows non-abstract " + overShortName + " but is not marked new");
+									ErrorMsg (declFunc, declLongName + " abstract overshadows non-abstract " + overLongName + " but is not marked new");
 									break;
 								}
 							} else if ((declFlags & ScriptReduce.SDT_OVERRIDE) != 0) {
 								if ((overFlags & (ScriptReduce.SDT_ABSTRACT | ScriptReduce.SDT_OVERRIDE | ScriptReduce.SDT_VIRTUAL)) == 0) {
-									ErrorMsg (declFunc, declShortName + " override overshadows non-abstract/non-virtual " + overShortName);
+									ErrorMsg (declFunc, declLongName + " override overshadows non-abstract/non-virtual " + overLongName);
 									break;
 								}
 							} else {
-								ErrorMsg (declFunc, declShortName + " overshadows " + overShortName + " but is not marked new");
+								ErrorMsg (declFunc, declLongName + " overshadows " + overLongName + " but is not marked new");
 								break;
 							}
 						} while (false);
@@ -535,12 +579,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						if (overridden != null) {
 							declFunc.vTableIndex = overridden.vTableIndex;
 						} else if ((declFlags & ScriptReduce.SDT_OVERRIDE) != 0) {
-							ErrorMsg (declFunc, declShortName + " marked override but nothing matching found that it overrides");
+							ErrorMsg (declFunc, declLongName + " marked override but nothing matching found that it overrides");
 						}
 						if ((declFlags & (ScriptReduce.SDT_ABSTRACT | ScriptReduce.SDT_VIRTUAL)) != 0) {
 							declFunc.vTableIndex = sdtClass.numVirtFuncs ++;
 						}
 					}
+					curDeclFunc = null;
 
 					/*
 					 * ... and assign implemented interface slots.
@@ -568,6 +613,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 					foreach (TokenDeclVar classMeth in sdtClass.members) {
 						if (classMeth.retType == null) continue;
+						curDeclFunc = classMeth;
 						for (TokenIntfImpl intfImpl = classMeth.implements; intfImpl != null; intfImpl = (TokenIntfImpl)intfImpl.nextToken) {
 
 							/*
@@ -617,6 +663,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 							sdtClass.iImplFunc[i][j] = classMeth;
 						}
 					}
+					curDeclFunc = null;
 
 					/*
 					 * Now make sure this class implements all methods for all declared interfaces.
@@ -657,8 +704,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						tdv.init = tdv.init.TryComputeConstant (LookupInitConstants, ref didOne);
 					}
 				}
-				foreach (KeyValuePair<string, TokenDeclSDType> kvpc in tokenScript.sdSrcTypes) {
-					TokenDeclSDType sdType = kvpc.Value;
+				foreach (TokenDeclSDType sdType in tokenScript.sdSrcTypesValues) {
 					if (!(sdType is TokenDeclSDTypeClass)) continue;
 					currentSDTClass = (TokenDeclSDTypeClass)sdType;
 					foreach (TokenDeclVar tdv in currentSDTClass.members) {
@@ -685,8 +731,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					}
 				}
 			}
-			foreach (KeyValuePair<string, TokenDeclSDType> kvpc in tokenScript.sdSrcTypes) {
-				TokenDeclSDType sdType = kvpc.Value;
+			foreach (TokenDeclSDType sdType in tokenScript.sdSrcTypesValues) {
 				if (!(sdType is TokenDeclSDTypeClass)) continue;
 				currentSDTClass = (TokenDeclSDTypeClass)sdType;
 				foreach (TokenDeclVar tdv in currentSDTClass.members) {
@@ -708,8 +753,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * define a static class.new() method with same args as the constructor(s).  This will allow the
 			 * class to be instantiated via the new operator.
 			 */
-			foreach (KeyValuePair<string, TokenDeclSDType> kvpc in tokenScript.sdSrcTypes) {
-				TokenDeclSDType sdType = kvpc.Value;
+			foreach (TokenDeclSDType sdType in tokenScript.sdSrcTypesValues) {
 				if (!(sdType is TokenDeclSDTypeClass)) continue;
 				TokenDeclSDTypeClass sdtClass = (TokenDeclSDTypeClass)sdType;
 
@@ -785,8 +829,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			foreach (TokenDeclVar declVar in tokenScript.vars) {
 				WriteOutGblAssignment ("", declVar);
 			}
-			foreach (KeyValuePair<string, TokenDeclSDType> kvpc in tokenScript.sdSrcTypes) {
-				TokenDeclSDType sdType = kvpc.Value;
+			foreach (TokenDeclSDType sdType in tokenScript.sdSrcTypesValues) {
 				if (!(sdType is TokenDeclSDTypeClass)) continue;
 				TokenDeclSDTypeClass sdtClass = (TokenDeclSDTypeClass)sdType;
 				foreach (TokenDeclVar declVar in sdtClass.members) {
@@ -800,9 +843,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Write out script-defined types.
 			 */
-			foreach (KeyValuePair<string, TokenDeclSDType> kvp in tokenScript.sdSrcTypes) {
-				objFileWriter.Write (kvp.Key);
-				kvp.Value.WriteToFile (objFileWriter);
+			foreach (TokenDeclSDType sdType in tokenScript.sdSrcTypesValues) {
+				objFileWriter.Write (sdType.longName.val);
+				sdType.WriteToFile (objFileWriter);
 			}
 			objFileWriter.Write ("");
 
@@ -818,7 +861,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					if (pass == 0) GenerateMethodHeader (declFunc);
 					          else GenerateMethodBody   (declFunc);
 				}
-				foreach (TokenDeclSDType sdType in tokenScript.sdSrcTypes.Values) {
+				foreach (TokenDeclSDType sdType in tokenScript.sdSrcTypesValues) {
 					if (sdType is TokenDeclSDTypeClass) {
 						TokenDeclSDTypeClass sdtClass = (TokenDeclSDTypeClass)sdType;
 						if (pass > 0) PushSDTClassFieldsAndMethods (sdtClass);
@@ -975,7 +1018,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			int eventcode = (int)Enum.Parse (typeof (ScriptEventCode), eventname);
 			string functionName = "__seh_" + statecode.ToString() + "_" + eventcode.ToString () + "_" + 
 			                                 statename + "_" + eventname;
-			ilGen = new ScriptMyILGen (tokenScript.sdSrcTypes, 
+			ilGen = new ScriptMyILGen (tokenScript, 
 			                           functionName,
 			                           typeof (void),
 			                           instanceTypeArg,
@@ -1083,7 +1126,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Prefix the names with __fun_ to keep them separate from any XMRInstance functions.
 			 */
 			string objCodeName = declFunc.GetObjCodeName ();
-			declFunc.ilGen = new ScriptMyILGen (tokenScript.sdSrcTypes, 
+			declFunc.ilGen = new ScriptMyILGen (tokenScript, 
 			                                    objCodeName,
 			                                    declFunc.retType.ToSysType (),
 			                                    argTypes,
@@ -1289,8 +1332,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				}
 
 				// init script-defined class static fields
-				foreach (KeyValuePair<string, TokenDeclSDType> kvpc in tokenScript.sdSrcTypes) {
-					TokenDeclSDType sdType = kvpc.Value;
+				foreach (TokenDeclSDType sdType in tokenScript.sdSrcTypesValues) {
 					if (!(sdType is TokenDeclSDTypeClass)) continue;
 					TokenDeclSDTypeClass sdtClass = (TokenDeclSDTypeClass)sdType;
 					foreach (TokenDeclVar declVar in sdtClass.members) {
@@ -2640,7 +2682,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						                                 : (CompValu)new CompValuInstMeth (declVar, baseRVal, false);
 					}
 				}
-				ErrorMsg (lVal.field, "no member " + fieldName + " in " + sdtDecl.shortName.val);
+				ErrorMsg (lVal.field, "no member " + fieldName + " in class " + sdtDecl.longName.val);
 				return new CompValuVoid (lVal.field);
 			}
 
@@ -2650,14 +2692,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (baseRVal.type is TokenTypeSDTypeInterface) {
 				TokenTypeSDTypeInterface sdtType = (TokenTypeSDTypeInterface)baseRVal.type;
 				TokenDeclSDTypeInterface sdtDecl = sdtType.decl;
-				if (argsig != null) {
-					TokenDeclVar declVar = FindSingleMember (sdtDecl.methsNProps, lVal.field, argsig);
-					if (declVar != null) {
-						return (declVar.retType == null) ? (CompValu)new CompValuIntfProp (declVar, baseRVal)
-						                                 : (CompValu)new CompValuIntfMeth (declVar, baseRVal);
-					}
+				TokenDeclVar declVar = FindSingleMember (sdtDecl.methsNProps, lVal.field, argsig);
+				if (declVar != null) {
+					return (declVar.retType == null) ? (CompValu)new CompValuIntfProp (declVar, baseRVal)
+					                                 : (CompValu)new CompValuIntfMeth (declVar, baseRVal);
 				}
-				ErrorMsg (lVal.field, "no member " + fieldName + " in " + sdtDecl.shortName.val);
+				ErrorMsg (lVal.field, "no member " + fieldName + " in interface " + sdtDecl.longName.val);
 				return new CompValuVoid (lVal.field);
 			}
 
@@ -2669,27 +2709,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				// no arguments, no parentheses, just the field name, returning integer
 				// but internally, it is a call to a method()
 				if (fieldName == "count") {
-					TokenType retType = new TokenTypeInt (lVal);
-					return new CompValuIntInstROProp (retType, baseRVal, arrayCountMethodInfo);
+					return new CompValuIntInstROProp (tokenTypeInt, baseRVal, arrayCountMethodInfo);
 				}
 
 				// no arguments but with the parentheses, returning void
 				if (fieldName == "clear()") {
-					TokenType retType = new TokenTypeVoid (lVal);
-					TokenType[] argTypes = new TokenType[0];
-					TokenTypeSDTypeDelegate ttd = new TokenTypeSDTypeDelegate (lVal, retType, argTypes, tokenScript);
-					return new CompValuIntInstMeth (ttd, baseRVal, arrayClearMethodInfo);
+					return new CompValuIntInstMeth (XMR_Array.clearDelegate, baseRVal, arrayClearMethodInfo);
 				}
 
 				// single integer argument, returning an object
-				MethodInfo mi = null;
-				if (fieldName == "index(integer)") mi = arrayIndexMethodInfo;
-				if (fieldName == "value(integer)") mi = arrayValueMethodInfo;
-				if (mi != null) {
-					TokenType retType = new TokenTypeObject (lVal);
-					TokenType[] argTypes = new TokenType[] { new TokenTypeInt (lVal) };
-					TokenTypeSDTypeDelegate ttd = new TokenTypeSDTypeDelegate (lVal, retType, argTypes, tokenScript);
-					return new CompValuIntInstMeth (ttd, baseRVal, mi);
+				if (fieldName == "index(integer)") {
+					return new CompValuIntInstMeth (XMR_Array.indexDelegate, baseRVal, arrayIndexMethodInfo);
+				}
+				if (fieldName == "value(integer)") {
+					return new CompValuIntInstMeth (XMR_Array.valueDelegate, baseRVal, arrayValueMethodInfo);
 				}
 			}
 			if (baseRVal.type is TokenTypeRot) {
@@ -3183,7 +3216,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				}
 			}
 
-			ErrorMsg (baseField, "no member " + fieldName + ArgSigString (argsig) + " rootward of " + sdtDecl.shortName.val);
+			ErrorMsg (baseField, "no member " + fieldName + ArgSigString (argsig) + " rootward of " + sdtDecl.longName.val);
 			return new CompValuVoid (baseField);
 		}
 
@@ -4195,7 +4228,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					ErrorMsg (members[i], "  " + members[i].argDecl.GetArgSig ());
 				}
 			}
-			CheckAccess (members[0]);
+			CheckAccess (members[0], name);
 			return members[0];
 		}
 
@@ -4215,28 +4248,147 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if ((func != null) && (func.retType.ToString () != ret.ToString ())) {
 				ErrorMsg (name, "return type mismatch, have " + func.retType.ToString () + ", expect " + ret.ToString ());
 			}
-			if (func != null) CheckAccess (func);
+			if (func != null) CheckAccess (func, name);
 			return func;
 		}
 
 		/**
 		 * @brief Check the private/protected/public access flags of a member.
 		 */
-		private void CheckAccess (TokenDeclVar var)
+		private void CheckAccess (TokenDeclVar var, Token errorAt)
 		{
+			TokenDeclSDTypeClass nested;
+			TokenDeclSDTypeClass definedBy  = var.sdtClass;
+			TokenDeclSDTypeClass accessedBy = curDeclFunc.sdtClass;
+
+			/*******************************\
+			 *  Check member-level access  *
+			\*******************************/
+
+			/*
+			 * Note that if accessedBy is null, ie, accessing from global function (or event handlers),
+			 * anything tagged as SDT_PRIVATE or SDT_PROTECTED will fail.
+			 */
+
+			/*
+			 * Private means accessed by the class that defined the member or accessed by a nested class
+			 * of the class that defined the member.
+			 */
 			if ((var.sdtFlags & ScriptReduce.SDT_PRIVATE) != 0) {
-				if (curDeclFunc.sdtClass != var.sdtClass) {
-					ErrorMsg (var, "member private to class " + var.sdtClass.shortName.val);
+				for (nested = accessedBy; nested != null; nested = (TokenDeclSDTypeClass)nested.outerSDType) {
+					if (nested == definedBy) goto acc1ok;
 				}
+				ErrorMsg (errorAt, "private member " + var.fullName + " cannot be accessed by " + curDeclFunc.fullName);
+				return;
 			}
+
+			/*
+			 * Protected means:
+			 *   If being accessed by an inner class, the inner class has access to it if the inner class derives 
+			 *   from the declaring class.  It also has access to it if an outer class derives from the declaring 
+			 *   class.
+			 */
 			if ((var.sdtFlags & ScriptReduce.SDT_PROTECTED) != 0) {
-				for (TokenDeclSDTypeClass sdtc = curDeclFunc.sdtClass; sdtc != var.sdtClass; sdtc = sdtc.extends) {
-					if (sdtc == null) {
-						ErrorMsg (var, "member protected by class " + var.sdtClass.shortName.val);
-						break;
+				for (nested = accessedBy; nested != null; nested = (TokenDeclSDTypeClass)nested.outerSDType) {
+					for (TokenDeclSDTypeClass rootward = nested; rootward != null; rootward = rootward.extends) {
+						if (rootward == definedBy) goto acc1ok;
 					}
 				}
+				ErrorMsg (errorAt, "protected member " + var.fullName + " cannot be accessed by " + curDeclFunc.fullName);
+				return;
 			}
+		acc1ok:
+
+			/******************************\
+			 *  Check class-level access  *
+			\******************************/
+
+			/*
+			 * If being accessed by same or inner class than where defined, it is ok.
+			 *
+			 *      class DefiningClass {
+			 *          varBeingAccessed;
+			 *                         .
+			 *                         .
+			 *                         .
+			 *                  class AccessingClass {
+			 *                      functionDoingAccess() { }
+			 *                  }
+			 *                         .
+			 *                         .
+			 *                         .
+			 *      }
+			 */
+			nested = accessedBy;
+			while (true) {
+				if (nested == definedBy) return;
+				if (nested == null) break;
+				nested = (TokenDeclSDTypeClass)nested.outerSDType;
+			}
+
+			/*
+			 * It is being accessed by an outer class than where defined, 
+			 * check for a 'private' or 'protected' class tag that blocks.
+			 */
+			do {
+
+				/*
+				 * If the field's class is defined directly inside the accessing class,
+				 * access is allowed regardless of class-level private or protected tags.
+				 *
+				 *      class AccessingClass {
+				 *          functionDoingAccess() { }
+				 *          class DefiningClass {
+				 *              varBeingAccessed;
+				 *          }
+				 *      }
+				 */
+				if (definedBy.outerSDType == accessedBy) return;
+
+				/*
+				 * If the field's class is defined two or more levels inside the accessing class, 
+				 * access is denied if the defining class is tagged private.
+				 *
+				 *      class AccessingClass {
+				 *          functionDoingAccess() { }
+				 *                         .
+				 *                         .
+				 *                         .
+				 *                  class IntermediateClass {
+				 *                      private class DefiningClass {
+				 *                          varBeingAccessed;
+				 *                      }
+				 *                  }
+				 *                         .
+				 *                         .
+				 *                         .
+				 *      }
+				 */
+				if ((definedBy.accessLevel & ScriptReduce.SDT_PRIVATE) != 0) {
+					ErrorMsg (errorAt, "member " + var.fullName + " cannot be accessed by " + curDeclFunc.fullName + 
+					                   " because of private class " + definedBy.longName.val);
+					return;
+				}
+
+				/*
+				 * Likewise, if DefiningClass is tagged protected, the AccessingClass must derive from the
+				 * IntermediateClass or access is denied.
+				 */
+				if ((definedBy.accessLevel & ScriptReduce.SDT_PROTECTED) != 0) {
+					for (TokenDeclSDTypeClass extends = accessedBy; extends != definedBy.outerSDType; extends = extends.extends) {
+						if (extends == null) {
+							ErrorMsg (errorAt, "member " + var.fullName + " cannot be accessed by " + curDeclFunc.fullName + 
+							                   " because of protected class " + definedBy.longName.val);
+							return;
+						}
+					}
+				}
+
+				/*
+				 * Check next outer level.
+				 */
+				definedBy = (TokenDeclSDTypeClass)definedBy.outerSDType;
+			} while (definedBy != null);
 		}
 
 		/**

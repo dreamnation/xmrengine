@@ -1,25 +1,52 @@
 
-class <classname> : <extends>, <interface> ... {
-    <fieldquals> <fieldname> [ = <initvalue> ] ;
+CLASSES
 
-    <accessquals> constructor ( <arglist> ) [ : [ base ] ( <callargs> ) ] { <methodbody> }
+    class <classname> : <extends>, <interface> ... {
+
+        <accessquals> class ... { ... }
+
+        <accessquals> constant <fieldname> = <constinitvalue> ;
+
+        <accessquals> constructor ( <arglist> ) [ : [ base ] ( <callargs> ) ] { <methodbody> }
+
+        <accessquals> delegate ... ( ... ) ;
+
+        <accessquals> interface ... { ... }
+
+        <fieldquals>  <type> <fieldname> [ = <initvalue> ] ;
+
+        <methodquals> <type> <propertyname> { [ get { <methodbody> } ] [ set { <methodbody> } ] }
+
+        <methodquals> [ <rettype> ] <methodname> [ : <intftype> [ . <intfmeth> ] ]
+                ( <arglist> ) [ ; | { <methodbody> } ]
+    }
+
+DELEGATES
+
+    delegate [ <rettype> ] <delegatename> ( <arglist> ) ;
+
+INTERFACES
+
+    interface <intfname> {
+
+        class ... { ... }
+
+        delegate ... ( ... ) ;
+
+        interface ... { ... }
+
+        [ <rettype> ] <methodname> ( <arglist> ) ;
+
+    }
+
+PROPERTIES
 
     <methodquals> <type> <propertyname> { [ get { <methodbody> } ] [ set { <methodbody> } ] }
 
-    <methodquals> [ <rettype> ] <methodname> [ : <intftype> [ . <intfmeth> ] ]
-        ( <arglist> ) [ ; | { <methodbody> } ]
-}
+        properties can be defined at top-level for global properties
+        properties can be defined abstract, instance, static, virtual within a class
 
-delegate [ <rettype> ] <delegatename> ( <arglist> ) ;
-
-interface <intfname> {
-    [ <rettype> ] <methodname> ( <arglist> ) ;
-}
-
-<methodquals> <type> <propertyname> { [ get { <methodbody> } ] [ set { <methodbody> } ] }
-
-    properties can be defined at top-level for global properties
-    properties can be defined abstract, instance, static, virtual within a class
+Other Definitions
 
     <accessquals> := { public | protected | private }
     <fieldquals>  := <accessquals> [ static ]

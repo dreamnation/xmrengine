@@ -30,6 +30,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private KeyValuePair<object, object>[] array;         // list of kvp's that have been returned by ForEach() since last modification
         private XMRInstAbstract inst;                         // script instance debited with heap use
 
+        public static TokenTypeSDTypeDelegate countDelegate = new TokenTypeSDTypeDelegate (new TokenTypeInt    (null), new TokenType[0]);
+        public static TokenTypeSDTypeDelegate clearDelegate = new TokenTypeSDTypeDelegate (new TokenTypeVoid   (null), new TokenType[0]);
+        public static TokenTypeSDTypeDelegate indexDelegate = new TokenTypeSDTypeDelegate (new TokenTypeObject (null), new TokenType[] { new TokenTypeInt (null) });
+        public static TokenTypeSDTypeDelegate valueDelegate = new TokenTypeSDTypeDelegate (new TokenTypeObject (null), new TokenType[] { new TokenTypeInt (null) });
+
         public XMR_Array () { }
         public XMR_Array (XMRInstAbstract inst, int line, int posn)
         {

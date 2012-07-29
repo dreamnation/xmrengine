@@ -20,24 +20,16 @@ interface IEquality {
     integer HashCode { get; }
 }
 
-class ListNode {
-    public ListNode next;
-    public ListNode prev;
-    public object obj;
-}
-
 class List : IEnumerable {
-    public ListNode first;
-    public ListNode last;
+    private Enumerator.Node first;
+    private Enumerator.Node last;
+    private integer count;
 
-    public AddLast (object obj)
+    public Enqueue (object obj)
     {
-        ListNode node = new ListNode ();
+        Enumerator.Node node = new Enumerator.Node ();
         node.obj = obj;
-        this.AddLast (node);
-    }
-    public AddLast (ListNode node)
-    {
+
         node.next = undef;
         if ((node.prev = this.last) == undef) {
             this.first = node;
@@ -45,47 +37,92 @@ class List : IEnumerable {
             this.last.next = node;
         }
         this.last = node;
+        this.count ++;
+    }
+
+    public object Dequeue ()
+    {
+        Enumerator.Node node = this.first;
+        if ((this.first = node.next) == undef) {
+            this.last = undef;
+        }
+        this.count --;
+        return node.obj;
+    }
+
+    public object Pop ()
+    {
+        Enumerator.Node node = this.last;
+        if ((this.last = node.prev) == undef) {
+            this.first = undef;
+        }
+        this.count --;
+        return node.obj;
+    }
+
+    public integer Count {
+        get {
+            return this.count;
+        }
     }
 
     public IEnumerator GetEnumerator () : IEnumerable
     {
-        return new ListEnumerator (this);
-    }
-}
-
-class ListEnumerator : IEnumerator {
-    public List thelist;
-    public integer atend;
-    private ListNode current;
-
-    public constructor (List thelist)
-    {
-        this.thelist = thelist;
+        return new Enumerator (this);
     }
 
-    public object Current : IEnumerator {
-        get
+    private class Enumerator : IEnumerator {
+        public List thelist;
+        public integer atend;
+        private Node current;
+
+        public constructor (List thelist)
         {
-            if (this.atend) throw "at end of list";
-            return this.current;
+            this.thelist = thelist;
         }
-    }
 
-    public integer MoveNext () : IEnumerator
-    {
-        if (this.atend) return 0;
-        if (this.current == undef) this.current = this.thelist.first;
-                              else this.current = this.current.next;
-        this.atend = (this.current == undef);
-        return !this.atend;
-    }
+        public object Current : IEnumerator {
+            get
+            {
+                if (this.atend) throw "at end of list";
+                return this.current;
+            }
+        }
 
-    public Reset () : IEnumerator
-    {
-        this.atend = 0;
-        this.current = undef;
+        public integer MoveNext () : IEnumerator
+        {
+            if (this.atend) return 0;
+            if (this.current == undef) this.current = this.thelist.first;
+                                  else this.current = this.current.next;
+            this.atend = (this.current == undef);
+            return !this.atend;
+        }
+
+        public Reset () : IEnumerator
+        {
+            this.atend = 0;
+            this.current = undef;
+        }
+
+        public class Node {
+            public Node next;
+            public Node prev;
+            public object obj;
+        }
     }
 }
 
 default {
+    state_entry ()
+    {
+        List stuff = new List ();
+        stuff.Enqueue ("abcdef");
+        stuff.Enqueue (1);
+        stuff.Enqueue ([2,3,4]);
+        stuff.Enqueue (<5,6,7>);
+        llOwnerSay ("count=" + stuff.Count);
+        for (IEnumerator stuffenum = stuff.GetEnumerator (); stuffenum.MoveNext ();) {
+            llOwnerSay ("element=" + (string)stuffenum.Current);
+        }
+    }
 }
