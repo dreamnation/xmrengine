@@ -255,34 +255,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				}
 
 				/*
-				 * class <classdef> ... { ... }
+				 * Script-defined type declarations.
 				 */
-				if (token is TokenKwClass) {
-					ParseDeclClass (ref token);
-					continue;
-				}
+				if (ParseDeclSDTypes (ref token, null, SDT_PUBLIC)) continue;
 
 				/*
 				 * constant <name> = <rval> ;
 				 */
 				if (token is TokenKwConst) {
 					ParseDeclVar (ref token, tokenScript.vars);
-					continue;
-				}
-
-				/*
-				 * delegate [<rettype>] <name> ( ... );
-				 */
-				if (token is TokenKwDelegate) {
-					ParseDeclDelegate (ref token);
-					continue;
-				}
-
-				/*
-				 * interface <interfacedef> ... { ... }
-				 */
-				if (token is TokenKwInterface) {
-					ParseDeclInterface (ref token);
 					continue;
 				}
 
@@ -420,18 +401,58 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		}
 
 		/**
+		 * @brief Parse script-defined type declarations.
+		 * @param token = points to possible script-defined type keyword
+		 * @param outerSDType = null: top-level type
+		 *                      else: sub-type of this type
+		 * @param flags = access level (SDT_{PRIVATE,PROTECTED,PUBLIC}
+		 * @returns true: something defined; else: not a sd type def
+		 */
+		private bool ParseDeclSDTypes (ref Token token, TokenDeclSDType outerSDType, uint flags)
+		{
+			/*
+			 * class <classname> ... { ... }
+			 */
+			if (token is TokenKwClass) {
+				ParseDeclClass (ref token, outerSDType, flags);
+				return true;
+			}
+
+			/*
+			 * delegate [<rettype>] <name> ( ... );
+			 */
+			if (token is TokenKwDelegate) {
+				ParseDeclDelegate (ref token, outerSDType, flags);
+				return true;
+			}
+
+			/*
+			 * interface <interfacedef> ... { ... }
+			 */
+			if (token is TokenKwInterface) {
+				ParseDeclInterface (ref token, outerSDType, flags);
+				return true;
+			}
+
+			return false;
+		}
+
+		/**
 		 * @brief Parse a class declaration.
 		 * @param token = points to 'class' keyword on entry
 		 *                points just past closing '}' on return
+		 * @param outerSDType = null: this is a top-level class
+		 *                      else: this class is being defined inside this type
+		 * @param flags = SDT_{PRIVATE,PROTECTED,PUBLIC}
 		 */
-		private void ParseDeclClass (ref Token token)
+		private void ParseDeclClass (ref Token token, TokenDeclSDType outerSDType, uint flags)
 		{
 			bool haveExplicitConstructor = false;
 			Token u = token.nextToken;
 			TokenDeclSDTypeClass tokdeclcl;
 
 			// first thing following 'class' should be the
-			// class's declaration that we foud during
+			// class's declaration that we found during
 			// pre-scan
 			if (!(u is TokenDeclSDTypeClass)) {
 				ErrorMsg (u, "expecting class name");
@@ -439,6 +460,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				return;
 			}
 			tokdeclcl = (TokenDeclSDTypeClass)u;
+			tokdeclcl.outerSDType = outerSDType;
+			tokdeclcl.accessLevel = flags;
 			u = u.nextToken;
 
 			// next can be ':' followed by list of implemented
@@ -486,7 +509,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				/*
 				 * Check for all qualifiers.
 				 */
-				uint flags = ParseQualifierFlags (ref token);
+				flags = ParseQualifierFlags (ref token);
+
+				/*
+				 * Parse nested script-defined type definitions.
+				 */
+				if (ParseDeclSDTypes (ref token, tokdeclcl, flags)) continue;
 
 				/*
 				 * constant <name> = <rval> ;
@@ -954,8 +982,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 * @brief Parse a delegate declaration statement.
 		 * @param token = points to 'delegate' keyword on entry
 		 *                points just past ';' on return
+		 * @param outerSDType = null: this is a top-level delegate
+		 *                      else: this delegate is being defined inside this type
+		 * @param flags = SDT_{PRIVATE,PROTECTED,PUBLIC}
 		 */
-		private void ParseDeclDelegate (ref Token token)
+		private void ParseDeclDelegate (ref Token token, TokenDeclSDType outerSDType, uint flags)
 		{
 			Token u = token;
 			TokenDeclSDTypeDelegate tokdecldel;
@@ -978,6 +1009,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				return;
 			}
 			tokdecldel = (TokenDeclSDTypeDelegate)u;
+			tokdecldel.outerSDType = outerSDType;
+			tokdecldel.accessLevel = flags;
 			u = u.nextToken;
 
 			// get list of argument types until we see a ')'
@@ -1036,8 +1069,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 * @brief Parse an interface declaration.
 		 * @param token = points to 'interface' keyword on entry
 		 *                points just past closing '}' on return
+		 * @param outerSDType = null: this is a top-level interface
+		 *                      else: this interface is being defined inside this type
+		 * @param flags = SDT_{PRIVATE,PROTECTED,PUBLIC}
 		 */
-		private void ParseDeclInterface (ref Token token)
+		private void ParseDeclInterface (ref Token token, TokenDeclSDType outerSDType, uint flags)
 		{
 			Token u = token.nextToken;
 			TokenDeclSDTypeInterface tokdeclin;
@@ -1051,6 +1087,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				return;
 			}
 			tokdeclin = (TokenDeclSDTypeInterface)u;
+			tokdeclin.outerSDType = outerSDType;
+			tokdeclin.accessLevel = flags;
 			u = u.nextToken;
 
 			// next must be '{' to open interface declaration body
@@ -1067,6 +1105,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					token = token.nextToken;
 					continue;
 				}
+
+				/*
+				 * Parse nested script-defined type definitions.
+				 */
+				if (ParseDeclSDTypes (ref token, tokdeclin, SDT_PUBLIC)) continue;
 
 				/*
 				 * <type> <name> <funcargs> ;
@@ -2632,6 +2675,43 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		protected const byte DELEGATE  = 1;
 		protected const byte INTERFACE = 2;
 
+		public TokenDeclSDType outerSDType;  // null if top-level
+		                                     // else points to defining script-defined type
+		public uint accessLevel;             // SDT_PRIVATE, SDT_PROTECTED or SDT_PUBLIC
+		                                     // ... all top-level types are SDT_PUBLIC
+		public Dictionary<string, TokenDeclSDType> innerClasses = new Dictionary<string, TokenDeclSDType> ();
+		                                     // indexed by shortName
+
+		/*
+		 * Name of the type.
+		 *   shortName = doesn't include outer class type names
+		 *   longName = includes all outer class type names if any
+		 */
+		private TokenName _shortName;
+		private TokenName _longName;
+
+		public TokenName shortName {
+			get {
+				return _shortName;
+			}
+			set {
+				_shortName = value;
+				_longName  = null;
+			}
+		}
+
+		public TokenName longName {
+			get {
+				if (_longName == null) {
+					_longName = _shortName;
+					if (outerSDType != null) {
+						_longName = new TokenName (_shortName, outerSDType.longName.val + "." + _shortName.val);
+					}
+				}
+				return _longName;
+			}
+		}
+
 		/*
 		 * Dictionary used when reading from object file that holds all script-defined types.
 		 * Not complete though until all types have been read from the object file.
@@ -2695,19 +2775,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	}
 
 	public class TokenDeclSDTypeClass : TokenDeclSDType {
-		public TokenName name;
 		public TokenDeclSDTypeClass extends;
 		public bool isAbstract;
 		public List<TokenDeclSDTypeInterface> implements = new List<TokenDeclSDTypeInterface> ();
 		public VarDict members = new VarDict ();
 
-		public Dictionary<string, int> intfIndices = new Dictionary<string, int> ();
-		public TokenDeclVar[][] iImplFunc;  // iImplFunc[i][j]:
-		                                    //   low-end [i] entries copied from rootward classes
-		                                    //   i = interface number from this.intfIndices[name]
-		                                    //   j = method of interface from iface.methods[name].vTableIndex
+		public Dictionary<string, int> intfIndices = new Dictionary<string, int> ();  // longname => this.iFaces index
 		public TokenDeclSDTypeInterface[] iFaces;  // array of implemented interfaces
 		                                           //   low-end entries copied from rootward classes
+		public TokenDeclVar[][] iImplFunc;         // iImplFunc[i][j]:
+		                                           //   low-end [i] entries copied from rootward classes
+		                                           //   i = interface number from this.intfIndices[name]
+		                                           //   j = method of interface from iface.methods[name].vTableIndex
 
 		public bool slotsAssigned;    // set true when slots have been assigned...
 		public int numInstArrays;     // number of non-static array fields
@@ -2734,9 +2813,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		                                     //   i = interface number from this.intfIndices[name]
 		                                     //   j = method of interface from iface.methods[name].vTableIndex
 
-		public TokenDeclSDTypeClass (TokenName name) : base (name)
+		public TokenDeclSDTypeClass (TokenName shortName) : base (shortName)
 		{
-			this.name = name;
+			this.shortName = shortName;
 		}
 
 		public override TokenTypeSDType MakeRefToken (Token t)
@@ -2773,7 +2852,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			if (extends == null) {
 				objFileWriter.Write ("");
 			} else {
-				objFileWriter.Write (extends.name.val);
+				objFileWriter.Write (extends.longName.val);
 			}
 
 			foreach (TokenDeclVar meth in members) {
@@ -2788,7 +2867,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			int numIFaces = iImplFunc.Length;
 			objFileWriter.Write (numIFaces);
 			for (int i = 0; i < numIFaces; i ++) {
-				objFileWriter.Write (iFaces[i].name.val);
+				objFileWriter.Write (iFaces[i].longName.val);
 				TokenDeclVar[] meths = iImplFunc[i];
 				int numMeths = 0;
 				if (meths != null) numMeths = meths.Length;
@@ -2938,8 +3017,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	}
 
 	public class TokenDeclSDTypeDelegate : TokenDeclSDType {
-		public TokenName name;
-
 		private TokenType retType;
 		private TokenType[] argTypes;
 
@@ -2955,9 +3032,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		private static Dictionary<string, TokenDeclSDTypeDelegate> inlines = new Dictionary<string, TokenDeclSDTypeDelegate> ();
 		private static Dictionary<Type, string> inlrevs = new Dictionary<Type, string> ();
 
-		public TokenDeclSDTypeDelegate (TokenName name) : base (name)
+		public TokenDeclSDTypeDelegate (TokenName shortName) : base (shortName)
 		{
-			this.name = name;
+			this.shortName = shortName;
 		}
 		public void SetRetArgTypes (TokenType retType, TokenType[] argTypes)
 		{
@@ -3060,7 +3137,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			retStr = objFileReader.ReadString ();
 			int nArgs = objFileReader.ReadInt32 ();
 			if (asmFileWriter != null) {
-				asmFileWriter.Write ("  delegate " + retStr + " " + name.val + "(");
+				asmFileWriter.Write ("  delegate " + retStr + " " + longName.val + "(");
 			}
 			argStrs = new string[nArgs];
 			for (int i = 0; i < nArgs; i ++) {
@@ -3180,12 +3257,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	}
 
 	public class TokenDeclSDTypeInterface : TokenDeclSDType {
-		public TokenName name;
 		public VarDict methsNProps = new VarDict ();
 
-		public TokenDeclSDTypeInterface (TokenName name) : base (name)
+		public TokenDeclSDTypeInterface (TokenName shortName) : base (shortName)
 		{
-			this.name = name;
+			this.shortName = shortName;
 		}
 
 		public override TokenTypeSDType MakeRefToken (Token t)
@@ -3232,7 +3308,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		}
 		public override string ToString ()
 		{
-			return decl.name.val;
+			return decl.longName.val;
 		}
 		public override Type ToSysType ()
 		{
@@ -3342,7 +3418,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public override string ToString ()
 		{
-			return decl.name.val;
+			return decl.longName.val;
 		}
 
 		/**
@@ -3378,7 +3454,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public override string ToString ()
 		{
-			return decl.name.val;
+			return decl.longName.val;
 		}
 		public override Type ToSysType ()
 		{
@@ -3547,7 +3623,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
                         string objCodeName  = "__fun_";
                         if (sdtClass != null) {
-                                objCodeName += sdtClass.name.val + ".";
+                                objCodeName += sdtClass.longName.val + ".";
                         }
                         objCodeName += funcNameSig.val;
 			return objCodeName;

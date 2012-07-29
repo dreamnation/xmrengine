@@ -311,7 +311,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * For all classes that define instance fields with initializers, 
-			 * create a ".instancefieldinit.()" instance method that fills them all in.
+			 * create an ".instfieldinit.()" instance method that fills them all in.
 			 * This method will then be called at the beginning of all constructors
 			 * defined for the class.
 			 */
@@ -321,14 +321,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				TokenDeclSDTypeClass sdtClass = (TokenDeclSDTypeClass)sdType;
 
 				/*
-				 * Define an instance function .instancefieldinit.() with no args and a void return value.
+				 * Define an instance function .instfieldinit.() with no args and a void return value.
 				 */
-				TokenDeclVar fiFunc = new TokenDeclVar (sdtClass.name, null, tokenScript);
+				TokenDeclVar fiFunc = new TokenDeclVar (sdtClass.longName, null, tokenScript);
 				fiFunc.retType = new TokenTypeVoid (fiFunc);
-				fiFunc.funcNameSig = new TokenName (fiFunc, ".instancefieldinit.()");
+				fiFunc.funcNameSig = new TokenName (fiFunc, ".instfieldinit.()");
 				fiFunc.sdtClass = sdtClass;
 
-				TokenArgDecl fiArgs = new TokenArgDecl (sdtClass.name);
+				TokenArgDecl fiArgs = new TokenArgDecl (sdtClass.longName);
 				fiArgs.types = new TokenType[0];
 				fiArgs.names = new TokenName[0];
 				fiArgs.locns = new CompValu[0];
@@ -337,7 +337,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				/*
 				 * Start it with an empty statment block { }.
 				 */
-				TokenStmtBlock fiBody = new TokenStmtBlock (sdtClass.name);
+				TokenStmtBlock fiBody = new TokenStmtBlock (sdtClass.longName);
 				fiBody.function = fiFunc;
 				fiFunc.body = fiBody;
 
@@ -457,16 +457,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					/*
 					 * ... and assign virtual method vtable slots.
 					 *
-					 *                   - : error if any overidden method, doesn't need a slot
-					 *            abstract : error if any overidden method, alloc new slot but leave it empty
-					 *                 new : ignore any overidden method, doesn't need a slot
-					 *        new abstract : ignore any overidden method, alloc new slot but leave it empty
-					 *            override : must have overidden abstract/virtual, use old slot
-					 *   override abstract : must have overidden abstract, use old slot but it is still empty
-					 *              static : error if any overidden method, doesn't need a slot
-					 *          static new : ignore any overidden method, doesn't need a slot
-					 *             virtual : error if any overidden method, alloc new slot and fill it in
-					 *         virtual new : ignore any overidden method, alloc new slot and fill it in
+					 *                   - : error if any overridden method, doesn't need a slot
+					 *            abstract : error if any overridden method, alloc new slot but leave it empty
+					 *                 new : ignore any overridden method, doesn't need a slot
+					 *        new abstract : ignore any overridden method, alloc new slot but leave it empty
+					 *            override : must have overridden abstract/virtual, use old slot
+					 *   override abstract : must have overridden abstract, use old slot but it is still empty
+					 *              static : error if any overridden method, doesn't need a slot
+					 *          static new : ignore any overridden method, doesn't need a slot
+					 *             virtual : error if any overridden method, alloc new slot and fill it in
+					 *         virtual new : ignore any overridden method, alloc new slot and fill it in
 					 */
 					foreach (TokenDeclVar declFunc in sdtClass.members) {
 						if (declFunc.retType == null) continue;
@@ -476,7 +476,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						 * If so, check for various conflicts.
 						 * In any case, SDT_NEW on our method means to ignore any overshadowed method.
 						 */
-						string name = sdtClass.name.val + "." + declFunc.funcNameSig.val;
+						string declShortName = sdtClass.shortName.val + "." + declFunc.funcNameSig.val;
 						uint declFlags = declFunc.sdtFlags;
 						TokenDeclVar overridden = null;
 						if ((declFlags & ScriptReduce.SDT_NEW) == 0) {
@@ -486,25 +486,26 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 							}
 						}
 						if (overridden != null) do {
+							string overShortName = overridden.sdtClass.shortName.val;
 							uint overFlags = overridden.sdtFlags;
 
 							/*
-							 * See if overridden method allows itself to be overidden.
+							 * See if overridden method allows itself to be overridden.
 							 */
 							if ((overFlags & ScriptReduce.SDT_ABSTRACT) != 0) {
 								if ((declFlags & (ScriptReduce.SDT_ABSTRACT | ScriptReduce.SDT_OVERRIDE)) == 0) {
-									ErrorMsg (declFunc, name + " overshadows abstract " + overridden.sdtClass.name.val + " but is not marked abstract, new or override");
+									ErrorMsg (declFunc, declShortName + " overshadows abstract " + overShortName + " but is not marked abstract, new or override");
 									break;
 								}
 							} else if ((overFlags & ScriptReduce.SDT_FINAL) != 0) {
-								ErrorMsg (declFunc, name + " overshadows final " + overridden.sdtClass.name.val + " but is not marked new");
+								ErrorMsg (declFunc, declShortName + " overshadows final " + overShortName + " but is not marked new");
 							} else if ((overFlags & (ScriptReduce.SDT_OVERRIDE | ScriptReduce.SDT_VIRTUAL)) != 0) {
 								if ((declFlags & (ScriptReduce.SDT_NEW | ScriptReduce.SDT_OVERRIDE)) == 0) {
-									ErrorMsg (declFunc, name + " overshadows virtual " + overridden.sdtClass.name.val + " but is not marked new or override");
+									ErrorMsg (declFunc, declShortName + " overshadows virtual " + overShortName + " but is not marked new or override");
 									break;
 								}
 							} else {
-								ErrorMsg (declFunc, name + " overshadows non-virtual " + overridden.sdtClass.name.val + " but is not marked new");
+								ErrorMsg (declFunc, declShortName + " overshadows non-virtual " + overShortName + " but is not marked new");
 								break;
 							}
 
@@ -513,16 +514,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 							 */
 							if ((declFlags & ScriptReduce.SDT_ABSTRACT) != 0) {
 								if ((overFlags & ScriptReduce.SDT_ABSTRACT) == 0) {
-									ErrorMsg (declFunc, name + " abstract overshadows non-abstract " + overridden.sdtClass.name.val + " but is not marked new");
+									ErrorMsg (declFunc, declShortName + " abstract overshadows non-abstract " + overShortName + " but is not marked new");
 									break;
 								}
 							} else if ((declFlags & ScriptReduce.SDT_OVERRIDE) != 0) {
 								if ((overFlags & (ScriptReduce.SDT_ABSTRACT | ScriptReduce.SDT_OVERRIDE | ScriptReduce.SDT_VIRTUAL)) == 0) {
-									ErrorMsg (declFunc, name + " override overshadows non-abstract/non-virtual " + overridden.sdtClass.name.val);
+									ErrorMsg (declFunc, declShortName + " override overshadows non-abstract/non-virtual " + overShortName);
 									break;
 								}
 							} else {
-								ErrorMsg (declFunc, name + " overshadows " + overridden.sdtClass.name.val + " but is not marked new");
+								ErrorMsg (declFunc, declShortName + " overshadows " + overShortName + " but is not marked new");
 								break;
 							}
 						} while (false);
@@ -534,7 +535,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						if (overridden != null) {
 							declFunc.vTableIndex = overridden.vTableIndex;
 						} else if ((declFlags & ScriptReduce.SDT_OVERRIDE) != 0) {
-							ErrorMsg (declFunc, name + " marked override but nothing matching found that it overrides");
+							ErrorMsg (declFunc, declShortName + " marked override but nothing matching found that it overrides");
 						}
 						if ((declFlags & (ScriptReduce.SDT_ABSTRACT | ScriptReduce.SDT_VIRTUAL)) != 0) {
 							declFunc.vTableIndex = sdtClass.numVirtFuncs ++;
@@ -557,7 +558,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					foreach (TokenDeclSDTypeInterface intf in sdtClass.implements) {
 						int i = sdtClass.numInterfaces ++;
 						sdtClass.iFaces[i] = intf;
-						sdtClass.intfIndices.Add (intf.name.val, i);
+						sdtClass.intfIndices.Add (intf.longName.val, i);
 						int nMeths = 0;
 						foreach (TokenDeclVar m in intf.methsNProps) {
 							if ((m.getProp == null) && (m.setProp == null)) nMeths ++;
@@ -591,7 +592,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 								}
 							}
 							if (!found) {
-								ErrorMsg (intfImpl, "class not declared to implement " + intfType.name.val);
+								ErrorMsg (intfImpl, "class not declared to implement " + intfType.longName.val);
 								continue;
 							}
 
@@ -632,7 +633,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 										break;
 									}
 								}
-								ErrorMsg (sdtClass, "does not implement " + intf.name.val + "." + meth.funcNameSig.val);
+								ErrorMsg (sdtClass, "does not implement " + intf.longName.val + "." + meth.funcNameSig.val);
 							}
 						}
 					}
@@ -790,7 +791,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				TokenDeclSDTypeClass sdtClass = (TokenDeclSDTypeClass)sdType;
 				foreach (TokenDeclVar declVar in sdtClass.members) {
 					if ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) != 0) {
-						WriteOutGblAssignment (sdtClass.name.val + ".", declVar);
+						WriteOutGblAssignment (sdtClass.longName.val + ".", declVar);
 					}
 				}
 			}
@@ -1192,7 +1193,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * then call the XMRSDTypeClassInstance()-level constructor.
 			 */
 			ilGen.Emit (OpCodes.Ldarg_0);
-			ilGen.Emit (OpCodes.Ldstr, newobjFunc.sdtClass.name.val);
+			ilGen.Emit (OpCodes.Ldstr, newobjFunc.sdtClass.longName.val);
 			ilGen.Emit (OpCodes.Newobj, sdtClassConstructorInfo);
 
 			/*
@@ -1310,13 +1311,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * If this is a script-defined type constructor, call the base constructor and call
-			 * this class's .instancefieldinit.() method.
+			 * this class's .instfieldinit.() method.
 			 */
 			if ((curDeclFunc.sdtClass != null) && curDeclFunc.funcNameSig.val.StartsWith ("constructor(")) {
 				if (curDeclFunc.baseCtorCall != null) {
 					GenerateFromRValCall (curDeclFunc.baseCtorCall);
 				}
-				TokenDeclVar ifim = curDeclFunc.sdtClass.members.FindExact (".instancefieldinit.", zeroArgs);
+				TokenDeclVar ifim = curDeclFunc.sdtClass.members.FindExact (".instfieldinit.", zeroArgs);
 				if (ifim != null) {
 					new CallLabel (this);
 					ilGen.Emit (OpCodes.Ldarg_0);
@@ -2639,7 +2640,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						                                 : (CompValu)new CompValuInstMeth (declVar, baseRVal, false);
 					}
 				}
-				ErrorMsg (lVal.field, "no member " + fieldName + " in " + sdtDecl.name.val);
+				ErrorMsg (lVal.field, "no member " + fieldName + " in " + sdtDecl.shortName.val);
 				return new CompValuVoid (lVal.field);
 			}
 
@@ -2656,7 +2657,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						                                 : (CompValu)new CompValuIntfMeth (declVar, baseRVal);
 					}
 				}
-				ErrorMsg (lVal.field, "no member " + fieldName + " in " + sdtDecl.name.val);
+				ErrorMsg (lVal.field, "no member " + fieldName + " in " + sdtDecl.shortName.val);
 				return new CompValuVoid (lVal.field);
 			}
 
@@ -3182,7 +3183,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				}
 			}
 
-			ErrorMsg (baseField, "no member " + fieldName + ArgSigString (argsig) + " rootward of " + sdtDecl.name.val);
+			ErrorMsg (baseField, "no member " + fieldName + ArgSigString (argsig) + " rootward of " + sdtDecl.shortName.val);
 			return new CompValuVoid (baseField);
 		}
 
@@ -4225,13 +4226,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			if ((var.sdtFlags & ScriptReduce.SDT_PRIVATE) != 0) {
 				if (curDeclFunc.sdtClass != var.sdtClass) {
-					ErrorMsg (var, "member private to class " + var.sdtClass.name.val);
+					ErrorMsg (var, "member private to class " + var.sdtClass.shortName.val);
 				}
 			}
 			if ((var.sdtFlags & ScriptReduce.SDT_PROTECTED) != 0) {
 				for (TokenDeclSDTypeClass sdtc = curDeclFunc.sdtClass; sdtc != var.sdtClass; sdtc = sdtc.extends) {
 					if (sdtc == null) {
-						ErrorMsg (var, "member protected by class " + var.sdtClass.name.val);
+						ErrorMsg (var, "member protected by class " + var.sdtClass.shortName.val);
 						break;
 					}
 				}

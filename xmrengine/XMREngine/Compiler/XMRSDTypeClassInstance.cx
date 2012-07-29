@@ -186,7 +186,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * If we run off the end of the root, the cast is not valid.
                  */
                 for (TokenDeclSDTypeClass ac = ci.sdtcClass; ac != tc; ac = ac.extends) {
-                    if (ac == null) throw new InvalidCastException ("invalid cast from " + ci.sdtcClass.name.val + 
+                    if (ac == null) throw new InvalidCastException ("invalid cast from " + ci.sdtcClass.shortName.val + 
                                                                                   " to " + classname);
                 }
 
