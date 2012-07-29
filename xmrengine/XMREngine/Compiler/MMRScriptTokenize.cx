@@ -725,7 +725,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             kws.Add ("static",      GetTokenCtor (typeof (TokenKwStatic)));
             kws.Add ("this",        GetTokenCtor (typeof (TokenKwThis)));
             kws.Add ("virtual",     GetTokenCtor (typeof (TokenKwVirtual)));
-            kws.Add ("void",        GetTokenCtor (typeof (TokenTypeVoid)));
 
             return kws;
         }
@@ -1285,6 +1284,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             declVar.vTableIndex = sdtClass.numInstStrings ++;
         }
     }
+    public class TokenTypeUndef : TokenType {  // for the 'undef' constant, ie, null object pointer
+        public TokenTypeUndef (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
+        public TokenTypeUndef (Token original) : base (original) { }
+        public override Type ToSysType () { return typeof (object); }
+        public override bool IsAssignableFrom (TokenType src) { return false; }
+        public override string ToString () { return "undef"; }
+    }
     public class TokenTypeVec : TokenType {
         private static readonly FieldInfo gblVectorsFieldInfo  = typeof (XMRInstAbstract).GetField ("gblVectors");
         private static readonly FieldInfo sdtcVectorsFieldInfo = typeof (XMRSDTypeClassInstance).GetField ("sdtcVectors");
@@ -1305,7 +1311,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             declVar.vTableIndex = sdtClass.numInstVectors ++;
         }
     }
-    public class TokenTypeVoid : TokenType {
+    public class TokenTypeVoid : TokenType {  // used only for function/method return types
         public TokenTypeVoid (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
         public TokenTypeVoid (Token original) : base (original) { }
         public override Type ToSysType () { return typeof (void); }

@@ -20,8 +20,8 @@ DumpArray(integer shouldhave)
     if ((shouldhave >= 0) && (n != shouldhave)) state error;
 }
 
-delegate void DUMPARRAY(integer shouldHave);
-delegate void VERIFY(array,list s,string);
+delegate DUMPARRAY(integer shouldHave);
+delegate VERIFY(array,list s,string);
 
 array zz;
 DUMPARRAY da;
@@ -39,7 +39,7 @@ class KlassOne : Klass, Printable {
                             set { SaySomething ("please don't set k1Prop = " + value); }
                           }
 
-    public override void Print () : Printable.Print
+    public override Print () : Printable.Print
     {
         SaySomething ("KlassOne.Printable");
         this.k1Prop = 2999;
@@ -64,12 +64,12 @@ class Klass : Printable {
         this.x = 99;
     }
 
-    public static void SayIt (string x)
+    public static SayIt (string x)
     {
         SaySomething ("SayIt: " + x);
     }
 
-    public virtual void Print () : Printable
+    public virtual Print () : Printable
     {
         SayIt ("this.x=" + this.x);
         SayIt ("Klass.y=" + Klass.y);

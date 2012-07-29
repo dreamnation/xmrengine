@@ -19,7 +19,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	 * @brief This class is used to catalog the code emit routines based on a key string
 	 *        The key string has the two types (eg, "integer", "rotation") and the operator (eg, "*", "!=")
 	 */
-	public delegate void BinOpStrEmitBO (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result);
+	public delegate void BinOpStrEmitBO (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result);
 	public class BinOpStr {
 		public Type outtype;           // type of result of computation
 		public BinOpStrEmitBO emitBO;  // how to compute result
@@ -350,842 +350,842 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 * @param right  = right-hand operand location in memory (type as given by BinOpStr entry)
 		 * @param result = result location in memory (type as given by BinOpStr entry)
 		 */
-		private static void BinOpStrAndAnd (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrAndAnd (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeBool);
-			right.PushVal (scg, tokenTypeBool);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeBool);
+			right.PushVal (scg, errorAt, tokenTypeBool);
 			scg.ilGen.Emit (OpCodes.And);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrOrOr (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrOrOr (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeBool);
-			right.PushVal (scg, tokenTypeBool);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeBool);
+			right.PushVal (scg, errorAt, tokenTypeBool);
 			scg.ilGen.Emit (OpCodes.Or);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrBoolOrX (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrBoolOrX (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeBool);
-			right.PushVal (scg, tokenTypeBool);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeBool);
+			right.PushVal (scg, errorAt, tokenTypeBool);
 			scg.ilGen.Emit (OpCodes.Or);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrBoolXorX (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrBoolXorX (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeBool);
-			right.PushVal (scg, tokenTypeBool);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeBool);
+			right.PushVal (scg, errorAt, tokenTypeBool);
 			scg.ilGen.Emit (OpCodes.Xor);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrBoolAndX (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrBoolAndX (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeBool);
-			right.PushVal (scg, tokenTypeBool);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeBool);
+			right.PushVal (scg, errorAt, tokenTypeBool);
 			scg.ilGen.Emit (OpCodes.And);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrBoolEqX (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrBoolEqX (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeBool);
-			right.PushVal (scg, tokenTypeBool);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeBool);
+			right.PushVal (scg, errorAt, tokenTypeBool);
 			scg.ilGen.Emit (OpCodes.Ceq);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrBoolNeX (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrBoolNeX (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeBool);
-			right.PushVal (scg, tokenTypeBool);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeBool);
+			right.PushVal (scg, errorAt, tokenTypeBool);
 			scg.ilGen.Emit (OpCodes.Xor);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrFloatEqX (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrFloatEqX (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeFloat);
-			right.PushVal (scg, tokenTypeFloat);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeFloat);
+			right.PushVal (scg, errorAt, tokenTypeFloat);
 			scg.ilGen.Emit (OpCodes.Ceq);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrFloatNeX (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrFloatNeX (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeFloat);
-			right.PushVal (scg, tokenTypeFloat);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeFloat);
+			right.PushVal (scg, errorAt, tokenTypeFloat);
 			scg.ilGen.Emit (OpCodes.Ceq);
 			scg.ilGen.Emit (OpCodes.Ldc_I4_1);
 			scg.ilGen.Emit (OpCodes.Xor);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrFloatLtX (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrFloatLtX (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeFloat);
-			right.PushVal (scg, tokenTypeFloat);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeFloat);
+			right.PushVal (scg, errorAt, tokenTypeFloat);
 			scg.ilGen.Emit (OpCodes.Clt);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrFloatLeX (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrFloatLeX (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeFloat);
-			right.PushVal (scg, tokenTypeFloat);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeFloat);
+			right.PushVal (scg, errorAt, tokenTypeFloat);
 			scg.ilGen.Emit (OpCodes.Cgt);
 			scg.ilGen.Emit (OpCodes.Ldc_I4_1);
 			scg.ilGen.Emit (OpCodes.Xor);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrFloatGtX (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrFloatGtX (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeFloat);
-			right.PushVal (scg, tokenTypeFloat);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeFloat);
+			right.PushVal (scg, errorAt, tokenTypeFloat);
 			scg.ilGen.Emit (OpCodes.Cgt);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrFloatGeX (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrFloatGeX (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeFloat);
-			right.PushVal (scg, tokenTypeFloat);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeFloat);
+			right.PushVal (scg, errorAt, tokenTypeFloat);
 			scg.ilGen.Emit (OpCodes.Clt);
 			scg.ilGen.Emit (OpCodes.Ldc_I4_1);
 			scg.ilGen.Emit (OpCodes.Xor);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrFloatAddX (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrFloatAddX (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeFloat);
-			right.PushVal (scg, tokenTypeFloat);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeFloat);
+			right.PushVal (scg, errorAt, tokenTypeFloat);
 			scg.ilGen.Emit (OpCodes.Add);
-			result.PopPost (scg, tokenTypeFloat);
+			result.PopPost (scg, errorAt, tokenTypeFloat);
 		}
 
-		private static void BinOpStrFloatSubX (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrFloatSubX (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeFloat);
-			right.PushVal (scg, tokenTypeFloat);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeFloat);
+			right.PushVal (scg, errorAt, tokenTypeFloat);
 			scg.ilGen.Emit (OpCodes.Sub);
-			result.PopPost (scg, tokenTypeFloat);
+			result.PopPost (scg, errorAt, tokenTypeFloat);
 		}
 
-		private static void BinOpStrFloatMulX (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrFloatMulX (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeFloat);
-			right.PushVal (scg, tokenTypeFloat);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeFloat);
+			right.PushVal (scg, errorAt, tokenTypeFloat);
 			scg.ilGen.Emit (OpCodes.Mul);
-			result.PopPost (scg, tokenTypeFloat);
+			result.PopPost (scg, errorAt, tokenTypeFloat);
 		}
 
-		private static void BinOpStrFloatDivX (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrFloatDivX (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeFloat);
-			right.PushVal (scg, tokenTypeFloat);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeFloat);
+			right.PushVal (scg, errorAt, tokenTypeFloat);
 			scg.ilGen.Emit (OpCodes.Div);
-			result.PopPost (scg, tokenTypeFloat);
+			result.PopPost (scg, errorAt, tokenTypeFloat);
 		}
 
-		private static void BinOpStrFloatModX (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrFloatModX (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeFloat);
-			right.PushVal (scg, tokenTypeFloat);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeFloat);
+			right.PushVal (scg, errorAt, tokenTypeFloat);
 			scg.ilGen.Emit (OpCodes.Rem);
-			result.PopPost (scg, tokenTypeFloat);
+			result.PopPost (scg, errorAt, tokenTypeFloat);
 		}
 
-		private static void BinOpStrXEqFloat (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrXEqFloat (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeFloat);
-			right.PushVal (scg, tokenTypeFloat);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeFloat);
+			right.PushVal (scg, errorAt, tokenTypeFloat);
 			scg.ilGen.Emit (OpCodes.Ceq);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrXNeFloat (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrXNeFloat (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeFloat);
-			right.PushVal (scg, tokenTypeFloat);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeFloat);
+			right.PushVal (scg, errorAt, tokenTypeFloat);
 			scg.ilGen.Emit (OpCodes.Ceq);
 			scg.ilGen.Emit (OpCodes.Ldc_I4_1);
 			scg.ilGen.Emit (OpCodes.Xor);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrXLtFloat (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrXLtFloat (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeFloat);
-			right.PushVal (scg, tokenTypeFloat);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeFloat);
+			right.PushVal (scg, errorAt, tokenTypeFloat);
 			scg.ilGen.Emit (OpCodes.Clt);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrXLeFloat (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrXLeFloat (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeFloat);
-			right.PushVal (scg, tokenTypeFloat);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeFloat);
+			right.PushVal (scg, errorAt, tokenTypeFloat);
 			scg.ilGen.Emit (OpCodes.Cgt);
 			scg.ilGen.Emit (OpCodes.Ldc_I4_1);
 			scg.ilGen.Emit (OpCodes.Xor);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrXGtFloat (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrXGtFloat (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeFloat);
-			right.PushVal (scg, tokenTypeFloat);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeFloat);
+			right.PushVal (scg, errorAt, tokenTypeFloat);
 			scg.ilGen.Emit (OpCodes.Cgt);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrXGeFloat (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrXGeFloat (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeFloat);
-			right.PushVal (scg, tokenTypeFloat);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeFloat);
+			right.PushVal (scg, errorAt, tokenTypeFloat);
 			scg.ilGen.Emit (OpCodes.Clt);
 			scg.ilGen.Emit (OpCodes.Ldc_I4_1);
 			scg.ilGen.Emit (OpCodes.Xor);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrXAddFloat (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrXAddFloat (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeFloat);
-			right.PushVal (scg, tokenTypeFloat);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeFloat);
+			right.PushVal (scg, errorAt, tokenTypeFloat);
 			scg.ilGen.Emit (OpCodes.Add);
-			result.PopPost (scg, tokenTypeFloat);
+			result.PopPost (scg, errorAt, tokenTypeFloat);
 		}
 
-		private static void BinOpStrXSubFloat (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrXSubFloat (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeFloat);
-			right.PushVal (scg, tokenTypeFloat);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeFloat);
+			right.PushVal (scg, errorAt, tokenTypeFloat);
 			scg.ilGen.Emit (OpCodes.Sub);
-			result.PopPost (scg, tokenTypeFloat);
+			result.PopPost (scg, errorAt, tokenTypeFloat);
 		}
 
-		private static void BinOpStrXMulFloat (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrXMulFloat (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeFloat);
-			right.PushVal (scg, tokenTypeFloat);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeFloat);
+			right.PushVal (scg, errorAt, tokenTypeFloat);
 			scg.ilGen.Emit (OpCodes.Mul);
-			result.PopPost (scg, tokenTypeFloat);
+			result.PopPost (scg, errorAt, tokenTypeFloat);
 		}
 
-		private static void BinOpStrXDivFloat (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrXDivFloat (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeFloat);
-			right.PushVal (scg, tokenTypeFloat);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeFloat);
+			right.PushVal (scg, errorAt, tokenTypeFloat);
 			scg.ilGen.Emit (OpCodes.Div);
-			result.PopPost (scg, tokenTypeFloat);
+			result.PopPost (scg, errorAt, tokenTypeFloat);
 		}
 
-		private static void BinOpStrXModFloat (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrXModFloat (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeFloat);
-			right.PushVal (scg, tokenTypeFloat);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeFloat);
+			right.PushVal (scg, errorAt, tokenTypeFloat);
 			scg.ilGen.Emit (OpCodes.Rem);
-			result.PopPost (scg, tokenTypeFloat);
+			result.PopPost (scg, errorAt, tokenTypeFloat);
 		}
 
-		private static void BinOpStrIntEqInt (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrIntEqInt (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeInt);
-			right.PushVal (scg, tokenTypeInt);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeInt);
+			right.PushVal (scg, errorAt, tokenTypeInt);
 			scg.ilGen.Emit (OpCodes.Ceq);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrIntNeInt (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrIntNeInt (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeInt);
-			right.PushVal (scg, tokenTypeInt);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeInt);
+			right.PushVal (scg, errorAt, tokenTypeInt);
 			scg.ilGen.Emit (OpCodes.Ceq);
 			scg.ilGen.Emit (OpCodes.Ldc_I4_1);
 			scg.ilGen.Emit (OpCodes.Xor);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrIntLtInt (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrIntLtInt (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeInt);
-			right.PushVal (scg, tokenTypeInt);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeInt);
+			right.PushVal (scg, errorAt, tokenTypeInt);
 			scg.ilGen.Emit (OpCodes.Clt);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrIntLeInt (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrIntLeInt (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeInt);
-			right.PushVal (scg, tokenTypeInt);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeInt);
+			right.PushVal (scg, errorAt, tokenTypeInt);
 			scg.ilGen.Emit (OpCodes.Cgt);
 			scg.ilGen.Emit (OpCodes.Ldc_I4_1);
 			scg.ilGen.Emit (OpCodes.Xor);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrIntGtInt (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrIntGtInt (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeInt);
-			right.PushVal (scg, tokenTypeInt);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeInt);
+			right.PushVal (scg, errorAt, tokenTypeInt);
 			scg.ilGen.Emit (OpCodes.Cgt);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrIntGeInt (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrIntGeInt (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeInt);
-			right.PushVal (scg, tokenTypeInt);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeInt);
+			right.PushVal (scg, errorAt, tokenTypeInt);
 			scg.ilGen.Emit (OpCodes.Clt);
 			scg.ilGen.Emit (OpCodes.Ldc_I4_1);
 			scg.ilGen.Emit (OpCodes.Xor);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrIntOrInt (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrIntOrInt (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeInt);
-			right.PushVal (scg, tokenTypeInt);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeInt);
+			right.PushVal (scg, errorAt, tokenTypeInt);
 			scg.ilGen.Emit (OpCodes.Or);
-			result.PopPost (scg, tokenTypeInt);
+			result.PopPost (scg, errorAt, tokenTypeInt);
 		}
 
-		private static void BinOpStrIntXorInt (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrIntXorInt (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeInt);
-			right.PushVal (scg, tokenTypeInt);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeInt);
+			right.PushVal (scg, errorAt, tokenTypeInt);
 			scg.ilGen.Emit (OpCodes.Xor);
-			result.PopPost (scg, tokenTypeInt);
+			result.PopPost (scg, errorAt, tokenTypeInt);
 		}
 
-		private static void BinOpStrIntAndInt (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrIntAndInt (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeInt);
-			right.PushVal (scg, tokenTypeInt);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeInt);
+			right.PushVal (scg, errorAt, tokenTypeInt);
 			scg.ilGen.Emit (OpCodes.And);
-			result.PopPost (scg, tokenTypeInt);
+			result.PopPost (scg, errorAt, tokenTypeInt);
 		}
 
-		private static void BinOpStrIntAddInt (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrIntAddInt (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeInt);
-			right.PushVal (scg, tokenTypeInt);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeInt);
+			right.PushVal (scg, errorAt, tokenTypeInt);
 			scg.ilGen.Emit (OpCodes.Add);
-			result.PopPost (scg, tokenTypeInt);
+			result.PopPost (scg, errorAt, tokenTypeInt);
 		}
 
-		private static void BinOpStrIntSubInt (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrIntSubInt (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeInt);
-			right.PushVal (scg, tokenTypeInt);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeInt);
+			right.PushVal (scg, errorAt, tokenTypeInt);
 			scg.ilGen.Emit (OpCodes.Sub);
-			result.PopPost (scg, tokenTypeInt);
+			result.PopPost (scg, errorAt, tokenTypeInt);
 		}
 
-		private static void BinOpStrIntMulInt (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrIntMulInt (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeInt);
-			right.PushVal (scg, tokenTypeInt);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeInt);
+			right.PushVal (scg, errorAt, tokenTypeInt);
 			scg.ilGen.Emit (OpCodes.Mul);
-			result.PopPost (scg, tokenTypeInt);
+			result.PopPost (scg, errorAt, tokenTypeInt);
 		}
 
-		private static void BinOpStrIntDivInt (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrIntDivInt (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeInt);
-			right.PushVal (scg, tokenTypeInt);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeInt);
+			right.PushVal (scg, errorAt, tokenTypeInt);
 			scg.ilGen.Emit (OpCodes.Div);
-			result.PopPost (scg, tokenTypeInt);
+			result.PopPost (scg, errorAt, tokenTypeInt);
 		}
 
-		private static void BinOpStrIntModInt (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrIntModInt (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeInt);
-			right.PushVal (scg, tokenTypeInt);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeInt);
+			right.PushVal (scg, errorAt, tokenTypeInt);
 			scg.ilGen.Emit (OpCodes.Rem);
-			result.PopPost (scg, tokenTypeInt);
+			result.PopPost (scg, errorAt, tokenTypeInt);
 		}
 
-		private static void BinOpStrIntShlInt (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrIntShlInt (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeInt);
-			right.PushVal (scg, tokenTypeInt);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeInt);
+			right.PushVal (scg, errorAt, tokenTypeInt);
 			scg.ilGen.Emit (OpCodes.Shl);
-			result.PopPost (scg, tokenTypeInt);
+			result.PopPost (scg, errorAt, tokenTypeInt);
 		}
 
-		private static void BinOpStrIntShrInt (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrIntShrInt (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeInt);
-			right.PushVal (scg, tokenTypeInt);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeInt);
+			right.PushVal (scg, errorAt, tokenTypeInt);
 			scg.ilGen.Emit (OpCodes.Shr);
-			result.PopPost (scg, tokenTypeInt);
+			result.PopPost (scg, errorAt, tokenTypeInt);
 		}
 
-		private static void BinOpStrKeyEqX (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrKeyEqX (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeStr);
-			right.PushVal (scg, tokenTypeStr);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeStr);
+			right.PushVal (scg, errorAt, tokenTypeStr);
 			scg.ilGen.Emit (OpCodes.Call, stringCmpStringMethInfo);
 			scg.ilGen.Emit (OpCodes.Ldc_I4_0);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrKeyNeX (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrKeyNeX (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeStr);
-			right.PushVal (scg, tokenTypeStr);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeStr);
+			right.PushVal (scg, errorAt, tokenTypeStr);
 			scg.ilGen.Emit (OpCodes.Call, stringCmpStringMethInfo);
 			scg.ilGen.Emit (OpCodes.Ceq);
 			scg.ilGen.Emit (OpCodes.Ldc_I4_1);
 			scg.ilGen.Emit (OpCodes.Xor);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrListAddFloat (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrListAddFloat (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeList);
-			right.PushVal (scg, tokenTypeFloat);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeList);
+			right.PushVal (scg, errorAt, tokenTypeFloat);
 			scg.ilGen.Emit (OpCodes.Call, infoMethListAddFloat);
-			result.PopPost (scg, tokenTypeList);
+			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
-		private static void BinOpStrListAddInt (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrListAddInt (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeList);
-			right.PushVal (scg, tokenTypeInt);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeList);
+			right.PushVal (scg, errorAt, tokenTypeInt);
 			scg.ilGen.Emit (OpCodes.Call, infoMethListAddInt);
-			result.PopPost (scg, tokenTypeList);
+			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
-		private static void BinOpStrListAddKey (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrListAddKey (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeList);
-			right.PushVal (scg, tokenTypeStr);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeList);
+			right.PushVal (scg, errorAt, tokenTypeStr);
 			scg.ilGen.Emit (OpCodes.Call, infoMethListAddKey);
-			result.PopPost (scg, tokenTypeList);
+			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
-		private static void BinOpStrListAddList (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrListAddList (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeList);
-			right.PushVal (scg, tokenTypeList);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeList);
+			right.PushVal (scg, errorAt, tokenTypeList);
 			scg.ilGen.Emit (OpCodes.Call, infoMethListAddList);
-			result.PopPost (scg, tokenTypeList);
+			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
-		private static void BinOpStrListAddRot (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrListAddRot (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeList);
-			right.PushVal (scg, tokenTypeRot);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeList);
+			right.PushVal (scg, errorAt, tokenTypeRot);
 			scg.ilGen.Emit (OpCodes.Call, infoMethListAddRot);
-			result.PopPost (scg, tokenTypeList);
+			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
-		private static void BinOpStrListAddStr (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrListAddStr (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeList);
-			right.PushVal (scg, tokenTypeStr);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeList);
+			right.PushVal (scg, errorAt, tokenTypeStr);
 			scg.ilGen.Emit (OpCodes.Call, infoMethListAddStr);
-			result.PopPost (scg, tokenTypeList);
+			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
-		private static void BinOpStrListAddVec (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrListAddVec (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeList);
-			right.PushVal (scg, tokenTypeVec);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeList);
+			right.PushVal (scg, errorAt, tokenTypeVec);
 			scg.ilGen.Emit (OpCodes.Call, infoMethListAddVec);
-			result.PopPost (scg, tokenTypeList);
+			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
-		private static void BinOpStrFloatAddList (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrFloatAddList (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeFloat);
-			right.PushVal (scg, tokenTypeList);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeFloat);
+			right.PushVal (scg, errorAt, tokenTypeList);
 			scg.ilGen.Emit (OpCodes.Call, infoMethFloatAddList);
-			result.PopPost (scg, tokenTypeList);
+			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
-		private static void BinOpStrIntAddList (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrIntAddList (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeInt);
-			right.PushVal (scg, tokenTypeList);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeInt);
+			right.PushVal (scg, errorAt, tokenTypeList);
 			scg.ilGen.Emit (OpCodes.Call, infoMethIntAddList);
-			result.PopPost (scg, tokenTypeList);
+			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
-		private static void BinOpStrKeyAddList (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrKeyAddList (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeStr);
-			right.PushVal (scg, tokenTypeList);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeStr);
+			right.PushVal (scg, errorAt, tokenTypeList);
 			scg.ilGen.Emit (OpCodes.Call, infoMethKeyAddList);
-			result.PopPost (scg, tokenTypeList);
+			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
-		private static void BinOpStrRotAddList (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrRotAddList (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeRot);
-			right.PushVal (scg, tokenTypeList);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeRot);
+			right.PushVal (scg, errorAt, tokenTypeList);
 			scg.ilGen.Emit (OpCodes.Call, infoMethRotAddList);
-			result.PopPost (scg, tokenTypeList);
+			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
-		private static void BinOpStrStrAddList (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrStrAddList (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeStr);
-			right.PushVal (scg, tokenTypeList);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeStr);
+			right.PushVal (scg, errorAt, tokenTypeList);
 			scg.ilGen.Emit (OpCodes.Call, infoMethStrAddList);
-			result.PopPost (scg, tokenTypeList);
+			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
-		private static void BinOpStrVecAddList (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrVecAddList (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeVec);
-			right.PushVal (scg, tokenTypeList);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeVec);
+			right.PushVal (scg, errorAt, tokenTypeList);
 			scg.ilGen.Emit (OpCodes.Call, infoMethVecAddList);
-			result.PopPost (scg, tokenTypeList);
+			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
-		private static void BinOpStrListEqList (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrListEqList (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeList);
-			right.PushVal (scg, tokenTypeList);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeList);
+			right.PushVal (scg, errorAt, tokenTypeList);
 			scg.ilGen.Emit (OpCodes.Call, infoMethListEqList);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrListNeList (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrListNeList (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeList);
-			right.PushVal (scg, tokenTypeList);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeList);
+			right.PushVal (scg, errorAt, tokenTypeList);
 			scg.ilGen.Emit (OpCodes.Call, infoMethListNeList);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrRotEqRot (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrRotEqRot (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeRot);
-			right.PushVal (scg, tokenTypeRot);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeRot);
+			right.PushVal (scg, errorAt, tokenTypeRot);
 			scg.ilGen.Emit (OpCodes.Call, infoMethRotEqRot);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrRotNeRot (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrRotNeRot (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeRot);
-			right.PushVal (scg, tokenTypeRot);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeRot);
+			right.PushVal (scg, errorAt, tokenTypeRot);
 			scg.ilGen.Emit (OpCodes.Call, infoMethRotNeRot);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrRotAddRot (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrRotAddRot (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeRot);
-			right.PushVal (scg, tokenTypeRot);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeRot);
+			right.PushVal (scg, errorAt, tokenTypeRot);
 			scg.ilGen.Emit (OpCodes.Call, infoMethRotAddRot);
-			result.PopPost (scg, tokenTypeRot);
+			result.PopPost (scg, errorAt, tokenTypeRot);
 		}
 
-		private static void BinOpStrRotSubRot (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrRotSubRot (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeRot);
-			right.PushVal (scg, tokenTypeRot);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeRot);
+			right.PushVal (scg, errorAt, tokenTypeRot);
 			scg.ilGen.Emit (OpCodes.Call, infoMethRotSubRot);
-			result.PopPost (scg, tokenTypeRot);
+			result.PopPost (scg, errorAt, tokenTypeRot);
 		}
 
-		private static void BinOpStrRotMulRot (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrRotMulRot (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeRot);
-			right.PushVal (scg, tokenTypeRot);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeRot);
+			right.PushVal (scg, errorAt, tokenTypeRot);
 			scg.ilGen.Emit (OpCodes.Call, infoMethRotMulRot);
-			result.PopPost (scg, tokenTypeRot);
+			result.PopPost (scg, errorAt, tokenTypeRot);
 		}
 
-		private static void BinOpStrRotDivRot (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrRotDivRot (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeRot);
-			right.PushVal (scg, tokenTypeRot);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeRot);
+			right.PushVal (scg, errorAt, tokenTypeRot);
 			scg.ilGen.Emit (OpCodes.Call, infoMethRotDivRot);
-			result.PopPost (scg, tokenTypeRot);
+			result.PopPost (scg, errorAt, tokenTypeRot);
 		}
 
-		private static void BinOpStrStrEqStr (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrStrEqStr (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeStr);
-			right.PushVal (scg, tokenTypeStr);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeStr);
+			right.PushVal (scg, errorAt, tokenTypeStr);
 			scg.ilGen.Emit (OpCodes.Call, stringCmpStringMethInfo);
 			scg.ilGen.Emit (OpCodes.Ldc_I4_0);
 			scg.ilGen.Emit (OpCodes.Ceq);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrStrNeStr (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrStrNeStr (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeStr);
-			right.PushVal (scg, tokenTypeStr);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeStr);
+			right.PushVal (scg, errorAt, tokenTypeStr);
 			scg.ilGen.Emit (OpCodes.Call, stringCmpStringMethInfo);
 			scg.ilGen.Emit (OpCodes.Ldc_I4_0);
 			scg.ilGen.Emit (OpCodes.Ceq);
 			scg.ilGen.Emit (OpCodes.Ldc_I4_1);
 			scg.ilGen.Emit (OpCodes.Xor);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrStrLtStr (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrStrLtStr (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeStr);
-			right.PushVal (scg, tokenTypeStr);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeStr);
+			right.PushVal (scg, errorAt, tokenTypeStr);
 			scg.ilGen.Emit (OpCodes.Call, stringCmpStringMethInfo);
 			scg.ilGen.Emit (OpCodes.Ldc_I4_0);
 			scg.ilGen.Emit (OpCodes.Clt);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrStrLeStr (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrStrLeStr (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeStr);
-			right.PushVal (scg, tokenTypeStr);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeStr);
+			right.PushVal (scg, errorAt, tokenTypeStr);
 			scg.ilGen.Emit (OpCodes.Call, stringCmpStringMethInfo);
 			scg.ilGen.Emit (OpCodes.Ldc_I4_1);
 			scg.ilGen.Emit (OpCodes.Clt);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrStrGtStr (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrStrGtStr (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeStr);
-			right.PushVal (scg, tokenTypeStr);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeStr);
+			right.PushVal (scg, errorAt, tokenTypeStr);
 			scg.ilGen.Emit (OpCodes.Call, stringCmpStringMethInfo);
 			scg.ilGen.Emit (OpCodes.Ldc_I4_0);
 			scg.ilGen.Emit (OpCodes.Cgt);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrStrGeStr (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrStrGeStr (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeStr);
-			right.PushVal (scg, tokenTypeStr);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeStr);
+			right.PushVal (scg, errorAt, tokenTypeStr);
 			scg.ilGen.Emit (OpCodes.Call, stringCmpStringMethInfo);
 			scg.ilGen.Emit (OpCodes.Ldc_I4_M1);
 			scg.ilGen.Emit (OpCodes.Cgt);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
 		// Called by many type combinations so both operands need to be cast to strings
-		private static void BinOpStrStrAddStr (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrStrAddStr (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeStr);
-			right.PushVal (scg, tokenTypeStr);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeStr);
+			right.PushVal (scg, errorAt, tokenTypeStr);
 			scg.ilGen.Emit (OpCodes.Call, stringAddStringMethInfo);
-			result.PopPost (scg, tokenTypeStr);
+			result.PopPost (scg, errorAt, tokenTypeStr);
 		}
 
-		private static void BinOpStrVecEqVec (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrVecEqVec (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeVec);
-			right.PushVal (scg, tokenTypeVec);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeVec);
+			right.PushVal (scg, errorAt, tokenTypeVec);
 			scg.ilGen.Emit (OpCodes.Call, infoMethVecEqVec);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrVecNeVec (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrVecNeVec (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeVec);
-			right.PushVal (scg, tokenTypeVec);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeVec);
+			right.PushVal (scg, errorAt, tokenTypeVec);
 			scg.ilGen.Emit (OpCodes.Call, infoMethVecNeVec);
-			result.PopPost (scg, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
-		private static void BinOpStrVecAddVec (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrVecAddVec (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeVec);
-			right.PushVal (scg, tokenTypeVec);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeVec);
+			right.PushVal (scg, errorAt, tokenTypeVec);
 			scg.ilGen.Emit (OpCodes.Call, infoMethVecAddVec);
-			result.PopPost (scg, tokenTypeVec);
+			result.PopPost (scg, errorAt, tokenTypeVec);
 		}
 
-		private static void BinOpStrVecSubVec (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrVecSubVec (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeVec);
-			right.PushVal (scg, tokenTypeVec);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeVec);
+			right.PushVal (scg, errorAt, tokenTypeVec);
 			scg.ilGen.Emit (OpCodes.Call, infoMethVecSubVec);
-			result.PopPost (scg, tokenTypeVec);
+			result.PopPost (scg, errorAt, tokenTypeVec);
 		}
 
-		private static void BinOpStrVecMulVec (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrVecMulVec (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeVec);
-			right.PushVal (scg, tokenTypeVec);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeVec);
+			right.PushVal (scg, errorAt, tokenTypeVec);
 			scg.ilGen.Emit (OpCodes.Call, infoMethVecMulVec);
-			result.PopPost (scg, tokenTypeFloat);
+			result.PopPost (scg, errorAt, tokenTypeFloat);
 		}
 
-		private static void BinOpStrVecModVec (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrVecModVec (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeVec);
-			right.PushVal (scg, tokenTypeVec);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeVec);
+			right.PushVal (scg, errorAt, tokenTypeVec);
 			scg.ilGen.Emit (OpCodes.Call, infoMethVecModVec);
-			result.PopPost (scg, tokenTypeVec);
+			result.PopPost (scg, errorAt, tokenTypeVec);
 		}
 
-		private static void BinOpStrVecMulFloat (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrVecMulFloat (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeVec);
-			right.PushVal (scg, tokenTypeFloat);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeVec);
+			right.PushVal (scg, errorAt, tokenTypeFloat);
 			scg.ilGen.Emit (OpCodes.Call, infoMethVecMulFloat);
-			result.PopPost (scg, tokenTypeVec);
+			result.PopPost (scg, errorAt, tokenTypeVec);
 		}
 
-		private static void BinOpStrFloatMulVec (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrFloatMulVec (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeFloat);
-			right.PushVal (scg, tokenTypeVec);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeFloat);
+			right.PushVal (scg, errorAt, tokenTypeVec);
 			scg.ilGen.Emit (OpCodes.Call, infoMethFloatMulVec);
-			result.PopPost (scg, tokenTypeVec);
+			result.PopPost (scg, errorAt, tokenTypeVec);
 		}
 
-		private static void BinOpStrVecDivFloat (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrVecDivFloat (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeVec);
-			right.PushVal (scg, tokenTypeFloat);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeVec);
+			right.PushVal (scg, errorAt, tokenTypeFloat);
 			scg.ilGen.Emit (OpCodes.Call, infoMethVecDivFloat);
-			result.PopPost (scg, tokenTypeVec);
+			result.PopPost (scg, errorAt, tokenTypeVec);
 		}
 
-		private static void BinOpStrVecMulInt (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrVecMulInt (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeVec);
-			right.PushVal (scg, tokenTypeInt);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeVec);
+			right.PushVal (scg, errorAt, tokenTypeInt);
 			scg.ilGen.Emit (OpCodes.Call, infoMethVecMulInt);
-			result.PopPost (scg, tokenTypeVec);
+			result.PopPost (scg, errorAt, tokenTypeVec);
 		}
 
-		private static void BinOpStrIntMulVec (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrIntMulVec (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeInt);
-			right.PushVal (scg, tokenTypeVec);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeInt);
+			right.PushVal (scg, errorAt, tokenTypeVec);
 			scg.ilGen.Emit (OpCodes.Call, infoMethIntMulVec);
-			result.PopPost (scg, tokenTypeVec);
+			result.PopPost (scg, errorAt, tokenTypeVec);
 		}
 
-		private static void BinOpStrVecDivInt (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrVecDivInt (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeVec);
-			right.PushVal (scg, tokenTypeInt);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeVec);
+			right.PushVal (scg, errorAt, tokenTypeInt);
 			scg.ilGen.Emit (OpCodes.Call, infoMethVecDivInt);
-			result.PopPost (scg, tokenTypeVec);
+			result.PopPost (scg, errorAt, tokenTypeVec);
 		}
 
-		private static void BinOpStrVecMulRot (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrVecMulRot (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeVec);
-			right.PushVal (scg, tokenTypeRot);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeVec);
+			right.PushVal (scg, errorAt, tokenTypeRot);
 			scg.ilGen.Emit (OpCodes.Call, infoMethVecMulRot);
-			result.PopPost (scg, tokenTypeVec);
+			result.PopPost (scg, errorAt, tokenTypeVec);
 		}
 
-		private static void BinOpStrVecDivRot (ScriptCodeGen scg, CompValu left, CompValu right, CompValu result)
+		private static void BinOpStrVecDivRot (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
-			result.PopPre (scg);
-			left.PushVal (scg, tokenTypeVec);
-			right.PushVal (scg, tokenTypeRot);
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeVec);
+			right.PushVal (scg, errorAt, tokenTypeRot);
 			scg.ilGen.Emit (OpCodes.Call, infoMethVecDivRot);
-			result.PopPost (scg, tokenTypeVec);
+			result.PopPost (scg, errorAt, tokenTypeVec);
 		}
 
 		/**

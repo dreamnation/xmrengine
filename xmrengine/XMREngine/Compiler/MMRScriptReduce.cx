@@ -304,7 +304,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				if ((token is TokenType) &&
 				    (token.nextToken is TokenName) &&
 				    (token.nextToken.nextToken is TokenKwBrcOpen)) {
-					ParseProperty (ref token, tokenScript.vars, false);
+					ParseProperty (ref token, tokenScript.vars, false, true);
 					continue;
 				}
 
@@ -523,12 +523,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				}
 
 				/*
-				 * <type> <name> { [ get { <body> } ] [ set { <body> } ] }
+				 * <type> <name> [ : <implintfs> ] { [ get { <body> } ] [ set { <body> } ] }
 				 */
 				if ((token is TokenType) &&
 				    (token.nextToken is TokenName) &&
-				    (token.nextToken.nextToken is TokenKwBrcOpen)) {
-					TokenDeclVar var = ParseProperty (ref token, tokdeclcl.members, (flags & SDT_ABSTRACT) != 0);
+				    (token.nextToken.nextToken is TokenKwBrcOpen || 
+				     token.nextToken.nextToken is TokenKwColon)) {
+					TokenDeclVar var = ParseProperty (ref token, tokdeclcl.members, (flags & SDT_ABSTRACT) != 0, true);
 					if (var != null) {
 						var.sdtClass = tokdeclcl;
 						var.sdtFlags = flags;
@@ -690,17 +691,50 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 * @param members = dictionary to add property to
 		 * @param abs = true: property is abstract
 		 *             false: property is concrete
+		 * @param imp = allow implemented interface specs
 		 * @returns null: parse failure
 		 *          else: property
 		 */
-		private TokenDeclVar ParseProperty (ref Token token, VarDict members, bool abs)
+		private TokenDeclVar ParseProperty (ref Token token, VarDict members, bool abs, bool imp)
 		{
+			/*
+			 * Parse out the property's type and name.
+			 *   <type> <name>
+			 */
 			TokenType type = (TokenType)token;
 			TokenName name = (TokenName)token.nextToken;
+			token = token.nextToken.nextToken;
+
+			/*
+			 * Maybe it claims to implement some interface properties.
+			 *   [ ':' <ifacetype>[.<propname>] ',' ... ]
+			 */
+			TokenIntfImpl implements = null;
+			if (token is TokenKwColon) {
+				implements = ParseImplements (ref token, name);
+				if (implements == null) return null;
+				if (!imp) {
+					ErrorMsg (token, "cannot implement interface property");
+				}
+			}
+
+			/*
+			 * Should have an opening brace.
+			 */
+			if (!(token is TokenKwBrcOpen)) {
+				ErrorMsg (token, "expect { to open property definition");
+				token = SkipPastSemi (token);
+				return null;
+			}
+			token = token.nextToken;
+
+			/*
+			 * Parse out the getter and/or setter.
+			 *   'get' { <body> | ';' }
+			 *   'set' { <body> | ';' }
+			 */
 			TokenDeclVar getFunc = null;
 			TokenDeclVar setFunc = null;
-			token = token.nextToken.nextToken.nextToken;
-
 			while (!(token is TokenKwBrcClose)) {
 
 				/*
@@ -716,6 +750,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					getFunc.retType     = type;
 					getFunc.argDecl     = argDecl;
 					getFunc.funcNameSig = new TokenName (token, name.val + ".get.()");
+					getFunc.implements  = MakePropertyImplements (implements, ".get.");
 
 					token = token.nextToken;
 					if (!ParseFunctionBody (ref token, getFunc, abs)) {
@@ -741,6 +776,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					setFunc.retType     = new TokenTypeVoid (token);
 					setFunc.argDecl     = argDecl;
 					setFunc.funcNameSig = new TokenName (token, name.val + ".set.(" + type.ToString () + ")");
+					getFunc.implements  = MakePropertyImplements (implements, ".set.");
 
 					token = token.nextToken;
 					if (!ParseFunctionBody (ref token, setFunc, abs)) {
@@ -750,6 +786,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					}
 					continue;
 				}
+
 				ErrorMsg (token, "expecting get or set");
 				token = SkipPastSemi (token);
 				return null;
@@ -778,6 +815,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				return null;
 			}
 			return tokenDeclVar;
+		}
+
+		/**
+		 * @brief Given a list of implemented interface methods, create a similar list with suffix added to all the names
+		 * @param implements = original list of implemented interface methods
+		 * @param suffix = string to be added to end of implemented interface method names
+		 * @returns list similar to implements with suffix added to end of implemented interface method names
+		 */
+		private TokenIntfImpl MakePropertyImplements (TokenIntfImpl implements, string suffix)
+		{
+			TokenIntfImpl gsimpls = null;
+			for (TokenIntfImpl impl = implements; impl != null; impl = (TokenIntfImpl)impl.nextToken) {
+				TokenIntfImpl gsimpl = new TokenIntfImpl (impl.intfType, 
+				                                          new TokenName (impl.methName, impl.methName.val + suffix));
+				gsimpl.nextToken = gsimpls;
+				gsimpls = gsimpl;
+			}
+			return gsimpls;
 		}
 
 		/**
@@ -1008,33 +1063,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 			// process declaration statements until '}'
 			while (!(token is TokenKwBrcClose)) {
+				if (token is TokenKwSemi) {
+					token = token.nextToken;
+					continue;
+				}
 
 				/*
 				 * <type> <name> <funcargs> ;
 				 * abstract method with explicit return type
 				 */
-				if (token is TokenType) {
-					TokenType tokenType = (TokenType)token;
-
-					token = token.nextToken;
-					if (!(token is TokenName)) {
-						ErrorMsg (token, "expecting method name");
-						token = SkipPastSemi (token);
-						continue;
-					}
-					TokenName tokenName = (TokenName)token;
-					token = token.nextToken;
-					if (!(token is TokenKwParOpen)) {
-						ErrorMsg (token, "<type> <name> must be followed by (");
-						token = SkipPastSemi (token);
-						continue;
-					}
-
-					token = tokenType;
+				if ((token is TokenType) && 
+				    (token.nextToken is TokenName) && 
+				    (token.nextToken.nextToken is TokenKwParOpen)) {
+					Token name = token.nextToken;
 					TokenDeclVar tokenDeclFunc = ParseDeclFunc (ref token, true, false);
 					if (tokenDeclFunc == null) continue;
-					if (!tokdeclin.methods.AddEntry (tokenDeclFunc)) {
-						ErrorMsg (tokenName, "duplicate method name");
+					if (!tokdeclin.methsNProps.AddEntry (tokenDeclFunc)) {
+						ErrorMsg (name, "duplicate method name");
 						continue;
 					}
 					continue;
@@ -1044,27 +1089,32 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				 * <name> <funcargs> ;
 				 * abstract method returning void
 				 */
-				if (token is TokenName) {
-					TokenName tokenName = (TokenName)token;
-					token = token.nextToken;
-					if (!(token is TokenKwParOpen)) {
-						ErrorMsg (token, "<name> must be followed by (");
-						token = SkipPastSemi (token);
-						continue;
-					}
-					token = tokenName;
+				if ((token is TokenName) && 
+				    (token.nextToken is TokenKwParOpen)) {
+					Token name = token;
 					TokenDeclVar tokenDeclFunc = ParseDeclFunc (ref token, true, false);
 					if (tokenDeclFunc == null) continue;
-					if (!tokdeclin.methods.AddEntry (tokenDeclFunc)) {
-						ErrorMsg (tokenName, "duplicate method name");
+					if (!tokdeclin.methsNProps.AddEntry (tokenDeclFunc)) {
+						ErrorMsg (name, "duplicate method name");
 					}
+					continue;
+				}
+
+				/*
+				 * <type> <name> { [ get ; ] [ set ; ] }
+				 * abstract property
+				 */
+				if ((token is TokenType) &&
+				    (token.nextToken is TokenName) &&
+				    (token.nextToken.nextToken is TokenKwBrcOpen)) {
+					ParseProperty (ref token, tokdeclin.methsNProps, true, false);
 					continue;
 				}
 
 				/*
 				 * That's all we support in an interface declaration.
 				 */
-				ErrorMsg (token, "expecting method declaration");
+				ErrorMsg (token, "expecting method or property prototype");
 				token = SkipPastSemi (token);
 			}
 
@@ -1141,7 +1191,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		/**
 		 * @brief Parse a function declaration, including its arg list and body
-		 *        This version enters with token pointing to the '('
+		 *        This version enters with token pointing to the '(' at beginning of arg list
 		 * @param token = points to the '(' of the arg list
 		 * @param abs = false: concrete function; true: abstract declaration
 		 * @param imp = allow implemented interface specs
@@ -1161,26 +1211,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			                                            simpleName.val + tokenDeclFunc.argDecl.GetArgSig ());
 
 			if (token is TokenKwColon) {
-				do {
-					token = token.nextToken;
-					if (!(token is TokenTypeSDTypeInterface)) {
-						ErrorMsg (token, "expecting interface type");
-						token = SkipPastSemi (token);
-						return null;
-					}
-					TokenTypeSDTypeInterface intfType = (TokenTypeSDTypeInterface)token;
-					token = token.nextToken;
-					TokenName methName = simpleName;
-					if ((token is TokenKwDot) && (token.nextToken is TokenName)) {
-						methName = (TokenName)token.nextToken;
-						token = token.nextToken.nextToken;
-					}
-					TokenIntfImpl intfImpl = new TokenIntfImpl (intfType, methName);
-					intfImpl.nextToken = tokenDeclFunc.implements;
-					tokenDeclFunc.implements = intfImpl;
-				} while (token is TokenKwComma);
+				tokenDeclFunc.implements = ParseImplements (ref token, simpleName);
+				if (tokenDeclFunc.implements == null) return null;
 				if (!imp) {
 					ErrorMsg (tokenDeclFunc.implements, "cannot implement interface method");
+					tokenDeclFunc.implements = null;
 				}
 			}
 
@@ -1188,6 +1223,39 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			if (tokenDeclFunc.argDecl == null) return null;
 			return tokenDeclFunc;
 		}
+
+		/**
+		 * @brief Parse interface implementation list.
+		 * @param token = points to ':' on entry
+		 *                points just past list on return
+		 * @param simpleName = simple name (no arg signature) of method/property that 
+		 *                     is implementing the interface method/property
+		 * @returns list of implemented interface methods/properties
+		 */
+		private TokenIntfImpl ParseImplements (ref Token token, TokenName simpleName)
+		{
+			TokenIntfImpl implements = null;
+			do {
+				token = token.nextToken;
+				if (!(token is TokenTypeSDTypeInterface)) {
+					ErrorMsg (token, "expecting interface type");
+					token = SkipPastSemi (token);
+					return null;
+				}
+				TokenTypeSDTypeInterface intfType = (TokenTypeSDTypeInterface)token;
+				token = token.nextToken;
+				TokenName methName = simpleName;
+				if ((token is TokenKwDot) && (token.nextToken is TokenName)) {
+					methName = (TokenName)token.nextToken;
+					token = token.nextToken.nextToken;
+				}
+				TokenIntfImpl intfImpl = new TokenIntfImpl (intfType, methName);
+				intfImpl.nextToken = implements;
+				implements = intfImpl;
+			} while (token is TokenKwComma);
+			return implements;
+		}
+
 
 		/**
 		 * @brief Parse function declaration's body
@@ -2355,7 +2423,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * This ends up generating a call to static function <script-defined-type>.new(...)
 			 * whose CIL code is generated by GenerateNewobjBody().
 			 */
-			if ((token is TokenKwNew) && (token.nextToken is TokenType)) {
+			if (token is TokenKwNew) {
+				if (!(token.nextToken is TokenType)) {
+					ErrorMsg (token.nextToken, "new must be followed by type");
+					token = SkipPastSemi (token);
+					return null;
+				}
 				TokenLValSField field = new TokenLValSField (token.nextToken.nextToken);
 				field.baseType  = (TokenType)token.nextToken;
 				field.fieldName = new TokenName (token, "new");
@@ -3108,7 +3181,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 	public class TokenDeclSDTypeInterface : TokenDeclSDType {
 		public TokenName name;
-		public VarDict methods = new VarDict ();
+		public VarDict methsNProps = new VarDict ();
 
 		public TokenDeclSDTypeInterface (TokenName name) : base (name)
 		{
@@ -3514,7 +3587,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	 */
 	public class TokenIntfImpl : Token {
 		public TokenTypeSDTypeInterface intfType;
-		public TokenName methName;
+		public TokenName methName;  // simple name, no arg signature
 		public TokenIntfImpl (TokenTypeSDTypeInterface intfType, TokenName methName) : base (intfType)
 		{
 			this.intfType = intfType;
@@ -3888,6 +3961,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 	/**
 	 * @brief the 'undef' keyword is being used as a value in an expression.
+	 *        It is the null object pointer and has type TokenTypeUndef.
 	 */
 	public class TokenRValUndef : TokenRVal {
 		public TokenRValUndef (Token original) : base (original) { }

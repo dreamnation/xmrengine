@@ -87,26 +87,26 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		// emit code to push value onto stack
-		public void PushVal (ScriptCodeGen scg, TokenType stackType)
+		public void PushVal (ScriptCodeGen scg, Token errorAt, TokenType stackType)
 		{
-			this.PushVal (scg, stackType, false);
+			this.PushVal (scg, errorAt, stackType, false);
 		}
-		public void PushVal (ScriptCodeGen scg, TokenType stackType, bool explicitAllowed)
+		public void PushVal (ScriptCodeGen scg, Token errorAt, TokenType stackType, bool explicitAllowed)
 		{
-			this.PushVal (scg);
-			TypeCast.CastTopOfStack (scg, this.type, stackType, explicitAllowed);
+			this.PushVal (scg, errorAt);
+			TypeCast.CastTopOfStack (scg, errorAt, this.type, stackType, explicitAllowed);
 		}
-		public abstract void PushVal (ScriptCodeGen scg);
-		public abstract void PushRef (ScriptCodeGen scg);
+		public abstract void PushVal (ScriptCodeGen scg, Token errorAt);
+		public abstract void PushRef (ScriptCodeGen scg, Token errorAt);
 
 		// emit code to pop value from stack
-		public void PopPost (ScriptCodeGen scg, TokenType stackType)
+		public void PopPost (ScriptCodeGen scg, Token errorAt, TokenType stackType)
 		{
-			TypeCast.CastTopOfStack (scg, stackType, this.type, false);
-			this.PopPost (scg);
+			TypeCast.CastTopOfStack (scg, errorAt, stackType, this.type, false);
+			this.PopPost (scg, errorAt);
 		}
-		public virtual void PopPre (ScriptCodeGen scg) { }  // call this before pushing value to be popped
-		public abstract void PopPost (ScriptCodeGen scg);   // call this after pushing value to be popped
+		public virtual void PopPre (ScriptCodeGen scg, Token errorAt) { }  // call this before pushing value to be popped
+		public abstract void PopPost (ScriptCodeGen scg, Token errorAt);   // call this after pushing value to be popped
 
 		/*
 		 * These additional functions are available if the type is a delegate
@@ -132,11 +132,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		//   ie, so PushVal() pushes a delegate pointer
 		// - so we must have CallPre() push the delegate pointer as a 'this' for this.Invoke(...)
 		// - and CallPost() call the delegate's Invoke() method
-		public virtual void CallPre (ScriptCodeGen scg)   // call this before pushing arguments
+		public virtual void CallPre (ScriptCodeGen scg, Token errorAt)   // call this before pushing arguments
 		{
-			this.PushVal (scg);
+			this.PushVal (scg, errorAt);;
 		}
-		public virtual void CallPost (ScriptCodeGen scg)  // call this after pushing arguments
+		public virtual void CallPost (ScriptCodeGen scg, Token errorAt)  // call this after pushing arguments
 		{
 			TokenTypeSDTypeDelegate ttd = (TokenTypeSDTypeDelegate)type;
 			MethodInfo invokeMethodInfo = ttd.decl.GetInvokerInfo ();
@@ -221,23 +221,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.idx = idx;
 			this.tto = new TokenTypeObject (this.type);
 		}
-		public override void PushVal (ScriptCodeGen scg)
+		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
-			arr.PushVal (scg);            // array
-			idx.PushVal (scg, this.tto);  // key
+			arr.PushVal (scg, errorAt);   // array
+			idx.PushVal (scg, errorAt, this.tto);  // key
 			scg.ilGen.Emit (OpCodes.Call, getByKeyMethodInfo);
 		}
-		public override void PushRef (ScriptCodeGen scg)
+		public override void PushRef (ScriptCodeGen scg, Token errorAt)
 		{
-			scg.ErrorMsg (this.type, "array element not allowed here");
+			scg.ErrorMsg (errorAt, "array element not allowed here");
 			scg.ilGen.Emit (OpCodes.Ldnull);
 		}
-		public override void PopPre (ScriptCodeGen scg)
+		public override void PopPre (ScriptCodeGen scg, Token errorAt)
 		{
-			arr.PushVal (scg);            // array
-			idx.PushVal (scg, this.tto);  // key
+			arr.PushVal (scg, errorAt);   // array
+			idx.PushVal (scg, errorAt, this.tto);  // key
 		}
-		public override void PopPost (ScriptCodeGen scg)
+		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
 			scg.PushConstantI4 (type.line);
 			scg.PushConstantI4 (type.posn);
@@ -262,24 +262,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.index = index;
 			this.readOnly = ro;
 		}
-		public override void PushVal (ScriptCodeGen scg)
+		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
 			     if (index < ldargs.Length) scg.ilGen.Emit (ldargs[index]);
 			else if (index <= 255) scg.ilGen.Emit (OpCodes.Ldarg_S, index);
 			                    else scg.ilGen.Emit (OpCodes.Ldarg, index);
 		}
-		public override void PushRef (ScriptCodeGen scg)
+		public override void PushRef (ScriptCodeGen scg, Token errorAt)
 		{
 			if (readOnly) {
-				scg.ErrorMsg (type, "location cannot be written to");
+				scg.ErrorMsg (errorAt, "location cannot be written to");
 			}
 			if (index <= 255) scg.ilGen.Emit (OpCodes.Ldarga_S, index);
 			               else scg.ilGen.Emit (OpCodes.Ldarga, index);
 		}
-		public override void PopPost (ScriptCodeGen scg)
+		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
 			if (readOnly) {
-				scg.ErrorMsg (type, "location cannot be written to");
+				scg.ErrorMsg (errorAt, "location cannot be written to");
 			}
 			scg.ilGen.Emit (OpCodes.Starg, index);
 		}
@@ -295,33 +295,33 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.obj   = obj;
 			this.field = field;
 		}
-		public override void PushVal (ScriptCodeGen scg)
+		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
 			if (field.ReflectedType.IsValueType) {
-				obj.PushRef (scg);
+				obj.PushRef (scg, errorAt);
 			} else {
-				obj.PushVal (scg);
+				obj.PushVal (scg, errorAt);
 			}
 			scg.ilGen.Emit (OpCodes.Ldfld, field);
 		}
-		public override void PushRef (ScriptCodeGen scg)
+		public override void PushRef (ScriptCodeGen scg, Token errorAt)
 		{
 			if (field.ReflectedType.IsValueType) {
-				obj.PushRef (scg);
+				obj.PushRef (scg, errorAt);
 			} else {
-				obj.PushVal (scg);
+				obj.PushVal (scg, errorAt);
 			}
 			scg.ilGen.Emit (OpCodes.Ldflda, field);
 		}
-		public override void PopPre (ScriptCodeGen scg)
+		public override void PopPre (ScriptCodeGen scg, Token errorAt)
 		{
 			if (field.ReflectedType.IsValueType) {
-				obj.PushRef (scg);
+				obj.PushRef (scg, errorAt);
 			} else {
-				obj.PushVal (scg);
+				obj.PushVal (scg, errorAt);
 			}
 		}
-		public override void PopPost (ScriptCodeGen scg)
+		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (OpCodes.Stfld, field);
 		}
@@ -338,7 +338,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 			this.x = x;
 		}
-		public override void PushVal (ScriptCodeGen scg)
+		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
 #define double Ldc_R8
 #define float  Ldc_R4
@@ -346,11 +346,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 #undef double
 #undef float
 		}
-		public override void PushRef (ScriptCodeGen scg)
+		public override void PushRef (ScriptCodeGen scg, Token errorAt)
 		{
 			throw new Exception ("cannot get constant's address");
 		}
-		public override void PopPost (ScriptCodeGen scg)
+		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
 			throw new Exception ("cannot store into constant");
 		}
@@ -375,7 +375,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 *        to create the delegate.  Slip the scriptinstance pointer as the 
 		 *        function's arg 0 so it will get passed to the function when called.
 		 */
-		public override void PushVal (ScriptCodeGen scg)
+		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
 			string dtn = type.ToString ();
 			if (dtn.StartsWith ("delegate ")) dtn = dtn.Substring (9);
@@ -391,11 +391,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			scg.ilGen.Emit (OpCodes.Callvirt, gsmdMethodInfo);      // [0] delegate instance
 			scg.ilGen.Emit (OpCodes.Castclass, type.ToSysType ());  // [0] cast to correct delegate class
 		}
-		public override void PushRef (ScriptCodeGen scg)
+		public override void PushRef (ScriptCodeGen scg, Token errorAt)
 		{
 			throw new Exception ("cannot get ref to global method");
 		}
-		public override void PopPost (ScriptCodeGen scg)
+		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
 			throw new Exception ("cannot store into global method");
 		}
@@ -404,13 +404,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief A direct call is much simpler than pushing a delegate.
 		 *        Just push the XMRInstance pointer, push the args and finally call the function.
 		 */
-		public override void CallPre (ScriptCodeGen scg)
+		public override void CallPre (ScriptCodeGen scg, Token errorAt)
 		{
 			// all script-defined global functions are static methods created by DynamicMethod()
 			// and the first argument is always the XMR_Instance pointer
 			scg.PushXMRInst ();
 		}
-		public override void CallPost (ScriptCodeGen scg)
+		public override void CallPost (ScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (OpCodes.Call, func.ilGen);
 		}
@@ -427,48 +427,48 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				declVar.type.AssignGlobalVarSlot (declVar, scriptObjCode);
 			}
 		}
-		public override void PushVal (ScriptCodeGen scg)
+		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
 			if ((declVar.getProp == null) && (declVar.setProp == null)) {
 				scg.PushXMRInst ();
 				EmitFieldPushVal (scg, declVar);
 			} else if (declVar.getProp != null) {
-				declVar.getProp.location.CallPre (scg);
-				declVar.getProp.location.CallPost (scg);
+				declVar.getProp.location.CallPre (scg, errorAt);
+				declVar.getProp.location.CallPost (scg, errorAt);
 			} else {
-				scg.ErrorMsg (declVar, "cannot read a write-only property");
+				scg.ErrorMsg (errorAt, "cannot read a write-only property");
 				scg.PushVarDefaultValue (declVar);
 			}
 		}
-		public override void PushRef (ScriptCodeGen scg)
+		public override void PushRef (ScriptCodeGen scg, Token errorAt)
 		{
 			if ((declVar.getProp == null) && (declVar.setProp == null)) {
 				scg.PushXMRInst ();
 				EmitFieldPushRef (scg, declVar);
 			} else {
-				scg.ErrorMsg (declVar, "cannot get address of property");
+				scg.ErrorMsg (errorAt, "cannot get address of property");
 				scg.ilGen.Emit (OpCodes.Ldnull);
 			}
 		}
-		public override void PopPre (ScriptCodeGen scg)
+		public override void PopPre (ScriptCodeGen scg, Token errorAt)
 		{
 			if ((declVar.getProp == null) && (declVar.setProp == null)) {
 				scg.PushXMRInst ();
 				EmitFieldPopPre (scg, declVar);
 			} else if (declVar.setProp != null) {
-				declVar.setProp.location.CallPre (scg);
+				declVar.setProp.location.CallPre (scg, errorAt);
 			} else {
-				scg.ErrorMsg (declVar, "cannot write a read-only property");
+				scg.ErrorMsg (errorAt, "cannot write a read-only property");
 			}
 		}
-		public override void PopPost (ScriptCodeGen scg)
+		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
 			if ((declVar.getProp == null) && (declVar.setProp == null)) {
 				EmitFieldPopPost (scg, declVar);
 			} else if (declVar.setProp != null) {
-				declVar.setProp.location.CallPost (scg);
+				declVar.setProp.location.CallPost (scg, errorAt);
 			} else {
-				scg.ErrorMsg (declVar, "cannot write a read-only property");
+				scg.ErrorMsg (errorAt, "cannot write a read-only property");
 			}
 		}
 	}
@@ -483,23 +483,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.declInline = declInline;
 		}
 
-		public override void PushVal (ScriptCodeGen scg)
+		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
-			scg.ErrorMsg (declInline, "cannot use built-in for delegate, wrap it");
+			scg.ErrorMsg (errorAt, "cannot use built-in for delegate, wrap it");
 			scg.ilGen.Emit (OpCodes.Ldnull);
 		}
-		public override void PushRef (ScriptCodeGen scg)
+		public override void PushRef (ScriptCodeGen scg, Token errorAt)
 		{
-			scg.ErrorMsg (declInline, "cannot use built-in for delegate, wrap it");
+			scg.ErrorMsg (errorAt, "cannot use built-in for delegate, wrap it");
 			scg.ilGen.Emit (OpCodes.Ldnull);
 		}
-		public override void PopPre (ScriptCodeGen scg)
+		public override void PopPre (ScriptCodeGen scg, Token errorAt)
 		{
-			scg.ErrorMsg (declInline, "cannot use built-in for delegate, wrap it");
+			scg.ErrorMsg (errorAt, "cannot use built-in for delegate, wrap it");
 		}
-		public override void PopPost (ScriptCodeGen scg)
+		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
-			scg.ErrorMsg (declInline, "cannot use built-in for delegate, wrap it");
+			scg.ErrorMsg (errorAt, "cannot use built-in for delegate, wrap it");
 			scg.ilGen.Emit (OpCodes.Pop);
 		}
 	}
@@ -520,7 +520,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.ignVirt  = ignVirt;
 		}
 
-		public override void PushVal (ScriptCodeGen scg)
+		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
 			if ((func.sdtFlags & ScriptReduce.SDT_STATIC) != 0) throw new Exception ("dont use for statics");
 
@@ -539,7 +539,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				scg.PushXMRInst ();                                     // [0] scriptinstance
 				scg.ilGen.Emit (OpCodes.Ldstr, func.ilGen.methName);    // [1] method name
 				scg.ilGen.Emit (OpCodes.Ldstr, dtn);                    // [2] delegate type name
-				baseRVal.PushVal (scg);                                 // [3] sdtinstance
+				baseRVal.PushVal (scg, errorAt);                                 // [3] sdtinstance
 				scg.ilGen.Emit (OpCodes.Callvirt, gsmdMethodInfo);      // [0] delegate instance
 				scg.ilGen.Emit (OpCodes.Castclass, type.ToSysType ());  // [0] cast to correct delegate class
 			} else {
@@ -547,37 +547,37 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				/*
 				 * Virtual instance method, get the delegate from the vtable.
 				 */
-				baseRVal.PushVal (scg);                                 // 'this' selecting the instance
+				baseRVal.PushVal (scg, errorAt);                                 // 'this' selecting the instance
 				scg.ilGen.Emit (OpCodes.Ldfld, vTableFieldInfo);        // get pointer to instance's vtable array
 				scg.PushConstantI4 (func.vTableIndex);                  // select vtable element
 				scg.ilGen.Emit (OpCodes.Ldelem, typeof (Delegate));     // get delegate pointer = 'this' for 'Invoke()'
 				scg.ilGen.Emit (OpCodes.Castclass, type.ToSysType ());  // cast to correct delegate class
 			}
 		}
-		public override void PushRef (ScriptCodeGen scg)
+		public override void PushRef (ScriptCodeGen scg, Token errorAt)
 		{
 			throw new Exception ("cannot get ref to instance method");
 		}
-		public override void PopPost (ScriptCodeGen scg)
+		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
 			throw new Exception ("cannot store into instance method");
 		}
 
-		public override void CallPre (ScriptCodeGen scg)
+		public override void CallPre (ScriptCodeGen scg, Token errorAt)
 		{
 			if ((func.sdtFlags & ScriptReduce.SDT_STATIC) != 0) throw new Exception ("dont use for statics");
 
 			if (ignVirt || (func.vTableIndex < 0)) {
-				baseRVal.PushVal (scg);                                 // 'this' being passed directly to method
+				baseRVal.PushVal (scg, errorAt);                                 // 'this' being passed directly to method
 			} else {
-				baseRVal.PushVal (scg);                                 // 'this' selecting the instance
+				baseRVal.PushVal (scg, errorAt);                                 // 'this' selecting the instance
 				scg.ilGen.Emit (OpCodes.Ldfld, vTableFieldInfo);        // get pointer to instance's vtable array
 				scg.PushConstantI4 (func.vTableIndex);                  // select vtable element
 				scg.ilGen.Emit (OpCodes.Ldelem, typeof (Delegate));     // get delegate pointer = 'this' for 'Invoke()'
 				scg.ilGen.Emit (OpCodes.Castclass, type.ToSysType ());  // cast to correct delegate class
 			}
 		}
-		public override void CallPost (ScriptCodeGen scg)
+		public override void CallPost (ScriptCodeGen scg, Token errorAt)
 		{
 			if (ignVirt || (func.vTableIndex < 0)) {
 				// non-virt instance, just call function directly
@@ -603,33 +603,86 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.baseRVal = baseRVal;  // the vector of delegates implementing the interface
 		}
 
-		public override void PushVal (ScriptCodeGen scg)
+		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
-			baseRVal.PushVal (scg);                                 // push pointer to delegate array on stack
+			baseRVal.PushVal (scg, errorAt);                                 // push pointer to delegate array on stack
 			scg.PushConstantI4 (func.vTableIndex);                  // select which delegate to access
 			scg.ilGen.Emit (OpCodes.Ldelem, typeof (Delegate));     // push delegate on stack
 			scg.ilGen.Emit (OpCodes.Castclass, type.ToSysType ());  // cast to correct delegate class
 		}
-		public override void PushRef (ScriptCodeGen scg)
+		public override void PushRef (ScriptCodeGen scg, Token errorAt)
 		{
 			throw new Exception ("cannot get ref to interface method");
 		}
-		public override void PopPost (ScriptCodeGen scg)
+		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
 			throw new Exception ("cannot store into interface method");
 		}
 
-		public override void CallPre (ScriptCodeGen scg)
+		public override void CallPre (ScriptCodeGen scg, Token errorAt)
 		{
 			// push interface method's delegate on stack
-			this.PushVal (scg);
+			this.PushVal (scg, errorAt);
 		}
-		public override void CallPost (ScriptCodeGen scg)
+		public override void CallPost (ScriptCodeGen scg, Token errorAt)
 		{
 			// call via delegate Invoke(...) method
 			TokenTypeSDTypeDelegate ttd = (TokenTypeSDTypeDelegate)type;
 			MethodInfo invokeMethodInfo = ttd.decl.GetInvokerInfo ();
 			scg.ilGen.Emit (OpCodes.Callvirt, invokeMethodInfo);
+		}
+	}
+
+	// The value is the entrypoint of a script-defined type's interface property combined with
+	// the pointer used to access the method.  Thus there is one of these per call site.
+	public class CompValuIntfProp : CompValu {
+		private TokenDeclVar declProp;
+		private CompValu baseRVal;
+		private CompValu getPropLoc;  // location in the baseRVal vector for .get. method if any
+		private CompValu setPropLoc;  // location in the baseRVal vector for .set. method if any
+
+		public CompValuIntfProp (TokenDeclVar declProp, CompValu baseRVal) : base (declProp.type)
+		{
+			this.declProp = declProp;  // which element(s) of the baseRVal vector to be accessed
+			this.baseRVal = baseRVal;  // the vector of delegates implementing the interface
+		}
+
+		public override void PushVal (ScriptCodeGen scg, Token errorAt)
+		{
+			if (declProp.getProp != null) {
+				if (getPropLoc == null) {
+					getPropLoc = new CompValuIntfMeth (declProp.getProp, baseRVal);
+				}
+				getPropLoc.CallPre (scg, errorAt);
+				getPropLoc.CallPost (scg, errorAt);
+			} else {
+				scg.ErrorMsg (errorAt, "cannot read a write-only property");
+				scg.PushVarDefaultValue (declProp);
+			}
+		}
+		public override void PushRef (ScriptCodeGen scg, Token errorAt)
+		{
+			scg.ErrorMsg (errorAt, "cannot get address of property");
+			scg.ilGen.Emit (OpCodes.Ldnull);
+		}
+		public override void PopPre (ScriptCodeGen scg, Token errorAt)
+		{
+			if (declProp.setProp != null) {
+				if (setPropLoc == null) {
+					setPropLoc = new CompValuIntfMeth (declProp.setProp, baseRVal);
+				}
+				setPropLoc.CallPre (scg, errorAt);
+			} else {
+				scg.ErrorMsg (errorAt, "cannot write a read-only property");
+			}
+		}
+		public override void PopPost (ScriptCodeGen scg, Token errorAt)
+		{
+			if (declProp.setProp != null) {
+				setPropLoc.CallPost (scg, errorAt);
+			} else {
+				scg.ilGen.Emit (OpCodes.Pop);
+			}
 		}
 	}
 
@@ -645,26 +698,26 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.mi = mi;
 		}
 
-		public override void PushVal (ScriptCodeGen scg)
+		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
-			baseRVal.PushVal (scg);
+			baseRVal.PushVal (scg, errorAt);
 			scg.ilGen.Emit (OpCodes.Ldftn, mi);
 			scg.ilGen.Emit (OpCodes.Newobj, ((TokenTypeSDTypeDelegate)type).decl.GetConstructorInfo ());
 		}
-		public override void PushRef (ScriptCodeGen scg)
+		public override void PushRef (ScriptCodeGen scg, Token errorAt)
 		{
 			throw new Exception ("cannot get ref to instance method");
 		}
-		public override void PopPost (ScriptCodeGen scg)
+		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
 			throw new Exception ("cannot store into instance method");
 		}
 
-		public override void CallPre (ScriptCodeGen scg)
+		public override void CallPre (ScriptCodeGen scg, Token errorAt)
 		{
-			baseRVal.PushVal (scg);
+			baseRVal.PushVal (scg, errorAt);
 		}
-		public override void CallPost (ScriptCodeGen scg)
+		public override void CallPost (ScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (OpCodes.Call, mi);
 		}
@@ -682,19 +735,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.mi = mi;
 		}
 
-		public override void PushVal (ScriptCodeGen scg)
+		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
-			baseRVal.PushVal (scg);
+			baseRVal.PushVal (scg, errorAt);
 			scg.ilGen.Emit (OpCodes.Call, mi);
 		}
-		public override void PushRef (ScriptCodeGen scg)
+		public override void PushRef (ScriptCodeGen scg, Token errorAt)
 		{
-			scg.ErrorMsg (type, "cannot get ref to read-only property");
+			scg.ErrorMsg (errorAt, "cannot get ref to read-only property");
 			scg.ilGen.Emit (OpCodes.Ldnull);
 		}
-		public override void PopPost (ScriptCodeGen scg)
+		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
-			scg.ErrorMsg (type, "cannot store into read-only property");
+			scg.ErrorMsg (errorAt, "cannot store into read-only property");
 			scg.ilGen.Emit (OpCodes.Pop);
 		}
 	}
@@ -715,52 +768,52 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.ignVirt  = ignVirt;
 		}
 
-		public override void PushVal (ScriptCodeGen scg)
+		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
 			if ((declVar.getProp == null) && (declVar.setProp == null)) {
-				baseRVal.PushVal (scg);
+				baseRVal.PushVal (scg, errorAt);
 				EmitFieldPushVal (scg, declVar);
 			} else if (declVar.getProp != null) {
 				if (getPropLoc == null) {
 					getPropLoc = new CompValuInstMeth (declVar.getProp, baseRVal, ignVirt);
 				}
-				getPropLoc.CallPre (scg);
-				getPropLoc.CallPost (scg);
+				getPropLoc.CallPre (scg, errorAt);
+				getPropLoc.CallPost (scg, errorAt);
 			} else {
-				scg.ErrorMsg (declVar, "cannot read a write-only property");
+				scg.ErrorMsg (errorAt, "cannot read a write-only property");
 				scg.PushVarDefaultValue (declVar);
 			}
 		}
-		public override void PushRef (ScriptCodeGen scg)
+		public override void PushRef (ScriptCodeGen scg, Token errorAt)
 		{
 			if ((declVar.getProp == null) && (declVar.setProp == null)) {
-				baseRVal.PushVal (scg);
+				baseRVal.PushVal (scg, errorAt);
 				EmitFieldPushRef (scg, declVar);
 			} else {
-				scg.ErrorMsg (declVar, "cannot get address of property");
+				scg.ErrorMsg (errorAt, "cannot get address of property");
 				scg.ilGen.Emit (OpCodes.Ldnull);
 			}
 		}
-		public override void PopPre (ScriptCodeGen scg)
+		public override void PopPre (ScriptCodeGen scg, Token errorAt)
 		{
 			if ((declVar.getProp == null) && (declVar.setProp == null)) {
-				baseRVal.PushVal (scg);
+				baseRVal.PushVal (scg, errorAt);
 				EmitFieldPopPre (scg, declVar);
 			} else if (declVar.setProp != null) {
 				if (setPropLoc == null) {
 					setPropLoc = new CompValuInstMeth (declVar.setProp, baseRVal, ignVirt);
 				}
-				setPropLoc.CallPre (scg);
+				setPropLoc.CallPre (scg, errorAt);
 			} else {
-				scg.ErrorMsg (declVar, "cannot write a read-only property");
+				scg.ErrorMsg (errorAt, "cannot write a read-only property");
 			}
 		}
-		public override void PopPost (ScriptCodeGen scg)
+		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
 			if ((declVar.getProp == null) && (declVar.setProp == null)) {
 				EmitFieldPopPost (scg, declVar);
 			} else if (declVar.setProp != null) {
-				setPropLoc.CallPost (scg);
+				setPropLoc.CallPost (scg, errorAt);
 			} else {
 				scg.ilGen.Emit (OpCodes.Pop);
 			}
@@ -778,15 +831,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 			this.x = x;
 		}
-		public override void PushVal (ScriptCodeGen scg)
+		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
 			scg.PushConstantI4 (x);
 		}
-		public override void PushRef (ScriptCodeGen scg)
+		public override void PushRef (ScriptCodeGen scg, Token errorAt)
 		{
 			throw new Exception ("cannot get constant's address");
 		}
-		public override void PopPost (ScriptCodeGen scg)
+		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
 			throw new Exception ("cannot store into contant");
 		}
@@ -795,15 +848,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	// The value is a null
 	public class CompValuNull : CompValu {
 		public CompValuNull (TokenType type) : base (type) { }
-		public override void PushVal (ScriptCodeGen scg)
+		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (OpCodes.Ldnull);
 		}
-		public override void PushRef (ScriptCodeGen scg)
+		public override void PushRef (ScriptCodeGen scg, Token errorAt)
 		{
 			throw new Exception ("cannot get null's address");
 		}
-		public override void PopPost (ScriptCodeGen scg)
+		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
 			throw new Exception ("cannot store into null");
 		}
@@ -833,19 +886,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.z = z;
 			this.w = w;
 		}
-		public override void PushVal (ScriptCodeGen scg)
+		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
-			this.x.PushVal (scg, new TokenTypeFloat (this.x.type));
-			this.y.PushVal (scg, new TokenTypeFloat (this.y.type));
-			this.z.PushVal (scg, new TokenTypeFloat (this.z.type));
-			this.w.PushVal (scg, new TokenTypeFloat (this.w.type));
+			this.x.PushVal (scg, errorAt, new TokenTypeFloat (this.x.type));
+			this.y.PushVal (scg, errorAt, new TokenTypeFloat (this.y.type));
+			this.z.PushVal (scg, errorAt, new TokenTypeFloat (this.z.type));
+			this.w.PushVal (scg, errorAt, new TokenTypeFloat (this.w.type));
 			scg.ilGen.Emit (OpCodes.Newobj, lslRotConstructorInfo);
 		}
-		public override void PushRef (ScriptCodeGen scg)
+		public override void PushRef (ScriptCodeGen scg, Token errorAt)
 		{
 			throw new Exception ("cannot get constant's address");
 		}
-		public override void PopPost (ScriptCodeGen scg)
+		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
 			throw new Exception ("cannot store into constant");
 		}
@@ -859,7 +912,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			this.field = field;
 		}
-		public override void PushVal (ScriptCodeGen scg)
+		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
 			if ((field.Attributes & FieldAttributes.Literal) == 0) {
 				scg.ilGen.Emit (OpCodes.Ldsfld, field);
@@ -889,17 +942,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 			throw new Exception ("unsupported literal type " + field.FieldType.Name);
 		}
-		public override void PushRef (ScriptCodeGen scg)
+		public override void PushRef (ScriptCodeGen scg, Token errorAt)
 		{
 			if ((field.Attributes & FieldAttributes.Literal) != 0) {
 				throw new Exception ("can't write a constant");
 			}
 			scg.ilGen.Emit (OpCodes.Ldflda, field);
 		}
-		public override void PopPre (ScriptCodeGen scg)
+		public override void PopPre (ScriptCodeGen scg, Token errorAt)
 		{
 		}
-		public override void PopPost (ScriptCodeGen scg)
+		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
 			if ((field.Attributes & FieldAttributes.Literal) != 0) {
 				throw new Exception ("can't write a constant");
@@ -919,15 +972,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 			this.x = x;
 		}
-		public override void PushVal (ScriptCodeGen scg)
+		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (OpCodes.Ldstr, x);
 		}
-		public override void PushRef (ScriptCodeGen scg)
+		public override void PushRef (ScriptCodeGen scg, Token errorAt)
 		{
 			throw new Exception ("cannot get constant's address");
 		}
-		public override void PopPost (ScriptCodeGen scg)
+		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
 			throw new Exception ("cannot store into constant");
 		}
@@ -945,15 +998,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.localBuilder = scg.ilGen.DeclareLocal (ToSysType(), name);
 			scg.activeTemps.AddLast (this);
 		}
-		public override void PushVal (ScriptCodeGen scg)
+		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (OpCodes.Ldloc, localBuilder);
 		}
-		public override void PushRef (ScriptCodeGen scg)
+		public override void PushRef (ScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (OpCodes.Ldloca, localBuilder);
 		}
-		public override void PopPost (ScriptCodeGen scg)
+		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (OpCodes.Stloc, localBuilder);
 		}
@@ -979,18 +1032,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.y = y;
 			this.z = z;
 		}
-		public override void PushVal (ScriptCodeGen scg)
+		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
-			this.x.PushVal (scg, new TokenTypeFloat (this.x.type));
-			this.y.PushVal (scg, new TokenTypeFloat (this.y.type));
-			this.z.PushVal (scg, new TokenTypeFloat (this.z.type));
+			this.x.PushVal (scg, errorAt, new TokenTypeFloat (this.x.type));
+			this.y.PushVal (scg, errorAt, new TokenTypeFloat (this.y.type));
+			this.z.PushVal (scg, errorAt, new TokenTypeFloat (this.z.type));
 			scg.ilGen.Emit (OpCodes.Newobj, lslVecConstructorInfo);
 		}
-		public override void PushRef (ScriptCodeGen scg)
+		public override void PushRef (ScriptCodeGen scg, Token errorAt)
 		{
 			throw new Exception ("cannot get constant's address");
 		}
-		public override void PopPost (ScriptCodeGen scg)
+		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
 			throw new Exception ("cannot store into constant");
 		}
@@ -1006,11 +1059,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				this.type = new TokenTypeVoid (type);
 			}
 		}
-		public override void PushVal (ScriptCodeGen scg) { }
-		public override void PushRef (ScriptCodeGen scg)
+		public override void PushVal (ScriptCodeGen scg, Token errorAt) { }
+		public override void PushRef (ScriptCodeGen scg, Token errorAt)
 		{
 			throw new Exception ("cannot get void address");
 		}
-		public override void PopPost (ScriptCodeGen scg) { }
+		public override void PopPost (ScriptCodeGen scg, Token errorAt) { }
 	}
 }
