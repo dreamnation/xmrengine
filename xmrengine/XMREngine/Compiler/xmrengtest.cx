@@ -197,6 +197,57 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return new XMR_Array ();
         }
 
+        public override string XMRTypeName (object o)
+        {
+            /*
+             * Basic types return constant strings of the script-visible type name.
+             */
+            if (o is LSL_List)     return "list";
+            if (o is LSL_Rotation) return "rotation";
+            if (o is LSL_Vector)   return "vector";
+            if (o is float)        return "float";
+            if (o is int)          return "integer";
+            if (o is string)       return "string";
+            if (o is double)       return "float";
+            if (o is bool)         return "bool";
+            if (o is XMR_Array)    return "array";
+            if (o is LSL_Integer)  return "integer";
+            if (o is LSL_Float)    return "float";
+            if (o is LSL_String)   return "string";
+
+            /*
+             * A script-defined interface is represented as an array of delegates.
+             * If that is the case, convert it to the object of the script-defined 
+             * class that is implementing the interface.  This should let the next 
+             * step get the script-defined type name of the object.
+             */
+            if (o is Delegate[]) {
+                o = ((Delegate[])o)[0].Target;
+            }
+
+            /*
+             * If script-defined class instance, get the script-defined 
+             * type name.
+             */
+            if (o is XMRSDTypeClassInstance) {
+                return ((XMRSDTypeClassInstance)o).sdtcClass.longName.val;
+            }
+
+            /*
+             * If it's a delegate, maybe we can look up its script-defined type name.
+             */
+            Type ot = o.GetType ();
+            if (o is Delegate) {
+                String os;
+                if (m_ObjCode.sdDelTypes.TryGetValue (ot, out os)) return os;
+            }
+
+            /*
+             * Don't know what it is, get the C#-level type name.
+             */
+            return ot.ToString ();
+        }
+
         /**
          * @brief Get a delegate for a script-defined function.
          * @param name = name of the function including arg types, eg,

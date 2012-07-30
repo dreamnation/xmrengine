@@ -45,6 +45,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public Dictionary<string, TokenDeclSDType> sdObjTypes;
 		                                // all script-defined types
 
+		public Dictionary<Type, string> sdDelTypes;
+						// all script-defined delegates (including anonymous)
+
 		public Dictionary<string, DynamicMethod> dynamicMethods;
 		                                // all dyanmic methods that could be encountered by checkpointing
 

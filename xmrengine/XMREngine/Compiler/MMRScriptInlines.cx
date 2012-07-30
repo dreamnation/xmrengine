@@ -184,6 +184,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			inf = new TokenDeclInline (ifd, "xmrEventSaveDets()",                                     typeof (LSL_List),  null); inf.codeGen = inf.CodeGenXMREventSaveDets;
 			inf = new TokenDeclInline (ifd, "xmrHeapLeft()",                                          typeof (int),       null); inf.codeGen = inf.CodeGenXMRHeapLeft;
 			inf = new TokenDeclInline (ifd, "xmrStackLeft()",                                         typeof (int),       null); inf.codeGen = inf.CodeGenXMRStackLeft;
+			inf = new TokenDeclInline (ifd, "xmrTypeName(object)",                                    typeof (string),    null); inf.codeGen = inf.CodeGenXMRTypeName;
 
 			/*
 			 * Jack-assed os...() functions that use screwy types.
@@ -456,6 +457,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			result.PopPre (scg, errorAt);
 			scg.PushXMRInst ();
 			scg.ilGen.Emit (OpCodes.Call, stackLeftMethodInfo);
+			result.PopPost (scg, errorAt, retType);
+		}
+
+		/**
+		 * @brief Generate code to return type name of the argument
+		 *        Script-level prototype:  string xmrTypeName(object)
+		 */
+		private static MethodInfo typeNameMethodInfo = typeof (XMRInstAbstract).GetMethod ("XMRTypeName", new Type[] { typeof (object) });
+		private void CodeGenXMRTypeName (ScriptCodeGen scg, Token errorAt, CompValu result, CompValu[] args)
+		{
+			result.PopPre (scg, errorAt);
+			scg.PushXMRInst ();
+			args[0].PushVal (scg, errorAt);
+			scg.ilGen.Emit (OpCodes.Call, typeNameMethodInfo);
 			result.PopPost (scg, errorAt, retType);
 		}
 

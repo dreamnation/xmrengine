@@ -116,13 +116,17 @@ default {
     state_entry ()
     {
         List stuff = new List ();
+        llOwnerSay ("typeof(stuff) = " + xmrTypeName (stuff));
         stuff.Enqueue ("abcdef");
         stuff.Enqueue (1);
         stuff.Enqueue ([2,3,4]);
         stuff.Enqueue (<5,6,7>);
         llOwnerSay ("count=" + stuff.Count);
+        integer first = 1;
         for (IEnumerator stuffenum = stuff.GetEnumerator (); stuffenum.MoveNext ();) {
-            llOwnerSay ("element=" + (string)stuffenum.Current);
+            if (first) llOwnerSay ("typeof (stuffenum) = " + xmrTypeName (stuffenum));
+            llOwnerSay ("element=(" + xmrTypeName (stuffenum.Current) + ") " + (string)stuffenum.Current);
+            first = 0;
         }
     }
 }

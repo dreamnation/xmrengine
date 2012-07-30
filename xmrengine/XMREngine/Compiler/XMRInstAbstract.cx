@@ -76,9 +76,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public abstract object[] CaptureStackFrame (string funcName, int callNo, int nSaves);
         public abstract object[] RestoreStackFrame (string funcName, out int callNo);
 
-        public abstract void ConsoleWrite (string s);
-        public abstract void CheckRun (int line);
-        public abstract int  StackLeft ();
+        public abstract void   ConsoleWrite (string s);
+        public abstract void   CheckRun (int line);
+        public abstract int    StackLeft ();
+        public abstract string XMRTypeName (object o);
         public abstract LSL_List XMREventDequeue (SCRIPTFLOAT timeout, int returnMask1, int returnMask2,
                                                   int backgroundMask1, int backgroundMask2, int line);
         public abstract void XMREventEnqueue (LSL_List ev);

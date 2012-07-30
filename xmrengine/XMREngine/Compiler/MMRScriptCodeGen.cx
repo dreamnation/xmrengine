@@ -4578,10 +4578,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Read in script-defined types.
 			 */
 			scriptObjCode.sdObjTypes = new Dictionary<string, TokenDeclSDType> ();
+			scriptObjCode.sdDelTypes = new Dictionary<Type, string> ();
 			while ((gblName = objFileReader.ReadString ()) != "") {
 				TokenDeclSDType sdt = TokenDeclSDType.ReadFromFile (scriptObjCode.sdObjTypes, 
 				                                      gblName, objFileReader, asmFileWriter);
 				scriptObjCode.sdObjTypes.Add (gblName, sdt);
+				if (sdt is TokenDeclSDTypeDelegate) {
+					scriptObjCode.sdDelTypes.Add (sdt.GetSysType (), gblName);
+				}
 			}
 
 			/*
