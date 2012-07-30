@@ -521,8 +521,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		/*
 		 * Because the calls are funky, let the compiler handle them.
 		 */
-		public static bool     RotationToBool   (LSL_Rotation x) { return !x.Equals (ScriptBaseClass.ZERO_ROTATION); }
-		public static bool     VectorToBool     (LSL_Vector x)   { return !x.Equals (ScriptBaseClass.ZERO_VECTOR); }
+		public static bool     RotationToBool   (LSL_Rotation x) { return !x.Equals (SCRIPTBASECLASS.ZERO_ROTATION); }
+		public static bool     VectorToBool     (LSL_Vector x)   { return !x.Equals (SCRIPTBASECLASS.ZERO_VECTOR); }
 		public static string   FloatToString    (SCRIPTFLOAT x)  { return x.ToString ("0.000000"); }
 		public static string   IntegerToString  (int x)          { return x.ToString (); }
 		public static string   ListToString     (LSL_List x)     { return x.ToString (); }

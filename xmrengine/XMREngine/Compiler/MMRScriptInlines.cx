@@ -191,10 +191,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			inf = new TokenDeclInline (ifd, "osParseJSON(string)",                                    typeof (XMR_Array), null); inf.codeGen = inf.CodeGenOSParseJSON;
 
 			/*
-			 * Finally for any API functions defined by ScriptBaseClass that are not overridden 
+			 * Finally for any API functions defined by SCRIPTBASECLASS that are not overridden 
 			 * by anything already defined above, create an inline definition to call it.
 			 */
-			AddInterfaceMethods (ifd, typeof (ScriptBaseClass));
+			AddInterfaceMethods (ifd, typeof (SCRIPTBASECLASS));
 			AddInterfaceMethods (ifd, typeof (IOSSL_Api));
 
 			return ifd;

@@ -3625,10 +3625,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 			if (type is TokenTypeRot) {
 				// Mono is tOO stOOpid to allow: ilGen.Emit (OpCodes.Ldsfld, zeroRotationFieldInfo);
-				ilGen.Emit (OpCodes.Ldc_R8, ScriptBaseClass.ZERO_ROTATION.x);
-				ilGen.Emit (OpCodes.Ldc_R8, ScriptBaseClass.ZERO_ROTATION.y);
-				ilGen.Emit (OpCodes.Ldc_R8, ScriptBaseClass.ZERO_ROTATION.z);
-				ilGen.Emit (OpCodes.Ldc_R8, ScriptBaseClass.ZERO_ROTATION.s);
+				ilGen.Emit (OpCodes.Ldc_R8, SCRIPTBASECLASS.ZERO_ROTATION.x);
+				ilGen.Emit (OpCodes.Ldc_R8, SCRIPTBASECLASS.ZERO_ROTATION.y);
+				ilGen.Emit (OpCodes.Ldc_R8, SCRIPTBASECLASS.ZERO_ROTATION.z);
+				ilGen.Emit (OpCodes.Ldc_R8, SCRIPTBASECLASS.ZERO_ROTATION.s);
 				ilGen.Emit (OpCodes.Newobj, lslRotationConstructorInfo);
 				return;
 			}
@@ -3638,9 +3638,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 			if (type is TokenTypeVec) {
 				// Mono is tOO stOOpid to allow: ilGen.Emit (OpCodes.Ldsfld, zeroVectorFieldInfo);
-				ilGen.Emit (OpCodes.Ldc_R8, ScriptBaseClass.ZERO_VECTOR.x);
-				ilGen.Emit (OpCodes.Ldc_R8, ScriptBaseClass.ZERO_VECTOR.y);
-				ilGen.Emit (OpCodes.Ldc_R8, ScriptBaseClass.ZERO_VECTOR.z);
+				ilGen.Emit (OpCodes.Ldc_R8, SCRIPTBASECLASS.ZERO_VECTOR.x);
+				ilGen.Emit (OpCodes.Ldc_R8, SCRIPTBASECLASS.ZERO_VECTOR.y);
+				ilGen.Emit (OpCodes.Ldc_R8, SCRIPTBASECLASS.ZERO_VECTOR.z);
 				ilGen.Emit (OpCodes.Newobj, lslVectorConstructorInfo);
 				return;
 			}

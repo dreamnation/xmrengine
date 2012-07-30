@@ -1,0 +1,182 @@
+/********************************************************\
+ *  COPYRIGHT 2012, Mike Rieker, Beverly, MA, USA       *
+ *  All rights reserved.                                *
+\********************************************************/
+
+/**
+ * @brief Main program for the script compiler.
+ */
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Reflection.Emit;
+using System.Text;
+
+#include "lsltypes.h"
+
+namespace OpenSim.Region.ScriptEngine.XMREngine
+{
+
+    public class XMREngTest
+    {
+        /**
+         * @brief Stand-alone test program.
+         *
+         * mono xmrengtest.exe <xmrobjfile> < testscript
+         */
+        public static void Main (string[] args)
+        {
+            /*
+             * Read whole source into memory.
+             */
+            string source = File.ReadAllText (args[0]);
+
+            /*
+             * Parse source string into tokens.
+             */
+            TokenBegin tokenBegin = TokenBegin.Construct (StandAloneErrorMessage, source);
+            if (tokenBegin == null) {
+                Console.WriteLine ("Parsing errors.");
+                Environment.Exit (1);
+            }
+
+            /*
+             * Create abstract syntax tree from raw tokens.
+             */
+            TokenScript tokenScript = ScriptReduce.Reduce( tokenBegin);
+            if (tokenScript == null) {
+                Console.WriteLine ("Reduction errors.");
+                Environment.Exit (1);
+            }
+
+            /*
+             * Attempt to compile AST to object code.
+             */
+            Stream objFileStream = new MemoryStream ();
+            BinaryWriter objFileWriter = new BinaryWriter (objFileStream);
+            bool ok;
+            ok = ScriptCodeGen.CodeGen (tokenScript, objFileWriter);
+            if (!ok) {
+                Console.WriteLine ("Compilation errors.");
+                Environment.Exit (1);
+            }
+
+            /*
+             * Load object code into memory.
+             */
+            Console.WriteLine ("Running...");
+            objFileStream.Seek (0, SeekOrigin.Begin);
+            BinaryReader objFileReader = new BinaryReader (objFileStream);
+            ScriptObjCode scriptObjCode = ScriptCodeGen.PerformGeneration ("", objFileReader, null);
+            objFileReader.Close ();
+
+            /*
+             * Instantiate the script and run its default state_entry() handler.
+             */
+            TestInstance inst = new TestInstance (scriptObjCode);
+            inst.ehArgs = new object[0];
+            scriptObjCode.scriptEventHandlerTable[0,(int)ScriptEventCode.state_entry](inst);
+        }
+
+        public static void StandAloneErrorMessage (Token token, string message)
+        {
+            Console.WriteLine ("{0} {1}", token.SrcLoc, message);
+        }
+    }
+
+    public class TestInstance : XMRInstAbstract {
+        public TestInstance (ScriptObjCode soc)
+        {
+            m_ObjCode = soc;
+
+            gblArrays    = new XMR_Array    [soc.numGblArrays];
+            gblFloats    = new SCRIPTFLOAT  [soc.numGblFloats];
+            gblIntegers  = new int          [soc.numGblIntegers];
+            gblLists     = new LSL_List     [soc.numGblLists];
+            gblObjects   = new object       [soc.numGblObjects];
+            gblRotations = new LSL_Rotation [soc.numGblRotations];
+            gblStrings   = new string       [soc.numGblStrings];
+            gblVectors   = new LSL_Vector   [soc.numGblVectors];
+            gblSDTClObjs = new XMRSDTypeClassInstance [soc.numGblSDTClObjs];
+        }
+
+        /*********************\
+         *  XMRInstAbstrace  *
+        \*********************/
+
+        public override object[] CaptureStackFrame (string funcName, int callNo, int nSaves)
+        {
+            XMRStackFrame sf = new XMRStackFrame ();
+            sf.nextSF   = stackFrames;
+            sf.funcName = funcName;
+            sf.callNo   = callNo;
+            sf.objArray = new object[nSaves];
+            stackFrames = sf;
+            return sf.objArray;
+        }
+        public override object[] RestoreStackFrame (string funcName, out int callNo)
+        {
+            XMRStackFrame sf = stackFrames;
+            if (sf.funcName != funcName) throw new Exception ("frame mismatch");
+            callNo = sf.callNo;
+            stackFrames = sf.nextSF;
+            return sf.objArray;
+        }
+
+        public override void ConsoleWrite (string s)
+        {
+            Console.Write (s);
+        }
+        public override void CheckRun (int line)
+        { }
+        public override int  StackLeft ()
+        {
+            return 1000000;
+        }
+        public override LSL_List XMREventDequeue (SCRIPTFLOAT timeout, int returnMask1, int returnMask2,
+                                                  int backgroundMask1, int backgroundMask2, int line)
+        {
+            return new LSL_List (new object[0]);
+        }
+        public override void XMREventEnqueue (LSL_List ev)
+        { }
+        public override void XMREventCallHandler (LSL_List ev)
+        { }
+        public override LSL_List XMREventSaveDets ()
+        {
+            return new LSL_List (new object[0]);
+        }
+        public override void XMREventLoadDets (LSL_List dpList)
+        { }
+        public override XMR_Array XMRosParseJSON (string s)
+        {
+            return new XMR_Array ();
+        }
+
+        /**
+         * @brief Get a delegate for a script-defined function.
+         * @param name = name of the function including arg types, eg,
+         *               "Verify(array,list,string)"
+         * @param sig  = script-defined type name
+         * @param targ = function's 'this' pointer or null if static
+         * @returns delegate for the script-defined function
+         */
+        public override Delegate GetScriptMethodDelegate (string name, string sig, object targ)
+        {
+            DynamicMethod dm = m_ObjCode.dynamicMethods[name];
+            TokenDeclSDTypeDelegate dt = (TokenDeclSDTypeDelegate)m_ObjCode.sdObjTypes[sig];
+            return dm.CreateDelegate (dt.GetSysType (), targ);
+        }
+    }
+
+    public class SCRIPTBASECLASS {
+        public static readonly LSL_Rotation ZERO_ROTATION = new LSL_Rotation (0.0, 0.0, 0.0, 1.0);
+        public static readonly LSL_Vector   ZERO_VECTOR   = new LSL_Vector (0.0, 0.0, 0.0);
+
+        public void llOwnerSay (string msg)
+        {
+            Console.WriteLine ("llOwnerSay: " + msg);
+        }
+    }
+}

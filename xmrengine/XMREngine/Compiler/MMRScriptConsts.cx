@@ -35,10 +35,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			Dictionary<string, ScriptConst> sc = new Dictionary<string, ScriptConst> ();
 
 			/*
-			 * Scan through all fields defined by ScriptBaseClass.
+			 * Scan through all fields defined by SCRIPTBASECLASS.
 			 * Specifically, we want the ones defined in LSL_Constants.cs.
 			 */
-			FieldInfo[] constFields = typeof (ScriptBaseClass).GetFields ();
+			FieldInfo[] constFields = typeof (SCRIPTBASECLASS).GetFields ();
 
 			foreach (FieldInfo constField in constFields) {
 
@@ -75,7 +75,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					}
 
 					/*
-					 * The location of everything else (objects) is the static field in the ScriptBaseClass definition.
+					 * The location of everything else (objects) is the static field in the SCRIPTBASECLASS definition.
 					 */
 					else new ScriptConst (sc, 
 					                      fieldName, 

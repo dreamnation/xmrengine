@@ -849,7 +849,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			s2t.Add ("object",   typeof (object));
 			s2t.Add ("object*",  typeof (object).MakeByRefType ());
 			s2t.Add ("object[]", typeof (object[]));
-			s2t.Add ("scrbase",  typeof (ScriptBaseClass));
+			s2t.Add ("scrbase",  typeof (SCRIPTBASECLASS));
 			s2t.Add ("scrcode",  typeof (ScriptCodeGen));
 			s2t.Add ("sdtclins", typeof (XMRSDTypeClassInstance));
 			s2t.Add ("string",   typeof (string));
