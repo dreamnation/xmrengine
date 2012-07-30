@@ -85,7 +85,7 @@ class List : IEnumerable {
             get
             {
                 if (this.atend) throw "at end of list";
-                return this.current;
+                return this.current.obj;
             }
         }
 
