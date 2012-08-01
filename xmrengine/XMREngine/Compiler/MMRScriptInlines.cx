@@ -98,56 +98,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		/**
 		 * @brief Create a dictionary of inline backend API functions.
-		 *
-		 * The code string has two basic forms:  single-expression and statement-block.
-		 *
-		 * In either form, the following substitutions are made in the inline code string:
-		 *    {0} is replaced with the first parameter's value
-		 *    {1} is replaced with the second parameter's value
-		 *    ... etc for all parameters.
-		 * The compiler guarantees the substituted value is of the type given in the inline's
-		 * prototype.  The compiler also guarantees that the value is free of side-effects, 
-		 * eg, it does not make a function call or increment a variable, so any parameter may
-		 * be located in more than one place without assigning it to a temporary.  For example
-		 * an inline for a Min function can be safely done as:
-		 *    {0} < {1} ? {0} : {1}
-		 *
-		 * For statement-block forms that have a return value, this additional substitution
-		 * is made:
-		 *    {#} is replaced with a variable that receives the return value.
-		 * The compiler guarantees the variable is of the type given as the return type in the
-		 * inline's definition.
-		 *
-		 * The statement-block form always begins with a { character after parameter
-		 * substitution has taken place (but before return value substitution).  Otherwise, 
-		 * it is assumed to be single-expressionform.
-		 *
-		 * For inlines that return a value, the given inline code for single-expression
-		 * form must fit this template to form a valid complete C# statement:
-		 *
-		 *    <variable> = ( <typecast> ) <inline-code> ;
-		 *
-		 * For inlines that return void, the given inline code for single-expression form
-		 * must fit this template to form a valid complete C# statement:
-		 *
-		 *    <inline-code> ;
-		 *
-		 * Otherwise, inline code must use the statement-block form such that this template 
-		 * forms a valid complete C# statement:
-		 *
-		 *    <inline-code>
-		 *
-		 * Thus inlines of arbitrary complexity can be generated.  However, this should be
-		 * discouraged as any change in the inline might require that all script .DLL files
-		 * be recompiled.  In these cases, it is better to use the single-expression form
-		 * to call a static function which actually performs the work.  Then that static
-		 * function can be modified without having to recompile all scripts.
-		 *
-		 * In any case, if an incompatile change is made to an inline, script recompilation
-		 * can be forced by incrementing ScriptCodeGen.COMPILED_VERSION_VALUE.
-		 *
-		 * In addition to the parameter values, the inline code (either form) has the
-		 * XMRInstance avalable as argument 0 (OpCodes.Ldarg_0).
 		 */
 		public static VarDict CreateDictionary ()
 		{
@@ -157,39 +107,39 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Mono generates an FPU instruction for many math calls.
 			 */
-			inf = new TokenDeclInline (ifd, "llAbs(integer)",       typeof (int),         null);                                                                      inf.codeGen = inf.CodeGenLLAbs;
-			inf = new TokenDeclInline (ifd, "llAcos(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Acos",    oneDoub));  inf.codeGen = inf.CodeGenStatic;
-			inf = new TokenDeclInline (ifd, "llAsin(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Asin",    oneDoub));  inf.codeGen = inf.CodeGenStatic;
-			inf = new TokenDeclInline (ifd, "llAtan2(float,float)", typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Atan2",   twoDoubs)); inf.codeGen = inf.CodeGenStatic;
-		///	inf = new TokenDeclInline (ifd, "llCeil(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Ceiling", oneDoub));  inf.codeGen = inf.CodeGenStatic;
-			inf = new TokenDeclInline (ifd, "llCos(float)",         typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Cos",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
-			inf = new TokenDeclInline (ifd, "llFabs(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Abs",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
-		///	inf = new TokenDeclInline (ifd, "llFloor(float)",       typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Floor",   oneDoub));  inf.codeGen = inf.CodeGenStatic;
-			inf = new TokenDeclInline (ifd, "llLog(float)",         typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Log",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
-			inf = new TokenDeclInline (ifd, "llLog10(float)",       typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Log10",   oneDoub));  inf.codeGen = inf.CodeGenStatic;
-			inf = new TokenDeclInline (ifd, "llPow(float,float)",   typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Pow",     twoDoubs)); inf.codeGen = inf.CodeGenStatic;
-			inf = new TokenDeclInline (ifd, "llRound(float)",       typeof (int),         null);                                                                      inf.codeGen = inf.CodeGenLLRound;
-			inf = new TokenDeclInline (ifd, "llSin(float)",         typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Sin",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
-			inf = new TokenDeclInline (ifd, "llSqrt(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Sqrt",    oneDoub));  inf.codeGen = inf.CodeGenStatic;
-			inf = new TokenDeclInline (ifd, "llTan(float)",         typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Tan",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new TokenDeclInline (ifd, false, "llAbs(integer)",       typeof (int),         null);                                                                      inf.codeGen = inf.CodeGenLLAbs;
+			inf = new TokenDeclInline (ifd, false, "llAcos(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Acos",    oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new TokenDeclInline (ifd, false, "llAsin(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Asin",    oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new TokenDeclInline (ifd, false, "llAtan2(float,float)", typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Atan2",   twoDoubs)); inf.codeGen = inf.CodeGenStatic;
+		///	inf = new TokenDeclInline (ifd, false, "llCeil(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Ceiling", oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new TokenDeclInline (ifd, false, "llCos(float)",         typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Cos",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new TokenDeclInline (ifd, false, "llFabs(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Abs",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
+		///	inf = new TokenDeclInline (ifd, false, "llFloor(float)",       typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Floor",   oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new TokenDeclInline (ifd, false, "llLog(float)",         typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Log",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new TokenDeclInline (ifd, false, "llLog10(float)",       typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Log10",   oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new TokenDeclInline (ifd, false, "llPow(float,float)",   typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Pow",     twoDoubs)); inf.codeGen = inf.CodeGenStatic;
+			inf = new TokenDeclInline (ifd, false, "llRound(float)",       typeof (int),         null);                                                                      inf.codeGen = inf.CodeGenLLRound;
+			inf = new TokenDeclInline (ifd, false, "llSin(float)",         typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Sin",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new TokenDeclInline (ifd, false, "llSqrt(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Sqrt",    oneDoub));  inf.codeGen = inf.CodeGenStatic;
+			inf = new TokenDeclInline (ifd, false, "llTan(float)",         typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Tan",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
 
 			/*
 			 * Our internally defined functions.
 			 */
-		///	inf = new TokenDeclInline (ifd, "consoleWrite(string)",                                   typeof (void),      null); inf.codeGen = inf.CodeGenConsoleWrite;
-			inf = new TokenDeclInline (ifd, "xmrEventCallHandler(list)",                              typeof (void),      null); inf.codeGen = inf.CodeGenXMREventCallHandler;
-			inf = new TokenDeclInline (ifd, "xmrEventDequeue(float,integer,integer,integer,integer)", typeof (LSL_List),  null); inf.codeGen = inf.CodeGenXMREventDequeue;
-			inf = new TokenDeclInline (ifd, "xmrEventEnqueue(list)",                                  typeof (void),      null); inf.codeGen = inf.CodeGenXMREventEnqueue;
-			inf = new TokenDeclInline (ifd, "xmrEventLoadDets(list)",                                 typeof (void),      null); inf.codeGen = inf.CodeGenXMREventLoadDets;
-			inf = new TokenDeclInline (ifd, "xmrEventSaveDets()",                                     typeof (LSL_List),  null); inf.codeGen = inf.CodeGenXMREventSaveDets;
-			inf = new TokenDeclInline (ifd, "xmrHeapLeft()",                                          typeof (int),       null); inf.codeGen = inf.CodeGenXMRHeapLeft;
-			inf = new TokenDeclInline (ifd, "xmrStackLeft()",                                         typeof (int),       null); inf.codeGen = inf.CodeGenXMRStackLeft;
-			inf = new TokenDeclInline (ifd, "xmrTypeName(object)",                                    typeof (string),    null); inf.codeGen = inf.CodeGenXMRTypeName;
+		///	inf = new TokenDeclInline (ifd, false, "consoleWrite(string)",                                   typeof (void),      null); inf.codeGen = inf.CodeGenConsoleWrite;
+			inf = new TokenDeclInline (ifd, false, "xmrEventCallHandler(list)",                              typeof (void),      null); inf.codeGen = inf.CodeGenXMREventCallHandler;
+			inf = new TokenDeclInline (ifd, true,  "xmrEventDequeue(float,integer,integer,integer,integer)", typeof (LSL_List),  null); inf.codeGen = inf.CodeGenXMREventDequeue;
+			inf = new TokenDeclInline (ifd, false, "xmrEventEnqueue(list)",                                  typeof (void),      null); inf.codeGen = inf.CodeGenXMREventEnqueue;
+			inf = new TokenDeclInline (ifd, false, "xmrEventLoadDets(list)",                                 typeof (void),      null); inf.codeGen = inf.CodeGenXMREventLoadDets;
+			inf = new TokenDeclInline (ifd, false, "xmrEventSaveDets()",                                     typeof (LSL_List),  null); inf.codeGen = inf.CodeGenXMREventSaveDets;
+			inf = new TokenDeclInline (ifd, false, "xmrHeapLeft()",                                          typeof (int),       null); inf.codeGen = inf.CodeGenXMRHeapLeft;
+			inf = new TokenDeclInline (ifd, false, "xmrStackLeft()",                                         typeof (int),       null); inf.codeGen = inf.CodeGenXMRStackLeft;
+			inf = new TokenDeclInline (ifd, false, "xmrTypeName(object)",                                    typeof (string),    null); inf.codeGen = inf.CodeGenXMRTypeName;
 
 			/*
 			 * Jack-assed os...() functions that use screwy types.
 			 */
-			inf = new TokenDeclInline (ifd, "osParseJSON(string)",                                    typeof (XMR_Array), null); inf.codeGen = inf.CodeGenOSParseJSON;
+			inf = new TokenDeclInline (ifd, false, "osParseJSON(string)",                                    typeof (XMR_Array), null); inf.codeGen = inf.CodeGenOSParseJSON;
 
 			/*
 			 * Finally for any API functions defined by SCRIPTBASECLASS that are not overridden 
@@ -214,31 +164,35 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				if ((key[0] < 'a') || (key[0] > 'z')) continue;
 
 				try {
+					/*
+					 * See if we will generate a call to CheckRun() right 
+					 * after we generate a call to the function.
+					 */
+					bool doCheckRun = true;
+					for (int i = noCheckRun.Length; -- i >= 0;) {
+						if (noCheckRun[i] == ifaceMethod.Name) {
+							doCheckRun = false;
+							break;
+						}
+					}
 
 					/*
 					 * Create a corresponding signature.
 					 */
 					ParameterInfo[] parameters = ifaceMethod.GetParameters ();
-					TokenType[] argTypes = new TokenType[parameters.Length];
-					TokenName[] argNames = new TokenName[parameters.Length];
+					TokenArgDecl argDecl = new TokenArgDecl (null);
 					for (int i = 0; i < parameters.Length; i ++) {
-						argTypes[i] = TokenType.FromSysType (null, parameters[i].ParameterType);
-						argNames[i] = new TokenName (null, parameters[i].Name);
+						TokenType type = TokenType.FromSysType (null, parameters[i].ParameterType);
+						TokenName name = new TokenName (null, parameters[i].Name);
+						argDecl.AddArg (type, name);
 					}
 
 					/*
 					 * Add function to dictionary.
 					 */
-					TokenType retType = TokenType.FromSysType (null, ifaceMethod.ReturnType);
-					TokenDeclInline inlfun = new TokenDeclInline (ifd, key, retType, argTypes, argNames, ifaceMethod);
-					inlfun.codeGen    = inlfun.CodeGenBEApi;
-					inlfun.doCheckRun = true;
-					for (int i = noCheckRun.Length; -- i >= 0;) {
-						if (noCheckRun[i] == ifaceMethod.Name) {
-							inlfun.doCheckRun = false;
-							break;
-						}
-					}
+					TokenType retType      = TokenType.FromSysType (null, ifaceMethod.ReturnType);
+					TokenDeclInline inlfun = new TokenDeclInline (ifd, doCheckRun, key, retType, argDecl, ifaceMethod);
+					inlfun.codeGen         = inlfun.CodeGenBEApi;
 				} catch {
 
 					///??? string msg = except.ToString ();
@@ -255,11 +209,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		/**
 		 * @brief Add an inline function definition to the dictionary.
 		 * @param ifd        = dictionary to add inline definition to
+		 * @param doCheckRun = true iff the generated code or the function itself can possibly call CheckRun()
 		 * @param nameArgSig = inline function signature string, in form <name>(<arglsltypes>,...)
 		 * @param retType    = system return type, use typeof(void) if no return value
 		 * @param methInfo   = used by codeGen to know what backend method to call
 		 */
 		private TokenDeclInline (VarDict ifd, 
+		                         bool doCheckRun, 
 		                         string nameArgSig, 
 		                         Type retType, 
 		                         MethodInfo methInfo)
@@ -268,32 +224,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.retType     = TokenType.FromSysType (null, retType);
 			this.methInfo    = methInfo;
 			this.funcNameSig = new TokenName (null, nameArgSig);
+			this.doCheckRun  = doCheckRun;
+			this.triviality  = doCheckRun ? Triviality.complex : Triviality.trivial;
 
-			int nArgs = 0;
-			int iBeg  = nameArgSig.IndexOf ('(') + 1;
-			if (nameArgSig[iBeg] != ')') {
-				nArgs ++;
-				for (int i = iBeg; nameArgSig[i] != ')'; i ++) {
-					if (nameArgSig[i] == ',') nArgs ++;
-				}
-			}
-			this.argDecl       = new TokenArgDecl (null);
-			this.argDecl.types = new TokenType[nArgs];
-			this.argDecl.names = new TokenName[nArgs];
-			if (nameArgSig[iBeg] != ')') {
-				int iArg = 0;
-				int j = iBeg;
+			this.argDecl = new TokenArgDecl (null);
+			int j = nameArgSig.IndexOf ('(') + 1;
+			if (nameArgSig[j] != ')') {
 				int i;
-				for (i = iBeg; nameArgSig[i] != ')'; i ++) {
+				TokenName name;
+				TokenType type;
+
+				for (i = j; nameArgSig[i] != ')'; i ++) {
 					if (nameArgSig[i] == ',') {
-						this.argDecl.types[iArg] = TokenType.FromLSLType (null, nameArgSig.Substring (j, i - j));
-						this.argDecl.names[iArg] = new TokenName (null, "arg" + iArg);
-						iArg ++;
+						type = TokenType.FromLSLType (null, nameArgSig.Substring (j, i - j));
+						name = new TokenName (null, "arg" + this.argDecl.varDict.Count);
+						this.argDecl.AddArg (type, name);
 						j = i + 1;
 					}
 				}
-				this.argDecl.types[iArg] = TokenType.FromLSLType (null, nameArgSig.Substring (j, i - j));
-				this.argDecl.names[iArg] = new TokenName (null, "arg" + iArg);
+
+				type = TokenType.FromLSLType (null, nameArgSig.Substring (j, i - j));
+				name = new TokenName (null, "arg" + this.argDecl.varDict.Count);
+				this.argDecl.AddArg (type, name);
 			}
 
 			this.location = new CompValuInline (this);
@@ -301,21 +253,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		private TokenDeclInline (VarDict ifd, 
+		                         bool doCheckRun, 
 		                         string name, 
 		                         TokenType retType, 
-		                         TokenType[] argTypes, 
-		                         TokenName[] argNames, 
+		                         TokenArgDecl argDecl, 
 		                         MethodInfo methInfo)
 			: base (null, null, null)
 		{
-			this.retType       = retType;
-			this.methInfo      = methInfo;
-			this.argDecl       = new TokenArgDecl (null);
-			this.argDecl.types = argTypes;
-			this.argDecl.names = argNames;
-			this.funcNameSig   = new TokenName (null, name + this.argDecl.GetArgSig ());
-
-			this.location      = new CompValuInline (this);
+			this.retType     = retType;
+			this.methInfo    = methInfo;
+			this.argDecl     = argDecl;
+			this.funcNameSig = new TokenName (null, name + this.argDecl.GetArgSig ());
+			this.doCheckRun  = doCheckRun;
+			this.triviality  = doCheckRun ? Triviality.complex : Triviality.trivial;
+			this.location    = new CompValuInline (this);
 			ifd.AddEntry (this);
 		}
 
@@ -501,9 +452,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				args[i].PushVal (scg, errorAt, argDecl.types[i]);  // .. boxing/unboxing as needed
 			}
 			scg.ilGen.Emit (OpCodes.Call, methInfo);          // call API function
-			result.PopPost (scg, errorAt, retType);                    // pop result, boxing/unboxing as needed
+			result.PopPost (scg, errorAt, retType);           // pop result, boxing/unboxing as needed
 			if (doCheckRun) {
-				scg.EmitCallCheckRun (errorAt.line);        // maybe call CheckRun()
+				scg.EmitCallCheckRun (errorAt.line);      // maybe call CheckRun()
 			}
 		}
 	}

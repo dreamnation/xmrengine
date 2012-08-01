@@ -41,15 +41,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					 */
 					System.Reflection.ParameterInfo[] parameters = ifaceMethod.GetParameters ();
 					TokenArgDecl argDecl = new TokenArgDecl (null);
-					argDecl.names = new TokenName[parameters.Length];
-					argDecl.types = new TokenType[parameters.Length];
 					key += "(";
 					for (int i = 0; i < parameters.Length; i++) {
 						System.Reflection.ParameterInfo param = parameters[i];
-						argDecl.names[i] = new TokenName (null, param.Name);
-						argDecl.types[i] = TokenType.FromSysType (null, param.ParameterType);
+						TokenType type = TokenType.FromSysType (null, param.ParameterType);
+						TokenName name = new TokenName (null, param.Name);
+						argDecl.AddArg (type, name);
 						if (i > 0) key += ",";
-						key += argDecl.types[i].ToString ();
+						key += type.ToString ();
 					}
 					key += ")";
 					TokenDeclVar declFunc = new TokenDeclVar (null, null, null);

@@ -59,6 +59,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
         }
 
+        public static TokenType GetRValType (TokenName name)
+        {
+            if (name.val == "count") return new TokenTypeInt (name);
+            if (name.val == "clear") return clearDelegate;
+            if (name.val == "index") return indexDelegate;
+            if (name.val == "value") return valueDelegate;
+            return new TokenTypeVoid (name);
+        }
+
         /**
          * @brief Handle 'array[index]' syntax to get or set an element of the dictionary.
          * Get returns null if element not defined, script sees type 'undef'.

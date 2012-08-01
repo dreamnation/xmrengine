@@ -21,6 +21,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	 */
 	public delegate void BinOpStrEmitBO (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result);
 	public class BinOpStr {
+		public static readonly Dictionary<string, BinOpStr> defined = DefineBinOps ();
+
 		public Type outtype;           // type of result of computation
 		public BinOpStrEmitBO emitBO;  // how to compute result
 		public bool rmwOK;             // is the <operator>= form valid?
@@ -100,7 +102,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 *   and <opcode> is string returned by (TokenKw...).ToString()
 		 * The value is a BinOpStr struct giving the resultant type and a method to generate the code.
 		 */
-		public static Dictionary<string, BinOpStr> DefineBinOps ()
+		private static Dictionary<string, BinOpStr> DefineBinOps ()
 		{
 			Dictionary<string, BinOpStr> bos = new Dictionary<string, BinOpStr> ();
 

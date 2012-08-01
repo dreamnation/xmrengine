@@ -124,6 +124,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		private bool errors = false;
 		private TokenDeclVar currentDeclFunc = null;
+		private TokenDeclSDType currentDeclSDType = null;
 		private TokenScript tokenScript;
 		private TokenStmtBlock currentStmtBlock = null;
 
@@ -143,6 +144,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 			/*
 			 * 'XMROption' 'expiryDays' <integer> ';'
+			 * Parse and remove from source token stream.
 			 */
 			for (Token t = tokenBegin; !(t is TokenEnd); t = t.nextToken) {
 				if ((t is TokenName) &&
@@ -191,7 +193,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				 * constant <name> = <rval> ;
 				 */
 				if (token is TokenKwConst) {
-					ParseDeclVar (ref token, tokenScript.vars);
+					ParseDeclVar (ref token);
 					continue;
 				}
 
@@ -203,7 +205,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				    (token.nextToken is TokenName) &&
 				    ((token.nextToken.nextToken is TokenKwSemi) || 
 				     (token.nextToken.nextToken is TokenKwAssign))) {
-					ParseDeclVar (ref token, tokenScript.vars);
+					ParseDeclVar (ref token);
 					continue;
 				}
 
@@ -213,7 +215,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				if ((token is TokenType) &&
 				    (token.nextToken is TokenName) &&
 				    (token.nextToken.nextToken is TokenKwBrcOpen)) {
-					ParseProperty (ref token, tokenScript.vars, false, true);
+					ParseProperty (ref token, false, true);
 					continue;
 				}
 
@@ -240,7 +242,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					token = tokenType;
 					TokenDeclVar tokenDeclFunc = ParseDeclFunc (ref token, false, false);
 					if (tokenDeclFunc == null) continue;
-					if (!tokenScript.funcs.AddEntry (tokenDeclFunc)) {
+					if (!tokenScript.AddVarEntry (tokenDeclFunc)) {
 						ErrorMsg (tokenName, "duplicate function " + tokenDeclFunc.funcNameSig.val);
 					}
 					continue;
@@ -262,7 +264,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					token = tokenName;
 					TokenDeclVar tokenDeclFunc = ParseDeclFunc (ref token, false, false);
 					if (tokenDeclFunc == null) continue;
-					if (!tokenScript.funcs.AddEntry (tokenDeclFunc)) {
+					if (!tokenScript.AddVarEntry (tokenDeclFunc)) {
 						ErrorMsg (tokenName, "duplicate function " + tokenDeclFunc.funcNameSig.val);
 					}
 					continue;
@@ -595,6 +597,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			tokdeclcl.accessLevel = flags;
 			u = u.nextToken;
 
+			// make this class the currently compiled class
+			// used for retrieving stuff like 'this' possibly
+			// in field initialization code
+			TokenDeclSDType saveCurSDType = currentDeclSDType;
+			currentDeclSDType = tokdeclcl;
+
 			// next can be ':' followed by list of implemented
 			// interfaces and one extended class
 			if (u is TokenKwColon) {
@@ -626,9 +634,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			if (!(u is TokenKwBrcOpen)) {
 				ErrorMsg (u, "expecting { to open class declaration body");
 				token = SkipPastSemi (token);
-				return;
+				goto ret;
 			}
 			token = u.nextToken;
+
+			// push a var frame to put all the class members in
+			tokenScript.PushVarFrame ();
+			tokdeclcl.members = tokenScript.variablesStack;
 
 			// process declaration statements until '}'
 			while (!(token is TokenKwBrcClose)) {
@@ -654,7 +666,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					if ((flags & (SDT_ABSTRACT | SDT_NEW | SDT_OVERRIDE | SDT_VIRTUAL)) != 0) {
 						ErrorMsg (token, "cannot have abstract, new, override or virtual field");
 					}
-					TokenDeclVar var = ParseDeclVar (ref token, tokdeclcl.members);
+					TokenDeclVar var = ParseDeclVar (ref token);
 					if (var != null) {
 						var.sdtClass = tokdeclcl;
 						var.sdtFlags = flags | SDT_STATIC;
@@ -673,7 +685,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					if ((flags & (SDT_ABSTRACT | SDT_FINAL | SDT_NEW | SDT_OVERRIDE | SDT_VIRTUAL)) != 0) {
 						ErrorMsg (token, "cannot have abstract, final, new, override or virtual field");
 					}
-					TokenDeclVar var = ParseDeclVar (ref token, tokdeclcl.members);
+					TokenDeclVar var = ParseDeclVar (ref token);
 					if (var != null) {
 						var.sdtClass = tokdeclcl;
 						var.sdtFlags = flags;
@@ -688,7 +700,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				    (token.nextToken is TokenName) &&
 				    (token.nextToken.nextToken is TokenKwBrcOpen || 
 				     token.nextToken.nextToken is TokenKwColon)) {
-					TokenDeclVar var = ParseProperty (ref token, tokdeclcl.members, (flags & SDT_ABSTRACT) != 0, true);
+					TokenDeclVar var = ParseProperty (ref token, (flags & SDT_ABSTRACT) != 0, true);
 					if (var != null) {
 						var.sdtClass = tokdeclcl;
 						var.sdtFlags = flags;
@@ -745,9 +757,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				TokenDeclVar tokenDeclFunc  = new TokenDeclVar (token, null, tokenScript);
 				tokenDeclFunc.retType       = new TokenTypeVoid (token);
 				tokenDeclFunc.argDecl       = new TokenArgDecl (token);
-				tokenDeclFunc.argDecl.types = new TokenType[0];
-				tokenDeclFunc.argDecl.names = new TokenName[0];
-				tokenDeclFunc.argDecl.locns = new CompValu[0];
 				tokenDeclFunc.funcNameSig   = new TokenName (token, "constructor()");
 				tokenDeclFunc.sdtClass      = tokdeclcl;
 				tokenDeclFunc.sdtFlags      = SDT_PUBLIC | SDT_NEW;
@@ -755,23 +764,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				tokenDeclFunc.body.function = tokenDeclFunc;
 
 				if (tokdeclcl.extends != null) {
-					TokenRValBaseField meth = new TokenRValBaseField (token, 
-					                          new TokenName (token, "constructor"));
-					TokenRValCall rvc       = new TokenRValCall (token);
-					rvc.meth                = meth;
-					TokenStmtRVal bcc       = new TokenStmtRVal (token);
-					bcc.rVal                = rvc;
-					bcc.nextToken           = null;
-					tokenDeclFunc.body.statements = bcc;
+					SetUpDefaultBaseCtorCall (tokenDeclFunc);
+				} else {
+					// default constructor that doesn't do anything is trivial
+					tokenDeclFunc.triviality = Triviality.trivial;
 				}
 
-				tokdeclcl.members.AddEntry (tokenDeclFunc);
+				tokenScript.AddVarEntry (tokenDeclFunc);
 			}
 
 			/*
-			 * Skip over the closing brace.
+			 * Skip over the closing brace and pop corresponding var frame.
 			 */
 			token = token.nextToken;
+			tokenScript.PopVarFrame ();
+		ret:
+			currentDeclSDType = saveCurSDType;
 		}
 
 		/**
@@ -847,14 +855,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 * @brief Parse a property declaration.
 		 * @param token = points to the property type token on entry
 		 *                points just past the closing brace on return
-		 * @param members = dictionary to add property to
 		 * @param abs = true: property is abstract
 		 *             false: property is concrete
 		 * @param imp = allow implemented interface specs
 		 * @returns null: parse failure
 		 *          else: property
 		 */
-		private TokenDeclVar ParseProperty (ref Token token, VarDict members, bool abs, bool imp)
+		private TokenDeclVar ParseProperty (ref Token token, bool abs, bool imp)
 		{
 			/*
 			 * Parse out the property's type and name.
@@ -901,9 +908,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				 */
 				if (token is TokenKwGet) {
 					TokenArgDecl argDecl = new TokenArgDecl (token);
-					argDecl.names = new TokenName[0];
-					argDecl.types = new TokenType[0];
-					argDecl.locns = new CompValu[0];
 
 					getFunc = new TokenDeclVar (token, null, tokenScript);
 					getFunc.retType     = type;
@@ -914,7 +918,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					token = token.nextToken;
 					if (!ParseFunctionBody (ref token, getFunc, abs)) {
 						getFunc = null;
-					} else if (!members.AddEntry (getFunc)) {
+					} else if (!tokenScript.AddVarEntry (getFunc)) {
 						ErrorMsg (getFunc, "duplicate getter");
 					}
 					continue;
@@ -925,11 +929,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				 */
 				if (token is TokenKwSet) {
 					TokenArgDecl argDecl = new TokenArgDecl (token);
-					argDecl.names = new TokenName[1];
-					argDecl.types = new TokenType[1];
-					argDecl.locns = new CompValu[1];
-					argDecl.names[0] = new TokenName (token, "value");
-					argDecl.types[0] = type;
+					argDecl.AddArg (type, new TokenName (token, "value"));
 
 					setFunc = new TokenDeclVar (token, null, tokenScript);
 					setFunc.retType     = new TokenTypeVoid (token);
@@ -940,7 +940,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					token = token.nextToken;
 					if (!ParseFunctionBody (ref token, setFunc, abs)) {
 						setFunc = null;
-					} else if (!members.AddEntry (setFunc)) {
+					} else if (!tokenScript.AddVarEntry (setFunc)) {
 						ErrorMsg (setFunc, "duplicate setter");
 					}
 					continue;
@@ -969,7 +969,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			/*
 			 * Can't be same name already in block.
 			 */
-			if (!members.AddEntry (tokenDeclVar)) {
+			if (!tokenScript.AddVarEntry (tokenDeclVar)) {
 				ErrorMsg (tokenDeclVar, "duplicate variable " + name.val);
 				return null;
 			}
@@ -1027,12 +1027,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 			TokenDeclVar saveDeclFunc = currentDeclFunc;
 			currentDeclFunc = tokenDeclFunc;
+			tokenScript.PushVarFrame (tokenDeclFunc.argDecl.varDict);
 			try {
 				/*
 				 * Set up reference to base constructor.
 				 */
 				TokenRValBaseField baseCtor = new TokenRValBaseField (token, 
-				                              new TokenName (token, "constructor"));
+				                              new TokenName (token, "constructor"), 
+				                              tokdeclcl);
 
 				/*
 				 * Parse any base constructor call as if it were the first statement of the
@@ -1052,6 +1054,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					if (rvc == null) return;
 					if (tokdeclcl.extends != null) {
 						tokenDeclFunc.baseCtorCall = rvc;
+						tokenDeclFunc.unknownTrivialityCalls.AddLast (rvc);
 					} else {
 						ErrorMsg (rvc, "base constructor call cannot be specified if not extending anything");
 					}
@@ -1061,9 +1064,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					 * Caller didn't specify a constructor but we are extending, so we will 
 					 * call the extended class's default constructor.
 					 */
-					TokenRValCall rvc = new TokenRValCall (token);
-					rvc.meth          = baseCtor;
-					tokenDeclFunc.baseCtorCall = rvc;
+					SetUpDefaultBaseCtorCall (tokenDeclFunc);
 				}
 
 				/*
@@ -1073,6 +1074,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				if (tokenDeclFunc.body == null) return;
 				if (tokenDeclFunc.argDecl == null) return;
 			} finally {
+				tokenScript.PopVarFrame ();
 				currentDeclFunc = saveDeclFunc;
 			}
 
@@ -1082,9 +1084,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * Note that script can't call it directly via a call to a method named constructor
 			 * because constructor is a keyword.
 			 */
-			if (!tokdeclcl.members.AddEntry (tokenDeclFunc)) {
+			if (!tokenScript.AddVarEntry (tokenDeclFunc)) {
 				ErrorMsg (tokenDeclFunc, "duplicate constructor definition");
 			}
+		}
+
+		/**
+		 * @brief Set up a call from a constructor to its default base constructor.
+		 */
+		private void SetUpDefaultBaseCtorCall (TokenDeclVar thisCtor)
+		{
+			TokenRValBaseField baseCtor = new TokenRValBaseField (thisCtor, 
+			                              new TokenName (thisCtor, "constructor"), 
+			                              thisCtor.sdtClass);
+			TokenRValCall rvc = new TokenRValCall (thisCtor);
+			rvc.meth          = baseCtor;
+			thisCtor.baseCtorCall = rvc;
+			thisCtor.unknownTrivialityCalls.AddLast (rvc);
 		}
 
 		/**
@@ -1102,7 +1118,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			if (tokenDeclFunc != null) {
 				tokenDeclFunc.sdtClass = tokdeclcl;
 				tokenDeclFunc.sdtFlags = flags;
-				if (!tokdeclcl.members.AddEntry (tokenDeclFunc)) {
+				if (!tokenScript.AddVarEntry (tokenDeclFunc)) {
 					string funcNameSig = tokenDeclFunc.funcNameSig.val;
 					ErrorMsg (tokenDeclFunc.funcNameSig, "duplicate method name " + funcNameSig);
 				}
@@ -1230,6 +1246,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			}
 			token = u.nextToken;
 
+			// start a var definition frame to collect the interface members
+			tokenScript.PushVarFrame ();
+			tokdeclin.methsNProps = tokenScript.variablesStack;
+
 			// process declaration statements until '}'
 			while (!(token is TokenKwBrcClose)) {
 				if (token is TokenKwSemi) {
@@ -1252,7 +1272,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					Token name = token.nextToken;
 					TokenDeclVar tokenDeclFunc = ParseDeclFunc (ref token, true, false);
 					if (tokenDeclFunc == null) continue;
-					if (!tokdeclin.methsNProps.AddEntry (tokenDeclFunc)) {
+					if (!tokenScript.AddVarEntry (tokenDeclFunc)) {
 						ErrorMsg (name, "duplicate method name");
 						continue;
 					}
@@ -1268,7 +1288,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					Token name = token;
 					TokenDeclVar tokenDeclFunc = ParseDeclFunc (ref token, true, false);
 					if (tokenDeclFunc == null) continue;
-					if (!tokdeclin.methsNProps.AddEntry (tokenDeclFunc)) {
+					if (!tokenScript.AddVarEntry (tokenDeclFunc)) {
 						ErrorMsg (name, "duplicate method name");
 					}
 					continue;
@@ -1281,7 +1301,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				if ((token is TokenType) &&
 				    (token.nextToken is TokenName) &&
 				    (token.nextToken.nextToken is TokenKwBrcOpen)) {
-					ParseProperty (ref token, tokdeclin.methsNProps, true, false);
+					ParseProperty (ref token, true, false);
 					continue;
 				}
 
@@ -1293,9 +1313,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			}
 
 			/*
-			 * Skip over the closing brace.
+			 * Skip over the closing brace and pop the corresponding var frame.
 			 */
 			token = token.nextToken;
+			tokenScript.PopVarFrame ();
 		}
 
 		/**
@@ -1450,10 +1471,29 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				return true;
 			}
 
+			/*
+			 * Declare this function as being the one currently being processed
+			 * for anything that cares.  We also start a variable frame that 
+			 * includes all the declared parameters.
+			 */
 			TokenDeclVar saveDeclFunc = currentDeclFunc;
 			currentDeclFunc = tokenDeclFunc;
+			tokenScript.PushVarFrame (tokenDeclFunc.argDecl.varDict);
+
+			/*
+			 * Now parse the function statement block.
+			 */
 			tokenDeclFunc.body = ParseStmtBlock (ref token);
+
+			/*
+			 * Pop the var frame that contains the arguments.
+			 */
+			tokenScript.PopVarFrame ();
 			currentDeclFunc = saveDeclFunc;
+
+			/*
+			 * Check final errors.
+			 */
 			if (tokenDeclFunc.body == null) return false;
 			if (abs) {
 				ErrorMsg (tokenDeclFunc.body, "abstract function must not have body");
@@ -1530,6 +1570,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			tokenStmtBlock.function = currentDeclFunc;
 			tokenStmtBlock.outerStmtBlock = currentStmtBlock;
 			currentStmtBlock = tokenStmtBlock;
+			tokenScript.PushVarFrame ();
 			Token prevStmt = null;
 			token = token.nextToken;
 			while (!(token is TokenKwBrcClose)) {
@@ -1540,7 +1581,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				}
 				Token thisStmt;
 				if ((token is TokenType) || (token is TokenKwConst)) {
-					thisStmt = ParseDeclVar (ref token, currentStmtBlock.variables);
+					thisStmt = ParseDeclVar (ref token);
 				} else {
 					thisStmt = ParseStmt (ref token);
 				}
@@ -1550,6 +1591,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				prevStmt = thisStmt;
 			}
 			token = token.nextToken;
+			tokenScript.PopVarFrame ();
 			currentStmtBlock = tokenStmtBlock.outerStmtBlock;
 			return tokenStmtBlock;
 		}
@@ -1603,6 +1645,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		private TokenStmtDo ParseStmtDo (ref Token token)
 		{
+			currentDeclFunc.triviality = Triviality.complex;
 			TokenStmtDo tokenStmtDo = new TokenStmtDo (token);
 			token = token.nextToken;
 			tokenStmtDo.bodyStmt = ParseStmt (ref token);
@@ -1632,6 +1675,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		private TokenStmt ParseStmtFor (ref Token token)
 		{
+			currentDeclFunc.triviality = Triviality.complex;
 
 			/*
 			 * Create encapsulating token and skip past 'for ('
@@ -1660,9 +1704,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			TokenStmtBlock forStmtBlock = new TokenStmtBlock (tokenStmtFor);
 			forStmtBlock.outerStmtBlock = currentStmtBlock;
 			forStmtBlock.function       = currentDeclFunc;
+			tokenScript.PushVarFrame ();
 
-			TokenDeclVar tokenDeclVar   = ParseDeclVar (ref token, currentStmtBlock.variables);
+			TokenDeclVar tokenDeclVar   = ParseDeclVar (ref token);
 			if (tokenDeclVar == null) {
+				tokenScript.PopVarFrame ();
 				currentStmtBlock    = forStmtBlock.outerStmtBlock;
 				return null;
 			}
@@ -1671,6 +1717,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			tokenDeclVar.nextToken      = tokenStmtFor;
 
 			bool ok                     = ParseStmtFor2 (tokenStmtFor, ref token);
+			tokenScript.PopVarFrame ();
 			currentStmtBlock            = forStmtBlock.outerStmtBlock;
 			return ok ? forStmtBlock : null;
 		}
@@ -1710,7 +1757,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		private TokenStmt ParseStmtForEach (ref Token token)
 		{
-
 			/*
 			 * Create encapsulating token and skip past 'foreach ('
 			 */
@@ -1723,7 +1769,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			token = token.nextToken;
 
 			if (token is TokenName) {
-				tokenStmtForEach.keyLVal = new TokenLValName ((TokenName)token);
+				tokenStmtForEach.keyLVal = new TokenLValName ((TokenName)token, tokenScript);
 				token = token.nextToken;
 			}
 			if (!(token is TokenKwComma)) {
@@ -1733,7 +1779,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			}
 			token = token.nextToken;
 			if (token is TokenName) {
-				tokenStmtForEach.valLVal = new TokenLValName ((TokenName)token);
+				tokenStmtForEach.valLVal = new TokenLValName ((TokenName)token, tokenScript);
 				token = token.nextToken;
 			}
 			if (!(token is TokenKwIn)) {
@@ -1773,7 +1819,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		private TokenStmtJump ParseStmtJump (ref Token token)
 		{
-
 			/*
 			 * Create jump statement token to encapsulate the whole statement.
 			 */
@@ -1790,9 +1835,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			/*
 			 * If label is already defined, it means this is a backward (looping)
 			 * jump, so remember the label has backward jump references.
+			 * We also then assume the function is complex, ie, it has a loop.
 			 */
 			if (currentDeclFunc.labels.ContainsKey (tokenStmtJump.label.val)) {
 				currentDeclFunc.labels[tokenStmtJump.label.val].hasBkwdRefs = true;
+				currentDeclFunc.triviality = Triviality.complex;
 			}
 
 			return tokenStmtJump;
@@ -1972,7 +2019,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				tag.name = (TokenName)token;
 				token = token.nextToken.nextToken;      // skip over <varname> ')'
 				tokenStmtTry.catchVar = tag;
+				tokenScript.PushVarFrame ();
+				tokenScript.AddVarEntry (tag);
 				tokenStmtTry.catchStmt = ParseStmtBlock (ref token);
+				tokenScript.PopVarFrame ();
 				if (tokenStmtTry.catchStmt == null) return null;
 			}
 			if (token is TokenKwFinally) {
@@ -1989,6 +2039,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		private TokenStmtWhile ParseStmtWhile (ref Token token)
 		{
+			currentDeclFunc.triviality = Triviality.complex;
 			TokenStmtWhile tokenStmtWhile = new TokenStmtWhile (token);
 			token = token.nextToken;
 			tokenStmtWhile.testRVal = ParseRValParen (ref token);
@@ -2001,13 +2052,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		/**
 		 * @brief parse a variable declaration statement, including init value if any.
 		 * @param token = points to type or 'constant' token
-		 * @param variables = list of variables to insert it in
 		 * @returns null: parsing error
 		 *          else: variable declaration encapulating token
 		 *          token = advanced just past semi-colon
 		 *          variables = modified to include the new variable
 		 */
-		private TokenDeclVar ParseDeclVar (ref Token token, VarDict variables)
+		private TokenDeclVar ParseDeclVar (ref Token token)
 		{
 			TokenDeclVar tokenDeclVar = new TokenDeclVar (token.nextToken, currentDeclFunc, tokenScript);
 
@@ -2077,7 +2127,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			/*
 			 * Can't be same name already in block.
 			 */
-			if (!variables.AddEntry (tokenDeclVar)) {
+			if (!tokenScript.AddVarEntry (tokenDeclVar)) {
 				ErrorMsg (tokenDeclVar, "duplicate variable " + tokenDeclVar.name.val);
 				return null;
 			}
@@ -2093,38 +2143,33 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		private TokenArgDecl ParseFuncArgs (ref Token token)
 		{
-			int nArgs = 0;
-			LinkedList<TokenName> nameList = new LinkedList<TokenName> ();
-			LinkedList<TokenType> typeList = new LinkedList<TokenType> ();
 			TokenArgDecl tokenArgDecl = new TokenArgDecl (token);
 
+			bool first = true;
 			do {
 				token = token.nextToken;
-				if ((nArgs == 0) && (token is TokenKwParClose)) break;
+				if ((token is TokenKwParClose) && first) break;
 				if (!(token is TokenType)) {
 					ErrorMsg (token, "expecting arg type");
 					token = SkipPastSemi (token);
 					return null;
 				}
-				typeList.AddLast ((TokenType)token);
-
+				TokenType type = (TokenType)token;
 				token = token.nextToken;
 				if (!(token is TokenName)) {
 					ErrorMsg (token, "expecting arg name");
 					token = SkipPastSemi (token);
 					return null;
 				}
-				foreach (TokenName dupCheck in nameList) {
-					if (dupCheck.val == ((TokenName)token).val) {
-						ErrorMsg (token, "duplicate arg name");
-						break;
-					}
-				}
-				nameList.AddLast ((TokenName)token);
-				nArgs ++;
-
+				TokenName name = (TokenName)token;
 				token = token.nextToken;
+
+				if (!tokenArgDecl.AddArg (type, name)) {
+					ErrorMsg (name, "duplicate arg name");
+				}
+				first = false;
 			} while (token is TokenKwComma);
+
 			if (!(token is TokenKwParClose)) {
 				ErrorMsg (token, "expecting comma or close paren");
 				token = SkipPastSemi (token);
@@ -2132,9 +2177,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			}
 			token = token.nextToken;
 
-			tokenArgDecl.types = System.Linq.Enumerable.ToArray (typeList);
-			tokenArgDecl.names = System.Linq.Enumerable.ToArray (nameList);
-			tokenArgDecl.locns = new CompValu[nArgs];
 			return tokenArgDecl;
 		}
 
@@ -2161,7 +2203,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * Keep scanning until we hit the termination token.
 			 */
 			while (true) {
-				Type tokType = token.GetType();
+				Type tokType = token.GetType ();
 				for (int i = termTokenTypes.Length; -- i >= 0;) {
 					if (tokType == termTokenTypes[i]) goto done;
 				}
@@ -2382,14 +2424,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				}
 				TokenLValIField field = new TokenLValIField (token);
 				field.baseRVal = operand;
-				field.field = (TokenName)token;
+				field.fieldName = (TokenName)token;
 				operand = field;
 				token = token.nextToken;
 				goto modifiers;
 			}
 
 			/*
-			 * If follwed by a '[', it is an array subscript.
+			 * If followed by a '[', it is an array subscript.
 			 */
 			if (token is TokenKwBrkOpen) {
 				TokenLValArEle tokenLValArEle = new TokenLValArEle (token);
@@ -2572,7 +2614,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * Maybe we have 'this' referring to the object of the instance method.
 			 */
 			if (token is TokenKwThis) {
-				TokenRValThis zhis = new TokenRValThis (token);
+				if ((currentDeclSDType == null) || !(currentDeclSDType is TokenDeclSDTypeClass)) {
+					ErrorMsg (token, "using 'this' outside class definition");
+					throw new Exception ("BARFING OUT");
+					token = SkipPastSemi (token);
+					return null;
+				}
+				TokenRValThis zhis = new TokenRValThis (token, (TokenDeclSDTypeClass)currentDeclSDType);
 				token = token.nextToken;
 				return zhis;
 			}
@@ -2581,13 +2629,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * Maybe we have 'base' referring to a field/method of the extended class.
 			 */
 			if (token is TokenKwBase) {
+				if ((currentDeclFunc == null) || (currentDeclFunc.sdtClass == null)) {
+					ErrorMsg (token, "using 'base' outside method");
+					token = SkipPastSemi (token);
+					return null;
+				}
 				if (!(token.nextToken is TokenKwDot) || !(token.nextToken.nextToken is TokenName)) {
 					ErrorMsg (token, "base must be followed by . then field or method name");
-					TokenRValThis zhis = new TokenRValThis (token);
+					TokenRValThis zhis = new TokenRValThis (token, currentDeclFunc.sdtClass);
 					token = token.nextToken;
 					return zhis;
 				}
-				TokenRValBaseField baseField = new TokenRValBaseField (token, (TokenName)token.nextToken.nextToken);
+				TokenRValBaseField baseField = new TokenRValBaseField (token, 
+				                               (TokenName)token.nextToken.nextToken, 
+				                               currentDeclFunc.sdtClass);
 				token = token.nextToken.nextToken.nextToken;
 				return baseField;
 			}
@@ -2614,7 +2669,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * All we got left is <name>, eg, arg, function, global or local variable reference
 			 */
 			if (token is TokenName) {
-				TokenLValName name = new TokenLValName ((TokenName)token);
+				TokenLValName name = new TokenLValName ((TokenName)token, tokenScript);
 				token = token.nextToken;
 				return name;
 			}
@@ -2653,6 +2708,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				if (rValCall.args == null) return null;
 				rValCall.nArgs = SplitCommaRVals (rValCall.args, out rValCall.args, ref rValCall.sideEffects);
 			}
+
+			currentDeclFunc.unknownTrivialityCalls.AddLast (rValCall);
 
 			return rValCall;
 		}
@@ -3611,11 +3668,50 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	 */
 	public class TokenArgDecl : Token
 	{
-		public TokenType[] types;
-		public TokenName[] names;
-		public CompValu[]  locns;  // used by codegen to keep track of locations
+		public VarDict varDict = new VarDict ();
 
 		public TokenArgDecl (Token original) : base (original) { }
+
+		public bool AddArg (TokenType type, TokenName name)
+		{
+			TokenDeclVar var = new TokenDeclVar (name, null, null);
+			var.name = name;
+			var.type = type;
+			var.vTableIndex = varDict.Count;
+			return varDict.AddEntry (var);
+		}
+
+		/**
+		 * @brief Get an array of the argument types.
+		 */
+		private TokenType[] _types;
+		public TokenType[] types {
+			get {
+				if (_types == null) {
+					_types = new TokenType[varDict.Count];
+					foreach (TokenDeclVar var in varDict) {
+						_types[var.vTableIndex] = var.type;
+					}
+				}
+				return _types;
+			}
+		}
+
+		/**
+		 * @brief Access the arguments as an array of variables.
+		 */
+		private TokenDeclVar[] _vars;
+		public TokenDeclVar[] vars {
+			get {
+				if (_vars == null) {
+					_vars = new TokenDeclVar[varDict.Count];
+					foreach (TokenDeclVar var in varDict) {
+						_vars[var.vTableIndex] = var;
+					}
+				}
+				return _vars;
+			}
+		}
 
 		/**
 		 * @brief Get argument signature string, eg, "(list,vector,integer)"
@@ -3624,15 +3720,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public string GetArgSig ()
 		{
 			if (argSig == null) {
-				StringBuilder sb = new StringBuilder ("(");
-				bool first = true;
-				foreach (TokenType t in types) {
-					if (!first) sb.Append (',');
-					sb.Append (t.ToString ());
-					first = false;
-				}
-				sb.Append (")");
-				argSig = sb.ToString ();
+				argSig = ScriptCodeGen.ArgSigString (types);
 			}
 			return argSig;
 		}
@@ -3649,6 +3737,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenDeclState (Token original) : base (original) { }
 	}
 
+	/**
+	 * @brief encapsulate the declaration of a field/function/method/property/variable.
+	 */
+
+	public enum Triviality {  // function triviality: has no loops and doesn't call anything that has loops
+	                          // such a function does not need all the CheckRun() and stack serialization stuff
+		unknown,   // function's Triviality unknown as of yet
+		           // - it does not have any loops or backward gotos
+		           // - nothing it calls is known to be complex
+		trivial,   // function known to be trivial
+		           // - it does not have any loops or backward gotos
+		           // - everything it calls is known to be trivial
+		complex,   // function known to be complex
+		           // - it has loops or backward gotos
+		           // - something it calls is known to be complex
+		analyzing  // triviality is being analyzed (used to detect recursive loops)
+	};
+
 	public class TokenDeclVar : Token {
 		public TokenName name;                 // vars: name; funcs: bare name, ie, no signature
 		public TokenRVal init;                 // vars: null if none; funcs: null
@@ -3658,6 +3764,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public CompValu location;              // used by codegen to keep track of location
 		public FieldInfo vTableArray;
 		public int vTableIndex = -1;           // local vars: not used (-1)
+		                                       // arg vars: index in the arg list
 		                                       // global vars: which slot in gbl<Type>s[] array it is stored
 		                                       // instance vars: which slot in inst<Types>s[] array it is stored
 		                                       // static vars: which slot in gbl<Type>s[] array it is stored
@@ -3669,8 +3776,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		                                       // ... or null if not necessary
 
 		public TokenScript tokenScript;        // what script this function is part of
-		public TokenDeclSDTypeClass sdtClass;  // null: script global function
-		                                       // else: method is part of this script-defined type
+		public TokenDeclSDTypeClass sdtClass;  // null: script global member
+		                                       // else: member is part of this script-defined type
 		public TokenDeclVar getProp;           // property get function
 		public TokenDeclVar setProp;           // property set function
 
@@ -3686,6 +3793,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		                                       // - doesn't include argument variables
 		public TokenIntfImpl implements;       // if script-defined type method, what interface method(s) this func implements
 		public TokenRValCall baseCtorCall;     // if script-defined type constructor, call to base constructor, if any
+		public Triviality triviality = Triviality.unknown;
+		                                       // vars: unknown (not used for any thing); funcs: unknown/trivial/complex
+		public LinkedList<TokenRValCall> unknownTrivialityCalls = new LinkedList<TokenRValCall> ();
+		                                       // reduction puts all calls here
+		                                       // compilation sorts it all out
 
 		public ScriptMyILGen ilGen;            // codegen stores emitted code here
 
@@ -3737,6 +3849,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				if (retType == null) return ln + "." + name.val;
 				return ln + "." + funcNameSig.val;
 			}
+		}
+
+		/**
+		 * @brief See if reading or writing the variable is trivial.
+		 *        Note that for functions, this is reading the function itself, 
+		 *        as in 'someDelegate = SomeFunction;', not calling it as such.
+		 *        The triviality of actually calling the function is IsFuncTrivial().
+		 */
+		public bool IsVarTrivial (ScriptCodeGen scg)
+		{
+			// reading or writing a property involves a function call however
+			// so we need to check the triviality of the property functions
+			if ((getProp != null) && !getProp.IsFuncTrivial (scg)) return false;
+			if ((setProp != null) && !setProp.IsFuncTrivial (scg)) return false;
+
+			// otherwise for variables it is a trivial access
+			// and likewise for getting a delegate that points to a function
+			return true;
 		}
 
 		/***************************\
@@ -3802,10 +3932,79 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		}
 
 		/**
-		 * @brief Serialization/Deserialization.
+		 * @brief See if the function's code itself is trivial or not.
+		 *        If it contains any loops (calls to CheckRun()), it is not trivial.
+		 *        If it calls anything that is not trivial, it is not trivial.
+		 *        Otherwise it is trivial.
 		 */
-		public TokenDeclVar (Token original) : base (original) { }
+		public bool IsFuncTrivial (ScriptCodeGen scg)
+		{
+			if (retType == null) throw new Exception ("can't call a non-function");
 
+			/*
+			 * All virtual functions are non-trivial because although a particular 
+			 * one might be trivial, it might be overidden with a non-trivial one.
+			 */
+			if ((sdtFlags & (ScriptReduce.SDT_ABSTRACT | ScriptReduce.SDT_OVERRIDE | 
+			                 ScriptReduce.SDT_VIRTUAL)) != 0) {
+				return false;
+			}
+
+			/*
+			 * Check the triviality status of the function.
+			 */
+			switch (triviality) {
+
+				/*
+				 * Don't yet know if it is trivial.
+				 * We know at this point it doesn't have any direct looping.
+				 * But if it calls something that has loops, it isn't trivial.
+				 * Otherwise it is trivial.
+				 */
+				case Triviality.unknown: {
+
+					/*
+					 * Mark that we are analyzing this function now.  So if there are 
+					 * any recursive call loops, that will show that the function is 
+					 * non-trivial and the analysis will terminate at that point.
+					 */
+					triviality = Triviality.analyzing;
+
+					/*
+					 * Check out everything else this function calls.  If any say they 
+					 * aren't trivial, then we say this function isn't trivial.
+					 */
+					foreach (TokenRValCall call in unknownTrivialityCalls) {
+						if (!call.IsRValTrivial (scg, null)) {
+							triviality = Triviality.complex;
+							return false;
+						}
+					}
+
+					/*
+					 * All functions called by this function are trivial, and this 
+					 * function's code doesn't have any loops, so we can mark this 
+					 * function as being trivial.
+					 */
+					triviality = Triviality.trivial;
+					return true;
+				}
+
+				/*
+				 * We already know that it is trivial.
+				 */
+				case Triviality.trivial: {
+					return true;
+				}
+
+				/*
+				 * We either know it is complex or are trying to analyze it already.
+				 * If we are already analyzing it, it means it has a recursive loop
+				 * and we assume those are non-trivial.
+				 */
+				default: return false;
+			}
+		}
 	}
 
 	/**
@@ -3824,9 +4023,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	/**
 	 * @brief any expression that can go on left side of an "="
 	 */
-	public class TokenLVal : TokenRVal {
-
+	public abstract class TokenLVal : TokenRVal {
 		public TokenLVal (Token original) : base (original) { }
+		public abstract override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig);
+		public abstract override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig);
 	}
 
 	/**
@@ -3837,6 +4037,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenRVal subRVal;
 
 		public TokenLValArEle (Token original) : base (original) { }
+
+		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			return new TokenTypeObject (subRVal);
+		}
+
+		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			return baseRVal.IsRValTrivial (scg, null) && subRVal.IsRValTrivial (scg, null);
+		}
 	}
 
 	/**
@@ -3844,9 +4054,103 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	 */
 	public class TokenLValIField : TokenLVal {
 		public TokenRVal baseRVal;
-		public TokenName field;
+		public TokenName fieldName;
 
 		public TokenLValIField (Token original) : base (original) { }
+
+		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			TokenType baseType = baseRVal.GetRValType (scg, null);
+			if (baseType is TokenTypeSDTypeClass) {
+				TokenDeclVar var = scg.FindThisMember ((TokenTypeSDTypeClass)baseType, fieldName, argsig);
+				if (var != null) return var.type;
+			}
+			if (baseType is TokenTypeArray) {
+				return XMR_Array.GetRValType (fieldName);
+			}
+			if ((baseType is TokenTypeRot) || (baseType is TokenTypeVec)) {
+				return new TokenTypeFloat (fieldName);
+			}
+			scg.ErrorMsg (fieldName, "unknown member of " + baseType.ToString ());
+			return new TokenTypeVoid (fieldName);
+		}
+
+		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			/*
+			 * If getting pointer to instance isn't trivial, then accessing the member isn't trivial either.
+			 */
+			if (!baseRVal.IsRValTrivial (scg, null)) return false;
+
+			/*
+			 * Accessing a member of a class depends on the member.
+			 * In the case of a method, this is accessing it as a delegate, not calling it, and 
+			 * argsig simply serves as selecting which of possibly overloaded methods to select.
+			 * The case of accessing a property, however, depends on the property implementation, 
+			 * as there could be looping inside the property code.
+			 */
+			TokenType baseType = baseRVal.GetRValType (scg, null);
+			if (baseType is TokenTypeSDTypeClass) {
+				TokenDeclVar var = scg.FindThisMember ((TokenTypeSDTypeClass)baseType, fieldName, argsig);
+				return (var != null) && var.IsVarTrivial (scg);
+			}
+
+			/*
+			 * Accessing the members of anything else (arrays, rotations, vectors) is always trivial.
+			 */
+			return true;
+		}
+
+		/**
+		 * @brief Check to see if the case of calling an instance method of some object is trivial.
+		 * @param scg = script making the call
+		 * @param argsig = argument types of the call (used to select among overloads)
+		 * @returns true iff we can tell at compile time that the call will always call a trivial method
+		 */
+		public override bool IsCallTrivial (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			/*
+			 * If getting pointer to instance isn't trivial, then calling the method isn't trivial either.
+			 */
+			if (!baseRVal.IsRValTrivial (scg, null)) return false;
+
+			/*
+			 * Calling a method of a class depends on the method.
+			 */
+			TokenType baseType = baseRVal.GetRValType (scg, null);
+			if (baseType is TokenTypeSDTypeClass) {
+				TokenDeclVar var = scg.FindThisMember ((TokenTypeSDTypeClass)baseType, fieldName, argsig);
+				return (var != null) && var.IsFuncTrivial (scg);
+			}
+
+			/*
+			 * Calling via a pointer to an interface instance is never trivial.
+			 * (It is really a pointer to an array of delegates).
+			 * We can't tell for this call site whether the actual method being called is trivial or not,
+			 * so we have to assume it isn't.
+			 * ??? We could theoretically check to see if *all* implementations of this method of 
+			 *     this interface are trivial, then we could conclude that this call is trivial.
+			 */
+			if (baseType is TokenTypeSDTypeInterface) return false;
+
+			/*
+			 * Calling a method of anything else (arrays, rotations, vectors) is always trivial.
+			 * Even methods of delegates, such as ".GetArgTypes()" that we may someday do is trivial.
+			 */
+			return true;
+		}
+
+		/*
+		 * Debugging
+		 */
+		public override string ToString ()
+		{
+			StringBuilder sb = new StringBuilder ();
+			sb.Append (baseRVal);
+			sb.Append (".");
+			sb.Append (fieldName.val);
+			return sb.ToString ();
+		}
 	}
 
 	/**
@@ -3854,16 +4158,39 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	 */
 	public class TokenLValName : TokenLVal {
 		public TokenName name;
+		public VarDict stack;
 
-		public TokenLValName (TokenName original) : base (original)
+		public TokenLValName (TokenName name, TokenScript tokenScript) : base (name)
 		{
-			this.name = original;
+			this.name  = name;
+			this.stack = tokenScript.variablesStack;
+		}
+
+		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			TokenDeclVar var = scg.FindNamedVar (this, argsig);
+			if (var != null) return var.type;
+			scg.ErrorMsg (name, "undefined name " + name.val + ScriptCodeGen.ArgSigString (argsig));
+			return new TokenTypeVoid (name);
+		}
+
+		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			TokenDeclVar var = scg.FindNamedVar (this, argsig);
+			return (var != null) && var.IsVarTrivial (scg);
 		}
 
 		/**
-		 * @brief Serialization/Deserialization.
+		 * @brief Check to see if the case of calling a global method is trivial.
+		 * @param scg = script making the call
+		 * @param argsig = argument types of the call (used to select among overloads)
+		 * @returns true iff we can tell at compile time that the call will always call a trivial method
 		 */
-		public TokenLValName (Token original) : base (original) { }
+		public override bool IsCallTrivial (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			TokenDeclVar var = scg.FindNamedVar (this, argsig);
+			return (var != null) && var.IsFuncTrivial (scg);
+		}
 	}
 
 	/**
@@ -3874,13 +4201,65 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenName fieldName;
 
 		public TokenLValSField (Token original) : base (original) { }
+
+		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			if (baseType is TokenTypeSDTypeClass) {
+				TokenDeclVar var = scg.FindThisMember ((TokenTypeSDTypeClass)baseType, fieldName, argsig);
+				if (var != null) return var.type;
+			}
+			scg.ErrorMsg (fieldName, "unknown member of " + baseType.ToString ());
+			return new TokenTypeVoid (fieldName);
+		}
+
+		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			/*
+			 * Accessing a member of a class depends on the member.
+			 * In the case of a method, this is accessing it as a delegate, not calling it, and 
+			 * argsig simply serves as selecting which of possibly overloaded methods to select.
+			 * The case of accessing a property, however, depends on the property implementation, 
+			 * as there could be looping inside the property code.
+			 */
+			if (baseType is TokenTypeSDTypeClass) {
+				TokenDeclVar var = scg.FindThisMember ((TokenTypeSDTypeClass)baseType, fieldName, argsig);
+				return (var != null) && var.IsVarTrivial (scg);
+			}
+
+			/*
+			 * Accessing the fields/methods/properties of anything else (arrays, rotations, vectors) is always trivial.
+			 */
+			return true;
+		}
+
+		/**
+		 * @brief Check to see if the case of calling a class' static method is trivial.
+		 * @param scg = script making the call
+		 * @param argsig = argument types of the call (used to select among overloads)
+		 * @returns true iff we can tell at compile time that the call will always call a trivial method
+		 */
+		public override bool IsCallTrivial (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			/*
+			 * Calling a static method of a class depends on the method.
+			 */
+			if (baseType is TokenTypeSDTypeClass) {
+				TokenDeclVar var = scg.FindThisMember ((TokenTypeSDTypeClass)baseType, fieldName, argsig);
+				return (var != null) && var.IsFuncTrivial (scg);
+			}
+
+			/*
+			 * Calling a static method of anything else (arrays, rotations, vectors) is always trivial.
+			 */
+			return true;
+		}
 	}
 
 	/**
 	 * @brief any expression that can go on right side of "="
 	 */
 	public delegate TokenRVal TCCLookup (TokenRVal rVal, ref bool didOne);
-	public class TokenRVal : Token {
+	public abstract class TokenRVal : Token {
 		public bool sideEffects = false;  // the value (or some sub-value) has side effects
 		                                  // - constants are always false
 		                                  // - we assume calls always have side effects
@@ -3888,6 +4267,46 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		                                  // - any assignment operator (=, +=, etc) always true
 		                                  // - all others inherit from their operands
 		public TokenRVal (Token original) : base (original) { }
+
+		/**
+		 * @brief Tell us the type of the expression.
+		 */
+		public abstract TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig);
+
+		/**
+		 * @brief Tell us if reading and writing the value is trivial.
+		 *
+		 * @param scg = script code generator of script making the access
+		 * @param argsig = argument types of the call (used to select among overloads)
+		 * @returns true: we can tell at compile time that reading/writing this location
+		 *                will always be trivial (no looping or CheckRun() calls possible).
+		 *         false: otherwise
+		 */
+		public abstract bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig);
+
+		/**
+		 * @brief Tell us if calling the method is trivial.
+		 *
+		 *        This is the default implementation that returns false.
+		 *        It is only used if the location is holding a delegate
+		 *        and the method that the delegate is pointing to is being
+		 *        called.  Since we can't tell if the actual runtime method
+		 *        is trivial or not, we assume it isn't.
+		 *
+		 *        For the more usual ways of calling functions, see the
+		 *        various overrides of IsCallTrivial().
+		 *
+		 * @param scg = script code generator of script making the call
+		 * @param argsig = argument types of the call (used to select among overloads)
+		 * @returns true: we can tell at compile time that this call will always
+		 *                be to a trivial function/method (no looping or CheckRun() 
+		 *                calls possible).
+		 *         false: otherwise
+		 */
+		public virtual bool IsCallTrivial (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			return false;
+		}
 
 		/**
 		 * @brief If the result of the expression is a constant,
@@ -3910,6 +4329,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenRValAsnPost (Token original) : base (original) {
 			sideEffects = true;
 		}
+
+		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			return lVal.GetRValType (scg, argsig);
+		}
+
+		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			return lVal.IsRValTrivial (scg, null);
+		}
 	}
 
 	/**
@@ -3922,16 +4351,48 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenRValAsnPre (Token original) : base (original) {
 			sideEffects = true;
 		}
+		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			return lVal.GetRValType (scg, argsig);
+		}
+
+		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			return lVal.IsRValTrivial (scg, null);
+		}
 	}
 
 	/**
 	 * @brief 'base.' being used to reference a field/method of the extended class.
 	 */
 	public class TokenRValBaseField : TokenRVal {
-		public TokenName field;
-		public TokenRValBaseField (Token original, TokenName field) : base (original)
+		public TokenName fieldName;
+		private TokenDeclSDTypeClass thisClass;
+
+		public TokenRValBaseField (Token original, TokenName fieldName, TokenDeclSDTypeClass thisClass) : base (original)
 		{
-			this.field = field;
+			this.fieldName = fieldName;
+			this.thisClass = thisClass;
+		}
+
+		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			TokenDeclVar var = scg.FindThisMember (thisClass.extends, fieldName, argsig);
+			if (var != null) return var.type;
+			scg.ErrorMsg (fieldName, "unknown member for " + thisClass.extends.ToString ());
+			return new TokenTypeVoid (fieldName);
+		}
+
+		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			TokenDeclVar var = scg.FindThisMember (thisClass.extends, fieldName, argsig);
+			return (var != null) && var.IsVarTrivial (scg);
+		}
+
+		public override bool IsCallTrivial (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			TokenDeclVar var = scg.FindThisMember (thisClass.extends, fieldName, argsig);
+			return (var != null) && var.IsFuncTrivial (scg);
 		}
 	}
 
@@ -3940,12 +4401,99 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	 */
 	public class TokenRValCall : TokenRVal {
 
-		public TokenRVal meth;  // TokenLValName or TokenLValField
+		public TokenRVal meth;  // points to the function to be called
+		                        // - might be a reference to a global function (TokenLValName)
+		                        // - or an instance method of a class (TokenLValIField)
+		                        // - or a static method of a class (TokenLValSField)
+		                        // - or a delegate stored in a variable (assumption for anything else)
 		public TokenRVal args;  // null-terminated TokenRVal list
 		public int nArgs;       // number of elements in args
 
-		public TokenRValCall (Token original) : base (original) {
+		public TokenRValCall (Token original) : base (original)
+		{
 			sideEffects = true;
+		}
+
+		private TokenType[] myArgSig;
+
+		/**
+		 * @brief The type of a call is the type of the return value.
+		 */
+		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			/*
+			 * Build type signature so we select correct overloaded function.
+			 */
+			if (myArgSig == null) {
+				myArgSig = new TokenType[nArgs];
+				int i = 0;
+				for (Token t = args; t != null; t = t.nextToken) {
+					myArgSig[i++] = ((TokenRVal)t).GetRValType (scg, null);
+				}
+			}
+
+			/*
+			 * Get the type of the method itself.  This should get us a delegate type.
+			 */
+			TokenType delType = meth.GetRValType (scg, myArgSig);
+			if (!(delType is TokenTypeSDTypeDelegate)) {
+				scg.ErrorMsg (meth, "must be function or method");
+				return new TokenTypeVoid (meth);
+			}
+
+			/*
+			 * Get the return type from the delegate type.
+			 */
+			return ((TokenTypeSDTypeDelegate)delType).decl.GetRetType ();
+		}
+
+		/**
+		 * @brief See if the call to the function/method is trivial.
+		 *        It is trivial if all the argument computations are trivial and
+		 *        the function is not being called via virtual table or delegate
+		 *        and the function body is trivial.
+		 */
+		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			/*
+			 * Build type signature so we select correct overloaded function.
+			 */
+			if (myArgSig == null) {
+				myArgSig = new TokenType[nArgs];
+				int i = 0;
+				for (Token t = args; t != null; t = t.nextToken) {
+					myArgSig[i++] = ((TokenRVal)t).GetRValType (scg, null);
+				}
+			}
+
+			/*
+			 * Make sure all arguments can be computed trivially.
+			 */
+			for (Token t = args; t != null; t = t.nextToken) {
+				if (!((TokenRVal)t).IsRValTrivial (scg, null)) return false;
+			}
+
+			/*
+			 * See if the function call itself and the function body are trivial.
+			 */
+			return meth.IsCallTrivial (scg, myArgSig);
+		}
+
+		/*
+		 * Debugging
+		 */
+		public override string ToString ()
+		{
+			StringBuilder sb = new StringBuilder ();
+			sb.Append (meth.ToString ());
+			sb.Append (" (");
+			bool first = true;
+			for (Token t = args; t != null; t = t.nextToken) {
+				if (!first) sb.Append (", ");
+				sb.Append (t.ToString ());
+			}
+			sb.Append (")");
+			return sb.ToString ();
 		}
 	}
 
@@ -3961,6 +4509,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			castTo = type;
 			rVal   = value;
 			sideEffects = value.sideEffects;
+		}
+
+		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			return castTo;
+		}
+
+		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			argsig = null;
+			if (castTo is TokenTypeSDTypeDelegate) {
+				argsig = ((TokenTypeSDTypeDelegate)castTo).decl.GetArgTypes ();
+			}
+			return rVal.IsRValTrivial (scg, argsig);
 		}
 
 		/**
@@ -3992,11 +4554,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			}
 			return this;
 		}
-
-		/**
-		 * @brief Serialization/Deserialization.
-		 */
-		public TokenRValCast (Token original) : base (original) { }
 	}
 
 	/**
@@ -4014,6 +4571,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			else if (val is SCRIPTFLOAT) { type = TokenRValConstType.FLOAT;  tokType = new TokenTypeFloat (this); }
 			else if (val is string)      { type = TokenRValConstType.STRING; tokType = new TokenTypeStr   (this); }
 			else throw new Exception ("invalid constant type " + val.GetType ());
+		}
+
+		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			return tokType;
+		}
+
+		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			return true;
 		}
 
 		public CompValu GetCompValu ()
@@ -4041,6 +4608,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenTypeExp typeExp;
 
 		public TokenRValIsType (Token original) : base (original) { }
+
+		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			return new TokenTypeBool (rValExp);
+		}
+
+		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			return rValExp.IsRValTrivial (scg, argsig);
+		}
 	}
 
 	/**
@@ -4052,6 +4629,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public int nItems;
 
 		public TokenRValList (Token original) : base (original) { }
+
+		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			return new TokenTypeList (rVal);
+		}
+
+		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			for (Token t = rVal; t != null; t = t.nextToken) {
+				if (!((TokenRVal)t).IsRValTrivial (scg, null)) return false;
+			}
+			return true;
+		}
 	}
 
 	/**
@@ -4069,6 +4659,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			rValRight = right;
 
 			CalcSideEffects();
+		}
+
+		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			string key = rValLeft.GetRValType (scg, argsig).ToString () + opcode.ToString () + 
+			             rValRight.GetRValType (scg, argsig).ToString ();
+
+			BinOpStr binOpStr;
+			if (BinOpStr.defined.TryGetValue (key, out binOpStr)) {
+				return TokenType.FromSysType (opcode, binOpStr.outtype);
+			}
+			scg.ErrorMsg (opcode, "undefined operation " + key);
+			return new TokenTypeVoid (opcode);
+		}
+
+		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			return rValLeft.IsRValTrivial (scg, null) && rValRight.IsRValTrivial (scg, null);
 		}
 
 		/**
@@ -4090,11 +4698,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			}
 			return this;
 		}
-
-		/**
-		 * @brief Serialization/Deserialization.
-		 */
-		public TokenRValOpBin (Token original) : base (original) { }
 
 		private void CalcSideEffects()
 		{
@@ -4119,6 +4722,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			opcode      = op;
 			rVal        = right;
 			sideEffects = right.sideEffects;
+		}
+
+		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			if (opcode is TokenKwExclam) return new TokenTypeInt (opcode);
+			return rVal.GetRValType (scg, null);
+		}
+
+		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			return rVal.IsRValTrivial (scg, null);
 		}
 
 		/**
@@ -4154,6 +4768,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public TokenRValParen (Token original) : base (original) { }
 
+		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			// pass argsig through in this simple case, ie, let 
+			// them do something like (llOwnerSay)("blabla...");
+			return rVal.GetRValType (scg, argsig);
+		}
+
+		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			// pass argsig through in this simple case, ie, let 
+			// them do something like (llOwnerSay)("blabla...");
+			return rVal.IsRValTrivial (scg, argsig);
+		}
+
 		/**
 		 * @brief If operand is constant, we can say the whole thing is a constant.
 		 */
@@ -4176,13 +4804,51 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenRVal wRVal;
 
 		public TokenRValRot (Token original) : base (original) { }
+
+		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			return new TokenTypeRot (xRVal);
+		}
+
+		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			return xRVal.IsRValTrivial (scg, null) && 
+			       yRVal.IsRValTrivial (scg, null) && 
+			       zRVal.IsRValTrivial (scg, null) && 
+			       wRVal.IsRValTrivial (scg, null);
+		}
 	}
 
 	/**
 	 * @brief 'this' is being used as an rval inside an instance method.
 	 */
 	public class TokenRValThis : TokenRVal {
-		public TokenRValThis (Token original) : base (original) { }
+		public Token original;
+		public TokenDeclSDTypeClass sdtClass;
+
+		public TokenRValThis (Token original, TokenDeclSDTypeClass sdtClass) : base (original)
+		{
+			this.original = original;
+			this.sdtClass = sdtClass;
+		}
+
+		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			return sdtClass.MakeRefToken (original);
+		}
+
+		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			return true;  // ldarg.0/starg.0 can't possibly loop
+		}
+
+		/*
+		 * Debugging
+		 */
+		public override string ToString ()
+		{
+			return "this";
+		}
 	}
 
 	/**
@@ -4190,7 +4856,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	 *        It is the null object pointer and has type TokenTypeUndef.
 	 */
 	public class TokenRValUndef : TokenRVal {
-		public TokenRValUndef (Token original) : base (original) { }
+		Token original;
+
+		public TokenRValUndef (Token original) : base (original)
+		{
+			this.original = original;
+		}
+
+		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			return new TokenTypeUndef (original);
+		}
+
+		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			return true;
+		}
 	}
 
 	/**
@@ -4203,20 +4884,57 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenRVal zRVal;
 
 		public TokenRValVec (Token original) : base (original) { }
+
+		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			return new TokenTypeVec (xRVal);
+		}
+
+		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			return xRVal.IsRValTrivial (scg, null) && 
+			       yRVal.IsRValTrivial (scg, null) && 
+			       zRVal.IsRValTrivial (scg, null);
+		}
 	}
 	
 	/**
 	 * @brief encapsulates the whole script in a single token
 	 */
 	public class TokenScript : Token {
-		public VarDict    vars = new VarDict ();
-		public VarDict   funcs = new VarDict ();
-		public int  expiryDays = Int32.MaxValue;
+		public int expiryDays = Int32.MaxValue;
 		public TokenDeclState defaultState;
-		public Dictionary<string, TokenDeclState>  states     = new Dictionary<string, TokenDeclState>  ();
+		public Dictionary<string, TokenDeclState> states = new Dictionary<string, TokenDeclState>  ();
+		public VarDict variablesStack = new VarDict ();  // initial one is used for global functions and variables
 
 		public TokenScript (Token original) : base (original) { }
 
+		/*
+		 * Handle variable definition stack.
+		 * Generally a '{' pushes a new frame and a '}' pops the frame.
+		 * Function parameters are pushed in an additional frame (just outside the body's { ... } block)
+		 */
+		public void PushVarFrame ()
+		{
+			PushVarFrame (new VarDict ());
+		}
+		public void PushVarFrame (VarDict newFrame)
+		{
+			newFrame.outerVarDict = variablesStack;
+			variablesStack = newFrame;
+		}
+		public void PopVarFrame ()
+		{
+			variablesStack = variablesStack.outerVarDict;
+		}
+		public bool AddVarEntry (TokenDeclVar var)
+		{
+			return variablesStack.AddEntry (var);
+		}
+
+		/*
+		 * Handle list of script-defined types.
+		 */
 		private Dictionary<string, TokenDeclSDType> sdSrcTypes = new Dictionary<string, TokenDeclSDType> ();
 		private bool sdSrcTypesSealed = false;
 		public void sdSrcTypesSeal ()

@@ -94,7 +94,7 @@ constant c3 = 45 + Klass.c4;
 
 default
 {
-    touch_start(integer num)
+    state_entry()
     {
         SaySomething ("c0 = " + c0);
         SaySomething ("c1 = " + c1);
@@ -165,5 +165,5 @@ Verify(array a, list s, string expect)
 
 SaySomething(string msg)
 {
-    llSay(0, msg);
+    llOwnerSay(msg);
 }
