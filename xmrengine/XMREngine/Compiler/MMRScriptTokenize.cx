@@ -1135,6 +1135,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         {
             throw new Exception ("not implemented for " + ToString () + " (" + GetType () + ")");
         }
+
+        /**
+         * @brief For most types, this just returns the same token.
+         *        But if it is a generic parameter type, eg, the 'U' in the body of 'Dictionary<T,U>' 
+         *        it returns the instantiated type.  genArgs[1] holds the final type, eg, 'integer'.  
+         *        genArgs[] never holds any TokenTypeGenParam, ie, nothing recursive.
+         */
+        public virtual TokenType ResolveGenParam (TokenType[] genArgs)
+        {
+            return this;
+        }
     }
 
     public class TokenTypeArray : TokenType {

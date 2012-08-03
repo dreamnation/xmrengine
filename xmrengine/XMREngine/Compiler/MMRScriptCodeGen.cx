@@ -237,7 +237,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 									if (declFunc.funcNameSig.val.StartsWith ("constructor(")) {
 										// this is for the "new()" static method that we create below.
 										// See GenerateNewobjBody() etc.
-										new TokenTypeSDTypeDelegate (declFunc, sdtClass.MakeRefToken (declFunc), 
+										new TokenTypeSDTypeDelegate (declFunc, sdtClass.MakeRefToken (declFunc, null), 
 												declFunc.argDecl.types, tokenScript);
 									}
 								}
@@ -762,7 +762,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						}
 					}
 				}
-				sdtClass.isAbstract = (numFilled < sdtClass.numVirtFuncs);
 
 				/*
 				 * If so, define a static class.new() method for every constructor defined for the class.
@@ -771,12 +770,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				 * We don't give tne function a body here, fortunately GenerateNewobjBody() just knows how 
 			 	 * to generate teh code.
 				 */
-				if (!sdtClass.isAbstract) {
+				if (numFilled >= sdtClass.numVirtFuncs) {
 					List<TokenDeclVar> newobjDeclFuncs = new List<TokenDeclVar> ();
 					foreach (TokenDeclVar ctorDeclFunc in sdtClass.members) {
 						if ((ctorDeclFunc.funcNameSig != null) && ctorDeclFunc.funcNameSig.val.StartsWith ("constructor(")) {
 							TokenDeclVar newobjDeclFunc  = new TokenDeclVar (ctorDeclFunc, null, tokenScript);
-							newobjDeclFunc.retType       = sdtClass.MakeRefToken (newobjDeclFunc);
+							newobjDeclFunc.retType       = sdtClass.MakeRefToken (newobjDeclFunc, null);
 							newobjDeclFunc.argDecl       = ctorDeclFunc.argDecl;
 							string nameSig               = "new" + ctorDeclFunc.argDecl.GetArgSig ();
 							newobjDeclFunc.funcNameSig   = new TokenName (newobjDeclFunc, nameSig);
@@ -3107,7 +3106,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					ErrorMsg (baseField, "non-static reference to static member " + fieldName + ArgSigString (argsig));
 					return new CompValuVoid (baseField);
 				}
-				TokenType baseType = declVar.sdtClass.MakeRefToken (baseField);
+				TokenType baseType = declVar.sdtClass.MakeRefToken (baseField, null);
 				CompValu  basePtr  = new CompValuArg (baseType, 0);
 				return (declVar.retType == null) ? (CompValu)new CompValuInstField (declVar, basePtr, true) : 
 				                                   (CompValu)new CompValuInstMeth (declVar, basePtr, true);
@@ -3391,7 +3390,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ErrorMsg (zhis, "cannot use 'this' outside instance method body");
 				return new CompValuVoid (zhis);
 			}
-			return new CompValuArg (curDeclFunc.sdtClass.MakeRefToken (zhis), 0);
+			return new CompValuArg (curDeclFunc.sdtClass.MakeRefToken (zhis, null), 0);
 		}
 
 		/**

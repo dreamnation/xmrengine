@@ -172,8 +172,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * done as a separate scan so they can cross-reference
 			 * each other.
 			 */
-			ParseSDTypePreScanPassOne (tokenBegin, null);  // find definitions
-			ParseSDTypePreScanPassTwo (tokenBegin, null);  // find references
+			ParseSDTypePreScanPassOne  (tokenBegin);        // catalog definitions
+			ParseSDTypePreScanPassTwo  (tokenBegin);        // substitute references
+			ParseSDTypePreScanPassTree (tokenBegin, null);  // instantiate generics
 
 			/*
 			 * Scan through the tokens until we reach the end.
@@ -331,206 +332,512 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		}
 
 		/**
-		 * @prief Pre-scan the source for class, delegate and interface type definitions.
-		 *        Handle forward references and nested definitions.
-		 *        Catalog those types in the tokenScript.sdTypes dictionary.
-		 *        Replace any TokenName tokens that reference those types with corresponding 
-		 *        Token{Decl,Type}SDType{Class,Delegate,Interface} tokens.
-		 *        TokenDeclSDType... are used at the definition site, ie, right after the class/delegate/interface keyword.
-		 *        TokenTypeSDType... are used elsewhere in the code where it references the type.
-		 * @param tokenBegin = top-level case: the TokenBegin
-		 *                        nested case: before the TokenKwBrcOpen
-		 * @param outerSDType = null: top-level scan
-		 *                      else: scanning inside this type for nested definitions
-		 * @returns top-level case: the TokenEnd token
-		 *             nested case: the TokenKwBrcClose
+		 * @prief Pre-scan the source for class, delegate and interface type definition keywords.
+		 *        Clump the keywords and name being defined together.
+		 *        In the case of a delegate with an explicit return type, it reverses the name and return type.
+		 *        After this completes there shouldn't be any TokenKw{Class,Delegate,Interface} keywords in 
+		 *        the source, they are all replaced by TokenDeclSDType{Class,Delegate,Interface} tokens which 
+		 *        also encapsulate the name of the type being defined.
 		 */
-		private Token ParseSDTypePreScanPassOne (Token tokenBegin, TokenDeclSDType outerSDType)
+		private void ParseSDTypePreScanPassOne (Token tokenBegin)
 		{
-			int braces = (outerSDType == null) ? 1 : 0;
-			Token t;
+			Stack<int> braceLevels = new Stack<int> ();
+			Stack<TokenDeclSDType> outerLevels = new Stack<TokenDeclSDType> ();
+			braceLevels.Push (-2);
+			outerLevels.Push (null);
 
-			/*
-			 * Pass one is to build a catalog of all the definitions
-			 * and replace the definitions' TokenName tokens with
-			 * TokenDeclSDType{Class,Delegate,Interface} tokens.
-			 * Handle nested definitions.
-			 */
-			for (t = tokenBegin; !((t = t.nextToken) is TokenEnd);) {
-				string name = null;
-				TokenDeclSDType decl = null;
+			int braces = 0;
+			for (Token t = tokenBegin; !((t = t.nextToken) is TokenEnd);) {
 
 				/*
-				 * Keep track of braces so we know when to stop a nested definition scan.
-				 * We see the opening brace of a nested class or interface and we
-				 * want to stop on and return right on the matching closing brace.
+				 * Keep track of nested definitions so we can link them up.
 				 */
 				if (t is TokenKwBrcOpen) {
 					braces ++;
 					continue;
 				}
 				if (t is TokenKwBrcClose) {
-					if (-- braces <= 0) break;
+					if (-- braces < 0) {
+						ErrorMsg (t, "{ } mismatch");
+						return;
+					}
+					if (braceLevels.Peek () == braces) {
+						braceLevels.Pop ();
+						outerLevels.Pop ().endToken = t;
+					}
+					continue;
+				}
+				if (t is TokenKwSemi) {
+					if (braceLevels.Peek () == -1) {
+						braceLevels.Pop ();
+						outerLevels.Pop ().endToken = t;
+					}
 					continue;
 				}
 
-				// check for 'class' <name>
-				if (t is TokenKwClass) {
+				/*
+				 * Check for 'class' or 'interface'.
+				 * They always define a new class or interface.
+				 */
+				if ((t is TokenKwClass) || (t is TokenKwInterface)) {
+					Token kw = t;
 					t = t.nextToken;
-					if (t is TokenName) {
-						name = ((TokenName)t).val;
-						decl = new TokenDeclSDTypeClass ((TokenName)t);
+					if (!(t is TokenName)) {
+						ErrorMsg (t, "expecting class or interface name");
+						t = SkipPastSemi (t).prevToken;
+						continue;
 					}
+					TokenName name = (TokenName)t;
+					t = t.nextToken;
+
+					/*
+					 * Malloc the script-defined type object.
+					 */
+					TokenDeclSDType decl;
+					if (kw is TokenKwClass) decl = new TokenDeclSDTypeClass (name);
+					               else decl = new TokenDeclSDTypeInterface (name);
+					decl.outerSDType = outerLevels.Peek ();
+
+					/*
+					 * Check for generic parameter list.
+					 */
+					if (!ParseGenProtoParamList (ref t, decl)) continue;
+
+					/*
+					 * Enter it in name lists so it can be seen by others.
+					 */
+					CatalogSDTypeDecl (decl);
+
+					/*
+					 * Splice in a TokenDeclSDType token that replaces the keyword and the name tokens.
+					 */
+					decl.prevToken = kw.prevToken;
+					decl.nextToken = t;
+					decl.prevToken.nextToken = decl;
+					decl.nextToken.prevToken = decl;
+					t = decl;  // must be before '{'
+
+					/*
+					 * Start inner type definitions.
+					 */
+					braceLevels.Push (braces);
+					outerLevels.Push (decl);
+					continue;
 				}
 
-				// check for 'delegate' [ <rettype> ] <name> '('
-				// note that the <rettype> could appear as a name token
-				// if it refers to a script-defined type that we haven't
-				// seen the definition for yet, so we need to check for
-				// the '(' after <name> to be sure we have the delegate's
-				// name.
+				/*
+				 * Check for 'delegate'.
+				 * It always defines a new delegate.
+				 */
 				if (t is TokenKwDelegate) {
+					Token kw = t;
 					t = t.nextToken;
-					if ((t is TokenType) || ((t is TokenName) && !(t.nextToken is TokenKwParOpen))) {
-						t = t.nextToken;
+
+					/*
+					 * Next thing might be an explicit return type or the delegate's name.
+					 * If it's a type token, then it's the return type, simple enough.
+					 * But if it's a name token, it might be the name of some other script-defined type.
+					 * The way to tell is that the delegate name is followed by a '(', whereas an 
+					 * explicit return type is followed by the delegate name.
+					 */
+					Token retType = t;
+					TokenName delName = null;
+					Token u;
+					int angles = 0;
+					for (u = t; !(u is TokenKwParOpen); u = u.nextToken) {
+						if ((u is TokenKwSemi) || (u is TokenEnd)) break;
+						if (u is TokenKwCmpLT) angles ++;
+						if (u is TokenKwCmpGT) angles --;
+						if ((angles == 0) && (u is TokenName)) delName = (TokenName)u;
 					}
-					if (t is TokenName) {
-						name = ((TokenName)t).val;
-						decl = new TokenDeclSDTypeDelegate ((TokenName)t);
+					if (!(u is TokenKwParOpen)) {
+						ErrorMsg (u, "expecting ( for delegate parameter list");
+						t = SkipPastSemi (t).prevToken;
+						continue;
 					}
-				}
-
-				// check for 'interface' <name>
-				if (t is TokenKwInterface) {
-					t = t.nextToken;
-					if (t is TokenName) {
-						name = ((TokenName)t).val;
-						decl = new TokenDeclSDTypeInterface ((TokenName)t);
+					if (delName == null) {
+						ErrorMsg (u, "expecting delegate name");
+						t = SkipPastSemi (t).prevToken;
+						continue;
 					}
-				}
+					if (retType == delName) retType = null;
 
-				// see if we found any one of those
-				if (name != null) {
-					decl.outerSDType = outerSDType;
+					/*
+					 * Malloc the script-defined type object.
+					 */
+					TokenDeclSDTypeDelegate decl = new TokenDeclSDTypeDelegate (delName);
+					decl.outerSDType = outerLevels.Peek ();
 
-					// ok, substitute in declaration for <name> declaration token
-					// leave the 'class', 'delegate' and 'interface' keyword tokens
-					// alone so we will process the bodies later
-					decl.nextToken = t.nextToken;
-					decl.prevToken = t.prevToken;
-					t.prevToken.nextToken = decl;
-					t.nextToken.prevToken = decl;
-					t = decl;
+					/*
+					 * Check for generic parameter list.
+					 */
+					t = delName.nextToken;
+					if (!ParseGenProtoParamList (ref t, decl)) continue;
 
-					// catalog it in the script-global directory using the long name
-					// also catalog it in the outer type's directory using the short name
-					string longName = decl.longName.val;
-					TokenDeclSDType dupDecl;
-					if (tokenScript.sdSrcTypesTryGetValue (longName, out dupDecl)) {
-						ErrorMsg (decl, "duplicate definition of type " + longName);
-						ErrorMsg (dupDecl, "previous definition here");
+					/*
+					 * Enter it in name lists so it can be seen by others.
+					 */
+					CatalogSDTypeDecl (decl);
+
+					/*
+					 * Splice in the token that replaces the 'delegate' keyword and the whole name 
+					 * (including the '<' name ... '>' parts). The return type token(s), if any, 
+					 * follow the splice token and come before the '('.
+					 */
+					decl.prevToken = kw.prevToken;
+					kw.prevToken.nextToken = decl;
+
+					if (retType == null) {
+						decl.nextToken = t;
+						t.prevToken = decl;
 					} else {
-						tokenScript.sdSrcTypesAdd (longName, decl);
-						if (outerSDType != null) {
-							outerSDType.innerSDTypes.Add (name, decl);
-						}
+						decl.nextToken = retType;
+						retType.prevToken = decl;
+						retType.nextToken = t;
+						t.prevToken = retType;
 					}
+					t = decl;  // must be before ';'
 
-					// classes and interfaces can contain nested definitios
-					if ((decl is TokenDeclSDTypeClass) || (decl is TokenDeclSDTypeInterface)) {
-						t = ParseSDTypePreScanPassOne (decl, decl);
-					}
+					/*
+					 * Start inner type definitions.
+					 */
+					braceLevels.Push (-1);
+					outerLevels.Push (decl);
+					continue;
 				}
 			}
-			return t;
 		}
 
-		private Token ParseSDTypePreScanPassTwo (Token tokenBegin, TokenDeclSDType outerSDType)
+		/**
+		 * @brief Parse a possibly generic type definition's parameter list.
+		 * @param t = points to the possible opening '<' on entry
+		 *            points just past the closing '>' on return
+		 * @param decl = the generic type being declared
+		 * @returns false: parse error
+		 *           true: decl.genParams = filled in with parameter list
+		 *                 decl.innerSDTypes = filled in with parameter list
+		 */
+		private static readonly TokenDeclSDTypeGenParam[] zeroGenParams = new TokenDeclSDTypeGenParam[0];
+		private bool ParseGenProtoParamList (ref Token t, TokenDeclSDType decl)
 		{
-			int braces = (outerSDType == null) ? 1 : 0;
-			Token t;
+			/*
+			 * Maybe there aren't any generic parameters.
+			 * But we inherit generic parameters from our outer type.
+			 */
+			if (!(t is TokenKwCmpLT)) {
+				if (decl.outerSDType != null) {
+					decl.genParams = decl.outerSDType.genParams;
+				} else {
+					decl.genParams = zeroGenParams;
+				}
+				return true;
+			}
 
 			/*
-			 * Pass two is to replace all TokenName tokens that refer to the script-defined 
-			 * types with corresponding TokenTypeSDType{Class,Delegate,Interface} tokens.
-			 * Handle nested definitions.
+			 * Build list of generic parameter names.
+			 * Add them as inner types to the defining class.
+			 *
+			 * The array decl.genParams is added on to from the outer class, so there 
+			 * only needs to be one argument array, allowing TokenTypeSDTypeGenParam.ResolveGenParam() 
+			 * to get the arg type in one access.
+			 *
+			 * The decl.innerSDTypes dictionary just gets the defintions for this type.
 			 */
-			for (t = tokenBegin; !((t = t.nextToken) is TokenEnd);) {
-
-				/*
-				 * Keep track of braces so we know when to stop a nested definition scan.
-				 * We see the opening brace of a nested class or interface and we
-				 * want to stop on and return right on the matching closing brace.
-				 */
-				if (t is TokenKwBrcOpen) {
-					braces ++;
-					continue;
+			List<TokenDeclSDTypeGenParam> parms = new List<TokenDeclSDTypeGenParam> ();
+			if (decl.outerSDType != null) {
+				foreach (TokenDeclSDTypeGenParam outerGenParam in decl.outerSDType.genParams) {
+					parms.Add (outerGenParam);
 				}
-				if (t is TokenKwBrcClose) {
-					if (-- braces <= 0) break;
-					continue;
-				}
-
-				/*
-				 * Check for beginning of class or interface definitions.
-				 * They can have nested definitions so add them to the stack.
-				 */
-				if ((t is TokenDeclSDTypeClass) || (t is TokenDeclSDTypeInterface)) {
-					t = ParseSDTypePreScanPassTwo (t, (TokenDeclSDType)t);
-					continue;
-				}
-
-				/*
-				 * For names not preceded by a '.', scan the definition stack for that name.
-				 */
-				if (!(t is TokenName)) continue;
-				if (t.prevToken is TokenKwDot) continue;
-
-				string tname = ((TokenName)t).val;
-				TokenDeclSDType defn = null;
-				for (TokenDeclSDType nt = outerSDType; nt != null; nt = nt.outerSDType) {
-					if (nt.innerSDTypes.TryGetValue (tname, out defn)) break;
-				}
-				if (defn == null) {
-					tokenScript.sdSrcTypesTryGetValue (tname, out defn);
-				}
-				if (defn == null) continue;
-
-				/*
-				 * Found the definition for the top-level name given.
-				 * If name is followed by '.' <innername>, try to find
-				 * the inner name.  If inner name not found, it is 
-				 * something like a static field or method name, so 
-				 * leave it alone.
-				 */
-				Token u;
-				for (u = t; (u = u.nextToken) is TokenKwDot;) {
-					if (!(u.nextToken is TokenName)) break;
-					TokenName innername = (TokenName)u.nextToken;
-					TokenDeclSDType innerdefn = null;
-					if (!defn.innerSDTypes.TryGetValue (innername.val, out innerdefn)) break;
-					defn = innerdefn;
-					u = innername;
-				}
-
-				/*
-				 * Create a reference in the source to the definition
-				 * that encapsulates the long dotted type name given in
-				 * the source, and replace the long dotted type name in
-				 * the source with the reference token.
-				 */
-				TokenTypeSDType refer = defn.MakeRefToken (u.prevToken);
-				refer.prevToken = t.prevToken;  // t points right at the first TokenName
-				refer.nextToken = u;            // u points just past the last TokenName
-				refer.prevToken.nextToken = refer;
-				refer.nextToken.prevToken = refer;
-
-				/*
-				 * Continue scanning immediately after this reference.
-				 */
-				t = refer;
 			}
-			return t;
+			do {
+				t = t.nextToken;
+				if (!(t is TokenName)) {
+					ErrorMsg (t, "expecting generic parameter name");
+					break;
+				}
+				TokenName tn = (TokenName)t;
+				TokenDeclSDTypeGenParam ttgp = new TokenDeclSDTypeGenParam (tn, decl, parms.Count);
+				parms.Add (ttgp);
+				if (decl.innerSDTypes.ContainsKey (tn.val)) {
+					ErrorMsg (tn, "duplicate use of generic parameter name");
+				} else {
+					decl.innerSDTypes.Add (tn.val, ttgp);
+				}
+				t = t.nextToken;
+			} while (t is TokenKwComma);
+			if (!(t is TokenKwCmpGT)) {
+				ErrorMsg (t, "expecting , for more params or > to end param list");
+				return false;
+			}
+			decl.genParams = parms.ToArray ();
+
+			return true;
+		}
+
+		/**
+		 * @brief Catalog a script-defined type.
+		 *        Its short name (eg, 'Node') gets put in the next outer level (eg, 'List')'s inner type definition table.
+		 *        Its long name (eg, 'List.Node') gets put in the global type definition table.
+		 */
+		private void CatalogSDTypeDecl (TokenDeclSDType decl)
+		{
+			string longName = decl.longName.val;
+			TokenDeclSDType dupDecl;
+			if (tokenScript.sdSrcTypesTryGetValue (longName, out dupDecl)) {
+				ErrorMsg (decl, "duplicate definition of type " + longName);
+				ErrorMsg (dupDecl, "previous definition here");
+			} else {
+				tokenScript.sdSrcTypesAdd (longName, decl);
+				if (decl.outerSDType != null) {
+					decl.outerSDType.innerSDTypes.Add (decl.shortName.val, decl);
+				}
+			}
+		}
+
+		/**
+		 * @brief Replace all TokenName tokens that refer to the script-defined types with 
+		 *        corresponding TokenTypeSDType{Class,Delegate,GenParam,Interface} tokens.
+		 *        Also handle generic references, ie, recognize that 'List<integer>' is an
+		 *        instantiation of 'List<>'.
+		 */
+		private void ParseSDTypePreScanPassTwo (Token tokenBegin)
+		{
+			TokenDeclSDType outerSDType = null;
+
+			for (Token t = tokenBegin; !((t = t.nextToken) is TokenEnd);) {
+
+				/*
+				 * Maybe it's time to pop out of an outer class definition.
+				 */
+				if ((outerSDType != null) && (outerSDType.endToken == t)) {
+					outerSDType = outerSDType.outerSDType;
+					continue;
+				}
+
+				/*
+				 * Check for beginning of script-defined type definitions.
+				 * They can have nested definitions and generic parameters in their innerSDTypes[] 
+				 * so add them to the stack.
+				 */
+				if (t is TokenDeclSDType) {
+					outerSDType = (TokenDeclSDType)t;
+					continue;
+				}
+
+				/*
+				 * For names not preceded by a '.', scan the script-defined type definition 
+				 * stack for that name.  If found, substitute in a type token for the name token.
+				 */
+				if ((t is TokenName) && !(t.prevToken is TokenKwDot)) {
+					TrySpliceTypeRef (ref t, outerSDType);
+				}
+			}
+		}
+
+		/**
+		 * @brief Try to convert the source token string to a type reference
+		 *        and splice the type reference into the source token string
+		 *        replacing the original tokens.
+		 * @param t = points to the initial TokenName token
+		 * @param outerSDType = null: this is a top-level code reference
+		 *                      else: this code is within outerSDType
+		 * @returns false: parse error, message already output
+		 *                 t advanced to point of error
+		 *           true: no substitution: t points to original TokenName
+		 *                 substitution: t updated to spliced-in TokenType
+		 */
+		private bool TrySpliceTypeRef (ref Token t, TokenDeclSDType outerSDType)
+		{
+			/*
+			 * Look for the name as a type defined by outerSDType or anything
+			 * even farther out than that.  If not found, simply return true
+			 * without updating t.
+			 */
+			TokenName tnametok = (TokenName)t;
+			string tnamestr = tnametok.val;
+
+			TokenDeclSDType decl = null;
+			for (TokenDeclSDType nt = outerSDType; nt != null; nt = nt.outerSDType) {
+				if (nt.innerSDTypes.TryGetValue (tnamestr, out decl)) break;
+			}
+			if (decl == null) {
+				if (!tokenScript.sdSrcTypesTryGetValue (tnamestr, out decl)) return true;
+			}
+
+			Token start = t;
+			List<TokenType> genArgs = new List<TokenType> ();
+			while (true) {
+
+				/*
+				 * Maybe it requires some generic argument types.
+				 * If so, parse them out.
+				 */
+				bool first = true;
+				while (genArgs.Count < decl.genParams.Length) {
+					t = t.nextToken;
+					if (first && !(t is TokenKwCmpLT)) {
+						ErrorMsg (t, "require < for generic arguments");
+						return false;
+					}
+					if (!first && !(t is TokenKwComma)) {
+						ErrorMsg (t, "require , for more generic arguments");
+						return false;
+					}
+					t = t.nextToken;
+					if (t is TokenName) {
+						if (!TrySpliceTypeRef (ref t, outerSDType)) return false;
+					}
+					if (!(t is TokenType)) {
+						ErrorMsg (t, "expecting type as generic argument");
+						return false;
+					}
+					genArgs.Add ((TokenType)t);
+					first = false;
+				}
+				if (!first) {
+					t = t.nextToken;
+					if (!(t is TokenKwCmpGT)) {
+						ErrorMsg (t, "require > to end generic argumets");
+						return false;
+					}
+				}
+
+				/*
+				 * If name<args> is followed by '.' <innername>, try to find
+				 * the inner name.  If inner name not found, it is probably 
+				 * something like a static field or method name, so leave it 
+				 * alone.
+				 */
+				if (!(t.nextToken is TokenKwDot)) break;
+				if (!(t.nextToken.nextToken is TokenName)) break;
+				tnametok = (TokenName)t.nextToken.nextToken;
+				TokenDeclSDType innerdecl;
+				if (!decl.innerSDTypes.TryGetValue (tnametok.val, out innerdecl)) break;
+				decl = innerdecl;
+				t = tnametok;
+			}
+
+			/*
+			 * Create a reference in the source to the definition
+			 * that encapsulates the long dotted type name given in
+			 * the source, and replace the long dotted type name in
+			 * the source with the reference token, eg, replace 
+			 * 'Dictionary' '<' 'string' ',' 'integer' '>' '.' 'ValueList'
+			 * with 'Dictionary<string,integer>.ValueList'.
+			 */
+			TokenTypeSDType refer = decl.MakeRefToken (start, genArgs.ToArray ());
+			refer.prevToken = start.prevToken;  // start points right at the first TokenName
+			refer.nextToken = t.nextToken;      // t points at the last TokenName or TokenKwCmpGT
+			refer.prevToken.nextToken = refer;
+			refer.nextToken.prevToken = refer;
+			t = refer;
+
+			return true;
+		}
+
+		/**
+		 * @brief Replace all TokenName tokens that refer to the script-defined types with 
+		 *        corresponding TokenTypeSDType{Class,Delegate,GenParam,Interface} tokens.
+		 *        Also handle generic references, ie, recognize that 'List<integer>' is an
+		 *        instantiation of 'List<>'.
+		 */
+		private void ParseSDTypePreScanPassTree (Token tokenBegin, TokenType[] outerGenArgs)
+		{
+			Token tokenEnd = null;
+			if (tokenBegin is TokenDeclSDType) {
+				tokenEnd = ((TokenDeclSDType)tokenBegin).endToken;
+			}
+
+			for (Token t = tokenBegin; (t = t.nextToken) != tokenEnd;) {
+
+				/*
+				 * Completely skip over any generic prototypes, eg, the whole 'class Dictionary<K,V> { ... }' thing.
+				 * We deal with their contents when we have the concrete arguments to apply.
+				 */
+				if (t is TokenDeclSDType) {
+					TokenDeclSDType decl = (TokenDeclSDType)t;
+					if (decl.genParams.Length > 0) {
+						t = decl.endToken;
+					}
+					continue;
+				}
+
+				/*
+				 * See if we have a reference to a generic prototype, eg, 'Dictionary<string,integer>'.
+				 * If so, make sure we have an instantiation of that generic so code will be generated 
+				 * for that instantiation.
+				 */
+				if (t is TokenTypeSDType) {
+					TokenTypeSDType type = (TokenTypeSDType)t;
+					if (type.genArgs.Length > 0) {
+
+						/*
+						 * Build array of concrete types to pass for generic instantiation.
+						 * Also build name of the instantiated type, eg, 'Dictionary<string,integer>.Converter<float>'.
+						 * The resultant array for the example will contain [0]'string', [1]'integer', [2]'float'.
+						 * The resultant array never contains other generic parameter types, we completely resolve them:
+						 *   1) We start with a null outerGenArgs[] so it doesn't have any TokenTypeSDTypeGenParams in it trivially.
+						 *   2) So the first innerGenArgs[] can't have any TokenTypeSDTypeGenParams in it because ResolveGenParam()
+						 *      doesn't have any TokenTypeSDTypeGenParam to put in it.  It would get a subscript error if type.genArgs[]
+						 *      had any TokenTypeSDTypeGenParams in it.
+						 *   3) On the next recursive call, outerGenArgs came from the innerGenArgs and so it still doesn't have
+						 *      any TokenTypeSDTypeGenParams in it.  So ResolveGenParam() has nothing but non-TokenTypeSDTypeGenParams to 
+						 *      substitute in for any TokenTypeSDTypeGenParams in type.genArgs[].  Thus the new innerGenArgs is free of 
+						 *      TokenTypeSDTypeGenParams.
+						 */
+						Stack<TokenDeclSDType> declStack = new Stack<TokenDeclSDType> ();
+						for (TokenDeclSDType decl = type.GetDecl (); decl != null; decl = decl.outerSDType) {
+							declStack.Push (decl);
+						}
+						bool first = true;
+						int i = 0;
+						StringBuilder sb = new StringBuilder ();
+						TokenType[] innerGenArgs = new TokenType[type.genArgs.Length];
+						while (declStack.Count > 0) {
+							TokenDeclSDType decl = declStack.Pop ();
+							if (!first) sb.Append ('.');
+							sb.Append (decl.shortName.val);
+							bool ffirst = true;
+							while (i < decl.genParams.Length) {
+								sb.Append (ffirst ? '<' : ',');
+								innerGenArgs[i] = type.genArgs[i].ResolveGenParam (outerGenArgs);
+								sb.Append (innerGenArgs[i++].ToString ());
+								ffirst = false;
+							}
+							if (!ffirst) sb.Append ('>');
+							first = false;
+						}
+						string sbstr = sb.ToString ();
+
+						/*
+						 * If we haven't already instantiated that exact type, instantiate it.
+						 */
+						if (!tokenScript.sdSrcTypesContainsKey (sbstr)) {
+
+							/*
+							 * Create a non-generic named eg, 'Dictionary<string,integer>.Converter<float>'
+							 * and catalog it so CodeGen will generate its code.
+							 * For the example given, type.decl points to the generic prototype for 
+							 * 'Dictionary<,>.Converter<>' and innerGenAhrgs has 'string', 'integer', 'float'.
+							 */
+							TokenDeclSDTypeGenInst instance = new TokenDeclSDTypeGenInst (type.GetDecl ());
+							instance.instOfGenProto = type.GetDecl ();
+							instance.genArgs = innerGenArgs;
+							tokenScript.sdSrcTypesAdd (sbstr, instance);
+
+							/*
+							 * Now scan through the generic prototype but substitute out its parameters
+							 * with the argument list.  So if we just instantiated something like 
+							 * 'List<strinng>', this will instantiate things like 'List<string>.Enumerator'.
+							 * It will not instantiate G2 in:
+							 *    class G1<T,U> ... { ... class G2<V> { ... } ... }
+							 * ...unless there is a reference to G2<> giving it a concrete type.
+							 */
+							ParseSDTypePreScanPassTree (type.GetDecl (), innerGenArgs);
+						}
+					}
+				}
+			}
 		}
 
 		/**
@@ -543,36 +850,31 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		private bool ParseDeclSDTypes (ref Token token, TokenDeclSDType outerSDType, uint flags)
 		{
-			/*
-			 * class <classname> ... { ... }
-			 */
-			if (token is TokenKwClass) {
+			if (!(token is TokenDeclSDType)) return false;
+
+			TokenDeclSDType decl = (TokenDeclSDType)token;
+			if (decl.genParams.Length > 0) {
+				token = decl.endToken;
+				return true;
+			}
+			if (decl is TokenDeclSDTypeClass) {
 				ParseDeclClass (ref token, outerSDType, flags);
 				return true;
 			}
-
-			/*
-			 * delegate [<rettype>] <name> ( ... );
-			 */
-			if (token is TokenKwDelegate) {
+			if (decl is TokenDeclSDTypeDelegate) {
 				ParseDeclDelegate (ref token, outerSDType, flags);
 				return true;
 			}
-
-			/*
-			 * interface <interfacedef> ... { ... }
-			 */
-			if (token is TokenKwInterface) {
+			if (decl is TokenDeclSDTypeInterface) {
 				ParseDeclInterface (ref token, outerSDType, flags);
 				return true;
 			}
-
-			return false;
+			throw new Exception ("unhandled token " + token.GetType ().ToString ());
 		}
 
 		/**
 		 * @brief Parse a class declaration.
-		 * @param token = points to 'class' keyword on entry
+		 * @param token = points to TokenDeclSDTypeClass token
 		 *                points just past closing '}' on return
 		 * @param outerSDType = null: this is a top-level class
 		 *                      else: this class is being defined inside this type
@@ -581,17 +883,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		private void ParseDeclClass (ref Token token, TokenDeclSDType outerSDType, uint flags)
 		{
 			bool haveExplicitConstructor = false;
-			Token u = token.nextToken;
+			Token u = token;
 			TokenDeclSDTypeClass tokdeclcl;
 
-			// first thing following 'class' should be the
-			// class's declaration that we found during
-			// pre-scan
-			if (!(u is TokenDeclSDTypeClass)) {
-				ErrorMsg (u, "expecting class name");
-				token = SkipPastSemi (token);
-				return;
-			}
 			tokdeclcl = (TokenDeclSDTypeClass)u;
 			tokdeclcl.outerSDType = outerSDType;
 			tokdeclcl.accessLevel = flags;
@@ -1127,7 +1421,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		/**
 		 * @brief Parse a delegate declaration statement.
-		 * @param token = points to 'delegate' keyword on entry
+		 * @param token = points to TokenDeclSDTypeDelegate token on entry
 		 *                points just past ';' on return
 		 * @param outerSDType = null: this is a top-level delegate
 		 *                      else: this delegate is being defined inside this type
@@ -1139,7 +1433,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			TokenDeclSDTypeDelegate tokdecldel;
 			TokenType retType;
 
-			// first thing following 'delegate' should be return type
+			tokdecldel = (TokenDeclSDTypeDelegate)u;
+			tokdecldel.outerSDType = outerSDType;
+			tokdecldel.accessLevel = flags;
+
+			// first thing following that should be return type
 			// but we will fill in 'void' if it is missing
 			u = u.nextToken;
 			if (u is TokenType) {
@@ -1148,17 +1446,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			} else {
 				retType = new TokenTypeVoid (u);
 			}
-
-			// next should be the delegate's declaration that we found during pre-scan
-			if (!(u is TokenDeclSDTypeDelegate)) {
-				ErrorMsg (u, "expecting delegate name");
-				token = SkipPastSemi (token);
-				return;
-			}
-			tokdecldel = (TokenDeclSDTypeDelegate)u;
-			tokdecldel.outerSDType = outerSDType;
-			tokdecldel.accessLevel = flags;
-			u = u.nextToken;
 
 			// get list of argument types until we see a ')'
 			List<TokenType> args = new List<TokenType> ();
@@ -1214,7 +1501,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		/**
 		 * @brief Parse an interface declaration.
-		 * @param token = points to 'interface' keyword on entry
+		 * @param token = points to  ParseDeclInterface keyword on entry
 		 *                points just past closing '}' on return
 		 * @param outerSDType = null: this is a top-level interface
 		 *                      else: this interface is being defined inside this type
@@ -1222,17 +1509,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		private void ParseDeclInterface (ref Token token, TokenDeclSDType outerSDType, uint flags)
 		{
-			Token u = token.nextToken;
+			Token u = token;
 			TokenDeclSDTypeInterface tokdeclin;
 
-			// first thing following 'interface' should be the
-			// interface's declaration that we foud during
-			// pre-scan
-			if (!(u is TokenDeclSDTypeInterface)) {
-				ErrorMsg (u, "expecting interface name");
-				token = SkipPastSemi (token);
-				return;
-			}
 			tokdeclin = (TokenDeclSDTypeInterface)u;
 			tokdeclin.outerSDType = outerSDType;
 			tokdeclin.accessLevel = flags;
@@ -2863,16 +3142,26 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		protected const byte DELEGATE  = 1;
 		protected const byte INTERFACE = 2;
 
-		public TokenDeclSDType outerSDType;  // null if top-level
-		                                     // else points to defining script-defined type
-		public uint accessLevel;             // SDT_PRIVATE, SDT_PROTECTED or SDT_PUBLIC
-		                                     // ... all top-level types are SDT_PUBLIC
+		public TokenDeclSDType outerSDType;          // null if top-level
+		                                             // else points to defining script-defined type
+		public uint accessLevel;                     // SDT_PRIVATE, SDT_PROTECTED or SDT_PUBLIC
+		                                             // ... all top-level types are SDT_PUBLIC
 		public Dictionary<string, TokenDeclSDType> innerSDTypes = new Dictionary<string, TokenDeclSDType> ();
-		                                     // indexed by shortName
+		                                             // indexed by shortName
+		public Token endToken;                       // the '}' or ';' that ends the definition
+
+		public TokenDeclSDTypeGenParam[] genParams;  // array of parameters for generic prototypes
+		                                             // length 0 for non-generic prototypes
+		                                             // eg, for 'Dictionary<K,V>'
+		                                             //     ...genParams gives 0->K; 1->V
+		                                             // cumulative for nested types
 
 		/*
 		 * Name of the type.
 		 *   shortName = doesn't include outer class type names
+		 *               eg, 'Engine' for non-generic
+		 *                   'Dictionary<,>' for generic prototype
+		 *                   'Dictionary<string,integer>' for generic instantiation
 		 *   longName = includes all outer class type names if any
 		 */
 		private TokenName _shortName;
@@ -2907,7 +3196,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		private Dictionary<string, TokenDeclSDType> sdTypes;
 
 		public TokenDeclSDType (Token t) : base (t) { }
-		public abstract TokenTypeSDType MakeRefToken (Token t);
+		public abstract TokenTypeSDType MakeRefToken (Token t, TokenType[] genArgs);
 		public abstract Type GetSysType ();
 		public abstract void WriteToFile (BinaryWriter objFileWriter);
 		public abstract void ReadFromFile (BinaryReader objFileReader, TextWriter asmFileWriter);
@@ -2957,14 +3246,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		protected TokenType MakeTypeToken (string name)
 		{
 			TokenDeclSDType sdtdecl;
-			if (sdTypes.TryGetValue (name, out sdtdecl)) return sdtdecl.MakeRefToken (this);
+			if (sdTypes.TryGetValue (name, out sdtdecl)) return sdtdecl.MakeRefToken (this, null);
 			return TokenType.FromLSLType (this, name);
 		}
 	}
 
 	public class TokenDeclSDTypeClass : TokenDeclSDType {
 		public TokenDeclSDTypeClass extends;
-		public bool isAbstract;
 		public List<TokenDeclSDTypeInterface> implements = new List<TokenDeclSDTypeInterface> ();
 		public VarDict members = new VarDict ();
 
@@ -3006,9 +3294,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			this.shortName = shortName;
 		}
 
-		public override TokenTypeSDType MakeRefToken (Token t)
+		public override TokenTypeSDType MakeRefToken (Token t, TokenType[] genArgs)
 		{
-			return new TokenTypeSDTypeClass (t, this);
+			TokenTypeSDType sdType = new TokenTypeSDTypeClass (t, this);
+			sdType.genArgs = genArgs;
+			return sdType;
 		}
 
 		public override Type GetSysType ()
@@ -3230,9 +3520,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			this.argTypes = argTypes;
 		}
 
-		public override TokenTypeSDType MakeRefToken (Token t)
+		public override TokenTypeSDType MakeRefToken (Token t, TokenType[] genArgs)
 		{
-			return new TokenTypeSDTypeDelegate (t, this);
+			TokenTypeSDType sdType = new TokenTypeSDTypeDelegate (t, this);
+			sdType.genArgs = genArgs;
+			return sdType;
 		}
 
 		/**
@@ -3445,6 +3737,72 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		}
 	}
 
+	/**
+	 * @brief These are created for each unique instantiation of a generic prototype.
+	 *        Eg, there is one for all uses of 'Dictionary<string,integer>.ValueList'.
+	 *        They simply wrap the generic prototype with the arg type list.
+	 */
+	public class TokenDeclSDTypeGenInst : TokenDeclSDType {
+		public TokenDeclSDType instOfGenProto;  // points to the generic prototype, eg, 'Dictionary.ValueList'
+		public TokenType[] genArgs;             // contains the concrete types, eg, 'string', 'integer'
+		public TokenDeclSDTypeGenInst (Token original) : base (original) { }
+
+		public override TokenTypeSDType MakeRefToken (Token t, TokenType[] genArgs)
+		{
+			throw new Exception ("not yet implemented");
+		}
+		public override Type GetSysType ()
+		{
+			throw new Exception ("not yet implemented");
+		}
+		public override void WriteToFile (BinaryWriter objFileWriter)
+		{
+			throw new Exception ("not yet implemented");
+		}
+		public override void ReadFromFile (BinaryReader objFileReader, TextWriter asmFileWriter)
+		{
+			throw new Exception ("not yet implemented");
+		}
+	}
+
+	/**
+	 * @brief Generic parameters
+	 *        These are the T in the declaration of 'class List<T>'.
+	 *        They are pointed to by 'List's innerSDTypes["T"] and genParams[0].
+	 */
+	public class TokenDeclSDTypeGenParam : TokenDeclSDType {
+		public TokenName name;
+		public TokenDeclSDType decl;
+		public int index;
+
+		public TokenDeclSDTypeGenParam (TokenName name, TokenDeclSDType decl, int index) : base (name)
+		{
+			this.name  = name;
+			this.decl  = decl;
+			this.index = index;
+		}
+
+		public override TokenTypeSDType MakeRefToken (Token t, TokenType[] genArgs)
+		{
+			TokenTypeSDType sdType = new TokenTypeSDTypeGenParam (t, this);
+			sdType.genArgs = genArgs;
+			return sdType;
+		}
+
+		public override Type GetSysType ()
+		{
+			throw new Exception ("not yet implemented");
+		}
+		public override void WriteToFile (BinaryWriter objFileWriter)
+		{
+			throw new Exception ("not yet implemented");
+		}
+		public override void ReadFromFile (BinaryReader objFileReader, TextWriter asmFileWriter)
+		{
+			throw new Exception ("not yet implemented");
+		}
+	}
+
 	public class TokenDeclSDTypeInterface : TokenDeclSDType {
 		public VarDict methsNProps = new VarDict ();
 
@@ -3453,9 +3811,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			this.shortName = shortName;
 		}
 
-		public override TokenTypeSDType MakeRefToken (Token t)
+		public override TokenTypeSDType MakeRefToken (Token t, TokenType[] genArgs)
 		{
-			return new TokenTypeSDTypeInterface (t, this);
+			TokenTypeSDType sdType = new TokenTypeSDTypeInterface (t, this);
+			sdType.genArgs = genArgs;
+			return sdType;
 		}
 
 		public override Type GetSysType ()
@@ -3482,8 +3842,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	 *        These occur in the source code wherever it specifies (eg, variable declaration) a script-defined type.
 	 */
 	public abstract class TokenTypeSDType : TokenType {
+		public TokenType[] genArgs;
+
 		public TokenTypeSDType (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
 		public TokenTypeSDType (Token t) : base (t) { }
+		public abstract TokenDeclSDType GetDecl ();
 	}
 
 	public class TokenTypeSDTypeClass : TokenTypeSDType {
@@ -3494,6 +3857,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenTypeSDTypeClass (Token t, TokenDeclSDTypeClass decl) : base (t)
 		{
 			this.decl = decl;
+		}
+		public override TokenDeclSDType GetDecl ()
+		{
+			return decl;
 		}
 		public override string ToString ()
 		{
@@ -3542,6 +3909,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenTypeSDTypeDelegate (Token t, TokenDeclSDTypeDelegate decl) : base (t)
 		{
 			this.decl = decl;
+		}
+		public override TokenDeclSDType GetDecl ()
+		{
+			return decl;
 		}
 
 		/**
@@ -3635,11 +4006,56 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		}
 	}
 
+	/**
+	 * @brief These are the T inside the body of 'class List<T> { ... T x; ... }'
+	 *        (and the extends/inherits list as well).
+	 *        For delegates, they are found in the return and argument types.
+	 */
+	public class TokenTypeSDTypeGenParam : TokenTypeSDType {
+		public TokenDeclSDTypeGenParam decl;
+
+		public TokenTypeSDTypeGenParam (Token t, TokenDeclSDTypeGenParam decl) : base (t)
+		{
+			this.decl = decl;
+		}
+		public override TokenDeclSDType GetDecl ()
+		{
+			return decl;
+		}
+		public override Type ToSysType ()
+		{
+			throw new Exception ("not yet implemented");
+		}
+		public override bool IsAssignableFrom (TokenType src)
+		{
+			throw new Exception ("not yet implemented");
+		}
+
+		/**
+		 * @brief Something wants to know the instantiated type.
+		 * @param genArgs = list of generic instantiation argument types
+		 *                  eg, if we are getting the type of something in 'Dictionary<T,U>'
+		 *                  this = 'T' or 'U' and genArgs[0] = 'string', genArgs[1] = 'integer'
+		 * @returns entry from genArgs[]
+		 * Note: genArgs[] should always hold concrete types, never another TokenTypeSDTypeGenParam.
+		 */
+		public override TokenType ResolveGenParam (TokenType[] genArgs)
+		{
+			TokenType t = genArgs[decl.index];
+			if (t is TokenTypeSDTypeGenParam) throw new Exception ("genArgs[] contains a TokenTypeSDTypeGenParam");
+			return t;
+		}
+	}
+
 	public class TokenTypeSDTypeInterface : TokenTypeSDType {
 		public TokenDeclSDTypeInterface decl;
 		public TokenTypeSDTypeInterface (Token t, TokenDeclSDTypeInterface decl) : base (t)
 		{
 			this.decl = decl;
+		}
+		public override TokenDeclSDType GetDecl ()
+		{
+			return decl;
 		}
 
 		public override string ToString ()
@@ -4834,7 +5250,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
 		{
-			return sdtClass.MakeRefToken (original);
+			return sdtClass.MakeRefToken (original, null);
 		}
 
 		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)
@@ -4940,6 +5356,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public void sdSrcTypesSeal ()
 		{
 			sdSrcTypesSealed = true;
+		}
+		public bool sdSrcTypesContainsKey (string key)
+		{
+			return sdSrcTypes.ContainsKey (key);
 		}
 		public bool sdSrcTypesTryGetValue (string key, out TokenDeclSDType value)
 		{
