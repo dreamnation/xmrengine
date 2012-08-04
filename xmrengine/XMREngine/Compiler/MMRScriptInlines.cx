@@ -135,6 +135,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			inf = new TokenDeclInline (ifd, false, "xmrHeapLeft()",                                          typeof (int),       null); inf.codeGen = inf.CodeGenXMRHeapLeft;
 			inf = new TokenDeclInline (ifd, false, "xmrStackLeft()",                                         typeof (int),       null); inf.codeGen = inf.CodeGenXMRStackLeft;
 			inf = new TokenDeclInline (ifd, false, "xmrTypeName(object)",                                    typeof (string),    null); inf.codeGen = inf.CodeGenXMRTypeName;
+			inf = new TokenDeclInline (ifd, false, "xmrHashCode(float)",                                     typeof (int),       null); inf.codeGen = inf.CodeGenXMRHashCodeFloat;
+			inf = new TokenDeclInline (ifd, false, "xmrHashCode(integer)",                                   typeof (int),       null); inf.codeGen = inf.CodeGenXMRHashCodeInteger;
+			inf = new TokenDeclInline (ifd, false, "xmrHashCode(object)",                                    typeof (int),       null); inf.codeGen = inf.CodeGenXMRHashCodeObject;
 
 			/*
 			 * Jack-assed os...() functions that use screwy types.
@@ -422,6 +425,46 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			scg.PushXMRInst ();
 			args[0].PushVal (scg, errorAt);
 			scg.ilGen.Emit (OpCodes.Call, typeNameMethodInfo);
+			result.PopPost (scg, errorAt, retType);
+		}
+
+		/**
+		 * @brief Generate code to return hash code of the argument
+		 *        Script-level prototypes:  int xmrHashCode(float)
+		 *                                  int xmrHashCode(integer)
+		 *                                  int xmrHashCode(object)
+		 */
+		private static MethodInfo hashCodeFloatMethodInfo  = typeof (SCRIPTFLOAT).GetMethod ("GetHashCode", new Type[] { });
+		private static MethodInfo hashCodeObjectMethodInfo = typeof (object).GetMethod ("GetHashCode", new Type[] { });
+		private void CodeGenXMRHashCodeFloat (ScriptCodeGen scg, Token errorAt, CompValu result, CompValu[] args)
+		{
+			result.PopPre (scg, errorAt);
+			if (args[0] is CompValuFloat) {
+				scg.PushConstantI4 (((CompValuFloat)args[0]).x.GetHashCode ());
+			} else {
+				try {
+					args[0].PushRef (scg, errorAt);
+				} catch {
+					ScriptMyLocal temp = scg.ilGen.DeclareLocal (typeof (SCRIPTFLOAT), "hashcodefloat");
+					args[0].PushVal (scg, errorAt);
+					scg.ilGen.Emit (OpCodes.Stloc, temp);
+					scg.ilGen.Emit (OpCodes.Ldloca, temp);
+				}
+				scg.ilGen.Emit (OpCodes.Call, hashCodeFloatMethodInfo);
+			}
+			result.PopPost (scg, errorAt, retType);
+		}
+		private void CodeGenXMRHashCodeInteger (ScriptCodeGen scg, Token errorAt, CompValu result, CompValu[] args)
+		{
+			result.PopPre (scg, errorAt);
+			args[0].PushVal (scg, errorAt);
+			result.PopPost (scg, errorAt, retType);
+		}
+		private void CodeGenXMRHashCodeObject (ScriptCodeGen scg, Token errorAt, CompValu result, CompValu[] args)
+		{
+			result.PopPre (scg, errorAt);
+			args[0].PushVal (scg, errorAt);
+			scg.ilGen.Emit (OpCodes.Callvirt, hashCodeObjectMethodInfo);
 			result.PopPost (scg, errorAt, retType);
 		}
 

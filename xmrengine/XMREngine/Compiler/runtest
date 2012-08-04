@@ -4,6 +4,5 @@ time make xmrengtest.exe
 export MONO_PATH=../../../bin
 export PATH=~/mono64.267/bin:$PATH
 
+mono --debug xmrengtest.exe -asm arraytest.xmrasm arraytest.lsl
 mono --debug xmrengtest.exe -asm objectest.xmrasm objectest.lsl
-
-mono --debug xmrengtest.exe -asm objectest.xmrasm arraytest.lsl

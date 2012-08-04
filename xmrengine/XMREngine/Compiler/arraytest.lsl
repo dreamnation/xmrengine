@@ -162,7 +162,17 @@ default
         ver(zz, ["two",3], "t.w.o,three");
         ver(zz, [4,5,6,7], "four,five,six,seven");
         SaySomething("success!");
+
+        SaySomething ("xmrHashCode(2992)  = " + xmrHashCode (2992));
+        SaySomething ("xmrHashCode(29.92) = " + xmrHashCode (29.92) + " = " + xmrHashCode (TwoNinerNinerTwo ()));
+        SaySomething ("xmrHashCode([1,2]) = " + xmrHashCode ([1,2]));
+        SaySomething ("xmrHashCode(Hello World) = " + xmrHashCode ("Hello World"));
     }
+}
+
+float TwoNinerNinerTwo ()
+{
+    return 29.92;
 }
 
 AwfulSig(rotation r, vector v, string s, integer i, list l)
