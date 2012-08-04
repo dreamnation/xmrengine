@@ -83,6 +83,15 @@ class Klass : Printable {
     {
         return "zhis is Klass";
     }
+
+    public integer == (Klass that)
+    {
+        return this.x == that.x;
+    }
+    public integer -= (integer that)
+    {
+        return this.x -= that;
+    }
 }
 
 interface Printable {
@@ -121,6 +130,14 @@ default
         Printable pr = k;
         pr.Print();
         SaySomething ("printable k string " + pr.ToString ());
+
+        Klass k99 = new Klass ();
+        Klass k55 = new Klass ();
+        SaySomething ("two different Klass both with 99: " + (k99 == k55));
+        k55.x -= 44;
+        SaySomething ("k55.x = " + k55.x);
+        SaySomething ("k99.x = " + k99.x);
+        SaySomething ("now the values are different: " + (k99 == k55));
 
         SaySomething("existing array:");
         da(-1);

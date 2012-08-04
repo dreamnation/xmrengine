@@ -241,7 +241,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						continue;
 					}
 					token = tokenType;
-					TokenDeclVar tokenDeclFunc = ParseDeclFunc (ref token, false, false);
+					TokenDeclVar tokenDeclFunc = ParseDeclFunc (ref token, false, false, false);
 					if (tokenDeclFunc == null) continue;
 					if (!tokenScript.AddVarEntry (tokenDeclFunc)) {
 						ErrorMsg (tokenName, "duplicate function " + tokenDeclFunc.funcNameSig.val);
@@ -263,7 +263,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						continue;
 					}
 					token = tokenName;
-					TokenDeclVar tokenDeclFunc = ParseDeclFunc (ref token, false, false);
+					TokenDeclVar tokenDeclFunc = ParseDeclFunc (ref token, false, false, false);
 					if (tokenDeclFunc == null) continue;
 					if (!tokenScript.AddVarEntry (tokenDeclFunc)) {
 						ErrorMsg (tokenName, "duplicate function " + tokenDeclFunc.funcNameSig.val);
@@ -1032,7 +1032,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				 * <name> <funcargs> <funcbody>
 				 * method returning void
 				 */
-				if (token is TokenName) {
+				if ((token is TokenName) || ((token is TokenKw) && ((TokenKw)token).sdtClassOp)) {
 					ParseSDTClassMethodDecl (ref token, flags, tokdeclcl);
 					continue;
 				}
@@ -1408,6 +1408,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			TokenDeclVar tokenDeclFunc = ParseDeclFunc (ref token, 
 			                                            (flags & SDT_ABSTRACT) != 0, 
+			                                            (flags & SDT_STATIC) == 0, 
 			                                            (flags & SDT_STATIC) == 0);
 			if (tokenDeclFunc != null) {
 				tokenDeclFunc.sdtClass = tokdeclcl;
@@ -1549,7 +1550,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				    (token.nextToken is TokenName) && 
 				    (token.nextToken.nextToken is TokenKwParOpen)) {
 					Token name = token.nextToken;
-					TokenDeclVar tokenDeclFunc = ParseDeclFunc (ref token, true, false);
+					TokenDeclVar tokenDeclFunc = ParseDeclFunc (ref token, true, false, false);
 					if (tokenDeclFunc == null) continue;
 					if (!tokenScript.AddVarEntry (tokenDeclFunc)) {
 						ErrorMsg (name, "duplicate method name");
@@ -1565,7 +1566,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				if ((token is TokenName) && 
 				    (token.nextToken is TokenKwParOpen)) {
 					Token name = token;
-					TokenDeclVar tokenDeclFunc = ParseDeclFunc (ref token, true, false);
+					TokenDeclVar tokenDeclFunc = ParseDeclFunc (ref token, true, false, false);
 					if (tokenDeclFunc == null) continue;
 					if (!tokenScript.AddVarEntry (tokenDeclFunc)) {
 						ErrorMsg (name, "duplicate method name");
@@ -1621,7 +1622,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					ErrorMsg (tokenStateBody, "eof parsing state body");
 					return null;
 				}
-				TokenDeclVar tokenDeclFunc = ParseDeclFunc (ref token, false, false);
+				TokenDeclVar tokenDeclFunc = ParseDeclFunc (ref token, false, false, false);
 				if (tokenDeclFunc == null) return null;
 				if (!(tokenDeclFunc.retType is TokenTypeVoid)) {
 					ErrorMsg (tokenDeclFunc.retType, "event handlers don't have return types");
@@ -1639,11 +1640,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 * @param token = points to function return type token (or function name token if return type void)
 		 * @param abs = false: concrete function; true: abstract declaration
 		 * @param imp = allow implemented interface specs
+		 * @param ops = accept operators (==, +, etc) for function name
 		 * @returns null: error parsing function definition
 		 *          else: function declaration
 		 *          token = advanced just past function, ie, just past the closing brace
 		 */
-		private TokenDeclVar ParseDeclFunc (ref Token token, bool abs, bool imp)
+		private TokenDeclVar ParseDeclFunc (ref Token token, bool abs, bool imp, bool ops)
 		{
 			TokenType retType;
 			if (token is TokenType) {
@@ -1652,14 +1654,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			} else {
 				retType = new TokenTypeVoid (token);
 			}
-			if (!(token is TokenName)) {
+
+			TokenName simpleName;
+			if ((token is TokenKw) && ((TokenKw)token).sdtClassOp) {
+				if (!ops) ErrorMsg (token, "operator functions disallowed in static contexts");
+				simpleName = new TokenName (token, ".op." + token.ToString ());
+			} else if (!(token is TokenName)) {
 				ErrorMsg (token, "expecting function name");
 				token = SkipPastSemi (token);
 				return null;
+			} else {
+				simpleName = (TokenName)token;
 			}
-
-			TokenName simpleName = (TokenName)token;
 			token = token.nextToken;
+
 			return ParseDeclFunc (ref token, abs, imp, retType, simpleName);
 		}
 

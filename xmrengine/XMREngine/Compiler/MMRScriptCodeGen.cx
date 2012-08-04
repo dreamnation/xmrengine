@@ -38,6 +38,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private static VarDict inlineFunctions = TokenDeclInline.CreateDictionary ();
 		private static VarDict legalEventHandlers = CreateLegalEventHandlers ();
+		private static CompValu[]      zeroCompValus = new CompValu[0];
 		private static TokenType[]     zeroArgs      = new TokenType[0];
 		private static TokenTypeBool   tokenTypeBool = new TokenTypeBool   (null);
 		private static TokenTypeFloat  tokenTypeFlt  = new TokenTypeFloat  (null);
@@ -2857,6 +2858,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			left = GenerateFromRVal (token.rValLeft);
 
 			/*
+			 * If left is a script-defined class and there is a method with the operator's name,
+			 * convert this to a call to that method with the right value as its single parameter.
+			 * Except don't if the right value is 'undef' so they can always compare to undef.
+			 */
+			if ((left.type is TokenTypeSDTypeClass) && !(right.type is TokenTypeUndef)) {
+				TokenTypeSDTypeClass sdtType = (TokenTypeSDTypeClass)left.type;
+				TokenDeclSDTypeClass sdtDecl = sdtType.decl;
+				TokenType[] argsig = new TokenType[] { right.type };
+				TokenName funcName = new TokenName (token.opcode, ".op." + opcodeIndex);
+				TokenDeclVar declFunc = FindThisMember (sdtDecl, funcName, argsig);
+				if (declFunc != null) {
+					CompValu method = new CompValuInstMeth (declFunc, left, false);
+					CompValu[] argRVals = new CompValu[] { right };
+					return GenerateACall (method, argRVals, token);
+				}
+			}
+
+			/*
 			 * Special case for comparing object pointers because of the myriad of types possible.
 			 * This will compare list pointers, null pointers, script-defined type pointers, array pointers, etc.
 			 * It will show equal iff the memory addresses are equal and that is good enough.
@@ -2965,6 +2984,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private CompValu GenerateFromRValOpUn (TokenRValOpUn token)
 		{
 			CompValu inRVal = GenerateFromRVal (token.rVal);
+
+			/*
+			 * Script-defined types can define their own methods to handle unary operators.
+			 */
+			if (inRVal.type is TokenTypeSDTypeClass) {
+				TokenTypeSDTypeClass sdtType = (TokenTypeSDTypeClass)inRVal.type;
+				TokenDeclSDTypeClass sdtDecl = sdtType.decl;
+				TokenName funcName = new TokenName (token.opcode, ".op." + token.opcode.ToString ());
+				TokenDeclVar declFunc = FindThisMember (sdtDecl, funcName, zeroArgs);
+				if (declFunc != null) {
+					CompValu method = new CompValuInstMeth (declFunc, inRVal, false);
+					return GenerateACall (method, zeroCompValus, token);
+				}
+			}
+
+			/*
+			 * Otherwise use the default.
+			 */
 			return UnOpGenerate (inRVal, token.opcode);
 		}
 
@@ -3122,11 +3159,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private CompValu GenerateFromRValCall (TokenRValCall call)
 		{
-			CompValu method, result;
+			CompValu method;
 			CompValu[] argRVals;
 			int i, nargs;
 			TokenRVal arg;
-			TokenType retType;
 			TokenType[] argTypes;
 
 			/*
@@ -3152,6 +3188,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			method = GenerateFromRVal (call.meth, argTypes);
 			if (method == null) return null;
 
+			return GenerateACall (method, argRVals, call);
+		}
+
+		/**
+		 * @brief Generate call to a function/method.
+		 * @param method = function/method being called
+		 * @param argVRVals = its call parameters (zero length if none)
+		 * @param call = where in source code call is being made from (for error messages)
+		 * @returns type and location of return value (CompValuVoid if none)
+		 */
+		private CompValu GenerateACall (CompValu method, CompValu[] argRVals, Token call)
+		{
+			CompValu result;
+			int i, nargs;
+			TokenType retType;
+			TokenType[] argTypes;
+
 			/*
 			 * Inline functions know how to generate their own call.
 			 */
@@ -3163,12 +3216,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
-			 * Otherwise must some other kind of callable.
+			 * Otherwise must be some other kind of callable.
 			 */
 			retType = method.GetRetType ();  // TokenTypeVoid if void; null means a variable
 			if (retType == null) {
-				ErrorMsg (call.meth, "must be a function or method");
-				return new CompValuVoid (call.meth);
+				ErrorMsg (call, "must be a function or method");
+				return new CompValuVoid (call);
 			}
 
 			/*
@@ -3191,14 +3244,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Push the script-visible args, left-to-right.
 			 */
 			argTypes = method.GetArgTypes ();
-			arg = call.args;
+			nargs    = argRVals.Length;
 			for (i = 0; i < nargs; i ++) {
 				if (argTypes == null) {
-					argRVals[i].PushVal (this, arg);
+					argRVals[i].PushVal (this, call);
 				} else {
-					argRVals[i].PushVal (this, arg, argTypes[i]);
+					argRVals[i].PushVal (this, call, argTypes[i]);
 				}
-				arg = (TokenRVal)arg.nextToken;
 			}
 
 			/*
