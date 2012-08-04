@@ -836,6 +836,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Write out script-defined types.
 			 */
 			foreach (TokenDeclSDType sdType in tokenScript.sdSrcTypesValues) {
+				Console.WriteLine ("PerformCompilation*: writing type " + sdType.longName.val);
 				objFileWriter.Write (sdType.longName.val);
 				sdType.WriteToFile (objFileWriter);
 			}

@@ -51,7 +51,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Read whole source into memory.
              */
-            string source = File.ReadAllText (srcFileName);
+            string source = "# 1 \"" + srcFileName + "\"\n" + File.ReadAllText (srcFileName);
 
             /*
              * Parse source string into tokens.
