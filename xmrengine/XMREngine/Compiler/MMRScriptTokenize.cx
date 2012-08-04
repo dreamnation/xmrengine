@@ -105,6 +105,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         {
             get { return file + "(" + line + "," + posn + ")"; }
         }
+
+        /*
+         * Generate debugging string - should look like source code.
+         */
+        public virtual void DebString (StringBuilder sb)
+        {
+            sb.Append (this.ToString ());
+        }
     }
 
 
@@ -741,6 +749,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         {
             this.val = val;
         }
+        // debugging
+        public override string ToString ()
+        {
+            return val.ToString ();
+        }
     }
 
     public class TokenInt : Token {
@@ -748,6 +761,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public TokenInt (TokenErrorMessage emsg, string file, int line, int posn, int val) : base (emsg, file, line, posn)
         {
             this.val = val;
+        }
+        // debugging
+        public override string ToString ()
+        {
+            return val.ToString ();
         }
     }
 
@@ -772,6 +790,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public TokenStr (TokenErrorMessage emsg, string file, int line, int posn, string val) : base (emsg, file, line, posn)
         {
             this.val = val;
+        }
+        // debugging
+        public override string ToString ()
+        {
+            return "\"" + val + "\"";
         }
     }
 

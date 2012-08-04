@@ -176,6 +176,29 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			ParseSDTypePreScanPassTwo  (tokenBegin);        // substitute references
 			ParseSDTypePreScanPassTree (tokenBegin, null);  // instantiate generics
 
+			int braces = 0;
+			Token prevTok = null;
+			for (Token token = tokenBegin; token != null; token = token.nextToken) {
+				if (token is TokenKwParClose) braces -= 2;
+				if (token is TokenKwBrcClose) braces -= 4;
+				StringBuilder sb = new StringBuilder ("ScriptReduce*: ");
+				sb.Append (token.line.ToString ().PadLeft (3));
+				sb.Append (".");
+				sb.Append (token.posn.ToString ().PadLeft (3));
+				sb.Append ("  ");
+				sb.Append (token.GetType ().Name.PadRight (24));
+				sb.Append (" : ");
+				for (int i = 0; i < braces; i ++) sb.Append (' ');
+				token.DebString (sb);
+				Console.WriteLine (sb.ToString ());
+				if (token.prevToken != prevTok) {
+					Console.WriteLine ("ScriptReduce*:  -- prevToken link bad");
+				}
+				if (token is TokenKwBrcOpen) braces += 4;
+				if (token is TokenKwParOpen) braces += 2;
+				prevTok = token;
+			}
+
 			/*
 			 * Scan through the tokens until we reach the end.
 			 */
@@ -410,6 +433,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 					/*
 					 * Splice in a TokenDeclSDType token that replaces the keyword and the name tokens.
+					 *   kw = points to 'class' or 'interface' keyword.
+					 *    t = points to just past last part of class name parsed, hopefully a ':' or '{'.
 					 */
 					decl.prevToken = kw.prevToken;
 					decl.nextToken = t;
@@ -571,6 +596,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				ErrorMsg (t, "expecting , for more params or > to end param list");
 				return false;
 			}
+			t = t.nextToken;
 			decl.genParams = parms.ToArray ();
 
 			return true;
@@ -650,7 +676,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		private bool TrySpliceTypeRef (ref Token t, TokenDeclSDType outerSDType)
 		{
-			int i;
 			Token start = t;
 
 			/*
@@ -686,12 +711,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 *        }
 			 *    }
 			 */
-			LinkedList<TokenType> genArgList = new LinkedList<TokenType> ();
-			for (TokenDeclSDType ot = decl; (ot = ot.outerSDType) != null;) {
-				for (i = ot.genParams.Length; -- i >= 0;) {
+			List<TokenType> genArgList = new List<TokenType> ();
+			TokenDeclSDType ot = decl.outerSDType;
+			if (ot != null) {
+				for (int i = 0; i < ot.genParams.Length; i ++) {
 					TokenDeclSDTypeGenParam genParam = ot.genParams[i];
 					TokenTypeSDType genArg = genParam.MakeRefToken (start, null);
-					genArgList.AddFirst (genArg);
+					genArgList.Add (genArg);
 				}
 			}
 
@@ -724,7 +750,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						ErrorMsg (t, "expecting type as generic argument");
 						return false;
 					}
-					genArgList.AddLast ((TokenType)t);
+					genArgList.Add ((TokenType)t);
 					first = false;
 				}
 				if (!first) {
@@ -758,9 +784,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * 'Dictionary' '<' 'string' ',' 'integer' '>' '.' 'ValueList'
 			 * with 'Dictionary<string,integer>.ValueList'.
 			 */
-			TokenType[] genArgArray = new TokenType[genArgList.Count];
-			i = 0; foreach (TokenType ga in genArgList) genArgArray[i++] = ga;
-			TokenTypeSDType refer = decl.MakeRefToken (start, genArgArray);
+			TokenTypeSDType refer = decl.MakeRefToken (start, genArgList.ToArray ());
 			refer.prevToken = start.prevToken;  // start points right at the first TokenName
 			refer.nextToken = t.nextToken;      // t points at the last TokenName or TokenKwCmpGT
 			refer.prevToken.nextToken = refer;
@@ -3194,7 +3218,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	public abstract class TokenDeclSDType : Token {
 		protected const byte CLASS     = 0;
 		protected const byte DELEGATE  = 1;
-		protected const byte INTERFACE = 2;
+		protected const byte GENINST   = 2;
+		protected const byte INTERFACE = 3;
 
 		public TokenDeclSDType outerSDType;          // null if top-level
 		                                             // else points to defining script-defined type
@@ -3278,6 +3303,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				}
 				case DELEGATE: {
 					sdt = new TokenDeclSDTypeDelegate (n);
+					break;
+				}
+				case GENINST: {
+					sdt = new TokenDeclSDTypeGenInst (n);
 					break;
 				}
 				case INTERFACE: {
@@ -3546,6 +3575,33 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			}
 			return DelegateCommon.GetType (retType, argTypes, methSig);
 		}
+
+		// debugging - returns, eg, 'Dictionary<T,U>.Enumerator.Node'
+		public override void DebString (StringBuilder sb)
+		{
+			// get long name broken down into segments from outermost to this
+			Stack<TokenDeclSDType> declStack = new Stack<TokenDeclSDType> ();
+			for (TokenDeclSDType decl = this; decl != null; decl = decl.outerSDType) {
+				declStack.Push (decl);
+			}
+
+			// output each segment's name followed by our args for it
+			// starting with outermost and ending with this
+			int i = 0;
+			while (declStack.Count > 0) {
+				TokenDeclSDType decl = declStack.Pop ();
+				sb.Append (decl.shortName.val);
+				if (i < decl.genParams.Length) {
+					sb.Append ('<');
+					while (i < decl.genParams.Length) {
+						decl.genParams[i].DebString (sb);
+						if (++ i < decl.genParams.Length) sb.Append (',');
+					}
+					sb.Append ('>');
+				}
+				if (declStack.Count > 0) sb.Append ('.');
+			}
+		}
 	}
 
 	public class TokenDeclSDTypeDelegate : TokenDeclSDType {
@@ -3797,25 +3853,83 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	 *        They simply wrap the generic prototype with the arg type list.
 	 */
 	public class TokenDeclSDTypeGenInst : TokenDeclSDType {
-		public TokenDeclSDType instOfGenProto;  // points to the generic prototype, eg, 'Dictionary.ValueList'
-		public TokenType[] genArgs;             // contains the concrete types, eg, 'string', 'integer'
 		public TokenDeclSDTypeGenInst (Token original) : base (original) { }
 
 		public override TokenTypeSDType MakeRefToken (Token t, TokenType[] genArgs)
 		{
-			throw new Exception ("not yet implemented");
+			return instOfGenProto.MakeRefToken (t, genArgs);
 		}
+
 		public override Type GetSysType ()
 		{
+			Console.WriteLine ("TokenDeclSDTypeGenInst::GetSysType*: " + this.longName.val);
+			if ((instOfGenProto is TokenDeclSDTypeClass) || (instOfGenProto is TokenDeclSDTypeInterface)) {
+				return instOfGenProto.GetSysType ();
+			}
+			if (instOfGenProto is TokenDeclSDTypeDelegate) {
+			}
 			throw new Exception ("not yet implemented");
 		}
+
+		// points to the generic prototype, eg, 'Dictionary.ValueList'
+		private TokenDeclSDType _instOfGenProto;
+		private string instOfGenProtoName;
+		public TokenDeclSDType instOfGenProto {
+			get {
+				if (_instOfGenProto == null) {
+					throw new Exception ("not yet implemented");
+				}
+				return _instOfGenProto;
+			}
+			set {
+				_instOfGenProto = value;
+			}
+		}
+
+		// contains the concrete types, eg, 'string', 'integer'
+		private TokenType[] _genArgs;
+		private string[] genArgNames;
+		public TokenType[] genArgs {
+			get {
+				if (_genArgs == null) {
+					throw new Exception ("not yet implemented");
+				}
+				return _genArgs;
+			}
+			set {
+				_genArgs = value;
+			}
+		}
+
+		/**
+		 * @brief Write to object file.
+		 */
 		public override void WriteToFile (BinaryWriter objFileWriter)
 		{
-			throw new Exception ("not yet implemented");
+			objFileWriter.Write (this.file);
+			objFileWriter.Write (this.line);
+			objFileWriter.Write (this.posn);
+			objFileWriter.Write ((byte)GENINST);
+
+			objFileWriter.Write (instOfGenProto.longName.val);
+			int nArgs = genArgs.Length;
+			objFileWriter.Write (nArgs);
+			for (int i = 0; i < nArgs; i ++) {
+				objFileWriter.Write (genArgs[i].ToString ());
+			}
 		}
+
+		/**
+		 * @brief Read from object file.
+		 */
 		public override void ReadFromFile (BinaryReader objFileReader, TextWriter asmFileWriter)
 		{
-			throw new Exception ("not yet implemented");
+			instOfGenProtoName = objFileReader.ReadString ();
+			int nArgs = objFileReader.ReadInt32 ();
+			genArgNames = new string[nArgs];
+			for (int i = 0; i < nArgs; i ++) {
+				genArgNames[i] = objFileReader.ReadString ();
+			}
 		}
 	}
 
@@ -3825,8 +3939,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	 *        They are pointed to by 'List's innerSDTypes["T"] and genParams[0].
 	 */
 	public class TokenDeclSDTypeGenParam : TokenDeclSDType {
-		public TokenDeclSDType decl;
-		public int index;
+		public TokenDeclSDType decl;  // points to type that uses this, eg, 'List'
+		public int index;             // what position this is in the paramters
 
 		public TokenDeclSDTypeGenParam (Token original, TokenDeclSDType decl, int index) : base (original)
 		{
@@ -3852,6 +3966,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public override void ReadFromFile (BinaryReader objFileReader, TextWriter asmFileWriter)
 		{
 			throw new Exception ("not yet implemented");
+		}
+
+		// debugging - get name string
+		public override void DebString (StringBuilder sb)
+		{
+			foreach (KeyValuePair<string, TokenDeclSDType> kvp in decl.innerSDTypes) {
+				if (kvp.Value == this) {
+					sb.Append (kvp.Key);
+					return;
+				}
+			}
+			throw new Exception ("not found");
 		}
 	}
 
@@ -3887,6 +4013,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public override void ReadFromFile (BinaryReader objFileReader, TextWriter asmFileWriter)
 		{ }
+
+		// debugging - returns, eg, 'IEnumerator<T>'
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append (longName.val);
+			if (genParams.Length > 0) {
+				sb.Append ('<');
+				for (int i = 0; i < genParams.Length; i ++) {
+					if (i > 0) sb.Append (',');
+					genParams[i].DebString (sb);
+				}
+				sb.Append ('>');
+			}
+		}
 	}
 
 	/**
@@ -3904,7 +4044,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	public class TokenTypeSDTypeClass : TokenTypeSDType {
 		private static readonly FieldInfo gblSDTClObjsFieldInfo  = typeof (XMRInstAbstract).GetField ("gblSDTClObjs");
 		private static readonly FieldInfo sdtcSDTClObjsFieldInfo = typeof (XMRSDTypeClassInstance).GetField ("sdtcSDTClObjs");
- 
+
 		public TokenDeclSDTypeClass decl;
 		public TokenTypeSDTypeClass (Token t, TokenDeclSDTypeClass decl) : base (t)
 		{
@@ -3944,6 +4084,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			declVar.vTableArray = sdtcSDTClObjsFieldInfo;
 			declVar.vTableIndex = sdtClass.numInstSDTClObjs ++;
+		}
+
+		// debugging
+		public override void DebString (StringBuilder sb)
+		{
+			decl.DebString (sb);
+
+			if ((this.genArgs != null) && (this.genArgs.Length > 0)) {
+				sb.Append (" with ");
+				for (int i = 0; i < this.genArgs.Length; i ++) {
+					if (i > 0) sb.Append (',');
+					this.genArgs[i].DebString (sb);
+				}
+			}
 		}
 	}
 
@@ -4056,6 +4210,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			this.decl = TokenDeclSDTypeDelegate.CreateInline (retType, argTypes);
 		}
+
+		// debugging
+		public override void DebString (StringBuilder sb)
+		{
+			decl.DebString (sb);
+
+			if ((this.genArgs != null) && (this.genArgs.Length > 0)) {
+				sb.Append (" with ");
+				for (int i = 0; i < this.genArgs.Length; i ++) {
+					if (i > 0) sb.Append (',');
+					this.genArgs[i].DebString (sb);
+				}
+			}
+		}
 	}
 
 	/**
@@ -4097,6 +4265,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			if (t is TokenTypeSDTypeGenParam) throw new Exception ("genArgs[] contains a TokenTypeSDTypeGenParam");
 			return t;
 		}
+
+		// debugging
+		public override void DebString (StringBuilder sb)
+		{
+			decl.DebString (sb);
+		}
 	}
 
 	public class TokenTypeSDTypeInterface : TokenTypeSDType {
@@ -4128,6 +4302,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				return sd.implements.Contains (this.decl);
 			}
 			return false;
+		}
+
+		// debugging
+		public override void DebString (StringBuilder sb)
+		{
+			decl.DebString (sb);
+
+			if ((this.genArgs != null) && (this.genArgs.Length > 0)) {
+				sb.Append (" with ");
+				for (int i = 0; i < this.genArgs.Length; i ++) {
+					if (i > 0) sb.Append (',');
+					this.genArgs[i].DebString (sb);
+				}
+			}
 		}
 	}
 
@@ -4608,16 +4796,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			return true;
 		}
 
-		/*
-		 * Debugging
-		 */
-		public override string ToString ()
+		// debugging
+		public override void DebString (StringBuilder sb)
 		{
-			StringBuilder sb = new StringBuilder ();
 			sb.Append (baseRVal);
 			sb.Append (".");
 			sb.Append (fieldName.val);
-			return sb.ToString ();
 		}
 	}
 
@@ -4947,21 +5131,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			return meth.IsCallTrivial (scg, myArgSig);
 		}
 
-		/*
-		 * Debugging
-		 */
-		public override string ToString ()
+		// debugging
+		public override void DebString (StringBuilder sb)
 		{
-			StringBuilder sb = new StringBuilder ();
-			sb.Append (meth.ToString ());
+			meth.DebString (sb);
 			sb.Append (" (");
 			bool first = true;
 			for (Token t = args; t != null; t = t.nextToken) {
 				if (!first) sb.Append (", ");
-				sb.Append (t.ToString ());
+				t.DebString (sb);
 			}
 			sb.Append (")");
-			return sb.ToString ();
 		}
 	}
 
@@ -5310,12 +5490,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			return true;  // ldarg.0/starg.0 can't possibly loop
 		}
 
-		/*
-		 * Debugging
-		 */
-		public override string ToString ()
+		// debugging
+		public override void DebString (StringBuilder sb)
 		{
-			return "this";
+			sb.Append ("this");
 		}
 	}
 
