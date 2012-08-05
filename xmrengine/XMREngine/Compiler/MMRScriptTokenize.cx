@@ -107,6 +107,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         }
 
         /*
+         * Only tokens that might reference generic parameter types need 
+         * to do anything special.  AND this is ONLY called before any 
+         * of the reduction tokens (other than types) are created so none 
+         * of them need to do anything either.
+         */
+        public virtual Token ResolveGenParam (TokenType[] genArgs)
+        {
+            return (Token)this.MemberwiseClone ();
+        }
+
+        /*
          * Generate debugging string - should look like source code.
          */
         public virtual void DebString (StringBuilder sb)
@@ -1159,17 +1170,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public virtual void AssignSDTClassFieldSlot (TokenDeclVar declVar, TokenDeclSDTypeClass sdtClass)
         {
             throw new Exception ("not implemented for " + ToString () + " (" + GetType () + ")");
-        }
-
-        /**
-         * @brief For most types, this just returns the same token.
-         *        But if it is a generic parameter type, eg, the 'U' in the body of 'Dictionary<T,U>' 
-         *        it returns the instantiated type.  genArgs[1] holds the final type, eg, 'integer'.  
-         *        genArgs[] never holds any TokenTypeGenParam, ie, nothing recursive.
-         */
-        public virtual TokenType ResolveGenParam (TokenType[] genArgs)
-        {
-            return this;
         }
     }
 

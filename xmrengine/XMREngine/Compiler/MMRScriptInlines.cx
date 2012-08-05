@@ -226,12 +226,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			this.retType     = TokenType.FromSysType (null, retType);
 			this.methInfo    = methInfo;
-			this.funcNameSig = new TokenName (null, nameArgSig);
 			this.doCheckRun  = doCheckRun;
 			this.triviality  = doCheckRun ? Triviality.complex : Triviality.trivial;
 
+			int j = nameArgSig.IndexOf ('(');
+			this.name = new TokenName (null, nameArgSig.Substring (0, j ++));
+
 			this.argDecl = new TokenArgDecl (null);
-			int j = nameArgSig.IndexOf ('(') + 1;
 			if (nameArgSig[j] != ')') {
 				int i;
 				TokenName name;
@@ -263,10 +264,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		                         MethodInfo methInfo)
 			: base (null, null, null)
 		{
+			this.name        = new TokenName (null, name);
 			this.retType     = retType;
 			this.methInfo    = methInfo;
 			this.argDecl     = argDecl;
-			this.funcNameSig = new TokenName (null, name + this.argDecl.GetArgSig ());
 			this.doCheckRun  = doCheckRun;
 			this.triviality  = doCheckRun ? Triviality.complex : Triviality.trivial;
 			this.location    = new CompValuInline (this);
