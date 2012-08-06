@@ -121,7 +121,7 @@ default {
         llOwnerSay ("typeof(stuff) = " + xmrTypeName (stuff));
         stuff.Enqueue ("abcdef");
         stuff.Enqueue (1);
-        stuff.Enqueue ([2,3,4]);
+        stuff.Enqueue ((string)[2,3,4]);
         stuff.Enqueue (<5,6,7>);
         llOwnerSay ("count=" + stuff.Count);
         integer first = 1;

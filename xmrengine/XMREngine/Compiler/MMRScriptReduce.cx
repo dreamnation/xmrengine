@@ -123,6 +123,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 * Instance variables.
 		 */
 		private bool errors = false;
+		private string lastErrorFile = "";
+		private int lastErrorLine = 0;
 		private TokenDeclVar currentDeclFunc = null;
 		private TokenDeclSDType currentDeclSDType = null;
 		private TokenScript tokenScript;
@@ -172,10 +174,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * done as a separate scan so they can cross-reference
 			 * each other.
 			 */
-			ParseSDTypePreScanPassOne  (tokenBegin);  // catalog definitions
-			ParseSDTypePreScanPassTwo  (tokenBegin);  // substitute references
-			ParseSDTypePreScanPassTree (tokenBegin);  // instantiate generics
+			ParseSDTypePreScanPassOne (tokenBegin);  // catalog definitions
+			ParseSDTypePreScanPassTwo (tokenBegin);  // substitute references
 
+			/*
 			int braces = 0;
 			Token prevTok = null;
 			for (Token token = tokenBegin; token != null; token = token.nextToken) {
@@ -198,6 +200,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				if (token is TokenKwParOpen) braces += 2;
 				prevTok = token;
 			}
+			*/
 
 			/*
 			 * Scan through the tokens until we reach the end.
@@ -360,7 +363,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 *        In the case of a delegate with an explicit return type, it reverses the name and return type.
 		 *        After this completes there shouldn't be any TokenKw{Class,Delegate,Interface} keywords in 
 		 *        the source, they are all replaced by TokenDeclSDType{Class,Delegate,Interface} tokens which 
-		 *        also encapsulate the name of the type being defined.
+		 *        also encapsulate the name of the type being defined and any generic parameter names.
 		 */
 		private void ParseSDTypePreScanPassOne (Token tokenBegin)
 		{
@@ -542,38 +545,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 *           true: decl.genParams = filled in with parameter list
 		 *                 decl.innerSDTypes = filled in with parameter list
 		 */
-		private static readonly TokenDeclSDTypeGenParam[] zeroGenParams = new TokenDeclSDTypeGenParam[0];
 		private bool ParseGenProtoParamList (ref Token t, TokenDeclSDType decl)
 		{
 			/*
 			 * Maybe there aren't any generic parameters.
-			 * But we inherit generic parameters from our outer type.
+			 * If so, leave decl.genParams = null.
 			 */
-			if (!(t is TokenKwCmpLT)) {
-				if (decl.outerSDType != null) {
-					decl.genParams = decl.outerSDType.genParams;
-				} else {
-					decl.genParams = zeroGenParams;
-				}
-				return true;
-			}
+			if (!(t is TokenKwCmpLT)) return true;
 
 			/*
 			 * Build list of generic parameter names.
-			 * Add them as inner types to the defining class.
-			 *
-			 * The array decl.genParams is added on to from the outer class, so there 
-			 * only needs to be one argument array, allowing TokenTypeSDTypeGenParam.ResolveGenParam() 
-			 * to get the arg type in one access.
-			 *
-			 * The decl.innerSDTypes dictionary just gets the defintions for this type.
 			 */
-			List<TokenDeclSDTypeGenParam> parms = new List<TokenDeclSDTypeGenParam> ();
-			if (decl.outerSDType != null) {
-				foreach (TokenDeclSDTypeGenParam outerGenParam in decl.outerSDType.genParams) {
-					parms.Add (outerGenParam);
-				}
-			}
+			Dictionary<string, int> parms = new Dictionary<string, int> ();
 			do {
 				t = t.nextToken;
 				if (!(t is TokenName)) {
@@ -581,14 +564,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					break;
 				}
 				TokenName tn = (TokenName)t;
-				TokenDeclSDTypeGenParam ttgp = new TokenDeclSDTypeGenParam (tn, decl, parms.Count);
-				ttgp.shortName = tn;
-				ttgp.genParams = zeroGenParams;
-				parms.Add (ttgp);
-				if (decl.innerSDTypes.ContainsKey (tn.val)) {
+				if (parms.ContainsKey (tn.val)) {
 					ErrorMsg (tn, "duplicate use of generic parameter name");
 				} else {
-					decl.innerSDTypes.Add (tn.val, ttgp);
+					parms.Add (tn.val, parms.Count);
 				}
 				t = t.nextToken;
 			} while (t is TokenKwComma);
@@ -597,7 +576,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				return false;
 			}
 			t = t.nextToken;
-			decl.genParams = parms.ToArray ();
+			decl.genParams = parms;
 
 			return true;
 		}
@@ -607,7 +586,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 *        Its short name (eg, 'Node') gets put in the next outer level (eg, 'List')'s inner type definition table.
 		 *        Its long name (eg, 'List.Node') gets put in the global type definition table.
 		 */
-		private void CatalogSDTypeDecl (TokenDeclSDType decl)
+		public void CatalogSDTypeDecl (TokenDeclSDType decl)
 		{
 			string longName = decl.longName.val;
 			TokenDeclSDType dupDecl;
@@ -626,40 +605,67 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 * @brief Replace all TokenName tokens that refer to the script-defined types with 
 		 *        corresponding TokenTypeSDType{Class,Delegate,GenParam,Interface} tokens.
 		 *        Also handle generic references, ie, recognize that 'List<integer>' is an
-		 *        instantiation of 'List<>'.
+		 *        instantiation of 'List<>' and instantiate the generic.
 		 */
+		private const uint REPEAT_NOTYPE = 1;
+		private const uint REPEAT_INSTGEN = 2;
+		private const uint REPEAT_SUBST = 4;
+
 		private void ParseSDTypePreScanPassTwo (Token tokenBegin)
 		{
-			TokenDeclSDType outerSDType = null;
+			TokenDeclSDType outerSDType;
+			uint repeat;
 
-			for (Token t = tokenBegin; !((t = t.nextToken) is TokenEnd);) {
+			do {
+				repeat = 0;
+				outerSDType = null;
 
-				/*
-				 * Maybe it's time to pop out of an outer class definition.
-				 */
-				if ((outerSDType != null) && (outerSDType.endToken == t)) {
-					outerSDType = outerSDType.outerSDType;
-					continue;
+				for (Token t = tokenBegin; !((t = t.nextToken) is TokenEnd);) {
+
+					/*
+					 * Skip completely over any generic prototypes.
+					 * We only need to process their instantiations.
+					 */
+					if ((t is TokenDeclSDType) && (((TokenDeclSDType)t).genParams != null)) {
+						t = ((TokenDeclSDType)t).endToken;
+						continue;
+					}
+
+					/*
+					 * Maybe it's time to pop out of an outer class definition.
+					 */
+					if ((outerSDType != null) && (outerSDType.endToken == t)) {
+						outerSDType = outerSDType.outerSDType;
+						continue;
+					}
+
+					/*
+					 * Check for beginning of script-defined type definitions.
+					 * They can have nested definitions and generic parameters in their innerSDTypes[] 
+					 * so add them to the stack.
+					 */
+					if (t is TokenDeclSDType) {
+						outerSDType = (TokenDeclSDType)t;
+						continue;
+					}
+
+					/*
+					 * For names not preceded by a '.', scan the script-defined type definition 
+					 * stack for that name.  If found, substitute in a type token for the name token.
+					 */
+					if ((t is TokenName) && !(t.prevToken is TokenKwDot)) {
+						t = TrySpliceTypeRef (t, outerSDType, ref repeat);
+					}
 				}
 
 				/*
-				 * Check for beginning of script-defined type definitions.
-				 * They can have nested definitions and generic parameters in their innerSDTypes[] 
-				 * so add them to the stack.
+				 * If we instantiated a generic, loop back to process its contents
+				 * just as if the source code had the instantiated code to begin with.
+				 * Also repeat if we found a non-type inside the <> of a generic reference 
+				 * provided we have made at least one name->type substitution.
 				 */
-				if (t is TokenDeclSDType) {
-					outerSDType = (TokenDeclSDType)t;
-					continue;
-				}
-
-				/*
-				 * For names not preceded by a '.', scan the script-defined type definition 
-				 * stack for that name.  If found, substitute in a type token for the name token.
-				 */
-				if ((t is TokenName) && !(t.prevToken is TokenKwDot)) {
-					TrySpliceTypeRef (ref t, outerSDType);
-				}
-			}
+			} while (((repeat & REPEAT_INSTGEN) != 0) || 
+			         ((repeat & (REPEAT_NOTYPE | REPEAT_SUBST)) == (REPEAT_NOTYPE | REPEAT_SUBST)));
 		}
 
 		/**
@@ -669,111 +675,95 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 * @param t = points to the initial TokenName token
 		 * @param outerSDType = null: this is a top-level code reference
 		 *                      else: this code is within outerSDType
-		 * @returns false: parse error, message already output
-		 *                 t advanced to point of error
-		 *           true: no substitution: t points to original TokenName
-		 *                 substitution: t updated to spliced-in TokenType
+		 * @returns pointer to last token parsed
+		 *          possibly with spliced-in type token
+		 *          repeat = possibly set true if need to do another pass
 		 */
-		private bool TrySpliceTypeRef (ref Token t, TokenDeclSDType outerSDType)
+		private Token TrySpliceTypeRef (Token t, TokenDeclSDType outerSDType, ref uint repeat)
 		{
 			Token start = t;
+			string tnamestr = ((TokenName)t).val;
 
 			/*
-			 * Look for the name as a type defined by outerSDType or anything
-			 * even farther out than that.  If not found, simply return true
+			 * Look for the name as a type declared by outerSDType or anything
+			 * even farther out than that.  If not found, simply return 
 			 * without updating t, meaning that t isn't the name of a type.
 			 */
-			TokenName tnametok = (TokenName)t;
-			string tnamestr = tnametok.val;
-
-			TokenDeclSDType decl = null;
-			for (TokenDeclSDType nt = outerSDType; nt != null; nt = nt.outerSDType) {
-				if (nt.innerSDTypes.TryGetValue (tnamestr, out decl)) break;
+			TokenDeclSDType decl;
+			while (outerSDType != null) {
+				if (outerSDType.innerSDTypes.TryGetValue (tnamestr, out decl)) break;
+				outerSDType = outerSDType.outerSDType;
 			}
-			if (decl == null) {
-				if (!tokenScript.sdSrcTypesTryGetValue (tnamestr, out decl)) return true;
-			}
+			if ((outerSDType == null) && !tokenScript.sdSrcTypesTryGetValue (tnamestr, out decl)) return t;
 
-			/*
-			 * Build list of generic arguments starting with all this one's outer types as 
-			 * arguments.  Eg. in:
-			 *    class List<T> {
-			 *        ...
-			 *        Enumerator x;   <-- we are parsing Enumerator
-			 *                            and now decl = List.Enumerator.
-			 *                            but it really is List<T>.Enumerator.
-			 *                            so we want to start genArgList with T in 
-			 *                            it so we end up with same thing as if the 
-			 *                            source code had List<T>.Enumerator.
-			 *        ...
-			 *        class Enumerator {
-			 *            ...
-			 *        }
-			 *    }
-			 */
-			List<TokenType> genArgList = new List<TokenType> ();
-			TokenDeclSDType ot = decl.outerSDType;
-			if (ot != null) {
-				for (int i = 0; i < ot.genParams.Length; i ++) {
-					TokenDeclSDTypeGenParam genParam = ot.genParams[i];
-					TokenTypeSDType genArg = genParam.MakeRefToken (start, null);
-					genArgList.Add (genArg);
-				}
-			}
-
-			/*
-			 * Pick up generic arguments and subtypes.
-			 */
+			TokenDeclSDType instdecl;
 			while (true) {
 
 				/*
-				 * Maybe it requires some (more) generic argument types.
-				 * Fortunately we know exactly how many.
-				 * If so, parse them out.
+				 * If it is a generic type, it must be followed by instantiation arguments.
 				 */
-				bool first = true;
-				while (genArgList.Count < decl.genParams.Length) {
+				instdecl = decl;
+				if (decl.genParams != null) {
 					t = t.nextToken;
-					if (first && !(t is TokenKwCmpLT)) {
-						ErrorMsg (t, "require < for generic arguments");
-						return false;
+					if (!(t is TokenKwCmpLT)) {
+						ErrorMsg (t, "expecting < for generic argument list");
+						return t;
 					}
-					if (!first && !(t is TokenKwComma)) {
-						ErrorMsg (t, "require , for more generic arguments");
-						return false;
+					tnamestr += "<";
+					int nArgs = decl.genParams.Count;
+					TokenType[] genArgs = new TokenType[nArgs];
+					for (int i = 0; i < nArgs;) {
+						t = t.nextToken;
+						if (!(t is TokenType)) {
+							repeat |= REPEAT_NOTYPE;
+							return t.prevToken;  // make sure name gets processed
+							                     // so substitution can occur on it
+						}
+						TokenType ga = (TokenType)t;
+						genArgs[i] = ga;
+						tnamestr += ga.ToString ();
+						t = t.nextToken;
+						if (++ i < nArgs) {
+							if (!(t is TokenKwComma)) {
+								ErrorMsg (t, "expecting , for more generic arguments");
+								return t;
+							}
+							tnamestr += ",";
+						}
 					}
-					t = t.nextToken;
-					if (t is TokenName) {
-						if (!TrySpliceTypeRef (ref t, outerSDType)) return false;
-					}
-					if (!(t is TokenType)) {
-						ErrorMsg (t, "expecting type as generic argument");
-						return false;
-					}
-					genArgList.Add ((TokenType)t);
-					first = false;
-				}
-				if (!first) {
-					t = t.nextToken;
 					if (!(t is TokenKwCmpGT)) {
-						ErrorMsg (t, "require > to end generic argumets");
-						return false;
+						ErrorMsg (t, "expecting > at end of generic argument list");
+						return t;
+					}
+					tnamestr += ">";
+					if (outerSDType != null) {
+						outerSDType.innerSDTypes.TryGetValue (tnamestr, out instdecl);
+					} else {
+						tokenScript.sdSrcTypesTryGetValue (tnamestr, out instdecl);
+					}
+
+					/*
+					 * Couldn't find 'List<string>' but found 'List' and we have genArgs = 'string'.
+					 * Instantiate the generic to create 'List<string>'.  This splices the definition 
+					 * of 'List<string>' into the source token stream just as if it had been there all 
+					 * along.  We have to then repeat the scan to process the instance's contents.
+					 */
+					if (instdecl == null) {
+						instdecl = decl.InstantiateGeneric (tnamestr, genArgs, this);
+						CatalogSDTypeDecl (instdecl);
+						repeat |= REPEAT_INSTGEN;
 					}
 				}
 
 				/*
-				 * If name<args> is followed by '.' <innername>, try to find
-				 * the inner name.  If inner name not found, it is probably 
-				 * something like a static field or method name, so leave it 
-				 * alone.
+				 * Maybe caller wants a subtype by putting a '.' following all that.
 				 */
 				if (!(t.nextToken is TokenKwDot)) break;
 				if (!(t.nextToken.nextToken is TokenName)) break;
-				tnametok = (TokenName)t.nextToken.nextToken;
-				TokenDeclSDType innerdecl;
-				if (!decl.innerSDTypes.TryGetValue (tnametok.val, out innerdecl)) break;
-				decl = innerdecl;
-				t = tnametok;
+				tnamestr = ((TokenName)t.nextToken.nextToken).val;
+				if (!instdecl.innerSDTypes.TryGetValue (tnamestr, out decl)) break;
+				t = t.nextToken.nextToken;
+				outerSDType = instdecl;
 			}
 
 			/*
@@ -784,123 +774,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * 'Dictionary' '<' 'string' ',' 'integer' '>' '.' 'ValueList'
 			 * with 'Dictionary<string,integer>.ValueList'.
 			 */
-			TokenTypeSDType refer = decl.MakeRefToken (start, genArgList.ToArray ());
+			TokenTypeSDType refer = instdecl.MakeRefToken (start);
 			refer.prevToken = start.prevToken;  // start points right at the first TokenName
 			refer.nextToken = t.nextToken;      // t points at the last TokenName or TokenKwCmpGT
 			refer.prevToken.nextToken = refer;
 			refer.nextToken.prevToken = refer;
-			t = refer;
+			repeat |= REPEAT_SUBST;
 
-			return true;
-		}
-
-		/**
-		 * @brief Instantiate any referenced generics, eg, create non-generic 
-		 *        'Dictionary<string,integer>'.  Splice it into the token stream so it 
-		 *        appears as though the script writer put it there to begin with.
-		 */
-		private static TokenType[] zeroGenArgs = new TokenType[0];
-		private void ParseSDTypePreScanPassTree (Token tokenBegin)
-		{
-			bool didOne;
-
-			do {
-				didOne = false;
-				for (Token t = tokenBegin; !((t = t.nextToken) is TokenEnd);) {
-
-					/*
-					 * Completely skip over any generic prototypes, eg, the whole 'class Dictionary<K,V> { ... }' thing.
-					 * We deal with their contents when we have the concrete arguments to apply.
-					 */
-					if (t is TokenDeclSDType) {
-						TokenDeclSDType decl = (TokenDeclSDType)t;
-						if (decl.genParams.Length > 0) {
-							t = decl.endToken;
-						}
-						continue;
-					}
-
-					/*
-					 * See if we have a reference to a generic prototype, eg, 'Dictionary<string,integer>'.
-					 * If so, make sure we have an instantiation of that generic so code will be generated 
-					 * for that instantiation.
-					 */
-					if (t is TokenTypeSDType) {
-						TokenTypeSDType type = (TokenTypeSDType)t;
-						if (type.genArgs.Length > 0) {
-
-							/*
-							 * Get a list of type names from outermost to innermost.
-							 */
-							Stack<TokenDeclSDType> declStack = new Stack<TokenDeclSDType> ();
-							TokenDeclSDType prototype = type.GetDecl ();
-							for (TokenDeclSDType decl = prototype; decl != null; decl = decl.outerSDType) {
-								declStack.Push (decl);
-							}
-
-							/*
-							 * Apply the argument list to the prototpyes starting with the outermost.
-							 */
-							int i = 0;
-							TokenDeclSDType instantiated;
-							TokenDeclSDType outerInstantiated = null;
-							do {
-
-								/*
-								 * Build the short name with the arguments applied, eg, 'Node<string>'.
-								 */
-								TokenDeclSDType decl = declStack.Pop ();
-								StringBuilder sb = new StringBuilder (decl.shortName.val);
-								bool first = true;
-								while (i < decl.genParams.Length) {
-									sb.Append (first ? '<' : ',');
-									sb.Append (type.genArgs[i].ToString ());
-									first = false;
-								}
-								if (!first) sb.Append ('>');
-								string sbstr = sb.ToString ();
-
-								/*
-								 * See if we already have such an instantiated type.
-								 */
-								bool gotIt;
-								if (outerInstantiated == null) {
-									gotIt = tokenScript.sdSrcTypesTryGetValue (sbstr, out instantiated);
-								} else {
-									gotIt = outerInstantiated.innerSDTypes.TryGetValue (sbstr, out instantiated);
-								}
-
-								/*
-								 * If not, create one and splice it into the source token stream.
-								 * Then we need to do another pass so we process its contents too.
-								 */
-								if (!gotIt) {
-									instantiated = prototype.Instantiate (sbstr, type.genArgs);
-
-									tokenScript.sdSrcTypesAdd (instantiated.longName.val, instantiated);
-									if (outerInstantiated != null) {
-										outerInstantiated .innerSDTypes.Add (sbstr, instantiated);
-									}
-
-									didOne = true;
-								}
-							} while (declStack.Count > 0);
-
-							/*
-							 * Change what the type token points to for its declaration
-							 * to be the instantiated type.  And also now it doesn't have
-							 * any generic arguments to apply to the instantiated type.
-							 */
-							type.SetDecl (instantiated);
-							type.genArgs = zeroGenArgs;
-						}
-					}
-				}
-
-				/*
-				 * Repeat if we instantiated any generic types so we scan their bodies for generics.
-				 */
-			} while (didOne);
+			return refer;
 		}
 
 		/**
@@ -921,7 +802,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * If declaration of generic type, skip it.
 			 * The instantiations get parsed (ie, when we know the concrete types).
 			 */
-			if (decl.genParams.Length > 0) {
+			if (decl.genParams != null) {
 				token = decl.endToken.nextToken;
 				return true;
 			}
@@ -3182,8 +3063,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		private void ErrorMsg (Token token, string message)
 		{
-			errors = true;
-			token.ErrorMsg (message);
+			if (!errors || (token.file != lastErrorFile) || (token.line > lastErrorLine)) {
+				errors = true;
+				lastErrorFile = token.file;
+				lastErrorLine = token.line;
+				token.ErrorMsg (message);
+			}
 		}
 
 		/**
@@ -3219,21 +3104,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		protected const byte DELEGATE  = 1;
 		protected const byte INTERFACE = 2;
 
-		public TokenDeclSDTypeClass extends;         // only non-null for TokenDeclSDTypeClass's
+		// stuff that gets cloned/copied/transformed when instantiating a generic
+		// see InstantiateGeneric() below
 		public TokenDeclSDType outerSDType;          // null if top-level
 		                                             // else points to defining script-defined type
-		public uint accessLevel;                     // SDT_PRIVATE, SDT_PROTECTED or SDT_PUBLIC
-		                                             // ... all top-level types are SDT_PUBLIC
-		public VarDict members = new VarDict ();     // declared fields, methods, properties if any
 		public Dictionary<string, TokenDeclSDType> innerSDTypes = new Dictionary<string, TokenDeclSDType> ();
 		                                             // indexed by shortName
 		public Token endToken;                       // the '}' or ';' that ends the definition
 
-		public TokenDeclSDTypeGenParam[] genParams;  // array of parameters for generic prototypes
-		                                             // length 0 for non-generic prototypes
+		// generic instantiation assumes none of the rest needs to be cloned (well except for the shortName)
+		public TokenDeclSDTypeClass extends;         // only non-null for TokenDeclSDTypeClass's
+		public uint accessLevel;                     // SDT_PRIVATE, SDT_PROTECTED or SDT_PUBLIC
+		                                             // ... all top-level types are SDT_PUBLIC
+		public VarDict members = new VarDict ();     // declared fields, methods, properties if any
+
+		public Dictionary<string, int> genParams;    // list of parameters for generic prototypes
+		                                             // null for non-generic prototypes
 		                                             // eg, for 'Dictionary<K,V>'
-		                                             //     ...genParams gives 0->K; 1->V
-		                                             // cumulative for nested types
+		                                             //     ...genParams gives K->0; V->1
 
 		/*
 		 * Name of the type.
@@ -3276,15 +3164,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public TokenDeclSDType (Token t) : base (t) { }
 		protected abstract TokenDeclSDType MakeBlank (TokenName shortName);
-		public abstract TokenTypeSDType MakeRefToken (Token t, TokenType[] genArgs);
+		public abstract TokenTypeSDType MakeRefToken (Token t);
 		public abstract Type GetSysType ();
 		public abstract void WriteToFile (BinaryWriter objFileWriter);
 		public abstract void ReadFromFile (BinaryReader objFileReader, TextWriter asmFileWriter);
-
-		public override Token ResolveGenParam (TokenType[] genArgs)
-		{
-			throw new Exception ("not yet implemented");
-		}
 
 		/**
 		 * @brief Given that this is a generic prototype, apply the supplied genArgs 
@@ -3293,15 +3176,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 *        argument types.
 		 * @param this = the prototype to be instantiated, eg, 'Dictionary<string,integer>.Converter'
 		 * @param name = short name with arguments, eg, 'Converter<float>'.
-		 * @param genArgs = argument types including outer levels, eg, 'string,integer,float'.
+		 * @param genArgs = argument types of just this level, eg, 'float'.
 		 * @returns clone of this but with arguments applied and spliced in source token stream
 		 */
-		public TokenDeclSDType Instantiate (string name, TokenType[] genArgs)
+		public TokenDeclSDType InstantiateGeneric (string name, TokenType[] genArgs, ScriptReduce reduce)
 		{
 			/*
 			 * Malloc the struct and give it a name.
 			 */
-			TokenDeclSDType inst = this.MakeBlank (new TokenName (this, name));
+			TokenDeclSDType instdecl = this.MakeBlank (new TokenName (this, name));
 
 			/*
 			 * If the original had an outer type, then so does the new one.
@@ -3309,13 +3192,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * is 'ValueList' it will always be inside 'Dictionary<string,integer>'
 			 * not 'Dictionary' at this point.
 			 */
-			if ((this.outerSDType != null) && (this.outerSDType.genParams.Length > 0)) throw new Exception ();
-			inst.outerSDType = this.outerSDType;
+			if ((this.outerSDType != null) && (this.outerSDType.genParams != null)) throw new Exception ();
+			instdecl.outerSDType = this.outerSDType;
 
 			/*
-			 * Splice instantiation (inst) in just before the prototype (this).
+			 * Splice instantiation (instdecl) in just before the prototype (this).
 			 */
-			SpliceSourceToken (inst);
+			SpliceSourceToken (instdecl);
 
 			/*
 			 * Now for the fun part...  Copy the rest of the prototype body to the 
@@ -3327,23 +3210,96 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * numbered [2].  Any [0]s or [1]s should be gone by now but it doesn't 
 			 * matter.
 			 */
+			int index;
 			Token it, pt;
+			TokenDeclSDType innerProto = this;
+			TokenDeclSDType innerInst  = instdecl;
 			for (pt = this; (pt = pt.nextToken) != this.endToken;) {
-				// majority of tokens just clone themselves
-				// only script-defined type definition and script-defined type 
-				// reference tokens do anything special
-				it = pt.ResolveGenParam (genArgs);
+
+				/*
+				 * Coming across a sub-type's declaration involves a deep copy of the 
+				 * declaration token.  Fortunately we are early on in parsing, so there 
+				 * really isn't much to copy:
+				 *   1) short name is the same, eg, doing List of Dictionary<string,integer>.List is same short name as Dictionary<T,U>.List
+				 *      if generic, eg doing Converter<W> of Dictionary<T,U>.Converter<W>, we have to manually copy the W as well.
+				 *   2) outerSDType is transformed from Dictionary<T,U> to Dictionary<string,integer>.
+				 *   3) innerSDTypes is rebuilt when/if we find classes that are inner to this one.
+				 */
+				if (pt is TokenDeclSDType) {
+
+					/*
+					 * Make a new TokenDeclSDType{Class,Delegate,Interface}.
+					 */
+					TokenDeclSDType ptSDType = (TokenDeclSDType)pt;
+					TokenDeclSDType itSDType = ptSDType.MakeBlank (new TokenName (ptSDType.shortName, ptSDType.shortName.val));
+
+					/*
+					 * Set up the transformed outerSDType.
+					 * Eg, if we are creating Enumerator of Dictionary<string,integer>.Enumerator,
+					 * innerProto = Dictionary<T,U> and innerInst = Dictionary<string,integer>.
+					 */
+					itSDType.outerSDType = innerInst;
+
+					/*
+					 * This clone is an inner type of its next outer level.
+					 */
+					reduce.CatalogSDTypeDecl (itSDType);
+
+					/*
+					 * We need to manually copy any generic parameters of the class declaration being cloned.
+					 * eg, if we are cloning Converter<W>, this is where the W gets copied.
+					 * Since it is an immutable array of strings, just copy the array pointer, if any.
+					 */
+					itSDType.genParams = ptSDType.genParams;
+
+					/*
+					 * We are now processing tokens for this cloned type declaration.
+					 */
+					innerProto = ptSDType;
+					innerInst  = itSDType;
+
+					/*
+					 * Splice this clone token in.
+					 */
+					it = itSDType;
+				}
+
+				/*
+				 * Check for an generic parameter to substitute out.
+				 */
+				else if ((pt is TokenName) && this.genParams.TryGetValue (((TokenName)pt).val, out index)) {
+					it = genArgs[index].CopyToken (pt);
+				}
+
+				/*
+				 * Everything else is a simple copy.
+				 */
+				else it = pt.CopyToken (pt);
+
+				/*
+				 * Whatever we came up with, splice it into the source token stream.
+				 */
 				SpliceSourceToken (it);
+
+				/*
+				 * Maybe we just finished copying an inner type definition.
+				 * If so, remember where it ends and pop it from the stack.
+				 */
+				if (innerProto.endToken == pt) {
+					innerInst.endToken = it;
+					innerProto = innerProto.outerSDType;
+					innerInst  = innerInst.outerSDType;
+				}
 			}
 
 			/*
-			 * Clone and insert the terminator either '}' or ';'
+			 * Clone and insert the terminator, either '}' or ';'
 			 */
-			it = pt.ResolveGenParam (genArgs);
+			it = pt.CopyToken (pt);
 			SpliceSourceToken (it);
-			inst.endToken = it;
+			instdecl.endToken = it;
 
-			return inst;
+			return instdecl;
 		}
 		private void SpliceSourceToken (Token it)
 		{
@@ -3397,8 +3353,38 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		protected TokenType MakeTypeToken (string name)
 		{
 			TokenDeclSDType sdtdecl;
-			if (sdTypes.TryGetValue (name, out sdtdecl)) return sdtdecl.MakeRefToken (this, null);
+			if (sdTypes.TryGetValue (name, out sdtdecl)) return sdtdecl.MakeRefToken (this);
 			return TokenType.FromLSLType (this, name);
+		}
+
+		// debugging - returns, eg, 'Dictionary<T,U>.Enumerator.Node'
+		public override void DebString (StringBuilder sb)
+		{
+			// get long name broken down into segments from outermost to this
+			Stack<TokenDeclSDType> declStack = new Stack<TokenDeclSDType> ();
+			for (TokenDeclSDType decl = this; decl != null; decl = decl.outerSDType) {
+				declStack.Push (decl);
+			}
+
+			// output each segment's name followed by our args for it
+			// starting with outermost and ending with this
+			while (declStack.Count > 0) {
+				TokenDeclSDType decl = declStack.Pop ();
+				sb.Append (decl.shortName.val);
+				if (decl.genParams != null) {
+					sb.Append ('<');
+					string[] parms = new string[decl.genParams.Count];
+					foreach (KeyValuePair<string, int> kvp in decl.genParams) {
+						parms[kvp.Value] = kvp.Key;
+					}
+					for (int j = 0; j < parms.Length;) {
+						sb.Append (parms[j]);
+						if (++ j < parms.Length) sb.Append (',');
+					}
+					sb.Append ('>');
+				}
+				if (declStack.Count > 0) sb.Append ('.');
+			}
 		}
 	}
 
@@ -3448,11 +3434,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			return new TokenDeclSDTypeClass (shortName);
 		}
 
-		public override TokenTypeSDType MakeRefToken (Token t, TokenType[] genArgs)
+		public override TokenTypeSDType MakeRefToken (Token t)
 		{
-			TokenTypeSDType sdType = new TokenTypeSDTypeClass (t, this);
-			sdType.genArgs = genArgs;
-			return sdType;
+			return new TokenTypeSDTypeClass (t, this);
 		}
 
 		public override Type GetSysType ()
@@ -3646,33 +3630,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			}
 			return DelegateCommon.GetType (retType, argTypes, methSig);
 		}
-
-		// debugging - returns, eg, 'Dictionary<T,U>.Enumerator.Node'
-		public override void DebString (StringBuilder sb)
-		{
-			// get long name broken down into segments from outermost to this
-			Stack<TokenDeclSDType> declStack = new Stack<TokenDeclSDType> ();
-			for (TokenDeclSDType decl = this; decl != null; decl = decl.outerSDType) {
-				declStack.Push (decl);
-			}
-
-			// output each segment's name followed by our args for it
-			// starting with outermost and ending with this
-			int i = 0;
-			while (declStack.Count > 0) {
-				TokenDeclSDType decl = declStack.Pop ();
-				sb.Append (decl.shortName.val);
-				if (i < decl.genParams.Length) {
-					sb.Append ('<');
-					while (i < decl.genParams.Length) {
-						decl.genParams[i].DebString (sb);
-						if (++ i < decl.genParams.Length) sb.Append (',');
-					}
-					sb.Append ('>');
-				}
-				if (declStack.Count > 0) sb.Append ('.');
-			}
-		}
 	}
 
 	public class TokenDeclSDTypeDelegate : TokenDeclSDType {
@@ -3706,11 +3663,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			return new TokenDeclSDTypeDelegate (shortName);
 		}
 
-		public override TokenTypeSDType MakeRefToken (Token t, TokenType[] genArgs)
+		public override TokenTypeSDType MakeRefToken (Token t)
 		{
-			TokenTypeSDType sdType = new TokenTypeSDTypeDelegate (t, this);
-			sdType.genArgs = genArgs;
-			return sdType;
+			return new TokenTypeSDTypeDelegate (t, this);
 		}
 
 		/**
@@ -3923,59 +3878,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		}
 	}
 
-	/**
-	 * @brief Generic parameters
-	 *        These are the T in the declaration of 'class List<T>'.
-	 *        They are pointed to by 'List's innerSDTypes["T"] and genParams[0].
-	 */
-	public class TokenDeclSDTypeGenParam : TokenDeclSDType {
-		public TokenDeclSDType decl;  // points to type that uses this, eg, 'List'
-		public int index;             // what position this is in the paramters
-
-		public TokenDeclSDTypeGenParam (Token original, TokenDeclSDType decl, int index) : base (original)
-		{
-			this.decl  = decl;
-			this.index = index;
-		}
-
-		protected override TokenDeclSDType MakeBlank (TokenName shortName)
-		{
-			throw new Exception ("shouldn't be cloning TokenDeclSDTypeGenParam");
-		}
-
-		public override TokenTypeSDType MakeRefToken (Token t, TokenType[] genArgs)
-		{
-			TokenTypeSDType sdType = new TokenTypeSDTypeGenParam (t, this);
-			sdType.genArgs = genArgs;
-			return sdType;
-		}
-
-		public override Type GetSysType ()
-		{
-			throw new Exception ("should be substuted out by now");
-		}
-		public override void WriteToFile (BinaryWriter objFileWriter)
-		{
-			throw new Exception ("should be substuted out by now");
-		}
-		public override void ReadFromFile (BinaryReader objFileReader, TextWriter asmFileWriter)
-		{
-			throw new Exception ("should be substuted out by now");
-		}
-
-		// debugging - get name string
-		public override void DebString (StringBuilder sb)
-		{
-			foreach (KeyValuePair<string, TokenDeclSDType> kvp in decl.innerSDTypes) {
-				if (kvp.Value == this) {
-					sb.Append (kvp.Key);
-					return;
-				}
-			}
-			throw new Exception ("not found");
-		}
-	}
-
 	public class TokenDeclSDTypeInterface : TokenDeclSDType {
 		public VarDict methsNProps = new VarDict ();
 
@@ -3989,11 +3891,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			return new TokenDeclSDTypeInterface (shortName);
 		}
 
-		public override TokenTypeSDType MakeRefToken (Token t, TokenType[] genArgs)
+		public override TokenTypeSDType MakeRefToken (Token t)
 		{
-			TokenTypeSDType sdType = new TokenTypeSDTypeInterface (t, this);
-			sdType.genArgs = genArgs;
-			return sdType;
+			return new TokenTypeSDTypeInterface (t, this);
 		}
 
 		public override Type GetSysType ()
@@ -4013,20 +3913,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public override void ReadFromFile (BinaryReader objFileReader, TextWriter asmFileWriter)
 		{ }
-
-		// debugging - returns, eg, 'IEnumerator<T>'
-		public override void DebString (StringBuilder sb)
-		{
-			sb.Append (longName.val);
-			if (genParams.Length > 0) {
-				sb.Append ('<');
-				for (int i = 0; i < genParams.Length; i ++) {
-					if (i > 0) sb.Append (',');
-					genParams[i].DebString (sb);
-				}
-				sb.Append ('>');
-			}
-		}
 	}
 
 	/**
@@ -4034,49 +3920,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	 *        These occur in the source code wherever it specifies (eg, variable declaration) a script-defined type.
 	 */
 	public abstract class TokenTypeSDType : TokenType {
-		public TokenType[] genArgs;  // came across something like 'Dictionary<string,integer>' in the source
-		                             // ...so this holds 'string,integer' while decl holds 'Dictionary'
-
 		public TokenTypeSDType (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
 		public TokenTypeSDType (Token t) : base (t) { }
 		public abstract TokenDeclSDType GetDecl ();
 		public abstract void SetDecl (TokenDeclSDType decl);
-
-		/**
-		 * @brief Something wants an instantiated clone of a possible prototype.
-		 *
-		 *        This gets called for example in these cases:
-		 *
-		 *            class Dictionary<K,V> {
-		 *                List<V> values;     <- and so this = 'List'
-		 *                                       and genArgs[] = 'string,integer'
-		 *                List<Node> nodes;   <- we also get called here
-		 *                                       but 'Node' is a concrete type already
-		 *                                       and so just gets copied as is
-		 *            }
-		 *            Dictionary<string,integer> d;
-		 *
-		 *        We want to return 'List<integer>' in the first case, 
-		 *        and 'List<Node>', ie a simple clone, in the second case.
-		 *
-		 * @param genArgs = list of generic instantiation argument types
-		 *                  eg, if we are getting the type of something in 'Dictionary<T,U>'
-		 *                  this = 'T' or 'U' and genArgs[0] = 'string', genArgs[1] = 'integer'
-		 * @returns cloned copy of original with generic parameters substituted out
-		 */
-		public override Token ResolveGenParam (TokenType[] genArgs)
-		{
-			TokenTypeSDType inst = (TokenTypeSDType)this.MemberwiseClone ();
-			int nArgs = this.genArgs.Length;
-			if (nArgs > 0) {
-				inst.genArgs = new TokenType[nArgs];
-				for (int i = nArgs; -- i >= 0;) {
-					// here is where we replace the V in List<V> with integer
-					inst.genArgs[i] = (TokenType)this.genArgs[i].ResolveGenParam (genArgs);
-				}
-			}
-			return inst;
-		}
 	}
 
 	public class TokenTypeSDTypeClass : TokenTypeSDType {
@@ -4133,14 +3980,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public override void DebString (StringBuilder sb)
 		{
 			decl.DebString (sb);
-
-			if ((this.genArgs != null) && (this.genArgs.Length > 0)) {
-				sb.Append (" with ");
-				for (int i = 0; i < this.genArgs.Length; i ++) {
-					if (i > 0) sb.Append (',');
-					this.genArgs[i].DebString (sb);
-				}
-			}
 		}
 	}
 
@@ -4262,84 +4101,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public override void DebString (StringBuilder sb)
 		{
 			decl.DebString (sb);
-
-			if ((this.genArgs != null) && (this.genArgs.Length > 0)) {
-				sb.Append (" with ");
-				for (int i = 0; i < this.genArgs.Length; i ++) {
-					if (i > 0) sb.Append (',');
-					this.genArgs[i].DebString (sb);
-				}
-			}
-		}
-	}
-
-	/**
-	 * @brief These are the T inside the body of 'class List<T> { ... T x; ... }'
-	 *        (and the extends/inherits list as well).
-	 *        For delegates, they are found in the return and argument types.
-	 */
-	public class TokenTypeSDTypeGenParam : TokenTypeSDType {
-		public TokenDeclSDTypeGenParam decl;
-
-		public TokenTypeSDTypeGenParam (Token t, TokenDeclSDTypeGenParam decl) : base (t)
-		{
-			this.decl = decl;
-		}
-		public override TokenDeclSDType GetDecl ()
-		{
-			return decl;
-		}
-		public override void SetDecl (TokenDeclSDType decl)
-		{
-			this.decl = (TokenDeclSDTypeGenParam)decl;
-		}
-		public override Type ToSysType ()
-		{
-			throw new Exception ("not yet implemented");
-		}
-		public override bool IsAssignableFrom (TokenType src)
-		{
-			throw new Exception ("not yet implemented");
-		}
-
-		/**
-		 * @brief Something wants an instantiated clone of the generic parameter.
-		 * @param genArgs = list of generic instantiation argument types
-		 *                  eg, if we are getting the type of something in 'Dictionary<T,U>'
-		 *                  this = 'T' or 'U' and genArgs[0] = 'string', genArgs[1] = 'integer'
-		 * @returns entry from genArgs[]
-		 * Note: genArgs[] should always hold concrete types, never another TokenTypeSDTypeGenParam.
-		 */
-		public override Token ResolveGenParam (TokenType[] genArgs)
-		{
-			// we might be in an inner generic definition but resolving for the outer type
-			// in which case we just return a simple copy of the original unchanged
-			// we might be working on G1 but not G2 yet:
-			//    class G1<T,U> {
-			//        class G2<V,W> {
-			//           // in here, T,U (decl.index=0,1) get substituted
-			//           // but V,W (decl.index=2,3) are left as is
-			//        }
-			//    }
-			if (decl.index >= genArgs.Length) return (Token)this.MemberwiseClone ();
-
-			// just using ResolveGenParam() here to make a clone
-			// we should never see a TokenTypeSDTypeGenParam in genArgs[]
-			TokenType inst = (TokenType)genArgs[decl.index].ResolveGenParam (null);
-
-			// we want error messages about the type showing up where the 'T' or 'U' is, 
-			// not where the 'string' or 'integer' is.
-			inst.file = this.file;
-			inst.line = this.line;
-			inst.posn = this.posn;
-
-			return inst;
-		}
-
-		// debugging
-		public override void DebString (StringBuilder sb)
-		{
-			decl.DebString (sb);
 		}
 	}
 
@@ -4382,14 +4143,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public override void DebString (StringBuilder sb)
 		{
 			decl.DebString (sb);
-
-			if ((this.genArgs != null) && (this.genArgs.Length > 0)) {
-				sb.Append (" with ");
-				for (int i = 0; i < this.genArgs.Length; i ++) {
-					if (i > 0) sb.Append (',');
-					this.genArgs[i].DebString (sb);
-				}
-			}
 		}
 	}
 
@@ -5556,7 +5309,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
 		{
-			return sdtClass.MakeRefToken (original, null);
+			return sdtClass.MakeRefToken (original);
 		}
 
 		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)

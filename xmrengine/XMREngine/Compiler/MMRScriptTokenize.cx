@@ -107,14 +107,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         }
 
         /*
-         * Only tokens that might reference generic parameter types need 
-         * to do anything special.  AND this is ONLY called before any 
-         * of the reduction tokens (other than types) are created so none 
-         * of them need to do anything either.
+         * Used in generic instantiation to copy token.
+         * Only valid for parsing tokens, not reduction tokens 
+         * because it is a shallow copy.
          */
-        public virtual Token ResolveGenParam (TokenType[] genArgs)
+        public virtual Token CopyToken (Token src)
         {
-            return (Token)this.MemberwiseClone ();
+            Token t = (Token)this.MemberwiseClone ();
+            t.file  = src.file;
+            t.line  = src.line;
+            t.posn  = src.posn;
+            return t;
         }
 
         /*

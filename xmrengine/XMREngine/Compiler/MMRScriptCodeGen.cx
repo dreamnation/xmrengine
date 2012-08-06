@@ -128,7 +128,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private bool youveAnError = false;
 		private BreakContTarg curBreakTarg = null;
 		private BreakContTarg curContTarg  = null;
+		private int lastErrorLine = 0;
 		private int nStates = 0;
+		private string lastErrorFile = "";
 		private Token errorMessageToken = null;
 		private TokenDeclVar curDeclFunc = null;
 		private TokenStmtBlock curStmtBlock = null;
@@ -221,7 +223,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * creating anonymous ones if needed.
 			 */
 			foreach (TokenDeclSDType sdType in tokenScript.sdSrcTypesValues) {
-				Console.WriteLine ("PerformCompilation*: " + sdType.shortName.val + " = " + sdType.GetType ().Name);
+				Console.WriteLine ("PerformCompilation*: " + sdType.longName.val + " = " + sdType.GetType ().Name);
 				if (sdType is TokenDeclSDTypeClass) {
 					foreach (TokenDeclVar member in ((TokenDeclSDTypeClass)sdType).members) {
 						Console.WriteLine ("PerformCompilation*:     " + member.name.val);
@@ -247,7 +249,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 									if (declFunc.funcNameSig.val.StartsWith ("constructor(")) {
 										// this is for the "new()" static method that we create below.
 										// See GenerateNewobjBody() etc.
-										new TokenTypeSDTypeDelegate (declFunc, sdtClass.MakeRefToken (declFunc, null), 
+										new TokenTypeSDTypeDelegate (declFunc, sdtClass.MakeRefToken (declFunc), 
 												declFunc.argDecl.types, tokenScript);
 									}
 								}
@@ -786,7 +788,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						if ((ctorDeclFunc.funcNameSig != null) && ctorDeclFunc.funcNameSig.val.StartsWith ("constructor(")) {
 							TokenDeclVar newobjDeclFunc = new TokenDeclVar (ctorDeclFunc, null, tokenScript);
 							newobjDeclFunc.name         = new TokenName (newobjDeclFunc, "new");
-							newobjDeclFunc.retType      = sdtClass.MakeRefToken (newobjDeclFunc, null);
+							newobjDeclFunc.retType      = sdtClass.MakeRefToken (newobjDeclFunc);
 							newobjDeclFunc.argDecl      = ctorDeclFunc.argDecl;
 							newobjDeclFunc.sdtClass     = sdtClass;
 							newobjDeclFunc.sdtFlags     = ScriptReduce.SDT_STATIC | ctorDeclFunc.sdtFlags;
@@ -3152,7 +3154,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					ErrorMsg (baseField, "non-static reference to static member " + fieldName + ArgSigString (argsig));
 					return new CompValuVoid (baseField);
 				}
-				TokenType baseType = declVar.sdtClass.MakeRefToken (baseField, null);
+				TokenType baseType = declVar.sdtClass.MakeRefToken (baseField);
 				CompValu  basePtr  = new CompValuArg (baseType, 0);
 				return (declVar.retType == null) ? (CompValu)new CompValuInstField (declVar, basePtr, true) : 
 				                                   (CompValu)new CompValuInstMeth (declVar, basePtr, true);
@@ -3451,7 +3453,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ErrorMsg (zhis, "cannot use 'this' outside instance method body");
 				return new CompValuVoid (zhis);
 			}
-			return new CompValuArg (curDeclFunc.sdtClass.MakeRefToken (zhis, null), 0);
+			return new CompValuArg (curDeclFunc.sdtClass.MakeRefToken (zhis), 0);
 		}
 
 		/**
@@ -4410,8 +4412,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public void ErrorMsg (Token token, string message)
 		{
 			if ((token == null) || (token.emsg == null)) token = errorMessageToken;
-			token.ErrorMsg (message);
-			youveAnError = true;
+			if (!youveAnError || (token.file != lastErrorFile) || (token.line > lastErrorLine)) {
+				token.ErrorMsg (message);
+				youveAnError  = true;
+				lastErrorFile = token.file;
+				lastErrorLine = token.line;
+			}
 		}
 
 		/**
