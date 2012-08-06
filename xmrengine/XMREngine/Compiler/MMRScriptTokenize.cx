@@ -776,6 +776,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         {
             this.val = val;
         }
+        public TokenInt (Token original, int val) : base (original)
+        {
+            this.val = val;
+        }
         // debugging
         public override string ToString ()
         {

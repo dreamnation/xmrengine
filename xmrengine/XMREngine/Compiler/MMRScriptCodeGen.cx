@@ -222,15 +222,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Make sure we have delegates for all script-defined functions and methods,
 			 * creating anonymous ones if needed.
 			 */
-			foreach (TokenDeclSDType sdType in tokenScript.sdSrcTypesValues) {
-				Console.WriteLine ("PerformCompilation*: " + sdType.longName.val + " = " + sdType.GetType ().Name);
-				if (sdType is TokenDeclSDTypeClass) {
-					foreach (TokenDeclVar member in ((TokenDeclSDTypeClass)sdType).members) {
-						Console.WriteLine ("PerformCompilation*:     " + member.name.val);
-					}
-				}
-			}
-
 			foreach (TokenDeclVar declFunc in tokenScript.variablesStack) {
 				if (declFunc.retType != null) {
 					declFunc.GetDelType ();
@@ -846,7 +837,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Write out script-defined types.
 			 */
 			foreach (TokenDeclSDType sdType in tokenScript.sdSrcTypesValues) {
-				Console.WriteLine ("PerformCompilation*: writing type " + sdType.longName.val);
 				objFileWriter.Write (sdType.longName.val);
 				sdType.WriteToFile (objFileWriter);
 			}
@@ -2574,27 +2564,43 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private CompValu GenerateFromLValArEle (TokenLValArEle lVal)
 		{
 			/*
-			 * Compute subscript before rest of lVal in case of multiple subscripts.
-			 */
-			CompValu subRVal = GenerateFromRVal (lVal.subRVal);
-
-			/*
 			 * Compute location of array itself.
 			 */
-			CompValu baseRVal = GenerateFromRVal (lVal.baseRVal);
+			CompValu baseCompValu = GenerateFromRVal (lVal.baseRVal);
 
 			/*
-			 * It better be an array!
+			 * Maybe it is a fixed array access.
 			 */
-			if (!(baseRVal.type is TokenTypeArray)) {
-				ErrorMsg (lVal, "taking subscript of non-array");
-				return baseRVal;
+			string basetypestring = baseCompValu.type.ToString ();
+			if (basetypestring.EndsWith ("]")) {
+				TokenRVal subRVal = lVal.subRVal;
+				int nSubs = 1;
+				if (subRVal is TokenRValList) {
+					nSubs   = ((TokenRValList)subRVal).nItems;
+					subRVal = ((TokenRValList)subRVal).rVal;
+				}
+
+				int rank = basetypestring.Length - basetypestring.LastIndexOf ('[') - 1;
+				if (nSubs != rank) {
+					ErrorMsg (lVal.baseRVal, "expect " + rank + " subscript" + ((rank == 1) ? "" : "s") + " but have " + nSubs);
+				}
+				CompValu[] subCompValus = new CompValu[nSubs];
+				for (int i = 0; i < nSubs; i ++) {
+					subCompValus[i] = GenerateFromRVal (subRVal);
+					subRVal = (TokenRVal)subRVal.nextToken;
+				}
+				return new CompValuFixArEl (this, baseCompValu, subCompValus);
 			}
 
 			/*
-			 * Ok, generate reference.
+			 * Access should be to XMR_Array otherwise.
 			 */
-			return new CompValuArEle (new TokenTypeObject (lVal), baseRVal, subRVal);
+			if (!(baseCompValu.type is TokenTypeArray)) {
+				ErrorMsg (lVal, "taking subscript of non-array");
+				return baseCompValu;
+			}
+			CompValu subCompValu = GenerateFromRVal (lVal.subRVal);
+			return new CompValuArEle (new TokenTypeObject (lVal), baseCompValu, subCompValu);
 		}
 
 		/**

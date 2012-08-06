@@ -13,10 +13,49 @@ interface IEnumerator<T> {
     Reset ();
 }
 
+class Dictionary<K,V> : IEnumerable<KeyValuePair<K,V>> {
+    public List<KeyValuePair<K,V>> kvps;
+
+    public constructor ()
+    {
+        this.kvps = new List<KeyValuePair<K,V>> ();
+    }
+
+    public KeyValuePair<K,V> Add (K kee, V val)
+    {
+        if (this.GetByKey (kee) != undef) throw "duplicate key";
+        KeyValuePair<K,V> kvp = new KeyValuePair<K,V> ();
+        kvp.kee = kee;
+        kvp.value = val;
+        this.kvps.Enqueue (kvp);
+        return kvp;
+    }
+
+    public KeyValuePair<K,V> GetByKey (K kee)
+    {
+        for (IEnumerator<KeyValuePair<K,V>> kvpenum = this.GetEnumerator (); kvpenum.MoveNext ();) {
+            KeyValuePair<K,V> kvp = kvpenum.Current;
+            if (kvp.kee == kee) return kvp;
+        }
+        return undef;
+    }
+
+    // iterate through list of key-value pairs
+    public IEnumerator<KeyValuePair<K,V>> GetEnumerator () : IEnumerable<KeyValuePair<K,V>>
+    {
+        return this.kvps.GetEnumerator ();
+    }
+}
+
+class KeyValuePair<K,V> {
+    public K kee;
+    public V value;
+}
+
 class List<T> : IEnumerable<T> {
-    private Enumerator.Node first;
-    private Enumerator.Node last;
-    private integer count;
+    public Enumerator.Node first;
+    public Enumerator.Node last;
+    public integer count;
 
     // add to end of list
     public Enqueue (T obj)
@@ -69,10 +108,10 @@ class List<T> : IEnumerable<T> {
         return new Enumerator (this);
     }
 
-    private class Enumerator : IEnumerator<T> {
+    public class Enumerator : IEnumerator<T> {
         public List<T> thelist;
         public integer atend;
-        private Node current;
+        public Node current;
 
         public constructor (List<T> thelist)
         {
@@ -129,6 +168,15 @@ default {
             if (first) llOwnerSay ("typeof (stuffenum) = " + xmrTypeName (stuffenum));
             llOwnerSay ("element=(" + xmrTypeName (stuffenum.Current) + ") " + stuffenum.Current);
             first = 0;
+        }
+
+        Dictionary<string,integer> s2i = new Dictionary<string,integer> ();
+        s2i.Add ("one", 1);
+        s2i.Add ("two", 2);
+        s2i.Add ("three", 3);
+        for (IEnumerator<KeyValuePair<string,integer>> kvpenum = s2i.GetEnumerator (); kvpenum.MoveNext ();) {
+            KeyValuePair<string,integer> kvp = kvpenum.Current;
+            llOwnerSay ("s2i: " + kvp.kee + " => " + kvp.value);
         }
     }
 }

@@ -327,6 +327,88 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 	}
 
+	// Accessing an element of a fixed-dimension array
+	public class CompValuFixArEl : CompValu {
+		private CompValu   baseRVal;
+		private CompValu[] subRVals;
+
+		private int nSubs;
+		private TokenDeclVar getFunc;
+		private TokenDeclVar setFunc;
+		private TokenTypeInt tokenTypeInt;
+
+		private static TokenType GetElementType (ScriptCodeGen scg, CompValu baseRVal, CompValu[] subRVals)
+		{
+			TokenTypeSDTypeClass sdtType = (TokenTypeSDTypeClass)baseRVal.type;
+			TokenDeclSDTypeClass sdtDecl = sdtType.decl;
+			TokenName name = new TokenName (sdtType, "Get");
+			int nSubs = subRVals.Length;
+			TokenType[] argsig = new TokenType[nSubs];
+			argsig[0] = new TokenTypeInt (sdtType);
+			for (int i = 0; ++ i < nSubs;) {
+				argsig[i] = argsig[0];
+			}
+			TokenDeclVar getFunc = scg.FindThisMember (sdtDecl, name, argsig);
+			return getFunc.retType;
+		}
+
+		public CompValuFixArEl (ScriptCodeGen scg, CompValu baseRVal, CompValu[] subRVals) : base (GetElementType (scg, baseRVal, subRVals))
+		{
+			this.baseRVal = baseRVal;  // location of the array itself
+			this.subRVals = subRVals;  // subscript values
+			this.nSubs    = subRVals.Length;
+
+			TokenTypeSDTypeClass sdtType = (TokenTypeSDTypeClass)baseRVal.type;
+			TokenDeclSDTypeClass sdtDecl = sdtType.decl;
+			tokenTypeInt = new TokenTypeInt (sdtType);
+
+			TokenName name = new TokenName (sdtType, "Get");
+			TokenType[] argsig = new TokenType[nSubs];
+			for (int i = 0; i < nSubs; i ++) {
+				argsig[i] = tokenTypeInt;
+			}
+			getFunc = scg.FindThisMember (sdtDecl, name, argsig);
+
+			name = new TokenName (sdtType, "Set");
+			argsig = new TokenType[nSubs+1];
+			for (int i = 0; i < nSubs; i ++) {
+				argsig[i] = argsig[0];
+			}
+			argsig[nSubs] = getFunc.retType;
+			setFunc = scg.FindThisMember (sdtDecl, name, argsig);
+		}
+
+		public override void PushVal (ScriptCodeGen scg, Token errorAt)
+		{
+			// call script-defined class' Get() method to fetch the value
+			baseRVal.PushVal (scg, errorAt);
+			for (int i = 0; i < nSubs; i ++) {
+				subRVals[i].PushVal (scg, errorAt, tokenTypeInt);
+			}
+			scg.ilGen.Emit (OpCodes.Call, getFunc.ilGen);
+		}
+
+		public override void PushRef (ScriptCodeGen scg, Token errorAt)
+		{
+			throw new Exception ("tu stOOpid to get array element address");
+		}
+
+		public override void PopPre (ScriptCodeGen scg, Token errorAt)
+		{
+			// set up call to script-defined class' Set() method to write the value
+			baseRVal.PushVal (scg, errorAt);
+			for (int i = 0; i < nSubs; i ++) {
+				subRVals[i].PushVal (scg, errorAt, tokenTypeInt);
+			}
+		}
+
+		public override void PopPost (ScriptCodeGen scg, Token errorAt)
+		{
+			// call script-defined class' Set() method to write the value
+			scg.ilGen.Emit (OpCodes.Call, setFunc.ilGen);
+		}
+	}
+
 	// The value is a float constant
 	public class CompValuFloat : CompValu {
 		public SCRIPTFLOAT x;
@@ -547,7 +629,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				/*
 				 * Virtual instance method, get the delegate from the vtable.
 				 */
-				baseRVal.PushVal (scg, errorAt);                                 // 'this' selecting the instance
+				baseRVal.PushVal (scg, errorAt);                        // 'this' selecting the instance
 				scg.ilGen.Emit (OpCodes.Ldfld, vTableFieldInfo);        // get pointer to instance's vtable array
 				scg.PushConstantI4 (func.vTableIndex);                  // select vtable element
 				scg.ilGen.Emit (OpCodes.Ldelem, typeof (Delegate));     // get delegate pointer = 'this' for 'Invoke()'
@@ -568,9 +650,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if ((func.sdtFlags & ScriptReduce.SDT_STATIC) != 0) throw new Exception ("dont use for statics");
 
 			if (ignVirt || (func.vTableIndex < 0)) {
-				baseRVal.PushVal (scg, errorAt);                                 // 'this' being passed directly to method
+				baseRVal.PushVal (scg, errorAt);                        // 'this' being passed directly to method
 			} else {
-				baseRVal.PushVal (scg, errorAt);                                 // 'this' selecting the instance
+				baseRVal.PushVal (scg, errorAt);                        // 'this' selecting the instance
 				scg.ilGen.Emit (OpCodes.Ldfld, vTableFieldInfo);        // get pointer to instance's vtable array
 				scg.PushConstantI4 (func.vTableIndex);                  // select vtable element
 				scg.ilGen.Emit (OpCodes.Ldelem, typeof (Delegate));     // get delegate pointer = 'this' for 'Invoke()'

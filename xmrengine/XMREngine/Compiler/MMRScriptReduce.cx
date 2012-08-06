@@ -476,6 +476,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						if ((u is TokenKwSemi) || (u is TokenEnd)) break;
 						if (u is TokenKwCmpLT) angles ++;
 						if (u is TokenKwCmpGT) angles --;
+						if (u is TokenKwRSh)   angles -= 2;  // idiot >>
 						if ((angles == 0) && (u is TokenName)) delName = (TokenName)u;
 					}
 					if (!(u is TokenKwParOpen)) {
@@ -650,11 +651,31 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					}
 
 					/*
+					 * This handles types such as integer[,][] etc.
+					 * They are an instantiation of an internally generated generic type, .FixedArray.rank<ofType>
+					 * Note that to malloc an array, use something like 'new float[,][](3,5)', not 'new float[3,5][]'.
+					 */
+					while ((t is TokenType) && (t.nextToken is TokenKwBrkOpen)) {
+						TokenType ofType = (TokenType)t;
+						int rank;
+						t = CountFixedArrayDimensions (t.nextToken, out rank);
+						if (rank > 0) {
+							TokenDeclSDType decl = InstantiateFixedArray (rank, ofType, tokenBegin, ref repeat);
+							TokenTypeSDType type = decl.MakeRefToken (ofType);
+							type.prevToken = ofType.prevToken;
+							type.nextToken = t.nextToken;
+							type.prevToken.nextToken = type;
+							type.nextToken.prevToken = type;
+							t = type;
+						}
+					}
+
+					/*
 					 * For names not preceded by a '.', scan the script-defined type definition 
 					 * stack for that name.  If found, substitute in a type token for the name token.
 					 */
 					if ((t is TokenName) && !(t.prevToken is TokenKwDot)) {
-						t = TrySpliceTypeRef (t, outerSDType, ref repeat);
+						t = TrySpliceTypeRef (t, outerSDType, tokenBegin, ref repeat);
 					}
 				}
 
@@ -679,7 +700,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 *          possibly with spliced-in type token
 		 *          repeat = possibly set true if need to do another pass
 		 */
-		private Token TrySpliceTypeRef (Token t, TokenDeclSDType outerSDType, ref uint repeat)
+		private Token TrySpliceTypeRef (Token t, TokenDeclSDType outerSDType, Token tokenBegin, ref uint repeat)
 		{
 			Token start = t;
 			string tnamestr = ((TokenName)t).val;
@@ -731,6 +752,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 							tnamestr += ",";
 						}
 					}
+					if (t is TokenKwRSh) {  // idiot >>
+						Token u = new TokenKwCmpGT (t);
+						Token v = new TokenKwCmpGT (t);
+						v.posn ++;
+						u.prevToken = t.prevToken;
+						u.nextToken = v;
+						v.nextToken = t.nextToken;
+						v.prevToken = u;
+						u.prevToken.nextToken = u;
+						v.nextToken.prevToken = v;
+						t = u;
+					}
 					if (!(t is TokenKwCmpGT)) {
 						ErrorMsg (t, "expecting > at end of generic argument list");
 						return t;
@@ -753,6 +786,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						CatalogSDTypeDecl (instdecl);
 						repeat |= REPEAT_INSTGEN;
 					}
+				}
+
+				/*
+				 * Maybe caller specified fixed array indices.
+				 */
+				while (t.nextToken is TokenKwBrkOpen) {
+					int rank;
+					t = CountFixedArrayDimensions (t.nextToken, out rank);
+					if (rank <= 0) return t;
+					TokenTypeSDType refar = instdecl.MakeRefToken (start);
+					instdecl = InstantiateFixedArray (rank, refar, tokenBegin, ref repeat);
 				}
 
 				/*
@@ -782,6 +826,275 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			repeat |= REPEAT_SUBST;
 
 			return refer;
+		}
+
+		private Token CountFixedArrayDimensions (Token t, out int rank)
+		{
+			Token start = t;
+			rank = 1;
+			while (!((t = t.nextToken) is TokenEnd)) {
+				if (t is TokenKwBrkClose) return t;
+				if (!(t is TokenKwComma)) {
+					ErrorMsg (t, "expecting , or ] only for array type");
+					rank = -1;
+					return t;
+				}
+				rank ++;
+			}
+			ErrorMsg (start, "missing ] for array");
+			rank = -1;
+			return start;
+		}
+
+		/**
+		 * @brief Instantiate a script-defined class type to handle fixed-dimension arrays.
+		 * @param rank = number of dimensions for the array
+		 * @param ofType = type of each element of the array
+		 * @returns script-defined class declaration created to handle the array
+		 */
+		private TokenDeclSDType InstantiateFixedArray (int rank, TokenType ofType, Token tokenBegin, ref uint repeat)
+		{
+			StringBuilder sb = new StringBuilder (ofType.ToString ());
+			sb.Append ('[');
+			for (int i = 0; ++ i < rank;) {
+				sb.Append (',');
+			}
+			sb.Append (']');
+			string name = sb.ToString ();
+
+			TokenDeclSDType fa;
+			if (!tokenScript.sdSrcTypesTryGetValue (name, out fa)) {
+				string ofSys = ofType.ToSysType ().Name;  // 'Int32' etc
+
+				/*
+				 * Don't already have one, create a new skeleton struct.
+				 * Splice in a definition for the class at beginning of source file.
+				 *
+				 *    class <oftype>[,...] {
+				 */
+				fa = new TokenDeclSDTypeClass (new TokenName (tokenScript, name));
+				CatalogSDTypeDecl (fa);
+				repeat |= REPEAT_INSTGEN;
+
+				Token t = SpliceAfter (tokenBegin, fa);
+				t = SpliceAfter (t, new TokenKwBrcOpen (t));
+
+				/*
+				 *        public integer len0;
+				 *        public integer len1;
+				 *        ...
+				 *        public object obj;
+				 */
+				for (int i = 0; i < rank; i ++) {
+					t = SpliceAfter (t, new TokenKwPublic (t));
+					t = SpliceAfter (t, new TokenTypeInt (t));
+					t = SpliceAfter (t, new TokenName (t, "len" + i));
+					t = SpliceAfter (t, new TokenKwSemi (t));
+				}
+
+				t = SpliceAfter (t, new TokenKwPublic (t));
+				t = SpliceAfter (t, new TokenTypeObject (t));
+				t = SpliceAfter (t, new TokenName (t, "obj"));
+				t = SpliceAfter (t, new TokenKwSemi (t));
+
+				/*
+				 *        public constructor (integer len0, integer len1, ...) {
+				 *            this.len0 = len0;
+				 *            this.len1 = len1;
+				 *            ...
+				 *            this.obj = xmrFixedArrayAlloc_<systype> (len0 * len1 * ...);
+				 *        }
+				 */
+				t = SpliceAfter (t, new TokenKwPublic (t));
+				t = SpliceAfter (t, new TokenKwConstructor (t));
+				t = SpliceAfter (t, new TokenKwParOpen (t));
+				for (int i = 0; i < rank; i ++) {
+					if (i > 0) t = SpliceAfter (t, new TokenKwComma (t));
+					t = SpliceAfter (t, new TokenTypeInt (t));
+					t = SpliceAfter (t, new TokenName (t, "len" + i));
+				}
+				t = SpliceAfter (t, new TokenKwParClose (t));
+				t = SpliceAfter (t, new TokenKwBrcOpen (t));
+
+				for (int i = 0; i < rank; i ++) {
+					t = SpliceAfter (t, new TokenKwThis (t));
+					t = SpliceAfter (t, new TokenKwDot (t));
+					t = SpliceAfter (t, new TokenName (t, "len" + i));
+					t = SpliceAfter (t, new TokenKwAssign (t));
+					t = SpliceAfter (t, new TokenName (t, "len" + i));
+					t = SpliceAfter (t, new TokenKwSemi (t));
+				}
+
+				t = SpliceAfter (t, new TokenKwThis (t));
+				t = SpliceAfter (t, new TokenKwDot (t));
+				t = SpliceAfter (t, new TokenName (t, "obj"));
+				t = SpliceAfter (t, new TokenKwAssign (t));
+				t = SpliceAfter (t, new TokenName (t, "xmrFixedArrayAlloc_" + ofSys));
+				t = SpliceAfter (t, new TokenKwParOpen (t));
+				for (int i = 0; i < rank; i ++) {
+					if (i > 0) t = SpliceAfter (t, new TokenKwMul (t));
+					t = SpliceAfter (t, new TokenName (t, "len" + i));
+				}
+				t = SpliceAfter (t, new TokenKwParClose (t));
+				t = SpliceAfter (t, new TokenKwSemi (t));
+				t = SpliceAfter (t, new TokenKwBrcClose (t));
+
+				/*
+				 *        public integer Length (integer dim) {
+				 *            switch (dim) {
+				 *                case 0: return this.len0;
+				 *                case 1: return this.len1;
+				 *                ...
+				 *            }
+				 *            return 0;
+				 *        }
+				 */
+				t = SpliceAfter (t, new TokenKwPublic (t));
+				t = SpliceAfter (t, new TokenTypeInt (t));
+				t = SpliceAfter (t, new TokenName (t, "Length"));
+				t = SpliceAfter (t, new TokenKwParOpen (t));
+				t = SpliceAfter (t, new TokenTypeInt (t));
+				t = SpliceAfter (t, new TokenName (t, "dim"));
+				t = SpliceAfter (t, new TokenKwParClose (t));
+				t = SpliceAfter (t, new TokenKwBrcOpen (t));
+
+				t = SpliceAfter (t, new TokenKwSwitch (t));
+				t = SpliceAfter (t, new TokenKwParOpen (t));
+				t = SpliceAfter (t, new TokenName (t, "dim"));
+				t = SpliceAfter (t, new TokenKwParClose (t));
+				t = SpliceAfter (t, new TokenKwBrcOpen (t));
+
+				for (int i = 0; i < rank; i ++) {
+					t = SpliceAfter (t, new TokenKwCase (t));
+					t = SpliceAfter (t, new TokenInt (t, i));
+					t = SpliceAfter (t, new TokenKwColon (t));
+					t = SpliceAfter (t, new TokenKwRet (t));
+					t = SpliceAfter (t, new TokenKwThis (t));
+					t = SpliceAfter (t, new TokenKwDot (t));
+					t = SpliceAfter (t, new TokenName (t, "len" + i));
+					t = SpliceAfter (t, new TokenKwSemi (t));
+				}
+				t = SpliceAfter (t, new TokenKwBrcClose (t));
+
+				t = SpliceAfter (t, new TokenKwRet (t));
+				t = SpliceAfter (t, new TokenInt (t, 0));
+				t = SpliceAfter (t, new TokenKwSemi (t));
+				t = SpliceAfter (t, new TokenKwBrcClose (t));
+
+				/*
+				 *        public <oftype> Get (integer idx0, integet idx1, ...) {
+				 *            integer idx = idx0;
+				 *            idx *= len1; idx += idx1;
+				 *            idx *= len2; idx += idx2;
+				 *            ...
+				 *            return (<oftype>) xmrFixedArrayGet_<systype> (this.obj, idx);
+				 *        }
+				 */
+				t = SpliceAfter (t, new TokenKwPublic (t));
+				t = SpliceAfter (t, ofType.CopyToken (t));
+				t = SpliceAfter (t, new TokenName (t, "Get"));
+				t = SpliceAfter (t, new TokenKwParOpen (t));
+				for (int i = 0; i < rank; i ++) {
+					if (i > 0) t = SpliceAfter (t, new TokenKwComma (t));
+					t = SpliceAfter (t, new TokenTypeInt (t));
+					t = SpliceAfter (t, new TokenName (t, "idx" + i));
+				}
+				t = SpliceAfter (t, new TokenKwParClose (t));
+				t = SpliceAfter (t, new TokenKwBrcOpen (t));
+
+				t = SpliceAfter (t, new TokenTypeInt (t));
+				t = SpliceAfter (t, new TokenName (t, "idx"));
+				t = SpliceAfter (t, new TokenKwAssign (t));
+				t = SpliceAfter (t, new TokenName (t, "idx0"));
+				t = SpliceAfter (t, new TokenKwSemi (t));
+
+				for (int i = 1; i < rank; i ++) {
+					t = SpliceAfter (t, new TokenName (t, "idx"));
+					t = SpliceAfter (t, new TokenKwAsnMul (t));
+					t = SpliceAfter (t, new TokenName (t, "len" + i));
+					t = SpliceAfter (t, new TokenKwSemi (t));
+					t = SpliceAfter (t, new TokenName (t, "idx"));
+					t = SpliceAfter (t, new TokenKwAsnAdd (t));
+					t = SpliceAfter (t, new TokenName (t, "idx" + i));
+				}
+
+				t = SpliceAfter (t, new TokenKwRet (t));
+				t = SpliceAfter (t, new TokenKwParOpen (t));
+				t = SpliceAfter (t, ofType.CopyToken (t));
+				t = SpliceAfter (t, new TokenKwParClose (t));
+				t = SpliceAfter (t, new TokenName (t, "xmrFixedArrayGet_" + ofSys));
+				t = SpliceAfter (t, new TokenKwParOpen (t));
+				t = SpliceAfter (t, new TokenKwThis (t));
+				t = SpliceAfter (t, new TokenKwDot (t));
+				t = SpliceAfter (t, new TokenName (t, "obj"));
+				t = SpliceAfter (t, new TokenKwComma (t));
+				t = SpliceAfter (t, new TokenName (t, "idx"));
+				t = SpliceAfter (t, new TokenKwParClose (t));
+				t = SpliceAfter (t, new TokenKwSemi (t));
+				t = SpliceAfter (t, new TokenKwBrcClose (t));
+
+				/*
+				 *        public void Set (integer idx0, integer idx1, ..., <oftype> val) {
+				 *            integer idx = idx0;
+				 *            idx *= len1; idx += idx1;
+				 *            idx *= len2; idx += idx2;
+				 *            ...
+				 *            xmrFixedArraySet_<systype> (this.obj, idx, val);
+				 *        }
+				 */
+				t = SpliceAfter (t, new TokenKwPublic (t));
+				t = SpliceAfter (t, new TokenTypeVoid (t));
+				t = SpliceAfter (t, new TokenName (t, "Set"));
+				t = SpliceAfter (t, new TokenKwParOpen (t));
+				for (int i = 0; i < rank; i ++) {
+					t = SpliceAfter (t, new TokenTypeInt (t));
+					t = SpliceAfter (t, new TokenName (t, "idx" + i));
+					t = SpliceAfter (t, new TokenKwComma (t));
+				}
+				t = SpliceAfter (t, ofType.CopyToken (t));
+				t = SpliceAfter (t, new TokenName (t, "val"));
+				t = SpliceAfter (t, new TokenKwParClose (t));
+				t = SpliceAfter (t, new TokenKwBrcOpen (t));
+
+				t = SpliceAfter (t, new TokenTypeInt (t));
+				t = SpliceAfter (t, new TokenName (t, "idx"));
+				t = SpliceAfter (t, new TokenKwAssign (t));
+				t = SpliceAfter (t, new TokenName (t, "idx0"));
+				t = SpliceAfter (t, new TokenKwSemi (t));
+				for (int i = 1; i < rank; i ++) {
+					t = SpliceAfter (t, new TokenName (t, "idx"));
+					t = SpliceAfter (t, new TokenKwAsnMul (t));
+					t = SpliceAfter (t, new TokenName (t, "len" + i));
+					t = SpliceAfter (t, new TokenKwSemi (t));
+					t = SpliceAfter (t, new TokenName (t, "idx"));
+					t = SpliceAfter (t, new TokenKwAsnAdd (t));
+					t = SpliceAfter (t, new TokenName (t, "idx" + i));
+				}
+
+				t = SpliceAfter (t, new TokenName (t, "xmrFixedArraySet_" + ofSys));
+				t = SpliceAfter (t, new TokenKwParOpen (t));
+				t = SpliceAfter (t, new TokenKwThis (t));
+				t = SpliceAfter (t, new TokenKwDot (t));
+				t = SpliceAfter (t, new TokenName (t, "obj"));
+				t = SpliceAfter (t, new TokenKwComma (t));
+				t = SpliceAfter (t, new TokenName (t, "idx"));
+				t = SpliceAfter (t, new TokenKwComma (t));
+				t = SpliceAfter (t, new TokenName (t, "val"));
+				t = SpliceAfter (t, new TokenKwParClose (t));
+				t = SpliceAfter (t, new TokenKwSemi (t));
+
+				t = SpliceAfter (t, new TokenKwBrcClose (t));
+				t = SpliceAfter (t, new TokenKwBrcClose (t));
+			}
+			return fa;
+		}
+		private Token SpliceAfter (Token before, Token after)
+		{
+			after.nextToken = before.nextToken;
+			after.prevToken = before;
+			before.nextToken = after;
+			after.nextToken.prevToken = after;
+			return after;
 		}
 
 		/**
