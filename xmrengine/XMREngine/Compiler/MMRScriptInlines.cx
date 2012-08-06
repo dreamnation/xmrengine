@@ -126,18 +126,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Our internally defined functions.
 			 */
-		///	inf = new TokenDeclInline (ifd, false, "consoleWrite(string)",                                   typeof (void),      null); inf.codeGen = inf.CodeGenConsoleWrite;
-			inf = new TokenDeclInline (ifd, false, "xmrEventCallHandler(list)",                              typeof (void),      null); inf.codeGen = inf.CodeGenXMREventCallHandler;
-			inf = new TokenDeclInline (ifd, true,  "xmrEventDequeue(float,integer,integer,integer,integer)", typeof (LSL_List),  null); inf.codeGen = inf.CodeGenXMREventDequeue;
-			inf = new TokenDeclInline (ifd, false, "xmrEventEnqueue(list)",                                  typeof (void),      null); inf.codeGen = inf.CodeGenXMREventEnqueue;
-			inf = new TokenDeclInline (ifd, false, "xmrEventLoadDets(list)",                                 typeof (void),      null); inf.codeGen = inf.CodeGenXMREventLoadDets;
-			inf = new TokenDeclInline (ifd, false, "xmrEventSaveDets()",                                     typeof (LSL_List),  null); inf.codeGen = inf.CodeGenXMREventSaveDets;
-			inf = new TokenDeclInline (ifd, false, "xmrHeapLeft()",                                          typeof (int),       null); inf.codeGen = inf.CodeGenXMRHeapLeft;
-			inf = new TokenDeclInline (ifd, false, "xmrStackLeft()",                                         typeof (int),       null); inf.codeGen = inf.CodeGenXMRStackLeft;
-			inf = new TokenDeclInline (ifd, false, "xmrTypeName(object)",                                    typeof (string),    null); inf.codeGen = inf.CodeGenXMRTypeName;
-			inf = new TokenDeclInline (ifd, false, "xmrHashCode(float)",                                     typeof (int),       null); inf.codeGen = inf.CodeGenXMRHashCodeFloat;
-			inf = new TokenDeclInline (ifd, false, "xmrHashCode(integer)",                                   typeof (int),       null); inf.codeGen = inf.CodeGenXMRHashCodeInteger;
-			inf = new TokenDeclInline (ifd, false, "xmrHashCode(object)",                                    typeof (int),       null); inf.codeGen = inf.CodeGenXMRHashCodeObject;
+		///	inf = new TokenDeclInline (ifd, false, "consoleWrite(string)",                                    typeof (void),        null); inf.codeGen = inf.CodeGenConsoleWrite;
+			inf = new TokenDeclInline (ifd, false, "xmrEventCallHandler(list)",                               typeof (void),        null); inf.codeGen = inf.CodeGenXMREventCallHandler;
+			inf = new TokenDeclInline (ifd, true,  "xmrEventDequeue(float,integer,integer,integer,integer)",  typeof (LSL_List),    null); inf.codeGen = inf.CodeGenXMREventDequeue;
+			inf = new TokenDeclInline (ifd, false, "xmrEventEnqueue(list)",                                   typeof (void),        null); inf.codeGen = inf.CodeGenXMREventEnqueue;
+			inf = new TokenDeclInline (ifd, false, "xmrEventLoadDets(list)",                                  typeof (void),        null); inf.codeGen = inf.CodeGenXMREventLoadDets;
+			inf = new TokenDeclInline (ifd, false, "xmrEventSaveDets()",                                      typeof (LSL_List),    null); inf.codeGen = inf.CodeGenXMREventSaveDets;
+			inf = new TokenDeclInline (ifd, false, "xmrHeapLeft()",                                           typeof (int),         null); inf.codeGen = inf.CodeGenXMRHeapLeft;
+			inf = new TokenDeclInline (ifd, false, "xmrStackLeft()",                                          typeof (int),         null); inf.codeGen = inf.CodeGenXMRStackLeft;
+			inf = new TokenDeclInline (ifd, false, "xmrTypeName(object)",                                     typeof (string),      null); inf.codeGen = inf.CodeGenXMRTypeName;
+			inf = new TokenDeclInline (ifd, false, "xmrHashCode(float)",                                      typeof (int),         null); inf.codeGen = inf.CodeGenXMRHashCodeFloat;
+			inf = new TokenDeclInline (ifd, false, "xmrHashCode(integer)",                                    typeof (int),         null); inf.codeGen = inf.CodeGenXMRHashCodeInteger;
+			inf = new TokenDeclInline (ifd, false, "xmrHashCode(object)",                                     typeof (int),         null); inf.codeGen = inf.CodeGenXMRHashCodeObject;
+
+			inf = new TokenDeclInline (ifd, false, "xmrFixedArrayAllocF(integer)",                            typeof (object),      null); inf.codeGen = inf.CodeGenXMRFixedArrayAllocF;
+			inf = new TokenDeclInline (ifd, false, "xmrFixedArrayGetF(object,integer)",                       typeof (SCRIPTFLOAT), null); inf.codeGen = inf.CodeGenXMRFixedArrayGetF;
+			inf = new TokenDeclInline (ifd, false, "xmrFixedArraySetF(object,integer,float)",                 typeof (void),        null); inf.codeGen = inf.CodeGenXMRFixedArraySetF;
+			inf = new TokenDeclInline (ifd, false, "xmrFixedArrayAllocI(integer)",                            typeof (object),      null); inf.codeGen = inf.CodeGenXMRFixedArrayAllocI;
+			inf = new TokenDeclInline (ifd, false, "xmrFixedArrayGetI(object,integer)",                       typeof (int),         null); inf.codeGen = inf.CodeGenXMRFixedArrayGetI;
+			inf = new TokenDeclInline (ifd, false, "xmrFixedArraySetI(object,integer,integer)",               typeof (void),        null); inf.codeGen = inf.CodeGenXMRFixedArraySetI;
+			inf = new TokenDeclInline (ifd, false, "xmrFixedArrayAllocO(integer)",                            typeof (object),      null); inf.codeGen = inf.CodeGenXMRFixedArrayAllocO;
+			inf = new TokenDeclInline (ifd, false, "xmrFixedArrayGetO(object,integer)",                       typeof (object),      null); inf.codeGen = inf.CodeGenXMRFixedArrayGetO;
+			inf = new TokenDeclInline (ifd, false, "xmrFixedArraySetO(object,integer,object)",                typeof (void),        null); inf.codeGen = inf.CodeGenXMRFixedArraySetO;
 
 			/*
 			 * Jack-assed os...() functions that use screwy types.
@@ -467,6 +477,107 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			args[0].PushVal (scg, errorAt);
 			scg.ilGen.Emit (OpCodes.Callvirt, hashCodeObjectMethodInfo);
 			result.PopPost (scg, errorAt, retType);
+		}
+
+		/**
+		 * @brief Generate code to access fixed-dimension arrays
+		 */
+		// object xmrFixedAllocF(integer)
+		private void CodeGenXMRFixedArrayAllocF (ScriptCodeGen scg, Token errorAt, CompValu result, CompValu[] args)
+		{
+			result.PopPre (scg, errorAt);
+			args[0].PushVal (scg, errorAt);
+			scg.ilGen.Emit (OpCodes.Newarr, typeof (SCRIPTFLOAT));
+			result.PopPost (scg, errorAt);
+		}
+
+		// float xmrFixedGetF(object,integer)
+		private void CodeGenXMRFixedArrayGetF (ScriptCodeGen scg, Token errorAt, CompValu result, CompValu[] args)
+		{
+			result.PopPre (scg, errorAt);
+			args[0].PushVal (scg, errorAt);
+			scg.ilGen.Emit (OpCodes.Castclass, typeof (SCRIPTFLOAT[]));
+			args[1].PushVal (scg, errorAt);
+#define float Ldelem_R4
+#define double Ldelem_R8
+			scg.ilGen.Emit (OpCodes.SCRIPTFLOAT);
+#undef float
+#undef double
+			result.PopPost (scg, errorAt);
+		}
+
+		// xmrFixedSetI(object,integer,float)
+		private void CodeGenXMRFixedArraySetF (ScriptCodeGen scg, Token errorAt, CompValu result, CompValu[] args)
+		{
+			args[0].PushVal (scg, errorAt);
+			scg.ilGen.Emit (OpCodes.Castclass, typeof (SCRIPTFLOAT[]));
+			args[1].PushVal (scg, errorAt);
+			args[2].PushVal (scg, errorAt);
+#define float Stelem_R4
+#define double Stelem_R8
+			scg.ilGen.Emit (OpCodes.SCRIPTFLOAT);
+#undef float
+#undef double
+		}
+
+		// object xmrFixedAllocI(integer)
+		private void CodeGenXMRFixedArrayAllocI (ScriptCodeGen scg, Token errorAt, CompValu result, CompValu[] args)
+		{
+			result.PopPre (scg, errorAt);
+			args[0].PushVal (scg, errorAt);
+			scg.ilGen.Emit (OpCodes.Newarr, typeof (int));
+			result.PopPost (scg, errorAt);
+		}
+
+		// integer xmrFixedGetI(object,integer)
+		private void CodeGenXMRFixedArrayGetI (ScriptCodeGen scg, Token errorAt, CompValu result, CompValu[] args)
+		{
+			result.PopPre (scg, errorAt);
+			args[0].PushVal (scg, errorAt);
+			scg.ilGen.Emit (OpCodes.Castclass, typeof (int[]));
+			args[1].PushVal (scg, errorAt);
+			scg.ilGen.Emit (OpCodes.Ldelem_I4);
+			result.PopPost (scg, errorAt);
+		}
+
+		// xmrFixedSetI(object,integer,integer)
+		private void CodeGenXMRFixedArraySetI (ScriptCodeGen scg, Token errorAt, CompValu result, CompValu[] args)
+		{
+			args[0].PushVal (scg, errorAt);
+			scg.ilGen.Emit (OpCodes.Castclass, typeof (int[]));
+			args[1].PushVal (scg, errorAt);
+			args[2].PushVal (scg, errorAt);
+			scg.ilGen.Emit (OpCodes.Stelem_I4);
+		}
+
+		// object xmrFixedAllocO(integer)
+		private void CodeGenXMRFixedArrayAllocO (ScriptCodeGen scg, Token errorAt, CompValu result, CompValu[] args)
+		{
+			result.PopPre (scg, errorAt);
+			args[0].PushVal (scg, errorAt);
+			scg.ilGen.Emit (OpCodes.Newarr, typeof (object));
+			result.PopPost (scg, errorAt);
+		}
+
+		// object xmrFixedGetO(object,integer)
+		private void CodeGenXMRFixedArrayGetO (ScriptCodeGen scg, Token errorAt, CompValu result, CompValu[] args)
+		{
+			result.PopPre (scg, errorAt);
+			args[0].PushVal (scg, errorAt);
+			scg.ilGen.Emit (OpCodes.Castclass, typeof (object[]));
+			args[1].PushVal (scg, errorAt);
+			scg.ilGen.Emit (OpCodes.Ldelem, typeof (object));
+			result.PopPost (scg, errorAt);
+		}
+
+		// xmrFixedSetO(object,integer,object)
+		private void CodeGenXMRFixedArraySetO (ScriptCodeGen scg, Token errorAt, CompValu result, CompValu[] args)
+		{
+			args[0].PushVal (scg, errorAt);
+			scg.ilGen.Emit (OpCodes.Castclass, typeof (object[]));
+			args[1].PushVal (scg, errorAt);
+			args[2].PushVal (scg, errorAt);
+			scg.ilGen.Emit (OpCodes.Stelem, typeof (object));
 		}
 
 		/**

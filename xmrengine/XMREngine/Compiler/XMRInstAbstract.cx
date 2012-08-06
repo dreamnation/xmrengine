@@ -69,6 +69,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public string[]       gblStrings;
         public LSL_Vector[]   gblVectors;
         public XMRSDTypeClassInstance[] gblSDTClObjs;
+        public Delegate[][]   gblSDTIntfObjs;
 
         /*
          * Function prototypes.

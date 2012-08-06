@@ -864,7 +864,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 			TokenDeclSDType fa;
 			if (!tokenScript.sdSrcTypesTryGetValue (name, out fa)) {
-				string ofSys = ofType.ToSysType ().Name;  // 'Int32' etc
+				char suffix = 'O';
+				if (ofType is TokenTypeFloat) suffix = 'F';
+				if (ofType is TokenTypeInt)   suffix = 'I';
 
 				/*
 				 * Don't already have one, create a new skeleton struct.
@@ -902,7 +904,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				 *            this.len0 = len0;
 				 *            this.len1 = len1;
 				 *            ...
-				 *            this.obj = xmrFixedArrayAlloc_<systype> (len0 * len1 * ...);
+				 *            this.obj = xmrFixedArrayAlloc<suffix> (len0 * len1 * ...);
 				 *        }
 				 */
 				t = SpliceAfter (t, new TokenKwPublic (t));
@@ -929,7 +931,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				t = SpliceAfter (t, new TokenKwDot (t));
 				t = SpliceAfter (t, new TokenName (t, "obj"));
 				t = SpliceAfter (t, new TokenKwAssign (t));
-				t = SpliceAfter (t, new TokenName (t, "xmrFixedArrayAlloc_" + ofSys));
+				t = SpliceAfter (t, new TokenName (t, "xmrFixedArrayAlloc" + suffix));
 				t = SpliceAfter (t, new TokenKwParOpen (t));
 				for (int i = 0; i < rank; i ++) {
 					if (i > 0) t = SpliceAfter (t, new TokenKwMul (t));
@@ -984,10 +986,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				/*
 				 *        public <oftype> Get (integer idx0, integet idx1, ...) {
 				 *            integer idx = idx0;
-				 *            idx *= len1; idx += idx1;
-				 *            idx *= len2; idx += idx2;
+				 *            idx *= this.len1; idx += idx1;
+				 *            idx *= this.len2; idx += idx2;
 				 *            ...
-				 *            return (<oftype>) xmrFixedArrayGet_<systype> (this.obj, idx);
+				 *            return (<oftype>) xmrFixedArrayGet<suffix> (this.obj, idx);
 				 *        }
 				 */
 				t = SpliceAfter (t, new TokenKwPublic (t));
@@ -1011,18 +1013,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				for (int i = 1; i < rank; i ++) {
 					t = SpliceAfter (t, new TokenName (t, "idx"));
 					t = SpliceAfter (t, new TokenKwAsnMul (t));
+					t = SpliceAfter (t, new TokenKwThis (t));
+					t = SpliceAfter (t, new TokenKwDot (t));
 					t = SpliceAfter (t, new TokenName (t, "len" + i));
 					t = SpliceAfter (t, new TokenKwSemi (t));
 					t = SpliceAfter (t, new TokenName (t, "idx"));
 					t = SpliceAfter (t, new TokenKwAsnAdd (t));
 					t = SpliceAfter (t, new TokenName (t, "idx" + i));
+					t = SpliceAfter (t, new TokenKwSemi (t));
 				}
 
 				t = SpliceAfter (t, new TokenKwRet (t));
-				t = SpliceAfter (t, new TokenKwParOpen (t));
-				t = SpliceAfter (t, ofType.CopyToken (t));
-				t = SpliceAfter (t, new TokenKwParClose (t));
-				t = SpliceAfter (t, new TokenName (t, "xmrFixedArrayGet_" + ofSys));
+				if (suffix == 'O') {
+					t = SpliceAfter (t, new TokenKwParOpen (t));
+					t = SpliceAfter (t, ofType.CopyToken (t));
+					t = SpliceAfter (t, new TokenKwParClose (t));
+				}
+				t = SpliceAfter (t, new TokenName (t, "xmrFixedArrayGet" + suffix));
 				t = SpliceAfter (t, new TokenKwParOpen (t));
 				t = SpliceAfter (t, new TokenKwThis (t));
 				t = SpliceAfter (t, new TokenKwDot (t));
@@ -1036,10 +1043,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				/*
 				 *        public void Set (integer idx0, integer idx1, ..., <oftype> val) {
 				 *            integer idx = idx0;
-				 *            idx *= len1; idx += idx1;
-				 *            idx *= len2; idx += idx2;
+				 *            idx *= this.len1; idx += idx1;
+				 *            idx *= this.len2; idx += idx2;
 				 *            ...
-				 *            xmrFixedArraySet_<systype> (this.obj, idx, val);
+				 *            xmrFixedArraySet<suffix> (this.obj, idx, val);
 				 *        }
 				 */
 				t = SpliceAfter (t, new TokenKwPublic (t));
@@ -1064,14 +1071,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				for (int i = 1; i < rank; i ++) {
 					t = SpliceAfter (t, new TokenName (t, "idx"));
 					t = SpliceAfter (t, new TokenKwAsnMul (t));
+					t = SpliceAfter (t, new TokenKwThis (t));
+					t = SpliceAfter (t, new TokenKwDot (t));
 					t = SpliceAfter (t, new TokenName (t, "len" + i));
 					t = SpliceAfter (t, new TokenKwSemi (t));
 					t = SpliceAfter (t, new TokenName (t, "idx"));
 					t = SpliceAfter (t, new TokenKwAsnAdd (t));
 					t = SpliceAfter (t, new TokenName (t, "idx" + i));
+					t = SpliceAfter (t, new TokenKwSemi (t));
 				}
 
-				t = SpliceAfter (t, new TokenName (t, "xmrFixedArraySet_" + ofSys));
+				t = SpliceAfter (t, new TokenName (t, "xmrFixedArraySet" + suffix));
 				t = SpliceAfter (t, new TokenKwParOpen (t));
 				t = SpliceAfter (t, new TokenKwThis (t));
 				t = SpliceAfter (t, new TokenKwDot (t));
@@ -3712,18 +3722,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		                                           //   i = interface number from this.intfIndices[name]
 		                                           //   j = method of interface from iface.methods[name].vTableIndex
 
-		public bool slotsAssigned;    // set true when slots have been assigned...
-		public int numInstArrays;     // number of non-static array fields
-		public int numInstFloats;     // number of non-static float fields
-		public int numInstIntegers;   // number of non-static integer fields
-		public int numInstLists;      // number of non-static list fields
-		public int numInstObjects;    // number of non-static object fields
-		public int numInstRotations;  // number of non-static rotation fields
-		public int numInstStrings;    // number of non-static string fields
-		public int numInstVectors;    // number of non-static vector fields
-		public int numInstSDTClObjs;  // number of non-static sdt-class object fields
-		public int numVirtFuncs;      // number of virtual functions
-		public int numInterfaces;     // number of implemented interfaces
+		public bool slotsAssigned;      // set true when slots have been assigned...
+		public int numInstArrays;       // number of non-static array fields
+		public int numInstFloats;       // number of non-static float fields
+		public int numInstIntegers;     // number of non-static integer fields
+		public int numInstLists;        // number of non-static list fields
+		public int numInstObjects;      // number of non-static object fields
+		public int numInstRotations;    // number of non-static rotation fields
+		public int numInstStrings;      // number of non-static string fields
+		public int numInstVectors;      // number of non-static vector fields
+		public int numInstSDTClObjs;    // number of non-static sdt-class object fields
+		public int numInstSDTIntfObjs;  // number of non-static sdt-interface object fields
+		public int numVirtFuncs;        // number of virtual functions
+		public int numInterfaces;       // number of implemented interfaces
 
 		private string extendsStr;
 		private List<StackedMethod> stackedMethods;
@@ -3776,6 +3787,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			objFileWriter.Write (numInstStrings);
 			objFileWriter.Write (numInstVectors);
 			objFileWriter.Write (numInstSDTClObjs);
+			objFileWriter.Write (numInstSDTIntfObjs);
 			objFileWriter.Write (numVirtFuncs);
 
 			if (extends == null) {
@@ -3814,16 +3826,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		public override void ReadFromFile (BinaryReader objFileReader, TextWriter asmFileWriter)
 		{
-			numInstArrays    = objFileReader.ReadInt32 ();
-			numInstFloats    = objFileReader.ReadInt32 ();
-			numInstIntegers  = objFileReader.ReadInt32 ();
-			numInstLists     = objFileReader.ReadInt32 ();
-			numInstObjects   = objFileReader.ReadInt32 ();
-			numInstRotations = objFileReader.ReadInt32 ();
-			numInstStrings   = objFileReader.ReadInt32 ();
-			numInstVectors   = objFileReader.ReadInt32 ();
-			numInstSDTClObjs = objFileReader.ReadInt32 ();
-			numVirtFuncs     = objFileReader.ReadInt32 ();
+			numInstArrays      = objFileReader.ReadInt32 ();
+			numInstFloats      = objFileReader.ReadInt32 ();
+			numInstIntegers    = objFileReader.ReadInt32 ();
+			numInstLists       = objFileReader.ReadInt32 ();
+			numInstObjects     = objFileReader.ReadInt32 ();
+			numInstRotations   = objFileReader.ReadInt32 ();
+			numInstStrings     = objFileReader.ReadInt32 ();
+			numInstVectors     = objFileReader.ReadInt32 ();
+			numInstSDTClObjs   = objFileReader.ReadInt32 ();
+			numInstSDTIntfObjs = objFileReader.ReadInt32 ();
+			numVirtFuncs       = objFileReader.ReadInt32 ();
 
 			extendsStr = objFileReader.ReadString ();
 
@@ -4418,6 +4431,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	}
 
 	public class TokenTypeSDTypeInterface : TokenTypeSDType {
+		private static readonly FieldInfo gblSDTIntfObjsFieldInfo  = typeof (XMRInstAbstract).GetField ("gblSDTIntfObjs");
+		private static readonly FieldInfo sdtcSDTIntfObjsFieldInfo = typeof (XMRSDTypeClassInstance).GetField ("sdtcSDTIntfObjs");
+
 		public TokenDeclSDTypeInterface decl;
 		public TokenTypeSDTypeInterface (Token t, TokenDeclSDTypeInterface decl) : base (t)
 		{
@@ -4450,6 +4466,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				return sd.implements.Contains (this.decl);
 			}
 			return false;
+		}
+
+		/**
+		 * @brief Assign slots in the gblSDTIntfObjs[] array
+		 *        Likewise with the sdtcSDTIntfObjs[] array.
+		 */
+		public override void AssignGlobalVarSlot (TokenDeclVar declVar, ScriptObjCode scriptObjCode)
+		{
+			declVar.vTableArray = gblSDTIntfObjsFieldInfo;
+			declVar.vTableIndex = scriptObjCode.numGblSDTIntfObjs ++;
+		}
+		public override void AssignSDTClassFieldSlot (TokenDeclVar declVar, TokenDeclSDTypeClass sdtClass)
+		{
+			declVar.vTableArray = sdtcSDTIntfObjsFieldInfo;
+			declVar.vTableIndex = sdtClass.numInstSDTIntfObjs ++;
 		}
 
 		// debugging

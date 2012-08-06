@@ -447,17 +447,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					TokenDeclSDTypeClass extends = sdtClass.extends;
 					if (extends != null) {
 						if (!extends.slotsAssigned) continue;
-						sdtClass.numInstArrays    = extends.numInstArrays;
-						sdtClass.numInstFloats    = extends.numInstFloats;
-						sdtClass.numInstIntegers  = extends.numInstIntegers;
-						sdtClass.numInstLists     = extends.numInstLists;
-						sdtClass.numInstObjects   = extends.numInstObjects;
-						sdtClass.numInstRotations = extends.numInstRotations;
-						sdtClass.numInstStrings   = extends.numInstStrings;
-						sdtClass.numInstVectors   = extends.numInstVectors;
-						sdtClass.numInstSDTClObjs = extends.numInstSDTClObjs;
-						sdtClass.numVirtFuncs     = extends.numVirtFuncs;
-						sdtClass.numInterfaces    = extends.numInterfaces;
+						sdtClass.numInstArrays      = extends.numInstArrays;
+						sdtClass.numInstFloats      = extends.numInstFloats;
+						sdtClass.numInstIntegers    = extends.numInstIntegers;
+						sdtClass.numInstLists       = extends.numInstLists;
+						sdtClass.numInstObjects     = extends.numInstObjects;
+						sdtClass.numInstRotations   = extends.numInstRotations;
+						sdtClass.numInstStrings     = extends.numInstStrings;
+						sdtClass.numInstVectors     = extends.numInstVectors;
+						sdtClass.numInstSDTClObjs   = extends.numInstSDTClObjs;
+						sdtClass.numInstSDTIntfObjs = extends.numInstSDTIntfObjs;
+						sdtClass.numVirtFuncs       = extends.numVirtFuncs;
+						sdtClass.numInterfaces      = extends.numInterfaces;
 
 						int n = maxExtends;
 						for (TokenDeclSDTypeClass ex = extends; ex != null; ex = ex.extends) {
@@ -808,6 +809,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			objFileWriter.Write (scriptObjCode.numGblStrings);
 			objFileWriter.Write (scriptObjCode.numGblVectors);
 			objFileWriter.Write (scriptObjCode.numGblSDTClObjs);
+			objFileWriter.Write (scriptObjCode.numGblSDTIntfObjs);
 
 			objFileWriter.Write (nStates);
 			for (int i = 0; i < nStates; i ++) {
@@ -2584,11 +2586,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				if (nSubs != rank) {
 					ErrorMsg (lVal.baseRVal, "expect " + rank + " subscript" + ((rank == 1) ? "" : "s") + " but have " + nSubs);
 				}
-				CompValu[] subCompValus = new CompValu[nSubs];
-				for (int i = 0; i < nSubs; i ++) {
+				CompValu[] subCompValus = new CompValu[rank];
+				int i;
+				for (i = 0; (subRVal != null) && (i < rank); i ++) {
 					subCompValus[i] = GenerateFromRVal (subRVal);
 					subRVal = (TokenRVal)subRVal.nextToken;
 				}
+				while (i < rank) subCompValus[i++] = new CompValuInteger (new TokenTypeInt (lVal.subRVal), 0);
 				return new CompValuFixArEl (this, baseCompValu, subCompValus);
 			}
 
@@ -2893,26 +2897,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
-			 * Special case for comparing object pointers because of the myriad of types possible.
-			 * This will compare list pointers, null pointers, script-defined type pointers, array pointers, etc.
-			 * It will show equal iff the memory addresses are equal and that is good enough.
-			 */
-			if (!left.type.ToSysType().IsValueType && !right.type.ToSysType().IsValueType && ((opcodeIndex == "==") || (opcodeIndex == "!="))) {
-				CompValu retRVal = new CompValuTemp (new TokenTypeInt (token), null, this);
-				retRVal.isFinal = left.isFinal && right.isFinal;
-				retRVal.PopPre (this, token);
-				left.PushVal (this, token.rValLeft);
-				right.PushVal (this, token.rValRight);
-				ilGen.Emit (OpCodes.Ceq);
-				if (opcodeIndex == "!=") {
-					PushConstantI4 (1);
-					ilGen.Emit (OpCodes.Xor);
-				}
-				retRVal.PopPost (this, token);
-				return retRVal;
-			}
-
-			/*
 			 * Formulate key string for binOpStrings = (lefttype)(operator)(righttype)
 			 */
 			string leftIndex = left.type.ToString ();
@@ -2950,6 +2934,26 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				CompValu retRVal = new CompValuTemp (TokenType.FromSysType (token.opcode, binOpStr.outtype), null, this);
 				retRVal.isFinal = left.isFinal && right.isFinal;
 				binOpStr.emitBO (this, token, left, right, retRVal);
+				return retRVal;
+			}
+
+			/*
+			 * Nothing in the table, check for comparing object pointers because of the myriad of types possible.
+			 * This will compare list pointers, null pointers, script-defined type pointers, array pointers, etc.
+			 * It will show equal iff the memory addresses are equal and that is good enough.
+			 */
+			if (!left.type.ToSysType().IsValueType && !right.type.ToSysType().IsValueType && ((opcodeIndex == "==") || (opcodeIndex == "!="))) {
+				CompValu retRVal = new CompValuTemp (new TokenTypeInt (token), null, this);
+				retRVal.isFinal = left.isFinal && right.isFinal;
+				retRVal.PopPre (this, token);
+				left.PushVal (this, token.rValLeft);
+				right.PushVal (this, token.rValRight);
+				ilGen.Emit (OpCodes.Ceq);
+				if (opcodeIndex == "!=") {
+					PushConstantI4 (1);
+					ilGen.Emit (OpCodes.Xor);
+				}
+				retRVal.PopPost (this, token);
 				return retRVal;
 			}
 
@@ -4540,17 +4544,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Fill in simple parts of scriptObjCode object.
 			 */
-			ScriptObjCode scriptObjCode   = new ScriptObjCode ();
-			scriptObjCode.expiryDays      = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblArrays    = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblFloats    = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblIntegers  = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblLists     = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblObjects   = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblRotations = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblStrings   = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblVectors   = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblSDTClObjs = objFileReader.ReadInt32 ();
+			ScriptObjCode scriptObjCode     = new ScriptObjCode ();
+			scriptObjCode.expiryDays        = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblArrays      = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblFloats      = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblIntegers    = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblLists       = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblObjects     = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblRotations   = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblStrings     = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblVectors     = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblSDTClObjs   = objFileReader.ReadInt32 ();
+			scriptObjCode.numGblSDTIntfObjs = objFileReader.ReadInt32 ();
 
 			int nStates = objFileReader.ReadInt32 ();
 
@@ -4563,15 +4568,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			if (asmFileWriter != null) {
-				asmFileWriter.WriteLine ("  numGblArrays     {0}", scriptObjCode.numGblArrays);
-				asmFileWriter.WriteLine ("  numGblFloats     {0}", scriptObjCode.numGblFloats);
-				asmFileWriter.WriteLine ("  numGblIntegers   {0}", scriptObjCode.numGblIntegers);
-				asmFileWriter.WriteLine ("  numGblLists      {0}", scriptObjCode.numGblLists);
-				asmFileWriter.WriteLine ("  numGblObjects    {0}", scriptObjCode.numGblObjects);
-				asmFileWriter.WriteLine ("  numGblRotations  {0}", scriptObjCode.numGblRotations);
-				asmFileWriter.WriteLine ("  numGblStrings    {0}", scriptObjCode.numGblStrings);
-				asmFileWriter.WriteLine ("  numGblVectors    {0}", scriptObjCode.numGblVectors);
-				asmFileWriter.WriteLine ("  numGblSDTClObjs  {0}", scriptObjCode.numGblSDTClObjs);
+				asmFileWriter.WriteLine ("  numGblArrays       {0}", scriptObjCode.numGblArrays);
+				asmFileWriter.WriteLine ("  numGblFloats       {0}", scriptObjCode.numGblFloats);
+				asmFileWriter.WriteLine ("  numGblIntegers     {0}", scriptObjCode.numGblIntegers);
+				asmFileWriter.WriteLine ("  numGblLists        {0}", scriptObjCode.numGblLists);
+				asmFileWriter.WriteLine ("  numGblObjects      {0}", scriptObjCode.numGblObjects);
+				asmFileWriter.WriteLine ("  numGblRotations    {0}", scriptObjCode.numGblRotations);
+				asmFileWriter.WriteLine ("  numGblStrings      {0}", scriptObjCode.numGblStrings);
+				asmFileWriter.WriteLine ("  numGblVectors      {0}", scriptObjCode.numGblVectors);
+				asmFileWriter.WriteLine ("  numGblSDTClObjs    {0}", scriptObjCode.numGblSDTClObjs);
+				asmFileWriter.WriteLine ("  numGblSDTIntfObjs  {0}", scriptObjCode.numGblSDTIntfObjs);
 			}
 
 			string gblName;

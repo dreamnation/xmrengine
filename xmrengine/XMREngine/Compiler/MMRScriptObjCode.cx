@@ -33,6 +33,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public int numGblStrings;       // number of string global variables it has
 		public int numGblVectors;       // number of vector global variables it has
 		public int numGblSDTClObjs;     // number of script-defined class object variables it has
+		public int numGblSDTIntfObjs;   // number of script-defined interface object variables it has
 
 		public string[] stateNames;     // convert state number to corresponding string
 

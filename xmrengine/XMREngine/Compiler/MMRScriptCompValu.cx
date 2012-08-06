@@ -337,21 +337,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private TokenDeclVar setFunc;
 		private TokenTypeInt tokenTypeInt;
 
-		private static TokenType GetElementType (ScriptCodeGen scg, CompValu baseRVal, CompValu[] subRVals)
-		{
-			TokenTypeSDTypeClass sdtType = (TokenTypeSDTypeClass)baseRVal.type;
-			TokenDeclSDTypeClass sdtDecl = sdtType.decl;
-			TokenName name = new TokenName (sdtType, "Get");
-			int nSubs = subRVals.Length;
-			TokenType[] argsig = new TokenType[nSubs];
-			argsig[0] = new TokenTypeInt (sdtType);
-			for (int i = 0; ++ i < nSubs;) {
-				argsig[i] = argsig[0];
-			}
-			TokenDeclVar getFunc = scg.FindThisMember (sdtDecl, name, argsig);
-			return getFunc.retType;
-		}
-
+		/**
+		 * @brief Set up to access an element of an array.
+		 * @param scg = what script we are compiling
+		 * @param baseRVal = what array we are accessing
+		 * @param subRVals = the subscripts being applied
+		 */
 		public CompValuFixArEl (ScriptCodeGen scg, CompValu baseRVal, CompValu[] subRVals) : base (GetElementType (scg, baseRVal, subRVals))
 		{
 			this.baseRVal = baseRVal;  // location of the array itself
@@ -372,12 +363,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			name = new TokenName (sdtType, "Set");
 			argsig = new TokenType[nSubs+1];
 			for (int i = 0; i < nSubs; i ++) {
-				argsig[i] = argsig[0];
+				argsig[i] = tokenTypeInt;
 			}
 			argsig[nSubs] = getFunc.retType;
 			setFunc = scg.FindThisMember (sdtDecl, name, argsig);
 		}
 
+		/**
+		 * @brief Read array element and push value on stack.
+		 */
 		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
 			// call script-defined class' Get() method to fetch the value
@@ -388,11 +382,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			scg.ilGen.Emit (OpCodes.Call, getFunc.ilGen);
 		}
 
+		/**
+		 * @brief Push address of array element on stack.
+		 */
 		public override void PushRef (ScriptCodeGen scg, Token errorAt)
 		{
 			throw new Exception ("tu stOOpid to get array element address");
 		}
 
+		/**
+		 * @brief Prepare to write array element.
+		 */
 		public override void PopPre (ScriptCodeGen scg, Token errorAt)
 		{
 			// set up call to script-defined class' Set() method to write the value
@@ -402,10 +402,36 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 		}
 
+		/**
+		 * @brief Pop value from stack and write array element.
+		 */
 		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
 			// call script-defined class' Set() method to write the value
 			scg.ilGen.Emit (OpCodes.Call, setFunc.ilGen);
+		}
+
+		/**
+		 * @brief Get the array element type by getting the Get() functions return type.
+		 *        Crude but effective.
+		 * @param scg = what script we are compiling
+		 * @param baseRVal = what array we are accessing
+		 * @param subRVals = the subscripts being applied
+		 * @returns array element type
+		 */
+		private static TokenType GetElementType (ScriptCodeGen scg, CompValu baseRVal, CompValu[] subRVals)
+		{
+			TokenTypeSDTypeClass sdtType = (TokenTypeSDTypeClass)baseRVal.type;
+			TokenDeclSDTypeClass sdtDecl = sdtType.decl;
+			TokenName name = new TokenName (sdtType, "Get");
+			int nSubs = subRVals.Length;
+			TokenType[] argsig = new TokenType[nSubs];
+			argsig[0] = new TokenTypeInt (sdtType);
+			for (int i = 0; ++ i < nSubs;) {
+				argsig[i] = argsig[0];
+			}
+			TokenDeclVar getFunc = scg.FindThisMember (sdtDecl, name, argsig);
+			return getFunc.retType;
 		}
 	}
 

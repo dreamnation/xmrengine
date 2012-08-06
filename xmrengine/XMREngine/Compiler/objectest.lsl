@@ -14,26 +14,37 @@ interface IEnumerator<T> {
 }
 
 class Dictionary<K,V> : IEnumerable<KeyValuePair<K,V>> {
-    public List<KeyValuePair<K,V>> kvps;
+    public constant HASHSIZE = 23;
+    public List<KeyValuePair<K,V>>[] kvpss;
 
     public constructor ()
     {
-        this.kvps = new List<KeyValuePair<K,V>> ();
+        this.kvpss = new List<KeyValuePair<K,V>>[](HASHSIZE);
     }
 
     public KeyValuePair<K,V> Add (K kee, V val)
     {
         if (this.GetByKey (kee) != undef) throw "duplicate key";
+        integer index = xmrHashCode (kee) % HASHSIZE;
+        if (index < 0) index += HASHSIZE;
         KeyValuePair<K,V> kvp = new KeyValuePair<K,V> ();
         kvp.kee = kee;
         kvp.value = val;
-        this.kvps.Enqueue (kvp);
+        List<KeyValuePair<K,V>> kvps = this.kvpss[index];
+        if (kvps == undef) {
+            this.kvpss[index] = kvps = new List<KeyValuePair<K,V>> ();
+        }
+        kvps.Enqueue (kvp);
         return kvp;
     }
 
     public KeyValuePair<K,V> GetByKey (K kee)
     {
-        for (IEnumerator<KeyValuePair<K,V>> kvpenum = this.GetEnumerator (); kvpenum.MoveNext ();) {
+        integer index = xmrHashCode (kee) % HASHSIZE;
+        if (index < 0) index += HASHSIZE;
+        List<KeyValuePair<K,V>> kvps = this.kvpss[index];
+        if (kvps == undef) return undef;
+        for (IEnumerator<KeyValuePair<K,V>> kvpenum = kvps.GetEnumerator (); kvpenum.MoveNext ();) {
             KeyValuePair<K,V> kvp = kvpenum.Current;
             if (kvp.kee == kee) return kvp;
         }
@@ -43,7 +54,52 @@ class Dictionary<K,V> : IEnumerable<KeyValuePair<K,V>> {
     // iterate through list of key-value pairs
     public IEnumerator<KeyValuePair<K,V>> GetEnumerator () : IEnumerable<KeyValuePair<K,V>>
     {
-        return this.kvps.GetEnumerator ();
+        return new Enumerator (this);
+    }
+
+    public class Enumerator : IEnumerator<KeyValuePair<K,V>> {
+        public Dictionary<K,V> thedict;
+        public IEnumerator<KeyValuePair<K,V>> listenum;
+        public integer index;
+
+        public constructor (Dictionary<K,V> thedict)
+        {
+            this.thedict = thedict;
+            this.Reset ();
+        }
+
+        // get element currently pointed to
+        public KeyValuePair<K,V> Current : IEnumerator<KeyValuePair<K,V>> {
+            get
+            {
+                if (this.listenum == undef) throw "at end of list";
+                return this.listenum.Current;
+            }
+        }
+
+        // move to next element in list
+        public integer MoveNext () : IEnumerator<KeyValuePair<K,V>>
+        {
+            List<KeyValuePair<K,V>> kvps;
+            while (1) {
+                if (this.listenum == undef) jump done;
+                if (this.listenum.MoveNext ()) break;
+            @done;
+                do {
+                    if (this.index >= HASHSIZE) return 0;
+                    kvps = this.thedict.kvpss[this.index++];
+                } while (kvps == undef);
+                this.listenum = kvps.GetEnumerator ();
+            }
+            return 1;
+        }
+
+        // reset back to just before beginning of list
+        public Reset () : IEnumerator<KeyValuePair<K,V>>
+        {
+            this.index    = 0;
+            this.listenum = undef;
+        }
     }
 }
 
@@ -153,6 +209,27 @@ class List<T> : IEnumerable<T> {
     }
 }
 
+float[,] MatMul (float[,] x, float[,] y)
+{
+    integer jMax = x.Length (0);  // rows of X
+    integer kMax = x.Length (1);  // columns of X = rows of Y
+    if (y.Length (0) != kMax) throw "size mismatch";
+    integer iMax = y.Length (1);  // columns of Y
+
+    float[,] z = new float[,](jMax,iMax);
+
+    for (integer j = 0; j < jMax; j ++) {          // select row of Z to compute
+        for (integer i = 0; i < iMax; i ++) {      // select column in that row
+            float s = 0;
+            for (integer k = 0; k < kMax; k ++) {
+                s += x[j,k] * y[k,i];              // row J of X dot col I of Y
+            }
+            z[j,i] = s;
+        }
+    }
+    return z;
+}
+
 default {
     state_entry ()
     {
@@ -177,6 +254,36 @@ default {
         for (IEnumerator<KeyValuePair<string,integer>> kvpenum = s2i.GetEnumerator (); kvpenum.MoveNext ();) {
             KeyValuePair<string,integer> kvp = kvpenum.Current;
             llOwnerSay ("s2i: " + kvp.kee + " => " + kvp.value);
+        }
+
+        float[,] x = new float[,](2,3);  // 2 rows, 3 columns
+        float[,] y = new float[,](3,4);  // 3 rows, 4 columns
+        for (integer i = 0; i < 2; i ++) {
+            for (integer j = 0; j < 3; j ++) {
+                x[i,j] = i + j + 1;
+            }
+        }
+        for (integer i = 0; i < 3; i ++) {
+            for (integer j = 0; j < 4; j ++) {
+                y[i,j] = i + j + 2;
+            }
+        }
+        float[,] z = MatMul (x, y);
+        for (integer i = 0; i < 2; i ++) {
+            string line = "";
+            for (integer j = 0; j < 4; j ++) {
+                line += "  ";
+                line += (string)z[i,j];
+            }
+            string expect;
+            if (i == 0) {
+                expect = "  20.000000  26.000000  32.000000  38.000000";
+            } else {
+                expect = "  29.000000  38.000000  47.000000  56.000000";
+            }
+            if (line == expect) line += "  -- good";
+                           else line += "  -- BAD";
+            llOwnerSay (line);
         }
     }
 }
