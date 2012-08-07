@@ -226,5 +226,41 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             int iFaceIndex = ci.sdtcClass.intfIndices[ifacename];
             return ci.sdtcITable[iFaceIndex];
         }
+
+        public static void XMRArrayCopy (object srcobj, int srcstart, object dstobj, int dststart, int count)
+        {
+            XMRSDTypeClassInstance srcsdt = (XMRSDTypeClassInstance)srcobj;
+            XMRSDTypeClassInstance dstsdt = (XMRSDTypeClassInstance)dstobj;
+
+            string srctypename = srcsdt.sdtcClass.longName.val;
+            string dsttypename = dstsdt.sdtcClass.longName.val;
+
+            int i = srctypename.IndexOf ('[');
+            int j = dsttypename.IndexOf ('[');
+
+            if ((i < 0) || (j < 0)) throw new InvalidCastException ("non-array passed: " + srctypename + " and/or " + dsttypename);
+
+            if ((i != j) || !srctypename.StartsWith (dsttypename.Substring (0, j))) {
+                throw new ArrayTypeMismatchException (srctypename + " vs " + dsttypename);
+            }
+
+            int srclen  = srctypename.Length;
+            int dstlen  = dsttypename.Length;
+            int srcjags = 0;
+            int dstjags = 0;
+            while (++ i < srclen) if (srctypename[i] == ']') srcjags ++;
+            while (++ j < dstlen) if (dsttypename[j] == ']') dstjags ++;
+            if (dstjags != srcjags) {
+                throw new ArrayTypeMismatchException (srctypename + " vs " + dsttypename);
+            }
+
+            Array srcarray = (Array)srcsdt.sdtcObjects[0];
+            Array dstarray = (Array)dstsdt.sdtcObjects[0];
+
+            Console.WriteLine ("XMRArrayCopy: srcsrray.len=" + srcarray.Length);
+            Console.WriteLine ("XMRArrayCopy: dstarray.len=" + dstarray.Length);
+
+            Array.Copy (srcarray, srcstart, dstarray, dststart, count);
+        }
     }
 }

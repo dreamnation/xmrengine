@@ -138,6 +138,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			inf = new TokenDeclInline (ifd, false, "xmrHashCode(float)",                                      typeof (int),         null); inf.codeGen = inf.CodeGenXMRHashCodeFloat;
 			inf = new TokenDeclInline (ifd, false, "xmrHashCode(integer)",                                    typeof (int),         null); inf.codeGen = inf.CodeGenXMRHashCodeInteger;
 			inf = new TokenDeclInline (ifd, false, "xmrHashCode(object)",                                     typeof (int),         null); inf.codeGen = inf.CodeGenXMRHashCodeObject;
+			inf = new TokenDeclInline (ifd, false, "xmrArrayCopy(object,integer,object,integer,integer)",     typeof (int),         null); inf.codeGen = inf.CodeGenXMRArrayCopy;
 
 			inf = new TokenDeclInline (ifd, false, "xmrFixedArrayAllocF(integer)",                            typeof (object),      null); inf.codeGen = inf.CodeGenXMRFixedArrayAllocF;
 			inf = new TokenDeclInline (ifd, false, "xmrFixedArrayGetF(object,integer)",                       typeof (SCRIPTFLOAT), null); inf.codeGen = inf.CodeGenXMRFixedArrayGetF;
@@ -578,6 +579,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			args[1].PushVal (scg, errorAt);
 			args[2].PushVal (scg, errorAt);
 			scg.ilGen.Emit (OpCodes.Stelem, typeof (object));
+		}
+
+		/**
+		 * @brief Generate code to return type name of the argument
+		 *        Script-level prototype:  xmrArrayCppy(object,integer,object,integer,integer)
+		 */
+		private static MethodInfo arrayCopyMethodInfo = typeof (XMRSDTypeClassInstance).GetMethod ("XMRArrayCopy", new Type[] { typeof (object), typeof (int), typeof (object), typeof (int), typeof (int) });
+		private void CodeGenXMRArrayCopy (ScriptCodeGen scg, Token errorAt, CompValu result, CompValu[] args)
+		{
+			args[0].PushVal (scg, errorAt);
+			args[1].PushVal (scg, errorAt);
+			args[2].PushVal (scg, errorAt);
+			args[3].PushVal (scg, errorAt);
+			args[4].PushVal (scg, errorAt);
+			scg.ilGen.Emit (OpCodes.Call, arrayCopyMethodInfo);
 		}
 
 		/**

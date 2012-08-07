@@ -184,5 +184,19 @@ Keywords:
     this        - used to access the current script-defined class's object instance
     virtual     - declares a script-defined class's method may be overridden by leafward classes
 
-Note:  Use 'undef' instead of 'null' to mean no object present.
+    Note:  Use 'undef' instead of 'null' to mean no object present.
+
+Built-in functions:
+
+    string xmrTypeName(object)   returns typename of the given object
+                                 should be as specified in script source file
+
+    integer xmrHashCode(object)  gets hash code of the given argument
+
+    xmrArrayCopy(object srcarray, integer srcstart, object dstarray, integer dststart, int count)
+                                 copies elements from one array to another
+                                 srcarray and dstarray must point to same-typed arrays, ie, 
+                                    the element types must match.  If the arrays are multi-dimensional, 
+                                    use srcarray.Index(idx0,idx1,...) and dstarray.Index(idx0,idx1,...) 
+                                    for the srcstart and dststart parameters.
 

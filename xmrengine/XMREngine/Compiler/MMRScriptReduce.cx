@@ -1060,6 +1060,51 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				t = SpliceAfter (t, new TokenKwBrcClose (t));
 
 				/*
+				 *        public integer Index (integer idx0, integet idx1, ...) {
+				 *            integer idx = idx0;
+				 *            idx *= this.len1; idx += idx1;
+				 *            idx *= this.len2; idx += idx2;
+				 *            ...
+				 *            return idx;
+				 *        }
+				 */
+				t = SpliceAfter (t, new TokenKwPublic (t));
+				t = SpliceAfter (t, new TokenTypeInt (t));
+				t = SpliceAfter (t, new TokenName (t, "Index"));
+				t = SpliceAfter (t, new TokenKwParOpen (t));
+				for (int i = 0; i < rank; i ++) {
+					if (i > 0) t = SpliceAfter (t, new TokenKwComma (t));
+					t = SpliceAfter (t, new TokenTypeInt (t));
+					t = SpliceAfter (t, new TokenName (t, "idx" + i));
+				}
+				t = SpliceAfter (t, new TokenKwParClose (t));
+				t = SpliceAfter (t, new TokenKwBrcOpen (t));
+
+				t = SpliceAfter (t, new TokenTypeInt (t));
+				t = SpliceAfter (t, new TokenName (t, "idx"));
+				t = SpliceAfter (t, new TokenKwAssign (t));
+				t = SpliceAfter (t, new TokenName (t, "idx0"));
+				t = SpliceAfter (t, new TokenKwSemi (t));
+
+				for (int i = 1; i < rank; i ++) {
+					t = SpliceAfter (t, new TokenName (t, "idx"));
+					t = SpliceAfter (t, new TokenKwAsnMul (t));
+					t = SpliceAfter (t, new TokenKwThis (t));
+					t = SpliceAfter (t, new TokenKwDot (t));
+					t = SpliceAfter (t, new TokenName (t, "len" + i));
+					t = SpliceAfter (t, new TokenKwSemi (t));
+					t = SpliceAfter (t, new TokenName (t, "idx"));
+					t = SpliceAfter (t, new TokenKwAsnAdd (t));
+					t = SpliceAfter (t, new TokenName (t, "idx" + i));
+					t = SpliceAfter (t, new TokenKwSemi (t));
+				}
+
+				t = SpliceAfter (t, new TokenKwRet (t));
+				t = SpliceAfter (t, new TokenName (t, "idx"));
+				t = SpliceAfter (t, new TokenKwSemi (t));
+				t = SpliceAfter (t, new TokenKwBrcClose (t));
+
+				/*
 				 *        public <oftype> Get (integer idx0, integet idx1, ...) {
 				 *            integer idx = idx0;
 				 *            idx *= this.len1; idx += idx1;
