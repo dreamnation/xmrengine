@@ -43,8 +43,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static MethodInfo vectorToBoolMethodInfo     = typeof (TypeCast).GetMethod ("VectorToBool",       new Type[] { typeof (LSL_Vector) });
 		private static MethodInfo vectorToStringMethodInfo   = typeof (TypeCast).GetMethod ("VectorToString",     new Type[] { typeof (LSL_Vector) });
 		private static MethodInfo listOfOneObjMethodInfo     = typeof (TypeCast).GetMethod ("ListOfOneObj",       new Type[] { typeof (object) });
-		private static MethodInfo sdTypeClassCastClass2ClassMethodInfo = typeof (XMRSDTypeClassInstance).GetMethod ("CastClass2Class", new Type[] { typeof (object),     typeof (string) });
-		private static MethodInfo sdTypeClassCastIFace2ClassMethodInfo = typeof (XMRSDTypeClassInstance).GetMethod ("CastIFace2Class", new Type[] { typeof (Delegate[]), typeof (string) });
+		private static MethodInfo sdTypeClassCastClass2ClassMethodInfo = typeof (XMRSDTypeClassInstance).GetMethod ("CastClass2Class", new Type[] { typeof (object),     typeof (int) });
+		private static MethodInfo sdTypeClassCastIFace2ClassMethodInfo = typeof (XMRSDTypeClassInstance).GetMethod ("CastIFace2Class", new Type[] { typeof (Delegate[]), typeof (int) });
 		private static MethodInfo sdTypeClassCastObj2IFaceMethodInfo   = typeof (XMRSDTypeClassInstance).GetMethod ("CastObj2IFace",   new Type[] { typeof (object),     typeof (string) });
 
 		/*
@@ -153,7 +153,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				for (TokenDeclSDTypeClass sdtc = newSDTC; sdtc != null; sdtc = sdtc.extends) {
 					if (sdtc == oldSDTC) {
 						ExplCheck (scg, errorAt, explicitAllowed, oldString, newString);
-						scg.ilGen.Emit (OpCodes.Ldstr, newType.ToString ());
+						scg.ilGen.PushInt (newSDTC.sdTypeIndex);
 						scg.ilGen.Emit (OpCodes.Call, sdTypeClassCastClass2ClassMethodInfo);
 						return;
 					}
@@ -183,7 +183,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					intfIndex = -1;
 				}
 				scg.ilGen.Emit (OpCodes.Ldfld, sdtcITableFieldInfo);
-				scg.PushConstantI4 (intfIndex);
+				scg.ilGen.PushInt (intfIndex);
 				scg.ilGen.Emit (OpCodes.Ldelem, typeof (Delegate[]));
 				return;
 			}
@@ -195,7 +195,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			if ((oldType is TokenTypeSDTypeInterface) && (newType is TokenTypeSDTypeClass)) {
 				ExplCheck (scg, errorAt, explicitAllowed, oldString, newString);
-				scg.ilGen.Emit (OpCodes.Ldstr, newString);
+				scg.ilGen.PushInt (((TokenTypeSDTypeClass)newType).decl.sdTypeIndex);
 				scg.ilGen.Emit (OpCodes.Call, sdTypeClassCastIFace2ClassMethodInfo);
 				return;
 			}
@@ -249,7 +249,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			if ((oldType is TokenTypeObject) && (newType is TokenTypeSDTypeClass)) {
 				ExplCheck (scg, errorAt, explicitAllowed, oldString, newString);
-				scg.ilGen.Emit (OpCodes.Ldstr, newString);
+				scg.ilGen.PushInt (((TokenTypeSDTypeClass)newType).decl.sdTypeIndex);
 				scg.ilGen.Emit (OpCodes.Call, sdTypeClassCastClass2ClassMethodInfo);
 				return;
 			}

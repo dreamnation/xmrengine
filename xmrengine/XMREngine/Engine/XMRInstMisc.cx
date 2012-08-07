@@ -314,7 +314,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public override Delegate GetScriptMethodDelegate (string name, string sig, object targ)
         {
             DynamicMethod dm = m_ObjCode.dynamicMethods[name];
-            TokenDeclSDTypeDelegate dt = (TokenDeclSDTypeDelegate)m_ObjCode.sdObjTypes[sig];
+            TokenDeclSDTypeDelegate dt = (TokenDeclSDTypeDelegate)m_ObjCode.sdObjTypesName[sig];
             return dm.CreateDelegate (dt.GetSysType (), targ);
         }
     }

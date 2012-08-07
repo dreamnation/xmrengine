@@ -1,5 +1,5 @@
 /***************************************************\
- *  COPYRIGHT 2009, Mike Rieker, Beverly, MA, USA  *
+ *  COPYRIGHT 2012, Mike Rieker, Beverly, MA, USA  *
  *  All rights reserved.                           *
 \***************************************************/
 
@@ -172,8 +172,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * to build a script-defined type table and substitute
 			 * type tokens for those names in the source.  This is
 			 * done as a separate scan so they can cross-reference
-			 * each other.
-			 */
+			 * each other.  Also does likewise for fixed array types.
+ 			 */
 			ParseSDTypePreScanPassOne (tokenBegin);  // catalog definitions
 			ParseSDTypePreScanPassTwo (tokenBegin);  // substitute references
 
@@ -203,6 +203,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			*/
 
 			/*
+			 * Create a function $globalvarinit to hold all explicit
+			 * global variable and static field initializations.
+			 */
+			TokenDeclVar gviFunc   = new TokenDeclVar (tokenBegin, null, tokenScript);
+			gviFunc.name           = new TokenName (gviFunc, "$globalvarinit");
+			gviFunc.retType        = new TokenTypeVoid (gviFunc);
+			gviFunc.argDecl        = new TokenArgDecl (gviFunc);
+			TokenStmtBlock gviBody = new TokenStmtBlock (gviFunc);
+			gviBody.function       = gviFunc;
+			gviFunc.body           = gviBody;
+			tokenScript.globalVarInit = gviFunc;
+			tokenScript.AddVarEntry (gviFunc);
+
+			/*
 			 * Scan through the tokens until we reach the end.
 			 */
 			for (Token token = tokenBegin.nextToken; !(token is TokenEnd);) {
@@ -220,7 +234,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				 * constant <name> = <rval> ;
 				 */
 				if (token is TokenKwConst) {
-					ParseDeclVar (ref token);
+					ParseDeclVar (ref token, null);
 					continue;
 				}
 
@@ -232,7 +246,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				    (token.nextToken is TokenName) &&
 				    ((token.nextToken.nextToken is TokenKwSemi) || 
 				     (token.nextToken.nextToken is TokenKwAssign))) {
-					ParseDeclVar (ref token);
+					TokenDeclVar var = ParseDeclVar (ref token, gviFunc);
+					if (var != null) {
+						// <name> = <init>;
+						TokenLValName left = new TokenLValName (var.name, tokenScript);
+						DoVarInit (gviFunc, left, var.init);
+					}
 					continue;
 				}
 
@@ -942,6 +961,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				t = SpliceAfter (t, new TokenKwBrcClose (t));
 
 				/*
+				 *        public integer Length { get {
+				 *            return this.len0 * this.len1 * ... ;
+				 *        } }
+				 */
+				t = SpliceAfter (t, new TokenKwPublic (t));
+				t = SpliceAfter (t, new TokenTypeInt (t));
+				t = SpliceAfter (t, new TokenName (t, "Length"));
+				t = SpliceAfter (t, new TokenKwBrcOpen (t));
+				t = SpliceAfter (t, new TokenKwGet (t));
+				t = SpliceAfter (t, new TokenKwBrcOpen (t));
+
+				t = SpliceAfter (t, new TokenKwRet (t));
+				for (int i = 0; i < rank; i ++) {
+					if (i > 0) t = SpliceAfter (t, new TokenKwMul (t));
+					t = SpliceAfter (t, new TokenKwThis (t));
+					t = SpliceAfter (t, new TokenKwDot (t));
+					t = SpliceAfter (t, new TokenName (t, "len" + i));
+				}
+				t = SpliceAfter (t, new TokenKwSemi (t));
+
+				t = SpliceAfter (t, new TokenKwBrcClose (t));
+				t = SpliceAfter (t, new TokenKwBrcClose (t));
+
+				/*
 				 *        public integer Length (integer dim) {
 				 *            switch (dim) {
 				 *                case 0: return this.len0;
@@ -1213,6 +1256,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			tokenScript.PushVarFrame ();
 			tokdeclcl.members = tokenScript.variablesStack;
 
+			/*
+			 * Create a function $instfieldnit to hold all explicit
+			 * instance field initializations.  Static field inits go 
+			 * in $globalvarinit.
+			 */
+			TokenDeclVar ifiFunc    = new TokenDeclVar (tokdeclcl, null, tokenScript);
+			ifiFunc.name            = new TokenName (ifiFunc, "$instfieldinit");
+			ifiFunc.retType         = new TokenTypeVoid (ifiFunc);
+			ifiFunc.argDecl         = new TokenArgDecl (ifiFunc);
+			ifiFunc.sdtClass        = tokdeclcl;
+			ifiFunc.sdtFlags        = SDT_PUBLIC | SDT_NEW;
+			TokenStmtBlock ifiBody  = new TokenStmtBlock (ifiFunc);
+			ifiBody.function        = ifiFunc;
+			ifiFunc.body            = ifiBody;
+			tokdeclcl.instFieldInit = ifiFunc;
+			tokenScript.AddVarEntry (ifiFunc);
+
 			// process declaration statements until '}'
 			while (!(token is TokenKwBrcClose)) {
 				if (token is TokenKwSemi) {
@@ -1237,7 +1297,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					if ((flags & (SDT_ABSTRACT | SDT_NEW | SDT_OVERRIDE | SDT_VIRTUAL)) != 0) {
 						ErrorMsg (token, "cannot have abstract, new, override or virtual field");
 					}
-					TokenDeclVar var = ParseDeclVar (ref token);
+					TokenDeclVar var = ParseDeclVar (ref token, null);
 					if (var != null) {
 						var.sdtClass = tokdeclcl;
 						var.sdtFlags = flags | SDT_STATIC;
@@ -1256,10 +1316,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					if ((flags & (SDT_ABSTRACT | SDT_FINAL | SDT_NEW | SDT_OVERRIDE | SDT_VIRTUAL)) != 0) {
 						ErrorMsg (token, "cannot have abstract, final, new, override or virtual field");
 					}
-					TokenDeclVar var = ParseDeclVar (ref token);
+					TokenDeclVar var = ParseDeclVar (ref token, ifiFunc);
 					if (var != null) {
 						var.sdtClass = tokdeclcl;
 						var.sdtFlags = flags;
+						if ((flags & SDT_STATIC) != 0) {
+							// <type>.<name> = <init>;
+							TokenLValSField left = new TokenLValSField (var.init);
+							left.baseType        = tokdeclcl.MakeRefToken (var);
+							left.fieldName       = var.name;
+							DoVarInit (tokenScript.globalVarInit, left, var.init);
+						} else if (var.init != null) {
+							// this.<name> = <init>;
+							TokenLValIField left = new TokenLValIField (var.init);
+							left.baseRVal        = new TokenRValThis (var.init, tokdeclcl);
+							left.fieldName       = var.name;
+							DoVarInit (ifiFunc, left, var.init);
+						}
 					}
 					continue;
 				}
@@ -1326,7 +1399,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 */
 			if (!haveExplicitConstructor) {
 				TokenDeclVar tokenDeclFunc  = new TokenDeclVar (token, null, tokenScript);
-				tokenDeclFunc.name          = new TokenName (token, "constructor");
+				tokenDeclFunc.name          = new TokenName (token, "$ctor");
 				tokenDeclFunc.retType       = new TokenTypeVoid (token);
 				tokenDeclFunc.argDecl       = new TokenArgDecl (token);
 				tokenDeclFunc.sdtClass      = tokdeclcl;
@@ -1481,10 +1554,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					TokenArgDecl argDecl = new TokenArgDecl (token);
 
 					getFunc = new TokenDeclVar (token, null, tokenScript);
-					getFunc.name       = new TokenName (token, name.val + ".get.");
+					getFunc.name       = new TokenName (token, name.val + "$get");
 					getFunc.retType    = type;
 					getFunc.argDecl    = argDecl;
-					getFunc.implements = MakePropertyImplements (implements, ".get.");
+					getFunc.implements = MakePropertyImplements (implements, "$get");
 
 					token = token.nextToken;
 					if (!ParseFunctionBody (ref token, getFunc, abs)) {
@@ -1503,10 +1576,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					argDecl.AddArg (type, new TokenName (token, "value"));
 
 					setFunc = new TokenDeclVar (token, null, tokenScript);
-					setFunc.name       = new TokenName (token, name.val + ".set.");
+					setFunc.name       = new TokenName (token, name.val + "$set");
 					setFunc.retType    = new TokenTypeVoid (token);
 					setFunc.argDecl    = argDecl;
-					setFunc.implements = MakePropertyImplements (implements, ".set.");
+					setFunc.implements = MakePropertyImplements (implements, "$set");
 
 					token = token.nextToken;
 					if (!ParseFunctionBody (ref token, setFunc, abs)) {
@@ -1579,7 +1652,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			}
 
 			TokenDeclVar tokenDeclFunc = new TokenDeclVar (token, null, tokenScript);
-			tokenDeclFunc.name         = new TokenName (tokenDeclFunc, "constructor");
+			tokenDeclFunc.name         = new TokenName (tokenDeclFunc, "$ctor");
 			tokenDeclFunc.retType      = new TokenTypeVoid (token);
 			tokenDeclFunc.sdtClass     = tokdeclcl;
 			tokenDeclFunc.sdtFlags     = flags | SDT_NEW;
@@ -1601,7 +1674,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				 * Set up reference to base constructor.
 				 */
 				TokenRValBaseField baseCtor = new TokenRValBaseField (token, 
-				                              new TokenName (token, "constructor"), 
+				                              new TokenName (token, "$ctor"), 
 				                              tokdeclcl);
 
 				/*
@@ -1648,9 +1721,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 			/*
 			 * Add to list of methods defined by this class.
-			 * It has the name "constructor(argsig)".
-			 * Note that script can't call it directly via a call to a method named constructor
-			 * because constructor is a keyword.
+			 * It has the name "$ctor(argsig)".
 			 */
 			if (!tokenScript.AddVarEntry (tokenDeclFunc)) {
 				ErrorMsg (tokenDeclFunc, "duplicate constructor definition");
@@ -1663,7 +1734,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		private void SetUpDefaultBaseCtorCall (TokenDeclVar thisCtor)
 		{
 			TokenRValBaseField baseCtor = new TokenRValBaseField (thisCtor, 
-			                              new TokenName (thisCtor, "constructor"), 
+			                              new TokenName (thisCtor, "$ctor"), 
 			                              (TokenDeclSDTypeClass)thisCtor.sdtClass);
 			TokenRValCall rvc = new TokenRValCall (thisCtor);
 			rvc.meth          = baseCtor;
@@ -1932,7 +2003,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			TokenName simpleName;
 			if ((token is TokenKw) && ((TokenKw)token).sdtClassOp) {
 				if (!ops) ErrorMsg (token, "operator functions disallowed in static contexts");
-				simpleName = new TokenName (token, ".op." + token.ToString ());
+				simpleName = new TokenName (token, "$op" + token.ToString ());
 			} else if (!(token is TokenName)) {
 				ErrorMsg (token, "expecting function name");
 				token = SkipPastSemi (token);
@@ -2141,7 +2212,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				}
 				Token thisStmt;
 				if ((token is TokenType) || (token is TokenKwConst)) {
-					thisStmt = ParseDeclVar (ref token);
+					thisStmt = ParseDeclVar (ref token, null);
 				} else {
 					thisStmt = ParseStmt (ref token);
 				}
@@ -2266,7 +2337,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			forStmtBlock.function       = currentDeclFunc;
 			tokenScript.PushVarFrame ();
 
-			TokenDeclVar tokenDeclVar   = ParseDeclVar (ref token);
+			TokenDeclVar tokenDeclVar   = ParseDeclVar (ref token, null);
 			if (tokenDeclVar == null) {
 				tokenScript.PopVarFrame ();
 				currentStmtBlock    = forStmtBlock.outerStmtBlock;
@@ -2612,12 +2683,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		/**
 		 * @brief parse a variable declaration statement, including init value if any.
 		 * @param token = points to type or 'constant' token
+		 * @param initFunc = null: parsing a local var declaration
+		 *                         put initialization code in .init
+		 *                   else: parsing a global var or field var declaration
+		 *                         put initialization code in initFunc.body
 		 * @returns null: parsing error
 		 *          else: variable declaration encapulating token
 		 *          token = advanced just past semi-colon
 		 *          variables = modified to include the new variable
 		 */
-		private TokenDeclVar ParseDeclVar (ref Token token)
+		private TokenDeclVar ParseDeclVar (ref Token token, TokenDeclVar initFunc)
 		{
 			TokenDeclVar tokenDeclVar = new TokenDeclVar (token.nextToken, currentDeclFunc, tokenScript);
 
@@ -2675,7 +2750,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					token = token.nextToken;
 				} else if (token is TokenKwAssign) {
 					token = token.nextToken;
-					tokenDeclVar.init = ParseRVal (ref token, semiOnly);
+					if (initFunc != null) {
+						currentDeclFunc = initFunc;
+						tokenDeclVar.init = ParseRVal (ref token, semiOnly);
+						currentDeclFunc = null;
+					} else {
+						tokenDeclVar.init = ParseRVal (ref token, semiOnly);
+					}
 					if (tokenDeclVar.init == null) return null;
 				} else {
 					ErrorMsg (token, "expecting = or ;");
@@ -2692,6 +2773,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				return null;
 			}
 			return tokenDeclVar;
+		}
+
+		/**
+		 * @brief Add variable initialization to $globalvarinit or $instfieldinit function.
+		 * @param initFunc = $globalvarinit or $instfieldinit function
+		 * @param left = variable being initialized
+		 * @param init = null: initialize to default value
+		 *               else: initialize to this value
+		 */
+		private void DoVarInit (TokenDeclVar initFunc, TokenLVal left, TokenRVal init)
+		{
+			TokenStmt stmt;
+			if (init == null) {
+				TokenStmtVarIniDef tsvid = new TokenStmtVarIniDef (left);
+				tsvid.var = left;
+				stmt = tsvid;
+			} else {
+				TokenKw op = new TokenKwAssign (left);
+				TokenStmtRVal tsrv = new TokenStmtRVal (init);
+				tsrv.rVal = new TokenRValOpBin (left, op, init);
+				stmt = tsrv;
+			}
+			stmt.nextToken = initFunc.body.statements;
+			initFunc.body.statements = stmt;
 		}
 
 		/**
@@ -3209,7 +3314,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 			/*
 			 * Maybe we have 'new <script-defined-type>' saying to create an object instance.
-			 * This ends up generating a call to static function <script-defined-type>.new(...)
+			 * This ends up generating a call to static function <script-defined-type>.$new(...)
 			 * whose CIL code is generated by GenerateNewobjBody().
 			 */
 			if (token is TokenKwNew) {
@@ -3220,7 +3325,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				}
 				TokenLValSField field = new TokenLValSField (token.nextToken.nextToken);
 				field.baseType  = (TokenType)token.nextToken;
-				field.fieldName = new TokenName (token, "new");
+				field.fieldName = new TokenName (token, "$new");
 				token = token.nextToken.nextToken;
 				return field;
 			}
@@ -3436,6 +3541,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public Token endToken;                       // the '}' or ';' that ends the definition
 
 		// generic instantiation assumes none of the rest needs to be cloned (well except for the shortName)
+		public int sdTypeIndex = -1;                 // index in scriptObjCode.sdObjTypesIndx[] array
 		public TokenDeclSDTypeClass extends;         // only non-null for TokenDeclSDTypeClass's
 		public uint accessLevel;                     // SDT_PRIVATE, SDT_PROTECTED or SDT_PUBLIC
 		                                             // ... all top-level types are SDT_PUBLIC
@@ -3663,6 +3769,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				default: throw new Exception ();
 			}
 			sdt.sdTypes = sdTypes;
+			sdt.sdTypeIndex = objFileReader.ReadInt32 ();
 			sdt.ReadFromFile (objFileReader, asmFileWriter);
 			return sdt;
 		}
@@ -3713,6 +3820,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 	public class TokenDeclSDTypeClass : TokenDeclSDType {
 		public List<TokenDeclSDTypeInterface> implements = new List<TokenDeclSDTypeInterface> ();
+		public TokenDeclVar instFieldInit;         // $instfieldinit function to do instance field initializations
 
 		public Dictionary<string, int> intfIndices = new Dictionary<string, int> ();  // longname => this.iFaces index
 		public TokenDeclSDTypeInterface[] iFaces;  // array of implemented interfaces
@@ -3777,6 +3885,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			objFileWriter.Write (this.line);
 			objFileWriter.Write (this.posn);
 			objFileWriter.Write ((byte)CLASS);
+			objFileWriter.Write (this.sdTypeIndex);
 
 			objFileWriter.Write (numInstArrays);
 			objFileWriter.Write (numInstFloats);
@@ -3894,7 +4003,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			if (extendsStr != null) {
 				if (extendsStr != "") {
-					extends = (TokenDeclSDTypeClass)scriptObjCode.sdObjTypes[extendsStr];
+					extends = (TokenDeclSDTypeClass)scriptObjCode.sdObjTypesName[extendsStr];
 					extends.FillVTables (scriptObjCode);
 				}
 				extendsStr = null;
@@ -4066,6 +4175,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			objFileWriter.Write (this.line);
 			objFileWriter.Write (this.posn);
 			objFileWriter.Write ((byte)DELEGATE);
+			objFileWriter.Write (this.sdTypeIndex);
 
 			objFileWriter.Write (retType.ToString ());
 			int nArgs = argTypes.Length;
@@ -4163,7 +4273,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			/*
 			 * Name it after the whole signature string.
 			 */
-			StringBuilder sb = new StringBuilder (".inline.");
+			StringBuilder sb = new StringBuilder ("$inline");
 			sb.Append (retType.ToString ());
 			sb.Append ("(");
 			bool first = true;
@@ -4235,6 +4345,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			objFileWriter.Write (this.line);
 			objFileWriter.Write (this.posn);
 			objFileWriter.Write ((byte)INTERFACE);
+			objFileWriter.Write (this.sdTypeIndex);
 		}
 
 		public override void ReadFromFile (BinaryReader objFileReader, TextWriter asmFileWriter)
@@ -4367,13 +4478,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			/*
 			 * No such luck, create a new anonymous declaration.
 			 */
-			StringBuilder sb = new StringBuilder (".anon.delegate.");
+			StringBuilder sb = new StringBuilder ("$anondel$");
 			sb.Append (retType.ToString ());
 			sb.Append ("(");
 			bool first = true;
 			foreach (TokenType at in argTypes) {
 				if (!first) sb.Append (",");
 				sb.Append (at.ToString ());
+				first = false;
 			}
 			sb.Append (")");
 			TokenName name = new TokenName (t, sb.ToString ());
@@ -4831,6 +4943,48 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				default: return false;
 			}
 		}
+
+		// debugging
+		public override void DebString (StringBuilder sb)
+		{
+			if ((sdtFlags & ScriptReduce.SDT_PRIVATE)   != 0) sb.Append ("private ");
+			if ((sdtFlags & ScriptReduce.SDT_PROTECTED) != 0) sb.Append ("protected ");
+			if ((sdtFlags & ScriptReduce.SDT_PUBLIC)    != 0) sb.Append ("public ");
+			if ((sdtFlags & ScriptReduce.SDT_ABSTRACT)  != 0) sb.Append ("abstract ");
+			if ((sdtFlags & ScriptReduce.SDT_FINAL)     != 0) sb.Append ("final ");
+			if ((sdtFlags & ScriptReduce.SDT_NEW)       != 0) sb.Append ("new ");
+			if ((sdtFlags & ScriptReduce.SDT_OVERRIDE)  != 0) sb.Append ("override ");
+			if ((sdtFlags & ScriptReduce.SDT_STATIC)    != 0) sb.Append ("static ");
+			if ((sdtFlags & ScriptReduce.SDT_VIRTUAL)   != 0) sb.Append ("virtual ");
+
+			if (retType == null) {
+				sb.Append (type.ToString ());
+				sb.Append (' ');
+				sb.Append (name.val);
+				if (init != null) {
+					sb.Append (" = ");
+					init.DebString (sb);
+				}
+				sb.Append (';');
+			} else {
+				sb.Append (retType.ToString ());
+				sb.Append (' ');
+				sb.Append (name.val);
+				sb.Append (" (");
+				for (int i = 0; i < argDecl.vars.Length; i ++) {
+					if (i > 0) sb.Append (", ");
+					sb.Append (argDecl.vars[i].type.ToString ());
+					sb.Append (' ');
+					sb.Append (argDecl.vars[i].name.val);
+				}
+				sb.Append (')');
+				if (body == null) sb.Append (';');
+				else {
+					sb.Append (' ');
+					body.DebString (sb);
+				}
+			}
+		}
 	}
 
 	/**
@@ -4970,8 +5124,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		// debugging
 		public override void DebString (StringBuilder sb)
 		{
-			sb.Append (baseRVal);
-			sb.Append (".");
+			baseRVal.DebString (sb);
+			sb.Append ('.');
 			sb.Append (fieldName.val);
 		}
 	}
@@ -5013,6 +5167,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			TokenDeclVar var = scg.FindNamedVar (this, argsig);
 			return (var != null) && var.IsFuncTrivial (scg);
+		}
+
+		// debugging
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append (name.val);
+			sb.Append (' ');
 		}
 	}
 
@@ -5527,6 +5688,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				              (opStr != "<=") && (opStr != "!=") && (opStr != "==");
 			}
 		}
+
+		// debugging
+		public override void DebString (StringBuilder sb)
+		{
+			rValLeft.DebString (sb);
+			sb.Append (opcode.ToString ());
+			sb.Append (' ');
+			rValRight.DebString (sb);
+		}
 	}
 
 	/**
@@ -5723,6 +5893,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenDeclState defaultState;
 		public Dictionary<string, TokenDeclState> states = new Dictionary<string, TokenDeclState>  ();
 		public VarDict variablesStack = new VarDict ();  // initial one is used for global functions and variables
+		public TokenDeclVar globalVarInit;               // $globalvarinit function
+		                                                 // - performs explicit global var and static field inits
 
 		public TokenScript (Token original) : base (original) { }
 
@@ -5769,6 +5941,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public void sdSrcTypesAdd (string key, TokenDeclSDType value)
 		{
 			if (sdSrcTypesSealed) throw new Exception ("sdSrcTypes is sealed");
+			value.sdTypeIndex = sdSrcTypes.Count;
 			sdSrcTypes.Add (key, value);
 		}
 		public void sdSrcTypesReplace (string key, TokenDeclSDType value)
@@ -5827,6 +6000,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public bool isFinally;                 // true iff it's a finally statement block
 
 		public TokenStmtBlock (Token original) : base (original) { }
+
+		// debugging
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append ("{ ");
+			for (Token stmt = statements; stmt != null; stmt = stmt.nextToken) {
+				stmt.DebString (sb);
+			}
+			sb.Append ("} ");
+		}
 	}
 
 	/**
@@ -5852,6 +6035,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenRVal rVal;
 
 		public TokenStmtRVal (Token original) : base (original) { }
+
+		// debugging
+		public override void DebString (StringBuilder sb)
+		{
+			rVal.DebString (sb);
+			sb.Append ("; ");
+		}
 	}
 
 	public class TokenStmtBreak : TokenStmt {
@@ -5986,6 +6176,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenStmtBlock finallyStmt;	// can be null
 
 		public TokenStmtTry (Token original) : base (original) { }
+	}
+
+	public class TokenStmtVarIniDef : TokenStmt {
+		public TokenLVal var;
+		public TokenStmtVarIniDef (Token original) : base (original) { }
 	}
 
 	public class TokenStmtWhile : TokenStmt {

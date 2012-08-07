@@ -150,7 +150,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		protected void EmitFieldPushVal (ScriptCodeGen scg, TokenDeclVar var)
 		{
 			scg.ilGen.Emit (OpCodes.Ldfld, var.vTableArray);  // which array
-			scg.PushConstantI4 (var.vTableIndex);             // which array element
+			scg.ilGen.PushInt (var.vTableIndex);              // which array element
 			if (type is TokenTypeFloat) {
 #define double Ldelem_R8
 #define float  Ldelem_R4
@@ -170,14 +170,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		protected void EmitFieldPushRef (ScriptCodeGen scg, TokenDeclVar var)
 		{
 			scg.ilGen.Emit (OpCodes.Ldfld, var.vTableArray);
-			scg.PushConstantI4 (var.vTableIndex);
+			scg.ilGen.PushInt (var.vTableIndex);
 			scg.ilGen.Emit (OpCodes.Ldelema, ToSysType());
 		}
 
 		protected void EmitFieldPopPre (ScriptCodeGen scg, TokenDeclVar var)
 		{
 			scg.ilGen.Emit (OpCodes.Ldfld, var.vTableArray);
-			scg.PushConstantI4 (var.vTableIndex);
+			scg.ilGen.PushInt (var.vTableIndex);
 		}
 
 		protected void EmitFieldPopPost (ScriptCodeGen scg, TokenDeclVar var)
@@ -239,8 +239,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
-			scg.PushConstantI4 (type.line);
-			scg.PushConstantI4 (type.posn);
+			scg.ilGen.PushInt (type.line);
+			scg.ilGen.PushInt (type.posn);
 			scg.ilGen.Emit (OpCodes.Call, setByKeyMethodInfo);
 		}
 	}
@@ -657,7 +657,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				 */
 				baseRVal.PushVal (scg, errorAt);                        // 'this' selecting the instance
 				scg.ilGen.Emit (OpCodes.Ldfld, vTableFieldInfo);        // get pointer to instance's vtable array
-				scg.PushConstantI4 (func.vTableIndex);                  // select vtable element
+				scg.ilGen.PushInt (func.vTableIndex);                   // select vtable element
 				scg.ilGen.Emit (OpCodes.Ldelem, typeof (Delegate));     // get delegate pointer = 'this' for 'Invoke()'
 				scg.ilGen.Emit (OpCodes.Castclass, type.ToSysType ());  // cast to correct delegate class
 			}
@@ -680,7 +680,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			} else {
 				baseRVal.PushVal (scg, errorAt);                        // 'this' selecting the instance
 				scg.ilGen.Emit (OpCodes.Ldfld, vTableFieldInfo);        // get pointer to instance's vtable array
-				scg.PushConstantI4 (func.vTableIndex);                  // select vtable element
+				scg.ilGen.PushInt (func.vTableIndex);                   // select vtable element
 				scg.ilGen.Emit (OpCodes.Ldelem, typeof (Delegate));     // get delegate pointer = 'this' for 'Invoke()'
 				scg.ilGen.Emit (OpCodes.Castclass, type.ToSysType ());  // cast to correct delegate class
 			}
@@ -714,7 +714,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
 			baseRVal.PushVal (scg, errorAt);                        // push pointer to delegate array on stack
-			scg.PushConstantI4 (func.vTableIndex);                  // select which delegate to access
+			scg.ilGen.PushInt (func.vTableIndex);                   // select which delegate to access
 			scg.ilGen.Emit (OpCodes.Ldelem, typeof (Delegate));     // push delegate on stack
 			scg.ilGen.Emit (OpCodes.Castclass, type.ToSysType ());  // cast to correct delegate class
 		}
@@ -944,7 +944,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
-			scg.PushConstantI4 (x);
+			scg.ilGen.PushInt (x);
 		}
 		public override void PushRef (ScriptCodeGen scg, Token errorAt)
 		{

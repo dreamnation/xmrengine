@@ -43,8 +43,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		                                // 2nd subscript = event code number
 		                                // null entry means no handler defined for that state,event
 
-		public Dictionary<string, TokenDeclSDType> sdObjTypes;
-		                                // all script-defined types
+		public Dictionary<string, TokenDeclSDType> sdObjTypesName;
+		                                // all script-defined types by name
+		public TokenDeclSDType[] sdObjTypesIndx;
+		                                // all script-defined types by sdTypeIndex
 
 		public Dictionary<Type, string> sdDelTypes;
 						// all script-defined delegates (including anonymous)

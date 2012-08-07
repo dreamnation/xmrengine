@@ -188,6 +188,58 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		/**
 		 * @brief Emit opcodes and various operands as part of function body
 		 */
+		public void PushInt (int c)
+		{
+			switch (c) {
+				case -1: {
+					Emit (OpCodes.Ldc_I4_M1);
+					return;
+				}
+				case 0: {
+					Emit (OpCodes.Ldc_I4_0);
+					return;
+				}
+				case 1: {
+					Emit (OpCodes.Ldc_I4_1);
+					return;
+				}
+				case 2: {
+					Emit (OpCodes.Ldc_I4_2);
+					return;
+				}
+				case 3: {
+					Emit (OpCodes.Ldc_I4_3);
+					return;
+				}
+				case 4: {
+					Emit (OpCodes.Ldc_I4_4);
+					return;
+				}
+				case 5: {
+					Emit (OpCodes.Ldc_I4_5);
+					return;
+				}
+				case 6: {
+					Emit (OpCodes.Ldc_I4_6);
+					return;
+				}
+				case 7: {
+					Emit (OpCodes.Ldc_I4_7);
+					return;
+				}
+				case 8: {
+					Emit (OpCodes.Ldc_I4_8);
+					return;
+				}
+				default: break;
+			}
+			if ((c >= 0) && (c <= 127)) {  // negatives dont seem to work
+				Emit (OpCodes.Ldc_I4_S, c);
+				return;
+			}
+			Emit (OpCodes.Ldc_I4, c);
+		}
+
 		public void Emit (OpCode opcode)
 		{
 			objWriter.Write ((byte)ScriptMyILGenCode.EmitNull);
@@ -885,7 +937,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (type2String.TryGetValue (t, out s)) return s;
 
 			// script-defined types
-			if (sdTypesRev.TryGetValue (t, out s)) return ".sdt." + s;
+			if (sdTypesRev.TryGetValue (t, out s)) return "sdt$" + s;
 
 			// inline function types
 			s = TokenDeclSDTypeDelegate.TryGetInlineName (t);
@@ -903,7 +955,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (string2Type.TryGetValue (s, out t)) return t;
 
 			// script-defined types
-			if (s.StartsWith (".sdt.")) return sdTypes[s.Substring(5)].GetSysType ();
+			if (s.StartsWith ("sdt$")) return sdTypes[s.Substring(4)].GetSysType ();
 
 			// inline function types
 			t = TokenDeclSDTypeDelegate.TryGetInlineSysType (s);

@@ -15,11 +15,12 @@ interface IEnumerator<T> {
 
 class Dictionary<K,V> : IEnumerable<KeyValuePair<K,V>> {
     public constant HASHSIZE = 23;
-    public List<KeyValuePair<K,V>>[] kvpss;
+    public List<KeyValuePair<K,V>>[] kvpss = InitKVPSS ();
 
-    public constructor ()
+    private List<KeyValuePair<K,V>>[] InitKVPSS ()
     {
-        this.kvpss = new List<KeyValuePair<K,V>>[](HASHSIZE);
+        List<KeyValuePair<K,V>>[] it = new List<KeyValuePair<K,V>>[](HASHSIZE);
+        return it;
     }
 
     public KeyValuePair<K,V> Add (K kee, V val)
@@ -120,41 +121,41 @@ class List<T> : IEnumerable<T> {
         node.obj = obj;
 
         node.next = undef;
-        if ((node.prev = this.last) == undef) {
-            this.first = node;
+        if ((node.prev = last) == undef) {
+            first = node;
         } else {
-            this.last.next = node;
+            last.next = node;
         }
-        this.last = node;
-        this.count ++;
+        last = node;
+        count ++;
     }
 
     // remove from beginning of list
     public T Dequeue ()
     {
-        Enumerator.Node node = this.first;
-        if ((this.first = node.next) == undef) {
-            this.last = undef;
+        Enumerator.Node node = first;
+        if ((first = node.next) == undef) {
+            last = undef;
         }
-        this.count --;
+        count --;
         return node.obj;
     }
 
     // remove from end of list
     public T Pop ()
     {
-        Enumerator.Node node = this.last;
-        if ((this.last = node.prev) == undef) {
-            this.first = undef;
+        Enumerator.Node node = last;
+        if ((last = node.prev) == undef) {
+            first = undef;
         }
-        this.count --;
+        count --;
         return node.obj;
     }
 
     // see how many are in list
     public integer Count {
         get {
-            return this.count;
+            return count;
         }
     }
 
@@ -178,26 +179,26 @@ class List<T> : IEnumerable<T> {
         public T Current : IEnumerator<T> {
             get
             {
-                if (this.atend) throw "at end of list";
-                return this.current.obj;
+                if (atend) throw "at end of list";
+                return current.obj;
             }
         }
 
         // move to next element in list
         public integer MoveNext () : IEnumerator<T>
         {
-            if (this.atend) return 0;
-            if (this.current == undef) this.current = this.thelist.first;
-                                  else this.current = this.current.next;
-            this.atend = (this.current == undef);
-            return !this.atend;
+            if (atend) return 0;
+            if (current == undef) current = thelist.first;
+                             else current = current.next;
+            atend = (current == undef);
+            return !atend;
         }
 
         // reset back to just before beginning of list
         public Reset () : IEnumerator<T>
         {
-            this.atend = 0;
-            this.current = undef;
+            atend = 0;
+            current = undef;
         }
 
         // list elements
@@ -258,6 +259,8 @@ default {
 
         float[,] x = new float[,](2,3);  // 2 rows, 3 columns
         float[,] y = new float[,](3,4);  // 3 rows, 4 columns
+        llOwnerSay ("x.Length = " + x.Length);
+        llOwnerSay ("y.Length = " + y.Length);
         for (integer i = 0; i < 2; i ++) {
             for (integer j = 0; j < 3; j ++) {
                 x[i,j] = i + j + 1;

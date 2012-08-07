@@ -361,7 +361,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			args[2].PushVal (scg, errorAt, tokenTypeInt);
 			args[3].PushVal (scg, errorAt, tokenTypeInt);
 			args[4].PushVal (scg, errorAt, tokenTypeInt);
-			scg.PushConstantI4 (errorAt.line);
+			scg.ilGen.PushInt (errorAt.line);
 			scg.ilGen.Emit (OpCodes.Call, xmrEventDequeue);
 			result.PopPost (scg, errorAt, retType);
 		}
@@ -451,7 +451,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			result.PopPre (scg, errorAt);
 			if (args[0] is CompValuFloat) {
-				scg.PushConstantI4 (((CompValuFloat)args[0]).x.GetHashCode ());
+				scg.ilGen.PushInt (((CompValuFloat)args[0]).x.GetHashCode ());
 			} else {
 				try {
 					args[0].PushRef (scg, errorAt);
