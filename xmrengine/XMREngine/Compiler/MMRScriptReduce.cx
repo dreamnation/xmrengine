@@ -670,31 +670,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					}
 
 					/*
-					 * This handles types such as integer[,][] etc.
-					 * They are an instantiation of an internally generated generic type, .FixedArray.rank<ofType>
-					 * Note that to malloc an array, use something like 'new float[,][](3,5)', not 'new float[3,5][]'.
-					 */
-					while ((t is TokenType) && (t.nextToken is TokenKwBrkOpen)) {
-						TokenType ofType = (TokenType)t;
-						int rank;
-						t = CountFixedArrayDimensions (t.nextToken, out rank);
-						if (rank > 0) {
-							TokenDeclSDType decl = InstantiateFixedArray (rank, ofType, tokenBegin, ref repeat);
-							TokenTypeSDType type = decl.MakeRefToken (ofType);
-							type.prevToken = ofType.prevToken;
-							type.nextToken = t.nextToken;
-							type.prevToken.nextToken = type;
-							type.nextToken.prevToken = type;
-							t = type;
-						}
-					}
-
-					/*
 					 * For names not preceded by a '.', scan the script-defined type definition 
 					 * stack for that name.  If found, substitute in a type token for the name token.
 					 */
 					if ((t is TokenName) && !(t.prevToken is TokenKwDot)) {
 						t = TrySpliceTypeRef (t, outerSDType, tokenBegin, ref repeat);
+					}
+
+					/*
+					 * This handles types such as integer[,][], List<string>[], etc.
+					 * They are an instantiation of an internally generated type of the same name, brackets and all.
+					 * Note that to malloc an array, use something like 'new float[,][](3,5)', not 'new float[3,5][]'.
+					 */
+					if ((t is TokenType) && (t.nextToken is TokenKwBrkOpen)) {
+						t = InstantiateJaggedArray (t, tokenBegin, ref repeat);
 					}
 				}
 
@@ -808,17 +797,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				}
 
 				/*
-				 * Maybe caller specified fixed array indices.
-				 */
-				while (t.nextToken is TokenKwBrkOpen) {
-					int rank;
-					t = CountFixedArrayDimensions (t.nextToken, out rank);
-					if (rank <= 0) return t;
-					TokenTypeSDType refar = instdecl.MakeRefToken (start);
-					instdecl = InstantiateFixedArray (rank, refar, tokenBegin, ref repeat);
-				}
-
-				/*
 				 * Maybe caller wants a subtype by putting a '.' following all that.
 				 */
 				if (!(t.nextToken is TokenKwDot)) break;
@@ -847,22 +825,67 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			return refer;
 		}
 
-		private Token CountFixedArrayDimensions (Token t, out int rank)
+		/**
+		 * @brief We are known to have <type>'[' so make an equivalent array type.
+		 * @param t = points to the TokenType
+		 * @param tokenBegin = where we can safely splice in new array class definitions
+		 * @param repeat = set REPEAT_INSTGEN if new type created
+		 * @returns pointer to last token parsed
+		 *          possibly with spliced-in type token
+		 *          repeat = possibly set true if need to do another pass
+		 */
+		private Token InstantiateJaggedArray (Token t, Token tokenBegin, ref uint repeat)
 		{
 			Token start = t;
-			rank = 1;
-			while (!((t = t.nextToken) is TokenEnd)) {
-				if (t is TokenKwBrkClose) return t;
-				if (!(t is TokenKwComma)) {
-					ErrorMsg (t, "expecting , or ] only for array type");
-					rank = -1;
+			TokenType ofType = (TokenType)t;
+
+			Stack<int> ranks = new Stack<int> ();
+
+			/*
+			 * When script specifies 'float[,][]' it means a two-dimensional matrix
+			 * that points to one-dimensional vectors of floats.  So we would push 
+			 * a 2 then a 1 in this parsing code...
+			 */
+			do {
+				t = t.nextToken;                // point at '['
+				int rank = 0;
+				do {
+					rank ++;                // count '[' and ','s
+					t = t.nextToken;        // point at ',' or ']'
+				} while (t is TokenKwComma);
+				if (!(t is TokenKwBrkClose)) {
+					ErrorMsg (t, "expecting only [ , or ] for array type specification");
 					return t;
 				}
-				rank ++;
-			}
-			ErrorMsg (start, "missing ] for array");
-			rank = -1;
-			return start;
+				ranks.Push (rank);
+			} while (t.nextToken is TokenKwBrkOpen);
+
+			/*
+			 * Now we build the types in reverse order.  For the example above we will:
+			 *   first, create a type that is a one-dimensional vector of floats, float[]
+			 *   second, create a type that is a two-dimensional matrix of that.
+			 * This keeps declaration and referencing similar, eg, 
+			 *   float[,][] jag = new float[,][] (3,4);
+			 *     jag[i,j][k] ... is used to access the elements
+			 */
+			do {
+				int rank = ranks.Pop ();
+				TokenDeclSDType decl = InstantiateFixedArray (rank, ofType, tokenBegin, ref repeat);
+				ofType = decl.MakeRefToken (ofType);
+			} while (ranks.Count > 0);
+
+			/*
+			 * Finally splice in the resultant array type to replace the original tokens.
+			 */
+			ofType.prevToken = start.prevToken;
+			ofType.nextToken = t.nextToken;
+			ofType.prevToken.nextToken = ofType;
+			ofType.nextToken.prevToken = ofType;
+
+			/*
+			 * Resume parsing just after the spliced-in array type token.
+			 */
+			return ofType;
 		}
 
 		/**
@@ -873,13 +896,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		private TokenDeclSDType InstantiateFixedArray (int rank, TokenType ofType, Token tokenBegin, ref uint repeat)
 		{
-			StringBuilder sb = new StringBuilder (ofType.ToString ());
-			sb.Append ('[');
+			/*
+			 * Create the array type's name.
+			 * If starting with a non-array type, just append the rank to it, eg, float + rank=1 -> float[]
+			 * If starting with an array type, slip this rank in front of existing array, eg, float[] + rank=2 -> float[,][].
+			 * This makes it consistent with what the script-writer sees for both a type specification and when 
+			 * referencing elements in a jagged array.
+			 */
+			string name = ofType.ToString ();
+			StringBuilder sb = new StringBuilder (name);
+			int ix = name.IndexOf ('[');
+			if (ix < 0) ix = name.Length;
+			sb.Insert (ix ++, '[');
 			for (int i = 0; ++ i < rank;) {
-				sb.Append (',');
+				sb.Insert (ix ++, ',');
 			}
-			sb.Append (']');
-			string name = sb.ToString ();
+			sb.Insert (ix, ']');
+			name = sb.ToString ();
 
 			TokenDeclSDType fa;
 			if (!tokenScript.sdSrcTypesTryGetValue (name, out fa)) {
@@ -891,7 +924,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				 * Don't already have one, create a new skeleton struct.
 				 * Splice in a definition for the class at beginning of source file.
 				 *
-				 *    class <oftype>[,...] {
+				 *    class <arraytypename> {
 				 */
 				fa = new TokenDeclSDTypeClass (new TokenName (tokenScript, name));
 				CatalogSDTypeDecl (fa);

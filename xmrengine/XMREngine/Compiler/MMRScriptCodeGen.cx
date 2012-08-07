@@ -2510,7 +2510,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					subRVal = ((TokenRValList)subRVal).rVal;
 				}
 
-				int rank = basetypestring.Length - basetypestring.LastIndexOf ('[') - 1;
+				int rank = basetypestring.IndexOf (']') - basetypestring.IndexOf ('[');
 				if (nSubs != rank) {
 					ErrorMsg (lVal.baseRVal, "expect " + rank + " subscript" + ((rank == 1) ? "" : "s") + " but have " + nSubs);
 				}

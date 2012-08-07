@@ -288,5 +288,25 @@ default {
                            else line += "  -- BAD";
             llOwnerSay (line);
         }
+
+        string[,][] jagged = new string[,][] (3,4);
+        for (integer i = 0; i < 3; i ++) {
+            for (integer j = 0; j < 4; j ++) {
+                jagged[i,j] = new string[] (4+i+j);
+                for (integer k = 0; k < 4 + i + j; k ++) {
+                    jagged[i,j][k] = i + "," + j + "," + k;
+                }
+            }
+        }
+        for (integer i = 0; i < 3; i ++) {
+            for (integer j = 0; j < 4; j ++) {
+                integer len = jagged[i,j].Length;
+                string msg = "jagged[" + i + "," + j + "].Length=" + jagged[i,j].Length;
+                for (integer k = 0; k < len; k ++) {
+                    msg += " : " + jagged[i,j][k];
+                }
+                llOwnerSay (msg);
+            }
+        }
     }
 }
