@@ -1711,20 +1711,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			if (mightGetHere) {
 				EmitCallCheckRun (doStmt.line);
-				if (IsConstBoolExprTrue (doStmt.testRVal)) {
+				CompValu testRVal = GenerateFromRVal (doStmt.testRVal);
+				if (IsConstBoolExprTrue (testRVal)) {
 
 					/*
-					 * Unconditional looping, don't bother with the test
-					 * and say we never fall through to next statement.
+					 * Unconditional looping, unconditional branch and
+					 * say we never fall through to next statement.
 					 */
 					ilGen.Emit (OpCodes.Br, loopLabel);
 					mightGetHere = false;
 				} else {
 
 					/*
-					 * Conditional looping, output test and brach back to top of loop.
+					 * Conditional looping, test and brach back to top of loop.
 					 */
-					CompValu testRVal = GenerateFromRVal (doStmt.testRVal);
 					testRVal.PushVal (this, doStmt.testRVal, tokenTypeBool);
 					ilGen.Emit (OpCodes.Brtrue, loopLabel);
 				}
@@ -1764,12 +1764,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * See if we have a test expression that is other than a constant TRUE.
+			 * If so, test it and conditionally branch to end if false.
 			 */
-			if ((forStmt.testRVal != null) && !IsConstBoolExprTrue (forStmt.testRVal)) {
+			if (forStmt.testRVal != null) {
 				CompValu testRVal = GenerateFromRVal (forStmt.testRVal);
-				testRVal.PushVal (this, forStmt.testRVal, tokenTypeBool);
-				ilGen.Emit (OpCodes.Brfalse, curBreakTarg.label);
-				curBreakTarg.used = true;
+				if (!IsConstBoolExprTrue (testRVal)) {
+					testRVal.PushVal (this, forStmt.testRVal, tokenTypeBool);
+					ilGen.Emit (OpCodes.Brfalse, curBreakTarg.label);
+					curBreakTarg.used = true;
+				}
 			}
 
 			/*
@@ -1907,9 +1910,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			bool constVal;
 
 			/*
-			 * See if constant test expression.
+			 * Test condition and see if constant test expression.
 			 */
-			if (IsConstBoolExpr (ifStmt.testRVal, out constVal)) {
+			CompValu testRVal = GenerateFromRVal (ifStmt.testRVal);
+			if (IsConstBoolExpr (testRVal, out constVal)) {
 
 				/*
 				 * Constant, output just either the true or else part.
@@ -1924,8 +1928,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				/*
 				 * This is an 'if' statement without an 'else' clause.
 				 */
-				CompValu testRVal = GenerateFromRVal (ifStmt.testRVal);
-				testRVal.PushVal (this, ifStmt.testRVal, tokenTypeBool);  // generate test code
+				testRVal.PushVal (this, ifStmt.testRVal, tokenTypeBool);
 				ScriptMyLabel doneLabel = ilGen.DefineLabel ("ifdone_" + ifStmt.Unique);
 				ilGen.Emit (OpCodes.Brfalse, doneLabel);     // brfalse doneLabel
 				GenerateStmt (ifStmt.trueStmt);              // generate true body code
@@ -1936,8 +1939,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				/*
 				 * This is an 'if' statement with an 'else' clause.
 				 */
-				CompValu testRVal = GenerateFromRVal (ifStmt.testRVal);
-				testRVal.PushVal (this, ifStmt.testRVal, tokenTypeBool);  // generate test code
+				testRVal.PushVal (this, ifStmt.testRVal, tokenTypeBool);
 				ScriptMyLabel elseLabel = ilGen.DefineLabel ("ifelse_" + ifStmt.Unique);
 				ilGen.Emit (OpCodes.Brfalse, elseLabel);     // brfalse elseLabel
 				GenerateStmt (ifStmt.trueStmt);              // generate true body code
@@ -2188,14 +2190,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				/*
 				 * Evaluate case operands, they must be compile-time integer constants.
 				 */
-				if (!IsConstIntExpr (thisCase.rVal1, out thisCase.val1)) {
+				CompValu rVal = GenerateFromRVal (thisCase.rVal1);
+				if (!IsConstIntExpr (rVal, out thisCase.val1)) {
 					ErrorMsg (thisCase.rVal1, "must be compile-time constant");
 					return;
 				}
 				thisCase.val2 = thisCase.val1;
-				if ((thisCase.rVal2 != null) && !IsConstIntExpr (thisCase.rVal2, out thisCase.val2)) {
-					ErrorMsg (thisCase.rVal2, "must be compile-time constant");
-					return;
+				if (thisCase.rVal2 != null) {
+					rVal = GenerateFromRVal (thisCase.rVal2);
+					if (!IsConstIntExpr (rVal, out thisCase.val2)) {
+						ErrorMsg (thisCase.rVal2, "must be compile-time constant");
+						return;
+					}
 				}
 				if (thisCase.val2 < thisCase.val1) {
 					ErrorMsg (thisCase.rVal2, "must be .ge. first value for the case");
@@ -2498,8 +2504,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			curContTarg  = new BreakContTarg (ilGen, "whilecont_"  + whileStmt.Unique);
 
 			ilGen.MarkLabel (loopLabel);                                        // loop:
-			if (!IsConstBoolExprTrue (whileStmt.testRVal)) {
-				CompValu testRVal = GenerateFromRVal (whileStmt.testRVal);  //   testRVal = while test expression
+			CompValu testRVal = GenerateFromRVal (whileStmt.testRVal);          //   testRVal = while test expression
+			if (!IsConstBoolExprTrue (testRVal)) {
 				testRVal.PushVal (this, whileStmt.testRVal, tokenTypeBool); //   if (!testRVal)
 				ilGen.Emit (OpCodes.Brfalse, curBreakTarg.label);           //      goto break
 				curBreakTarg.used = true;
@@ -3705,24 +3711,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @returns true: expression is contant and has boolean value true
 		 *         false: otherwise
 		 */
-		private bool IsConstBoolExprTrue (TokenRVal expr)
+		private bool IsConstBoolExprTrue (CompValu expr)
 		{
 			bool constVal;
 			return IsConstBoolExpr (expr, out constVal) && constVal;
 		}
 
-		private bool IsConstBoolExpr (TokenRVal expr, out bool constVal)
+		private bool IsConstBoolExpr (CompValu expr, out bool constVal)
 		{
-			if (expr is TokenRValConst) {
-				object val = ((TokenRValConst)expr).val;
-				if (val is SCRIPTFLOAT) {
-					constVal = (SCRIPTFLOAT)val != 0.0;
-					return true;
-				}
-				if (val is int) {
-					constVal = (int)val != 0.0;
-					return true;
-				}
+			if (expr is CompValuFloat) {
+				constVal = ((CompValuFloat)expr).x != (SCRIPTFLOAT)0;
+				return true;
+			}
+			if (expr is CompValuInteger) {
+				constVal = ((CompValuInteger)expr).x != 0;
+				return true;
 			}
 
 			constVal = false;
@@ -3736,18 +3739,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @returns true: expression is contant and has integer value
 		 *         false: otherwise
 		 */
-		private bool IsConstIntExpr (TokenRVal expr, out int constVal)
+		private bool IsConstIntExpr (CompValu expr, out int constVal)
 		{
-			if (expr is TokenRValConst) {
-				object val = ((TokenRValConst)expr).val;
-				if (val is SCRIPTFLOAT) {
-					constVal = (int)(SCRIPTFLOAT)val;
-					return true;
-				}
-				if (val is int) {
-					constVal = (int)val;
-					return true;
-				}
+			if (expr is CompValuFloat) {
+				constVal = (int)((CompValuFloat)expr).x;
+				return true;
+			}
+			if (expr is CompValuInteger) {
+				constVal = ((CompValuInteger)expr).x;
+				return true;
 			}
 
 			constVal = 0;
