@@ -1818,9 +1818,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			curBreakTarg = new BreakContTarg (ilGen, "foreachbreak_" + forEachStmt.Unique);
 			curContTarg  = new BreakContTarg (ilGen, "foreachcont_"  + forEachStmt.Unique);
 
+			CompValu indexVar = new CompValuTemp (new TokenTypeInt (forEachStmt), "foreachloop_index_" + forEachStmt.Unique, this);
 			ScriptMyLabel loopLabel = ilGen.DefineLabel ("foreachloop_" + forEachStmt.Unique);
-			ScriptMyLocal indexVar  = ilGen.DeclareLocal (typeof (int), "foreachidx_" + forEachStmt.Unique);
 			ScriptMyLocal objectVar = ((keyLVal == null) || (valLVal == null)) ? ilGen.DeclareLocal (typeof (object), "foreachobj_" + forEachStmt.Unique) : null;
+
+			// indexVar = 0
+			indexVar.PopPre (this, forEachStmt);
+			ilGen.PushInt (0);
+			indexVar.PopPost (this, forEachStmt);
 
 			ilGen.MarkLabel (loopLabel);
 
@@ -1828,11 +1833,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			arrayRVal.PushVal (this, forEachStmt.arrayRVal);
 
 			// ForEach arg 1: indexVar ++
-			ilGen.Emit (OpCodes.Ldloc, indexVar);
-			ilGen.Emit (OpCodes.Dup);
+			indexVar.PushVal (this, forEachStmt);
+			indexVar.PopPre (this, forEachStmt);
+			indexVar.PushVal (this, forEachStmt);
 			ilGen.PushInt (1);
 			ilGen.Emit (OpCodes.Add);
-			ilGen.Emit (OpCodes.Stloc, indexVar);
+			indexVar.PopPost (this, forEachStmt);
 
 			// ForEach arg 2: ref keyLVal
 			if (keyLVal == null) {
