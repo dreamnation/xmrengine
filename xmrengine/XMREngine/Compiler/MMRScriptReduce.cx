@@ -5215,6 +5215,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenName name;
 		public VarDict stack;
 
+		public TokenLValName (TokenName name) : base (name)
+		{
+			this.name = name;
+		}
+
 		public TokenLValName (TokenName name, TokenScript tokenScript) : base (name)
 		{
 			this.name  = name;

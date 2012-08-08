@@ -239,7 +239,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 									declFunc.GetDelType ();
 									if (declFunc.funcNameSig.val.StartsWith ("$ctor(")) {
 										// this is for the "$new()" static method that we create below.
-										// See GenerateNewobjBody() etc.
+										// See GenerateStmtNewobj() etc.
 										new TokenTypeSDTypeDelegate (declFunc, sdtClass.MakeRefToken (declFunc), 
 												declFunc.argDecl.types, tokenScript);
 									}
@@ -715,19 +715,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				 * If so, define a static class.$new() method for every constructor defined for the class.
 				 * Give it the same access (private/protected/public) as the script declared for the constructor.
 				 * Note that the reducer made sure there is at least a default constructor for every class.
-				 * We don't give tne function a body here, fortunately GenerateNewobjBody() just knows how 
-			 	 * to generate teh code.
 				 */
 				if (numFilled >= sdtClass.numVirtFuncs) {
 					List<TokenDeclVar> newobjDeclFuncs = new List<TokenDeclVar> ();
 					foreach (TokenDeclVar ctorDeclFunc in sdtClass.members) {
 						if ((ctorDeclFunc.funcNameSig != null) && ctorDeclFunc.funcNameSig.val.StartsWith ("$ctor(")) {
-							TokenDeclVar newobjDeclFunc = new TokenDeclVar (ctorDeclFunc, null, tokenScript);
-							newobjDeclFunc.name         = new TokenName (newobjDeclFunc, "$new");
-							newobjDeclFunc.retType      = sdtClass.MakeRefToken (newobjDeclFunc);
-							newobjDeclFunc.argDecl      = ctorDeclFunc.argDecl;
-							newobjDeclFunc.sdtClass     = sdtClass;
-							newobjDeclFunc.sdtFlags     = ScriptReduce.SDT_STATIC | ctorDeclFunc.sdtFlags;
+							TokenDeclVar newobjDeclFunc = DefineNewobjFunc (ctorDeclFunc);
 							newobjDeclFuncs.Add (newobjDeclFunc);
 						}
 					}
@@ -1051,16 +1044,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void GenerateMethodBody (TokenDeclVar declFunc)
 		{
 			/*
-			 * Now for some craziness...
-			 * Script-defined types create static methods called '$new' that are supposed to create a new instance 
-			 * of the type.  But it generates special code, so we just pump it out here.
-			 */
-			if (declFunc.funcNameSig.val.StartsWith ("$new(") && (declFunc.sdtClass != null)) {
-				GenerateNewobjBody (declFunc);
-				return;
-			}
-
-			/*
 			 * Set up code generator for the function's contents.
 			 */
 			ilGen = declFunc.ilGen;
@@ -1103,44 +1086,92 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		/**
-		 * @brief Generate code for a script-defined type's <typename>.$new(<argsig>) method.
-		 *        It is used to malloc the object and initialize it.
-		 *        It is defined as a script-defined type static method, so the object level
-		 *        method gets the XMRInstance pointer passed as arg 0, and the method is 
-		 *        supposed to return the allocated and constructed XMRSDTypeClassInstance
-		 *        object pointer.
+		 * @brief Define function for a script-defined type's <typename>.$new(<argsig>) method.
+		 *        See GenerateStmtNewobj() for more info.
 		 */
-		private void GenerateNewobjBody (TokenDeclVar newobjFunc)
+		private TokenDeclVar DefineNewobjFunc (TokenDeclVar ctorDeclFunc)
 		{
-			ScriptMyILGen ilGen = newobjFunc.ilGen;
-			ilGen.BegMethod ();
+			/*
+			 * Set up 'static classname $new(params-same-as-ctor) { }'.
+			 */
+			TokenDeclVar newobjDeclFunc = new TokenDeclVar (ctorDeclFunc, null, tokenScript);
+			newobjDeclFunc.name         = new TokenName (newobjDeclFunc, "$new");
+			newobjDeclFunc.retType      = ctorDeclFunc.sdtClass.MakeRefToken (newobjDeclFunc);
+			newobjDeclFunc.argDecl      = ctorDeclFunc.argDecl;
+			newobjDeclFunc.sdtClass     = ctorDeclFunc.sdtClass;
+			newobjDeclFunc.sdtFlags     = ScriptReduce.SDT_STATIC | ctorDeclFunc.sdtFlags;
 
 			/*
-			 * First off, malloc a new empty XMRSDTypeClassInstance object
-			 * then call the XMRSDTypeClassInstance()-level constructor.
+			 * Declare local variable named '$objptr' in a frame just under 
+			 * what the '$new(...)' function's arguments are declared in.
 			 */
-			ilGen.Emit (OpCodes.Ldarg_0);
-			ilGen.PushInt (newobjFunc.sdtClass.sdTypeIndex);
-			ilGen.Emit (OpCodes.Newobj, sdtClassConstructorInfo);
+			TokenDeclVar objptrVar = new TokenDeclVar (newobjDeclFunc, newobjDeclFunc, tokenScript);
+			objptrVar.type         = newobjDeclFunc.retType;
+			objptrVar.name         = new TokenName (newobjDeclFunc, "$objptr");
+			VarDict newFrame       = new VarDict ();
+			newFrame.outerVarDict  = ctorDeclFunc.argDecl.varDict;
+			newFrame.AddEntry (objptrVar);
 
 			/*
-			 * Now call the script-level constructor.
-			 * It is compiled as an instance method so its arg 0 = pointer to the XMRSDTypeClassInstance object.
-			 * The rest of the args are the script-visible args and are just copied from new newobj call.
+			 * Set up '$objptr.$ctor'
 			 */
-			ilGen.Emit (OpCodes.Dup);
-			int nArgs = newobjFunc.argDecl.vars.Length;
-			for (int i = 0; i < nArgs; i ++) {
-				ilGen.Emit (OpCodes.Ldarg, i + 1);
+			TokenLValName objptrLValName  = new TokenLValName (objptrVar.name);    // ref a var by giving its name
+			objptrLValName.stack          = newFrame;                              // what stack to look for it in
+			TokenLValIField objptrDotCtor = new TokenLValIField (newobjDeclFunc);  // an instance member reference
+			objptrDotCtor.baseRVal        = objptrLValName;                        // '$objptr'
+			objptrDotCtor.fieldName       = ctorDeclFunc.name;                     // '.' '$ctor'
+
+			/*
+			 * Set up '$objptr.$ctor(arglist)' call for use in the '$new(...)' body.
+			 * Copy the arglist from the constructor declaration so triviality 
+			 * processing will pick the correct overloaded constructor.
+			 */
+			TokenRValCall callCtorRVal = new TokenRValCall (newobjDeclFunc);   // doing a call of some sort
+			callCtorRVal.meth          = objptrDotCtor;                        // calling $objptr.$ctor()
+			TokenDeclVar[] argList     = newobjDeclFunc.argDecl.vars;          // get args $new() was declared with
+			callCtorRVal.nArgs         = argList.Length;                       // ...that is nArgs we are passing to $objptr.$ctor()
+			for (int i = argList.Length; -- i >= 0;) {
+				TokenDeclVar arg          = argList[i];                    // find out about one of the args
+				TokenLValName argLValName = new TokenLValName (arg.name);  // pass arg of that name to $objptr.$ctor()
+				argLValName.stack         = ctorDeclFunc.argDecl.varDict;  // this is the VarDict the arg names are defined in
+				argLValName.nextToken     = callCtorRVal.args;             // link to list of args passed to $objptr.$ctor()
+				callCtorRVal.args         = argLValName;
 			}
-			TokenDeclVar ctorFunc = newobjFunc.sdtClass.members.FindExact ("$ctor", newobjFunc.argDecl.types);
-			ilGen.Emit (OpCodes.Call, ctorFunc.ilGen);
 
 			/*
-			 * The return value should be on the stack still (pointer to the XMRSDTypeClassInstance object).
+			 * Set up a funky call to the constructor for the code body.
+			 * This will let code generator know there is some craziness.
+			 * See GenerateStmtNewobj().
+			 *
+			 * This is in essence:
+			 *    {
+			 *        classname $objptr = newobj (classname);
+			 *        $objptr.$ctor (...);
+			 *        return $objptr;
+			 *    }
 			 */
-			ilGen.Emit (OpCodes.Ret);
-			ilGen.EndMethod ();
+			TokenStmtNewobj newobjStmtBody = new TokenStmtNewobj (ctorDeclFunc);
+			newobjStmtBody.objptrVar       = objptrVar;
+			newobjStmtBody.rValCall        = callCtorRVal;
+			TokenStmtBlock newobjBody      = new TokenStmtBlock (ctorDeclFunc);
+			newobjBody.statements          = newobjStmtBody;
+
+			/*
+			 * Link that code as the body of the function.
+			 */
+			newobjDeclFunc.body = newobjBody;
+
+			/*
+			 * Say the function calls '$objptr.$ctor(arglist)' so we will inherit ctor's triviality.
+			 */
+			newobjDeclFunc.unknownTrivialityCalls.AddLast (callCtorRVal);
+			return newobjDeclFunc;
+		}
+
+		private class TokenStmtNewobj : TokenStmt {
+			public TokenDeclVar objptrVar;
+			public TokenRValCall rValCall;
+			public TokenStmtNewobj (Token original) : base (original) { }
 		}
 
 		/**
@@ -1156,7 +1187,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * stuff or any of the frame save/restore stuff.
 			 */
 			bool isTrivial = curDeclFunc.IsFuncTrivial (this);
-			
+
 			/*
 			 * Clear list of all call labels.
 			 * A call label is inserted just before every call that can possibly
@@ -1552,6 +1583,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (stmt is TokenStmtIf)        { GenerateStmtIf        ((TokenStmtIf)stmt);        return; }
 			if (stmt is TokenStmtJump)      { GenerateStmtJump      ((TokenStmtJump)stmt);      return; }
 			if (stmt is TokenStmtLabel)     { GenerateStmtLabel     ((TokenStmtLabel)stmt);     return; }
+			if (stmt is TokenStmtNewobj)    { GenerateStmtNewobj    ((TokenStmtNewobj)stmt);    return; }
 			if (stmt is TokenStmtNull)      {                                                   return; }
 			if (stmt is TokenStmtRet)       { GenerateStmtRet       ((TokenStmtRet)stmt);       return; }
 			if (stmt is TokenStmtRVal)      { GenerateStmtRVal      ((TokenStmtRVal)stmt);      return; }
@@ -1993,6 +2025,48 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * somewhere, it is probably going to be used.
 			 */
 			mightGetHere = true;
+		}
+
+		/**
+		 * @brief Generate code for a script-defined type's <typename>.$new(<argsig>) method.
+		 *        It is used to malloc the object and initialize it.
+		 *        It is defined as a script-defined type static method, so the object level
+		 *        method gets the XMRInstance pointer passed as arg 0, and the method is 
+		 *        supposed to return the allocated and constructed XMRSDTypeClassInstance
+		 *        object pointer.
+		 */
+		private void GenerateStmtNewobj (TokenStmtNewobj newobjStmt)
+		{
+			/*
+			 * First off, malloc a new empty XMRSDTypeClassInstance object
+			 * then call the XMRSDTypeClassInstance()-level constructor.
+			 * Store the result in local var $objptr.
+			 */
+			newobjStmt.objptrVar.location.PopPre (this, newobjStmt);
+			ilGen.Emit (OpCodes.Ldarg_0);
+			ilGen.PushInt (curDeclFunc.sdtClass.sdTypeIndex);
+			ilGen.Emit (OpCodes.Newobj, sdtClassConstructorInfo);
+			newobjStmt.objptrVar.location.PopPost (this, newobjStmt);
+
+			/*
+			 * Now call the script-level constructor.
+			 * Pass the object pointer in $objptr as it's 'this' argument.
+			 * The rest of the args are the script-visible args and are just copied from $new() call.
+			 */
+			GenerateFromRValCall (newobjStmt.rValCall);
+
+			/*
+			 * Put object pointer in retval so it gets returned to caller.
+			 */
+			newobjStmt.objptrVar.location.PushVal (this, newobjStmt);
+			ilGen.Emit (OpCodes.Stloc, retValue);
+
+			/*
+			 * Exit the function like a return statement.
+			 * And thus we don't fall through.
+			 */
+			ilGen.Emit (OpCodes.Leave, retLabel);
+			mightGetHere = false;
 		}
 
 		/**
