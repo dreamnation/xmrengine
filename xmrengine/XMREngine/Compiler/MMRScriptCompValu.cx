@@ -533,56 +533,29 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public CompValuGlobalVar (TokenDeclVar declVar, ScriptObjCode scriptObjCode) : base (declVar.type)
 		{
 			this.declVar = declVar;
-			if ((declVar.getProp == null) && (declVar.setProp == null)) {
-				declVar.type.AssignVarSlot (declVar, ref scriptObjCode.glblSizes);
-			}
+			declVar.type.AssignVarSlot (declVar, ref scriptObjCode.glblSizes);
 		}
 		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
-			if ((declVar.getProp == null) && (declVar.setProp == null)) {
-				scg.PushXMRInst ();
-				scg.ilGen.Emit (OpCodes.Ldfld, glblVarsFieldInfo);
-				EmitFieldPushVal (scg, declVar);
-			} else if (declVar.getProp != null) {
-				declVar.getProp.location.CallPre (scg, errorAt);
-				declVar.getProp.location.CallPost (scg, errorAt);
-			} else {
-				scg.ErrorMsg (errorAt, "cannot read a write-only property");
-				scg.PushVarDefaultValue (declVar);
-			}
+			scg.PushXMRInst ();
+			scg.ilGen.Emit (OpCodes.Ldfld, glblVarsFieldInfo);
+			EmitFieldPushVal (scg, declVar);
 		}
 		public override void PushRef (ScriptCodeGen scg, Token errorAt)
 		{
-			if ((declVar.getProp == null) && (declVar.setProp == null)) {
-				scg.PushXMRInst ();
-				scg.ilGen.Emit (OpCodes.Ldfld, glblVarsFieldInfo);
-				EmitFieldPushRef (scg, declVar);
-			} else {
-				scg.ErrorMsg (errorAt, "cannot get address of property");
-				scg.ilGen.Emit (OpCodes.Ldnull);
-			}
+			scg.PushXMRInst ();
+			scg.ilGen.Emit (OpCodes.Ldfld, glblVarsFieldInfo);
+			EmitFieldPushRef (scg, declVar);
 		}
 		public override void PopPre (ScriptCodeGen scg, Token errorAt)
 		{
-			if ((declVar.getProp == null) && (declVar.setProp == null)) {
-				scg.PushXMRInst ();
-				scg.ilGen.Emit (OpCodes.Ldfld, glblVarsFieldInfo);
-				EmitFieldPopPre (scg, declVar);
-			} else if (declVar.setProp != null) {
-				declVar.setProp.location.CallPre (scg, errorAt);
-			} else {
-				scg.ErrorMsg (errorAt, "cannot write a read-only property");
-			}
+			scg.PushXMRInst ();
+			scg.ilGen.Emit (OpCodes.Ldfld, glblVarsFieldInfo);
+			EmitFieldPopPre (scg, declVar);
 		}
 		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
-			if ((declVar.getProp == null) && (declVar.setProp == null)) {
-				EmitFieldPopPost (scg, declVar);
-			} else if (declVar.setProp != null) {
-				declVar.setProp.location.CallPost (scg, errorAt);
-			} else {
-				scg.ErrorMsg (errorAt, "cannot write a read-only property");
-			}
+			EmitFieldPopPost (scg, declVar);
 		}
 	}
 
@@ -746,59 +719,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 	}
 
-	// The value is the entrypoint of a script-defined type's interface property combined with
-	// the pointer used to access the method.  Thus there is one of these per call site.
-	public class CompValuIntfProp : CompValu {
-		private TokenDeclVar declProp;
-		private CompValu baseRVal;
-		private CompValu getPropLoc;  // location in the baseRVal vector for .get. method if any
-		private CompValu setPropLoc;  // location in the baseRVal vector for .set. method if any
-
-		public CompValuIntfProp (TokenDeclVar declProp, CompValu baseRVal) : base (declProp.type)
-		{
-			this.declProp = declProp;  // which element(s) of the baseRVal vector to be accessed
-			this.baseRVal = baseRVal;  // the vector of delegates implementing the interface
-		}
-
-		public override void PushVal (ScriptCodeGen scg, Token errorAt)
-		{
-			if (declProp.getProp != null) {
-				if (getPropLoc == null) {
-					getPropLoc = new CompValuIntfMeth (declProp.getProp, baseRVal);
-				}
-				getPropLoc.CallPre (scg, errorAt);
-				getPropLoc.CallPost (scg, errorAt);
-			} else {
-				scg.ErrorMsg (errorAt, "cannot read a write-only property");
-				scg.PushVarDefaultValue (declProp);
-			}
-		}
-		public override void PushRef (ScriptCodeGen scg, Token errorAt)
-		{
-			scg.ErrorMsg (errorAt, "cannot get address of property");
-			scg.ilGen.Emit (OpCodes.Ldnull);
-		}
-		public override void PopPre (ScriptCodeGen scg, Token errorAt)
-		{
-			if (declProp.setProp != null) {
-				if (setPropLoc == null) {
-					setPropLoc = new CompValuIntfMeth (declProp.setProp, baseRVal);
-				}
-				setPropLoc.CallPre (scg, errorAt);
-			} else {
-				scg.ErrorMsg (errorAt, "cannot write a read-only property");
-			}
-		}
-		public override void PopPost (ScriptCodeGen scg, Token errorAt)
-		{
-			if (declProp.setProp != null) {
-				setPropLoc.CallPost (scg, errorAt);
-			} else {
-				scg.ilGen.Emit (OpCodes.Pop);
-			}
-		}
-	}
-
 	// The value is the entrypoint of an internal instance method
 	// such as XMR_Array.index()
 	public class CompValuIntInstMeth : CompValu {
@@ -869,15 +789,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	}
 
 	// The value is in a field of a script-defined type class instance, ie, 
-	// one of the arrays contained within XMRSDTypeClObj
+	// one of the arrays contained within XMRSDTypeClObj.instVars
 	public class CompValuInstField : CompValu {
 		private static readonly FieldInfo instVarsFieldInfo = typeof (XMRSDTypeClObj).GetField ("instVars");
 
 		private TokenDeclVar declVar;
 		private CompValu baseRVal;
 		private bool ignVirt;
-		private CompValu getPropLoc;
-		private CompValu setPropLoc;
 
 		public CompValuInstField (TokenDeclVar declVar, CompValu baseRVal, bool ignVirt) : base (declVar.type)
 		{
@@ -888,56 +806,25 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
-			if ((declVar.getProp == null) && (declVar.setProp == null)) {
-				baseRVal.PushVal (scg, errorAt);
-				scg.ilGen.Emit (OpCodes.Ldfld, instVarsFieldInfo);
-				EmitFieldPushVal (scg, declVar);
-			} else if (declVar.getProp != null) {
-				if (getPropLoc == null) {
-					getPropLoc = new CompValuInstMeth (declVar.getProp, baseRVal, ignVirt);
-				}
-				getPropLoc.CallPre (scg, errorAt);
-				getPropLoc.CallPost (scg, errorAt);
-			} else {
-				scg.ErrorMsg (errorAt, "cannot read a write-only property");
-				scg.PushVarDefaultValue (declVar);
-			}
+			baseRVal.PushVal (scg, errorAt);
+			scg.ilGen.Emit (OpCodes.Ldfld, instVarsFieldInfo);
+			EmitFieldPushVal (scg, declVar);
 		}
 		public override void PushRef (ScriptCodeGen scg, Token errorAt)
 		{
-			if ((declVar.getProp == null) && (declVar.setProp == null)) {
-				baseRVal.PushVal (scg, errorAt);
-				scg.ilGen.Emit (OpCodes.Ldfld, instVarsFieldInfo);
-				EmitFieldPushRef (scg, declVar);
-			} else {
-				scg.ErrorMsg (errorAt, "cannot get address of property");
-				scg.ilGen.Emit (OpCodes.Ldnull);
-			}
+			baseRVal.PushVal (scg, errorAt);
+			scg.ilGen.Emit (OpCodes.Ldfld, instVarsFieldInfo);
+			EmitFieldPushRef (scg, declVar);
 		}
 		public override void PopPre (ScriptCodeGen scg, Token errorAt)
 		{
-			if ((declVar.getProp == null) && (declVar.setProp == null)) {
-				baseRVal.PushVal (scg, errorAt);
-				scg.ilGen.Emit (OpCodes.Ldfld, instVarsFieldInfo);
-				EmitFieldPopPre (scg, declVar);
-			} else if (declVar.setProp != null) {
-				if (setPropLoc == null) {
-					setPropLoc = new CompValuInstMeth (declVar.setProp, baseRVal, ignVirt);
-				}
-				setPropLoc.CallPre (scg, errorAt);
-			} else {
-				scg.ErrorMsg (errorAt, "cannot write a read-only property");
-			}
+			baseRVal.PushVal (scg, errorAt);
+			scg.ilGen.Emit (OpCodes.Ldfld, instVarsFieldInfo);
+			EmitFieldPopPre (scg, declVar);
 		}
 		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
-			if ((declVar.getProp == null) && (declVar.setProp == null)) {
-				EmitFieldPopPost (scg, declVar);
-			} else if (declVar.setProp != null) {
-				setPropLoc.CallPost (scg, errorAt);
-			} else {
-				scg.ilGen.Emit (OpCodes.Pop);
-			}
+			EmitFieldPopPost (scg, declVar);
 		}
 	}
 

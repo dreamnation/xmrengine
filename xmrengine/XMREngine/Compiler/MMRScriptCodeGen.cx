@@ -248,10 +248,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						}
 						if (sdType is TokenDeclSDTypeInterface) {
 							TokenDeclSDTypeInterface sdtIFace = (TokenDeclSDTypeInterface)sdType;
-							foreach (TokenDeclVar declFunc in sdtIFace.methsNProps) {
-								if (declFunc.retType != null) {
-									declFunc.GetDelType ();
-								}
+							foreach (TokenDeclVar declFunc in sdtIFace.methProtos) {
+								declFunc.GetDelType ();
 							}
 						}
 						itIsAGoodDayToDie = true;
@@ -358,17 +356,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Assign slots for all interface method prototypes.
 			 * These indices are used to index the array of delegates that holds a class' implementation of an 
 			 * interface.
-			 * Properties do not get a slot because they aren't called as such.  But their corresponding
-			 * <name>.get.() and <name>.set.(<type>) methods are in the table and they each get a slot.
 			 */
 			foreach (TokenDeclSDType sdType in tokenScript.sdSrcTypesValues) {
 				if (!(sdType is TokenDeclSDTypeInterface)) continue;
 				TokenDeclSDTypeInterface sdtIFace = (TokenDeclSDTypeInterface)sdType;
 				int vti = 0;
-				foreach (TokenDeclVar im in sdtIFace.methsNProps) {
-					if ((im.getProp == null) && (im.setProp == null)) {
-						im.vTableIndex = vti ++;
-					}
+				foreach (TokenDeclVar im in sdtIFace.methProtos) {
+					im.vTableIndex = vti ++;
 				}
 			}
 
@@ -414,9 +408,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						if (declVar.retType != null) continue;
 						if (declVar.constant) continue;
 						if ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) != 0) continue;
-						if ((declVar.getProp == null) && (declVar.setProp == null)) {
-							declVar.type.AssignVarSlot (declVar, ref sdtClass.instSizes);
-						}
+						declVar.type.AssignVarSlot (declVar, ref sdtClass.instSizes);
 						if ((declVar.type is TokenTypeList) ||
 						    (declVar.type is TokenTypeStr)) {
 							TokenDeclVar htDeclVar = new TokenDeclVar (declVar, null, tokenScript);
@@ -534,10 +526,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						int i = sdtClass.numInterfaces ++;
 						sdtClass.iFaces[i] = intf;
 						sdtClass.intfIndices.Add (intf.longName.val, i);
-						int nMeths = 0;
-						foreach (TokenDeclVar m in intf.methsNProps) {
-							if ((m.getProp == null) && (m.setProp == null)) nMeths ++;
-						}
+						int nMeths = intf.methProtos.Count;
 						sdtClass.iImplFunc[i] = new TokenDeclVar[nMeths];
 					}
 
@@ -551,7 +540,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 							 * Try to find the interface method that is implemented and verify its signature.
 							 */
 							TokenDeclSDTypeInterface intfType = intfImpl.intfType.decl;
-							TokenDeclVar intfMeth = FindExactWithRet (intfType.methsNProps, intfImpl.methName, classMeth.retType, classMeth.argDecl.types);
+							TokenDeclVar intfMeth = FindExactWithRet (intfType.methProtos, intfImpl.methName, classMeth.retType, classMeth.argDecl.types);
 							if (intfMeth == null) {
 								ErrorMsg (intfImpl, "interface does not define method " + intfImpl.methName.val + classMeth.argDecl.GetArgSig ());
 								continue;
@@ -604,7 +593,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 							if (implementations[j] == null) {
 								TokenDeclSDTypeInterface intf = sdtClass.iFaces[i];
 								TokenDeclVar meth = null;
-								foreach (TokenDeclVar im in intf.methsNProps) {
+								foreach (TokenDeclVar im in intf.methProtos) {
 									if (im.vTableIndex == j) {
 										meth = im;
 										break;
@@ -830,11 +819,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		/**
 		 * @brief Write out what slot was assigned for a global or sdtclass static variable.
-		 *        Constants, functions, instance fields, methods, properties do not have slots in the global variables arrays.
+		 *        Constants, functions, instance fields, methods do not have slots in the global variables arrays.
 		 */
 		private void WriteOutGblAssignment (string pfx, TokenDeclVar declVar)
 		{
-			if (!declVar.constant && (declVar.retType == null) && (declVar.getProp == null) && (declVar.setProp == null)) {
+			if (!declVar.constant && (declVar.retType == null)) {
 				CompValuGlobalVar gblVar = (CompValuGlobalVar)declVar.location;
 				objFileWriter.Write (pfx + declVar.name.val);    // string
 				objFileWriter.Write (declVar.vTableArray.Name);  // string
@@ -1196,12 +1185,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Output:
-			 *    int callNo;
+			 *    int callNo = -1;
 			 *    if (instance.callMode != CALLMODE_NORMAL) goto __cmRestore;
 			 */
 			ScriptMyLabel cmRestore = null;
 			if (!isTrivial) {
 				callNo = ilGen.DeclareLocal (typeof (int), "__callNo");
+				ilGen.PushInt (-1);
+				ilGen.Emit (OpCodes.Stloc, callNo);
 				cmRestore = ilGen.DefineLabel ("__cmRestore");
 				PushXMRInst ();
 				if (XMRInstAbstract.CALLMODE_NORMAL != 0) throw new Exception ();
@@ -1533,7 +1524,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief There is one of these per call that can possibly call CheckRun(),
 		 *        including direct calls to CheckRun().
 		 */
-		private class CallLabel {
+		public class CallLabel {
 			public int           index;       // sequential integer, starting at 0
 			public ScriptMyLabel callLabel;   // the actual label token
 
@@ -2607,7 +2598,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			string fieldName = lVal.fieldName.val + ArgSigString (argsig);
 
 			/*
-			 * Maybe they are accessing an instance field, method or property of a script-defined class.
+			 * Maybe they are accessing an instance field or method of a script-defined class.
 			 */
 			if (baseRVal.type is TokenTypeSDTypeClass) {
 				TokenTypeSDTypeClass sdtType = (TokenTypeSDTypeClass)baseRVal.type;
@@ -2626,15 +2617,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
-			 * Maybe they are accessing a method or property of a script-defined interface.
+			 * Maybe they are accessing a method of a script-defined interface.
 			 */
 			if (baseRVal.type is TokenTypeSDTypeInterface) {
 				TokenTypeSDTypeInterface sdtType = (TokenTypeSDTypeInterface)baseRVal.type;
 				TokenDeclSDTypeInterface sdtDecl = sdtType.decl;
-				TokenDeclVar declVar = FindSingleMember (sdtDecl.methsNProps, lVal.fieldName, argsig);
+				TokenDeclVar declVar = FindSingleMember (sdtDecl.methProtos, lVal.fieldName, argsig);
 				if (declVar != null) {
-					return (declVar.retType == null) ? (CompValu)new CompValuIntfProp (declVar, baseRVal)
-					                                 : (CompValu)new CompValuIntfMeth (declVar, baseRVal);
+					return new CompValuIntfMeth (declVar, baseRVal);
 				}
 				ErrorMsg (lVal.fieldName, "no member " + fieldName + " in interface " + sdtDecl.longName.val);
 				return new CompValuVoid (lVal.fieldName);

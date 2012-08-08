@@ -8,7 +8,7 @@ interface IEnumerable<T> {
     IEnumerator<T> GetEnumerator ();
 }
 interface IEnumerator<T> {
-    T Current { get; }
+    T Current ();
     integer MoveNext ();
     Reset ();
 }
@@ -46,7 +46,7 @@ class Dictionary<K,V> : IEnumerable<KeyValuePair<K,V>> {
         List<KeyValuePair<K,V>> kvps = this.kvpss[index];
         if (kvps == undef) return undef;
         for (IEnumerator<KeyValuePair<K,V>> kvpenum = kvps.GetEnumerator (); kvpenum.MoveNext ();) {
-            KeyValuePair<K,V> kvp = kvpenum.Current;
+            KeyValuePair<K,V> kvp = kvpenum.Current ();
             if (kvp.kee == kee) return kvp;
         }
         return undef;
@@ -70,12 +70,10 @@ class Dictionary<K,V> : IEnumerable<KeyValuePair<K,V>> {
         }
 
         // get element currently pointed to
-        public KeyValuePair<K,V> Current : IEnumerator<KeyValuePair<K,V>> {
-            get
-            {
-                if (this.listenum == undef) throw "at end of list";
-                return this.listenum.Current;
-            }
+        public KeyValuePair<K,V> Current () : IEnumerator<KeyValuePair<K,V>>
+        {
+            if (this.listenum == undef) throw "at end of list";
+            return this.listenum.Current ();
         }
 
         // move to next element in list
@@ -153,10 +151,9 @@ class List<T> : IEnumerable<T> {
     }
 
     // see how many are in list
-    public integer Count {
-        get {
-            return count;
-        }
+    public integer Count ()
+    {
+        return count;
     }
 
     // iterate through list
@@ -176,12 +173,10 @@ class List<T> : IEnumerable<T> {
         }
 
         // get element currently pointed to
-        public T Current : IEnumerator<T> {
-            get
-            {
-                if (atend) throw "at end of list";
-                return current.obj;
-            }
+        public T Current () : IEnumerator<T>
+        {
+            if (atend) throw "at end of list";
+            return current.obj;
         }
 
         // move to next element in list
@@ -240,11 +235,11 @@ default {
         stuff.Enqueue (1);
         stuff.Enqueue ((string)[2,3,4]);
         stuff.Enqueue (<5,6,7>);
-        llOwnerSay ("count=" + stuff.Count);
+        llOwnerSay ("count=" + stuff.Count ());
         integer first = 1;
         for (IEnumerator<string> stuffenum = stuff.GetEnumerator (); stuffenum.MoveNext ();) {
             if (first) llOwnerSay ("typeof (stuffenum) = " + xmrTypeName (stuffenum));
-            llOwnerSay ("element=(" + xmrTypeName (stuffenum.Current) + ") " + stuffenum.Current);
+            llOwnerSay ("element=(" + xmrTypeName (stuffenum.Current ()) + ") " + stuffenum.Current ());
             first = 0;
         }
 
@@ -253,14 +248,14 @@ default {
         s2i.Add ("two", 2);
         s2i.Add ("three", 3);
         for (IEnumerator<KeyValuePair<string,integer>> kvpenum = s2i.GetEnumerator (); kvpenum.MoveNext ();) {
-            KeyValuePair<string,integer> kvp = kvpenum.Current;
+            KeyValuePair<string,integer> kvp = kvpenum.Current ();
             llOwnerSay ("s2i: " + kvp.kee + " => " + kvp.value);
         }
 
         float[,] x = new float[,](2,3);  // 2 rows, 3 columns
         float[,] y = new float[,](3,4);  // 3 rows, 4 columns
-        llOwnerSay ("x.Length = " + x.Length);
-        llOwnerSay ("y.Length = " + y.Length);
+        llOwnerSay ("x.Length = " + x.Length ());
+        llOwnerSay ("y.Length = " + y.Length ());
         for (integer i = 0; i < 2; i ++) {
             for (integer j = 0; j < 3; j ++) {
                 x[i,j] = i + j + 1;
@@ -301,8 +296,8 @@ default {
         }
         for (integer i = 0; i < 3; i ++) {
             for (integer j = 0; j < 4; j ++) {
-                integer len = jagged[i,j].Length;
-                string msg = "jagged[" + i + "," + j + "].Length=" + jagged[i,j].Length;
+                integer len = jagged[i,j].Length ();
+                string msg = "jagged[" + i + "," + j + "].Length=" + jagged[i,j].Length ();
                 for (integer k = 0; k < len; k ++) {
                     msg += " : " + jagged[i,j][k];
                 }
@@ -314,8 +309,8 @@ default {
         xmrArrayCopy ((object)jagged, jagged.Index(1,0), (object)jagged, jagged.Index(0,0), 4);
         for (integer i = 0; i < 3; i ++) {
             for (integer j = 0; j < 4; j ++) {
-                integer len = jagged[i,j].Length;
-                string msg = "jagged[" + i + "," + j + "].Length=" + jagged[i,j].Length;
+                integer len = jagged[i,j].Length ();
+                string msg = "jagged[" + i + "," + j + "].Length=" + jagged[i,j].Length ();
                 for (integer k = 0; k < len; k ++) {
                     msg += " : " + jagged[i,j][k];
                 }
