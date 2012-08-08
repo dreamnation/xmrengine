@@ -1185,14 +1185,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Output:
-			 *    int callNo = -1;
+			 *    int callNo;
 			 *    if (instance.callMode != CALLMODE_NORMAL) goto __cmRestore;
 			 */
 			ScriptMyLabel cmRestore = null;
 			if (!isTrivial) {
 				callNo = ilGen.DeclareLocal (typeof (int), "__callNo");
-				ilGen.PushInt (-1);
-				ilGen.Emit (OpCodes.Stloc, callNo);
 				cmRestore = ilGen.DefineLabel ("__cmRestore");
 				PushXMRInst ();
 				if (XMRInstAbstract.CALLMODE_NORMAL != 0) throw new Exception ();
@@ -1524,7 +1522,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief There is one of these per call that can possibly call CheckRun(),
 		 *        including direct calls to CheckRun().
 		 */
-		public class CallLabel {
+		private class CallLabel {
 			public int           index;       // sequential integer, starting at 0
 			public ScriptMyLabel callLabel;   // the actual label token
 
