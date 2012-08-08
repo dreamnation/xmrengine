@@ -183,10 +183,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public XMRInstArrays glblVars;
 
-        /*
-         * Function prototypes.
-         * These functions require access to the OpenSim environment.
-         */
+        /****************************************************************\
+         *  Function prototypes.                                        *
+         *  These functions require access to the OpenSim environment.  *
+        \****************************************************************/
+
         public abstract void CheckRun (int line);
         public abstract int  StackLeft ();
         public abstract LSL_List XMREventDequeue (SCRIPTFLOAT timeout, int returnMask1, int returnMask2,
@@ -196,16 +197,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public abstract LSL_List XMREventSaveDets ();
         public abstract void XMREventLoadDets (LSL_List dpList);
 
-        /*
-         * Functions that don't require runtime support
-         * beyond what the compiler provides.
+        /**************************************************\
+         *  Functions what don't require runtime support  *
+         *  beyond what the compiler provides.            *
+        \**************************************************/
+
+        /**
+         * @brief Called during CALLMODE_SAVE to create a stackframe save object that saves 
+         *        local variables and calling point within the function.
+         * @param funcName = name of function whose frame is being saved
+         * @param callNo = call number (ie, return address) within function to restart at
+         * @param nSaves = number of variables the function will save
+         * @returns an object[nSaves] where function can save variables
          */
-
-        public void ConsoleWrite (string s)
-        {
-            Console.WriteLine ("XMRInstance.ConsoleWrite: " + s);
-        }
-
         public object[] CaptureStackFrame (string funcName, int callNo, int nSaves)
         {
             XMRStackFrame sf = new XMRStackFrame ();
@@ -216,13 +220,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             stackFrames = sf;
             return sf.objArray;
         }
+
+        /**
+         * @brief Called during CALLMODE_RESTORE to pop a stackframe object to restore 
+         *        local variables and calling point within the function.
+         * @param funcName = name of function whose frame is being restored
+         * @returns the object[nSaves] where function can retrieve variables
+         *          callNo = as passed to CaptureStackFrame() indicating restart point
+         */
         public object[] RestoreStackFrame (string funcName, out int callNo)
         {
             XMRStackFrame sf = stackFrames;
-            if (sf.funcName != funcName) throw new Exception ("frame mismatch");
+            if (sf.funcName != funcName) {
+                throw new Exception ("frame mismatch " + sf.funcName + " vs " + funcName);
+            }
             callNo = sf.callNo;
             stackFrames = sf.nextSF;
             return sf.objArray;
+        }
+
+        public void ConsoleWrite (string s)
+        {
+            Console.WriteLine ("XMRInstance.ConsoleWrite: " + s);
         }
 
         public string XMRTypeName (object o)
