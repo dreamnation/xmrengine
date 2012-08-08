@@ -3908,19 +3908,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		                                           //   i = interface number from this.intfIndices[name]
 		                                           //   j = method of interface from iface.methods[name].vTableIndex
 
-		public bool slotsAssigned;      // set true when slots have been assigned...
-		public int numInstArrays;       // number of non-static array fields
-		public int numInstFloats;       // number of non-static float fields
-		public int numInstIntegers;     // number of non-static integer fields
-		public int numInstLists;        // number of non-static list fields
-		public int numInstObjects;      // number of non-static object fields
-		public int numInstRotations;    // number of non-static rotation fields
-		public int numInstStrings;      // number of non-static string fields
-		public int numInstVectors;      // number of non-static vector fields
-		public int numInstSDTClObjs;    // number of non-static sdt-class object fields
-		public int numInstSDTIntfObjs;  // number of non-static sdt-interface object fields
-		public int numVirtFuncs;        // number of virtual functions
-		public int numInterfaces;       // number of implemented interfaces
+		public bool slotsAssigned;        // set true when slots have been assigned...
+		public XMRInstArSizes instSizes;  // number of instance fields of various types
+		public int numVirtFuncs;          // number of virtual functions
+		public int numInterfaces;         // number of implemented interfaces
 
 		private string extendsStr;
 		private List<StackedMethod> stackedMethods;
@@ -3951,7 +3942,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public override Type GetSysType ()
 		{
-			return typeof (XMRSDTypeClassInstance);
+			return typeof (XMRSDTypeClObj);
 		}
 
 		/**
@@ -3965,16 +3956,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			objFileWriter.Write ((byte)CLASS);
 			objFileWriter.Write (this.sdTypeIndex);
 
-			objFileWriter.Write (numInstArrays);
-			objFileWriter.Write (numInstFloats);
-			objFileWriter.Write (numInstIntegers);
-			objFileWriter.Write (numInstLists);
-			objFileWriter.Write (numInstObjects);
-			objFileWriter.Write (numInstRotations);
-			objFileWriter.Write (numInstStrings);
-			objFileWriter.Write (numInstVectors);
-			objFileWriter.Write (numInstSDTClObjs);
-			objFileWriter.Write (numInstSDTIntfObjs);
+			this.instSizes.WriteToFile (objFileWriter);
 			objFileWriter.Write (numVirtFuncs);
 
 			if (extends == null) {
@@ -4013,19 +3995,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		public override void ReadFromFile (BinaryReader objFileReader, TextWriter asmFileWriter)
 		{
-			numInstArrays      = objFileReader.ReadInt32 ();
-			numInstFloats      = objFileReader.ReadInt32 ();
-			numInstIntegers    = objFileReader.ReadInt32 ();
-			numInstLists       = objFileReader.ReadInt32 ();
-			numInstObjects     = objFileReader.ReadInt32 ();
-			numInstRotations   = objFileReader.ReadInt32 ();
-			numInstStrings     = objFileReader.ReadInt32 ();
-			numInstVectors     = objFileReader.ReadInt32 ();
-			numInstSDTClObjs   = objFileReader.ReadInt32 ();
-			numInstSDTIntfObjs = objFileReader.ReadInt32 ();
-			numVirtFuncs       = objFileReader.ReadInt32 ();
+			instSizes.ReadFromFile (objFileReader);
+			numVirtFuncs = objFileReader.ReadInt32 ();
 
 			extendsStr = objFileReader.ReadString ();
+
+			if (asmFileWriter != null) {
+				instSizes.WriteAsmFile (asmFileWriter, extendsStr + "." + shortName.val + ".numInst");
+			}
 
 			stackedMethods = new List<StackedMethod> ();
 			int vTableIndex;
@@ -4442,8 +4419,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	}
 
 	public class TokenTypeSDTypeClass : TokenTypeSDType {
-		private static readonly FieldInfo gblSDTClObjsFieldInfo  = typeof (XMRInstAbstract).GetField ("gblSDTClObjs");
-		private static readonly FieldInfo sdtcSDTClObjsFieldInfo = typeof (XMRSDTypeClassInstance).GetField ("sdtcSDTClObjs");
+		private static readonly FieldInfo iarSDTClObjsFieldInfo = typeof (XMRInstArrays).GetField ("iarSDTClObjs");
 
 		public TokenDeclSDTypeClass decl;
 		public TokenTypeSDTypeClass (Token t, TokenDeclSDTypeClass decl) : base (t)
@@ -4464,7 +4440,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		}
 		public override Type ToSysType ()
 		{
-			return typeof (XMRSDTypeClassInstance);
+			return typeof (XMRSDTypeClObj);
 		}
 
 		public override bool IsAssignableFrom (TokenType src)
@@ -4480,15 +4456,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			}
 			return false;
 		}
-		public override void AssignGlobalVarSlot (TokenDeclVar declVar, ScriptObjCode scriptObjCode)
+		public override void AssignVarSlot (TokenDeclVar declVar, ref XMRInstArSizes ias)
 		{
-			declVar.vTableArray = gblSDTClObjsFieldInfo;
-			declVar.vTableIndex = scriptObjCode.numGblSDTClObjs ++;
-		}
-		public override void AssignSDTClassFieldSlot (TokenDeclVar declVar, TokenDeclSDTypeClass sdtClass)
-		{
-			declVar.vTableArray = sdtcSDTClObjsFieldInfo;
-			declVar.vTableIndex = sdtClass.numInstSDTClObjs ++;
+			declVar.vTableArray = iarSDTClObjsFieldInfo;
+			declVar.vTableIndex = ias.iasSDTClObjs ++;
 		}
 
 		// debugging
@@ -4499,8 +4470,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	}
 
 	public class TokenTypeSDTypeDelegate : TokenTypeSDType {
-		private static readonly FieldInfo gblObjectsFieldInfo  = typeof (XMRInstAbstract).GetField ("gblObjects");
-		private static readonly FieldInfo sdtcObjectsFieldInfo = typeof (XMRSDTypeClassInstance).GetField ("sdtcObjects");
+		private static readonly FieldInfo iarObjectsFieldInfo = typeof (XMRInstArrays).GetField ("iarObjects");
 
 		public TokenDeclSDTypeDelegate decl;
 
@@ -4594,15 +4564,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 * @brief Assign slots in the gblObjects[] array because we have to typecast out in any case.
 		 *        Likewise with the sdtcObjects[] array.
 		 */
-		public override void AssignGlobalVarSlot (TokenDeclVar declVar, ScriptObjCode scriptObjCode)
+		public override void AssignVarSlot (TokenDeclVar declVar, ref XMRInstArSizes ias)
 		{
-			declVar.vTableArray = gblObjectsFieldInfo;
-			declVar.vTableIndex = scriptObjCode.numGblObjects ++;
-		}
-		public override void AssignSDTClassFieldSlot (TokenDeclVar declVar, TokenDeclSDTypeClass sdtClass)
-		{
-			declVar.vTableArray = sdtcObjectsFieldInfo;
-			declVar.vTableIndex = sdtClass.numInstObjects ++;
+			declVar.vTableArray = iarObjectsFieldInfo;
+			declVar.vTableIndex = ias.iasObjects ++;
 		}
 
 		/**
@@ -4621,8 +4586,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	}
 
 	public class TokenTypeSDTypeInterface : TokenTypeSDType {
-		private static readonly FieldInfo gblSDTIntfObjsFieldInfo  = typeof (XMRInstAbstract).GetField ("gblSDTIntfObjs");
-		private static readonly FieldInfo sdtcSDTIntfObjsFieldInfo = typeof (XMRSDTypeClassInstance).GetField ("sdtcSDTIntfObjs");
+		private static readonly FieldInfo iarSDTIntfObjsFieldInfo = typeof (XMRInstArrays).GetField ("iarSDTIntfObjs");
 
 		public TokenDeclSDTypeInterface decl;
 		public TokenTypeSDTypeInterface (Token t, TokenDeclSDTypeInterface decl) : base (t)
@@ -4662,15 +4626,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 * @brief Assign slots in the gblSDTIntfObjs[] array
 		 *        Likewise with the sdtcSDTIntfObjs[] array.
 		 */
-		public override void AssignGlobalVarSlot (TokenDeclVar declVar, ScriptObjCode scriptObjCode)
+		public override void AssignVarSlot (TokenDeclVar declVar, ref XMRInstArSizes ias)
 		{
-			declVar.vTableArray = gblSDTIntfObjsFieldInfo;
-			declVar.vTableIndex = scriptObjCode.numGblSDTIntfObjs ++;
-		}
-		public override void AssignSDTClassFieldSlot (TokenDeclVar declVar, TokenDeclSDTypeClass sdtClass)
-		{
-			declVar.vTableArray = sdtcSDTIntfObjsFieldInfo;
-			declVar.vTableIndex = sdtClass.numInstSDTIntfObjs ++;
+			declVar.vTableArray = iarSDTIntfObjsFieldInfo;
+			declVar.vTableIndex = ias.iasSDTIntfObjs ++;
 		}
 
 		// debugging

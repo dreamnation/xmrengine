@@ -227,14 +227,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 this.SendObjValue (this.heapLimit - this.heapLeft);
                 this.SendObjValue (this.ehArgs);
 
-                this.SendObjArray (this.gblArrays);
-                this.SendObjArray (this.gblFloats);
-                this.SendObjArray (this.gblIntegers);
-                this.SendObjArray (this.gblLists);
-                this.SendObjArray (this.gblObjects);
-                this.SendObjArray (this.gblRotations);
-                this.SendObjArray (this.gblStrings);
-                this.SendObjArray (this.gblVectors);
+                this.glblVars.SendArrays (this.SendObjArray);
 
                 /*
                  * Resume the microthread and it will throw a StackCaptureException()
@@ -468,7 +461,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 this.migrateOutWriter.Write ((byte)Ser.DELEGATE);
                 this.migrateOutWriter.Write (del.Method.Name);
                 Type delType = del.GetType ();
-                foreach (KeyValuePair<string, TokenDeclSDType> kvp in m_ObjCode.sdObjTypes) {
+                foreach (KeyValuePair<string, TokenDeclSDType> kvp in m_ObjCode.sdObjTypesName) {
                     TokenDeclSDType sdt = kvp.Value;
                     if (sdt is TokenDeclSDTypeDelegate) {
                         TokenDeclSDTypeDelegate sdtd = (TokenDeclSDTypeDelegate)sdt;

@@ -238,15 +238,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             if (objCode  == null) throw new ArgumentNullException ("objCode");
 
-            this.gblArrays     = new XMR_Array[objCode.numGblArrays];
-            this.gblFloats     = new SCRIPTFLOAT[objCode.numGblFloats];
-            this.gblIntegers   = new int[objCode.numGblIntegers];
-            this.gblLists      = new LSL_List[objCode.numGblLists];
-            this.gblObjects    = new object[objCode.numGblObjects];
-            this.gblRotations  = new LSL_Rotation[objCode.numGblRotations];
-            this.gblStrings    = new string[objCode.numGblStrings];
-            this.gblVectors    = new LSL_Vector[objCode.numGblVectors];
-            this.gblSDTClasses = new XMRSDTypeClassInstance[objCode.numGblSDTClasses];
+            /*
+             * Allocate global variable arrays.
+             */
+            this.glblVars.AllocVarArrays (ref objCode.glblSizes);
 
             /*
              * Script can handle these event codes.
@@ -270,14 +265,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * Start with some fixed amount then subtract off static global sizes.
              */
             this.heapLimit  = m_HeapSize;
-            this.heapLimit -= 16 * objCode.numGblArrays;
-            this.heapLimit -=  4 * objCode.numGblFloats;
-            this.heapLimit -=  4 * objCode.numGblIntegers;
-            this.heapLimit -= 16 * objCode.numGblLists;
-            this.heapLimit -= 16 * objCode.numGblObjects;
-            this.heapLimit -= 16 * objCode.numGblRotations;
-            this.heapLimit -= 16 * objCode.numGblStrings;
-            this.heapLimit -= 12 * objCode.numGblVectors;
+            this.heapLimit -= 16 * objCode.glblSizes.iasArrays;
+            this.heapLimit -=  4 * objCode.glblSizes.iasFloats;
+            this.heapLimit -=  4 * objCode.glblSizes.iasIntegers;
+            this.heapLimit -= 16 * objCode.glblSizes.iasLists;
+            this.heapLimit -= 16 * objCode.glblSizes.iasObjects;
+            this.heapLimit -= 16 * objCode.glblSizes.iasRotations;
+            this.heapLimit -= 16 * objCode.glblSizes.iasStrings;
+            this.heapLimit -= 12 * objCode.glblSizes.iasVectors;
 
             /*
              * Set up microthread object which actually calls the script event handler functions.
@@ -653,14 +648,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Read script globals in.
              */
-            this.gblArrays    = (XMR_Array[])   RecvObjArray (typeof (XMR_Array));
-            this.gblFloats    = (SCRIPTFLOAT[]) RecvObjArray (typeof (SCRIPTFLOAT));
-            this.gblIntegers  = (int[])         RecvObjArray (typeof (int));
-            this.gblLists     = (LSL_List[])    RecvObjArray (typeof (LSL_List));
-            this.gblObjects   = (object[])      RecvObjArray (typeof (object));
-            this.gblRotations = (LSL_Rotation[])RecvObjArray (typeof (LSL_Rotation));
-            this.gblStrings   = (string[])      RecvObjArray (typeof (string));
-            this.gblVectors   = (LSL_Vector[])  RecvObjArray (typeof (LSL_Vector));
+            this.glblVars.RecvArrays (this.RecvObjArray);
 
             /*
              * If eventCode is None, it means the script was idle when migrated.

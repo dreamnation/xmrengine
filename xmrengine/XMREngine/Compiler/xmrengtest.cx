@@ -23,7 +23,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /**
          * @brief Stand-alone test program.
          *
-         * mono xmrengtest.exe <xmrobjfile> < testscript
+         * mono xmrengtest.exe <xmrobjfile> -obj <xmrobjoutput> -asm <xmrasmoutput> <sourcefile>
          */
         public static void Main (string[] args)
         {
@@ -131,46 +131,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     public class TestInstance : XMRInstAbstract {
         public TestInstance (ScriptObjCode soc)
         {
+            glblVars.AllocVarArrays (ref soc.glblSizes);
             m_ObjCode = soc;
-
-            gblArrays    = new XMR_Array    [soc.numGblArrays];
-            gblFloats    = new SCRIPTFLOAT  [soc.numGblFloats];
-            gblIntegers  = new int          [soc.numGblIntegers];
-            gblLists     = new LSL_List     [soc.numGblLists];
-            gblObjects   = new object       [soc.numGblObjects];
-            gblRotations = new LSL_Rotation [soc.numGblRotations];
-            gblStrings   = new string       [soc.numGblStrings];
-            gblVectors   = new LSL_Vector   [soc.numGblVectors];
-            gblSDTClObjs = new XMRSDTypeClassInstance [soc.numGblSDTClObjs];
         }
 
         /*********************\
-         *  XMRInstAbstrace  *
+         *  XMRInstAbstract  *
         \*********************/
 
-        public override object[] CaptureStackFrame (string funcName, int callNo, int nSaves)
-        {
-            XMRStackFrame sf = new XMRStackFrame ();
-            sf.nextSF   = stackFrames;
-            sf.funcName = funcName;
-            sf.callNo   = callNo;
-            sf.objArray = new object[nSaves];
-            stackFrames = sf;
-            return sf.objArray;
-        }
-        public override object[] RestoreStackFrame (string funcName, out int callNo)
-        {
-            XMRStackFrame sf = stackFrames;
-            if (sf.funcName != funcName) throw new Exception ("frame mismatch");
-            callNo = sf.callNo;
-            stackFrames = sf.nextSF;
-            return sf.objArray;
-        }
-
-        public override void ConsoleWrite (string s)
-        {
-            Console.Write (s);
-        }
         public override void CheckRun (int line)
         { }
         public override int  StackLeft ()
@@ -192,76 +160,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
         public override void XMREventLoadDets (LSL_List dpList)
         { }
-        public override XMR_Array XMRosParseJSON (string s)
-        {
-            return new XMR_Array ();
-        }
-
-        public override string XMRTypeName (object o)
-        {
-            /*
-             * Basic types return constant strings of the script-visible type name.
-             */
-            if (o is LSL_List)     return "list";
-            if (o is LSL_Rotation) return "rotation";
-            if (o is LSL_Vector)   return "vector";
-            if (o is float)        return "float";
-            if (o is int)          return "integer";
-            if (o is string)       return "string";
-            if (o is double)       return "float";
-            if (o is bool)         return "bool";
-            if (o is XMR_Array)    return "array";
-            if (o is LSL_Integer)  return "integer";
-            if (o is LSL_Float)    return "float";
-            if (o is LSL_String)   return "string";
-
-            /*
-             * A script-defined interface is represented as an array of delegates.
-             * If that is the case, convert it to the object of the script-defined 
-             * class that is implementing the interface.  This should let the next 
-             * step get the script-defined type name of the object.
-             */
-            if (o is Delegate[]) {
-                o = ((Delegate[])o)[0].Target;
-            }
-
-            /*
-             * If script-defined class instance, get the script-defined 
-             * type name.
-             */
-            if (o is XMRSDTypeClassInstance) {
-                return ((XMRSDTypeClassInstance)o).sdtcClass.longName.val;
-            }
-
-            /*
-             * If it's a delegate, maybe we can look up its script-defined type name.
-             */
-            Type ot = o.GetType ();
-            if (o is Delegate) {
-                String os;
-                if (m_ObjCode.sdDelTypes.TryGetValue (ot, out os)) return os;
-            }
-
-            /*
-             * Don't know what it is, get the C#-level type name.
-             */
-            return ot.ToString ();
-        }
-
-        /**
-         * @brief Get a delegate for a script-defined function.
-         * @param name = name of the function including arg types, eg,
-         *               "Verify(array,list,string)"
-         * @param sig  = script-defined type name
-         * @param targ = function's 'this' pointer or null if static
-         * @returns delegate for the script-defined function
-         */
-        public override Delegate GetScriptMethodDelegate (string name, string sig, object targ)
-        {
-            DynamicMethod dm = m_ObjCode.dynamicMethods[name];
-            TokenDeclSDTypeDelegate dt = (TokenDeclSDTypeDelegate)m_ObjCode.sdObjTypesName[sig];
-            return dm.CreateDelegate (dt.GetSysType (), targ);
-        }
     }
 
     public class SCRIPTBASECLASS {

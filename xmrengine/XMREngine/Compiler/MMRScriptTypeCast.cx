@@ -33,7 +33,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static FieldInfo  lslFloatValueFieldInfo     = typeof (LSL_Float).GetField ("value");
 		private static FieldInfo  lslIntegerValueFieldInfo   = typeof (LSL_Integer).GetField ("value");
 		private static FieldInfo  lslStringValueFieldInfo    = typeof (LSL_String).GetField ("m_string");
-		private static FieldInfo  sdtcITableFieldInfo        = typeof (XMRSDTypeClassInstance).GetField ("sdtcITable");
+		private static FieldInfo  sdtcITableFieldInfo        = typeof (XMRSDTypeClObj).GetField ("sdtcITable");
 		private static MethodInfo floatToStringMethodInfo    = typeof (TypeCast).GetMethod ("FloatToString",      new Type[] { typeof (SCRIPTFLOAT) });
 		private static MethodInfo intToStringMethodInfo      = typeof (TypeCast).GetMethod ("IntegerToString",    new Type[] { typeof (int) });
 		private static MethodInfo listToStringMethodInfo     = typeof (TypeCast).GetMethod ("ListToString",       new Type[] { typeof (LSL_List) });
@@ -43,9 +43,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static MethodInfo vectorToBoolMethodInfo     = typeof (TypeCast).GetMethod ("VectorToBool",       new Type[] { typeof (LSL_Vector) });
 		private static MethodInfo vectorToStringMethodInfo   = typeof (TypeCast).GetMethod ("VectorToString",     new Type[] { typeof (LSL_Vector) });
 		private static MethodInfo listOfOneObjMethodInfo     = typeof (TypeCast).GetMethod ("ListOfOneObj",       new Type[] { typeof (object) });
-		private static MethodInfo sdTypeClassCastClass2ClassMethodInfo = typeof (XMRSDTypeClassInstance).GetMethod ("CastClass2Class", new Type[] { typeof (object),     typeof (int) });
-		private static MethodInfo sdTypeClassCastIFace2ClassMethodInfo = typeof (XMRSDTypeClassInstance).GetMethod ("CastIFace2Class", new Type[] { typeof (Delegate[]), typeof (int) });
-		private static MethodInfo sdTypeClassCastObj2IFaceMethodInfo   = typeof (XMRSDTypeClassInstance).GetMethod ("CastObj2IFace",   new Type[] { typeof (object),     typeof (string) });
+		private static MethodInfo sdTypeClassCastClass2ClassMethodInfo = typeof (XMRSDTypeClObj).GetMethod ("CastClass2Class", new Type[] { typeof (object),     typeof (int) });
+		private static MethodInfo sdTypeClassCastIFace2ClassMethodInfo = typeof (XMRSDTypeClObj).GetMethod ("CastIFace2Class", new Type[] { typeof (Delegate[]), typeof (int) });
+		private static MethodInfo sdTypeClassCastObj2IFaceMethodInfo   = typeof (XMRSDTypeClObj).GetMethod ("CastObj2IFace",   new Type[] { typeof (object),     typeof (string) });
 
 		/*
 		 * List of all allowed type casts and how to perform the casting.

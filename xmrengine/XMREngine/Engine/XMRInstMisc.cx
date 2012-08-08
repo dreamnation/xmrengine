@@ -302,20 +302,5 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
             return (string)element;
         }
-
-        /**
-         * @brief Get a delegate for a script-defined function.
-         * @param name = name of the function including arg types, eg,
-         *               "Verify(array,list,string)"
-         * @param sig  = script-defined type name
-         * @param targ = function's 'this' pointer or null if static
-         * @returns delegate for the script-defined function
-         */
-        public override Delegate GetScriptMethodDelegate (string name, string sig, object targ)
-        {
-            DynamicMethod dm = m_ObjCode.dynamicMethods[name];
-            TokenDeclSDTypeDelegate dt = (TokenDeclSDTypeDelegate)m_ObjCode.sdObjTypesName[sig];
-            return dm.CreateDelegate (dt.GetSysType (), targ);
-        }
     }
 }

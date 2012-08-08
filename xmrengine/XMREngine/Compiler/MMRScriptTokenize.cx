@@ -1170,34 +1170,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
          *        These only need to be implemented for script-visible types, ie, those that a script writer 
          *        can actually define a variable as.
          */
-        public virtual void AssignGlobalVarSlot (TokenDeclVar declVar, ScriptObjCode scriptObjCode)
-        {
-            throw new Exception ("not implemented for " + ToString () + " (" + GetType () + ")");
-        }
-        public virtual void AssignSDTClassFieldSlot (TokenDeclVar declVar, TokenDeclSDTypeClass sdtClass)
+        public virtual void AssignVarSlot (TokenDeclVar declVar, ref XMRInstArSizes arSizes)
         {
             throw new Exception ("not implemented for " + ToString () + " (" + GetType () + ")");
         }
     }
 
     public class TokenTypeArray : TokenType {
-        private static readonly FieldInfo gblArraysFieldInfo  = typeof (XMRInstAbstract).GetField ("gblArrays");
-        private static readonly FieldInfo sdtcArraysFieldInfo = typeof (XMRSDTypeClassInstance).GetField ("sdtcArrays");
+        private static readonly FieldInfo iarArraysFieldInfo = typeof (XMRInstArrays).GetField ("iarArrays");
 
         public TokenTypeArray (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
         public TokenTypeArray (Token original) : base (original) { }
         public override Type ToSysType () { return typeof (XMR_Array); }
         public override bool IsAssignableFrom (TokenType src) { return (src is TokenTypeArray); }
         public override string ToString () { return "array"; }
-        public override void AssignGlobalVarSlot (TokenDeclVar declVar, ScriptObjCode scriptObjCode)
+        public override void AssignVarSlot (TokenDeclVar declVar, ref XMRInstArSizes arSizes)
         {
-            declVar.vTableArray = gblArraysFieldInfo;
-            declVar.vTableIndex = scriptObjCode.numGblArrays ++;
-        }
-        public override void AssignSDTClassFieldSlot (TokenDeclVar declVar, TokenDeclSDTypeClass sdtClass)
-        {
-            declVar.vTableArray = sdtcArraysFieldInfo;
-            declVar.vTableIndex = sdtClass.numInstArrays ++;
+            declVar.vTableArray = iarArraysFieldInfo;
+            declVar.vTableIndex = arSizes.iasArrays ++;
         }
     }
     public class TokenTypeBool : TokenType {
@@ -1208,123 +1198,87 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public override string ToString () { return "bool"; }
     }
     public class TokenTypeFloat : TokenType {
-        private static readonly FieldInfo gblFloatsFieldInfo  = typeof (XMRInstAbstract).GetField ("gblFloats");
-        private static readonly FieldInfo sdtcFloatsFieldInfo = typeof (XMRSDTypeClassInstance).GetField ("sdtcFloats");
+        private static readonly FieldInfo iarFloatsFieldInfo = typeof (XMRInstArrays).GetField ("iarFloats");
 
         public TokenTypeFloat (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
         public TokenTypeFloat (Token original) : base (original) { }
         public override Type ToSysType () { return typeof (SCRIPTFLOAT); }
         public override bool IsAssignableFrom (TokenType src) { return (src is TokenTypeFloat) || (src is TokenTypeInt); }
         public override string ToString () { return "float"; }
-        public override void AssignGlobalVarSlot (TokenDeclVar declVar, ScriptObjCode scriptObjCode)
+        public override void AssignVarSlot (TokenDeclVar declVar, ref XMRInstArSizes arSizes)
         {
-            declVar.vTableArray = gblFloatsFieldInfo;
-            declVar.vTableIndex = scriptObjCode.numGblFloats ++;
-        }
-        public override void AssignSDTClassFieldSlot (TokenDeclVar declVar, TokenDeclSDTypeClass sdtClass)
-        {
-            declVar.vTableArray = sdtcFloatsFieldInfo;
-            declVar.vTableIndex = sdtClass.numInstFloats ++;
+            declVar.vTableArray = iarFloatsFieldInfo;
+            declVar.vTableIndex = arSizes.iasFloats ++;
         }
     }
     public class TokenTypeInt : TokenType {
-        private static readonly FieldInfo gblIntegersFieldInfo  = typeof (XMRInstAbstract).GetField ("gblIntegers");
-        private static readonly FieldInfo sdtcIntegersFieldInfo = typeof (XMRSDTypeClassInstance).GetField ("sdtcIntegers");
+        private static readonly FieldInfo iarIntegersFieldInfo = typeof (XMRInstArrays).GetField ("iarIntegers");
 
         public TokenTypeInt (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
         public TokenTypeInt (Token original) : base (original) { }
         public override Type ToSysType () { return typeof (int); }
         public override bool IsAssignableFrom (TokenType src) { return (src is TokenTypeBool) || (src is TokenTypeInt); }
         public override string ToString () { return "integer"; }
-        public override void AssignGlobalVarSlot (TokenDeclVar declVar, ScriptObjCode scriptObjCode)
+        public override void AssignVarSlot (TokenDeclVar declVar, ref XMRInstArSizes arSizes)
         {
-            declVar.vTableArray = gblIntegersFieldInfo;
-            declVar.vTableIndex = scriptObjCode.numGblIntegers ++;
-        }
-        public override void AssignSDTClassFieldSlot (TokenDeclVar declVar, TokenDeclSDTypeClass sdtClass)
-        {
-            declVar.vTableArray = sdtcIntegersFieldInfo;
-            declVar.vTableIndex = sdtClass.numInstIntegers ++;
+            declVar.vTableArray = iarIntegersFieldInfo;
+            declVar.vTableIndex = arSizes.iasIntegers ++;
         }
     }
     public class TokenTypeList : TokenType {
-        private static readonly FieldInfo gblListsFieldInfo  = typeof (XMRInstAbstract).GetField ("gblLists");
-        private static readonly FieldInfo sdtcListsFieldInfo = typeof (XMRSDTypeClassInstance).GetField ("sdtcLists");
+        private static readonly FieldInfo iarListsFieldInfo = typeof (XMRInstArrays).GetField ("iarLists");
 
         public TokenTypeList (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
         public TokenTypeList (Token original) : base (original) { }
         public override Type ToSysType () { return typeof (LSL_List); }
         public override bool IsAssignableFrom (TokenType src) { return (src is TokenTypeList); }
         public override string ToString () { return "list"; }
-        public override void AssignGlobalVarSlot (TokenDeclVar declVar, ScriptObjCode scriptObjCode)
+        public override void AssignVarSlot (TokenDeclVar declVar, ref XMRInstArSizes arSizes)
         {
-            declVar.vTableArray = gblListsFieldInfo;
-            declVar.vTableIndex = scriptObjCode.numGblLists ++;
-        }
-        public override void AssignSDTClassFieldSlot (TokenDeclVar declVar, TokenDeclSDTypeClass sdtClass)
-        {
-            declVar.vTableArray = sdtcListsFieldInfo;
-            declVar.vTableIndex = sdtClass.numInstLists ++;
+            declVar.vTableArray = iarListsFieldInfo;
+            declVar.vTableIndex = arSizes.iasLists ++;
         }
     }
     public class TokenTypeObject : TokenType {
-        private static readonly FieldInfo gblObjectsFieldInfo  = typeof (XMRInstAbstract).GetField ("gblObjects");
-        private static readonly FieldInfo sdtcObjectsFieldInfo = typeof (XMRSDTypeClassInstance).GetField ("sdtcObjects");
+        private static readonly FieldInfo iarObjectsFieldInfo = typeof (XMRInstArrays).GetField ("iarObjects");
 
         public TokenTypeObject (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
         public TokenTypeObject (Token original) : base (original) { }
         public override Type ToSysType () { return typeof (object); }
         public override bool IsAssignableFrom (TokenType src) { return true; }
         public override string ToString () { return "object"; }
-        public override void AssignGlobalVarSlot (TokenDeclVar declVar, ScriptObjCode scriptObjCode)
+        public override void AssignVarSlot (TokenDeclVar declVar, ref XMRInstArSizes arSizes)
         {
-            declVar.vTableArray = gblObjectsFieldInfo;
-            declVar.vTableIndex = scriptObjCode.numGblObjects ++;
-        }
-        public override void AssignSDTClassFieldSlot (TokenDeclVar declVar, TokenDeclSDTypeClass sdtClass)
-        {
-            declVar.vTableArray = sdtcObjectsFieldInfo;
-            declVar.vTableIndex = sdtClass.numInstObjects ++;
+            declVar.vTableArray = iarObjectsFieldInfo;
+            declVar.vTableIndex = arSizes.iasObjects ++;
         }
     }
     public class TokenTypeRot : TokenType {
-        private static readonly FieldInfo gblRotationsFieldInfo  = typeof (XMRInstAbstract).GetField ("gblRotations");
-        private static readonly FieldInfo sdtcRotationsFieldInfo = typeof (XMRSDTypeClassInstance).GetField ("sdtcRotations");
+        private static readonly FieldInfo iarRotationsFieldInfo = typeof (XMRInstArrays).GetField ("iarRotations");
 
         public TokenTypeRot (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
         public TokenTypeRot (Token original) : base (original) { }
         public override Type ToSysType () { return typeof (LSL_Rotation); }
         public override bool IsAssignableFrom (TokenType src) { return (src is TokenTypeRot); }
         public override string ToString () { return "rotation"; }
-        public override void AssignGlobalVarSlot (TokenDeclVar declVar, ScriptObjCode scriptObjCode)
+        public override void AssignVarSlot (TokenDeclVar declVar, ref XMRInstArSizes arSizes)
         {
-            declVar.vTableArray = gblRotationsFieldInfo;
-            declVar.vTableIndex = scriptObjCode.numGblRotations ++;
-        }
-        public override void AssignSDTClassFieldSlot (TokenDeclVar declVar, TokenDeclSDTypeClass sdtClass)
-        {
-            declVar.vTableArray = sdtcRotationsFieldInfo;
-            declVar.vTableIndex = sdtClass.numInstRotations ++;
+            declVar.vTableArray = iarRotationsFieldInfo;
+            declVar.vTableIndex = arSizes.iasRotations ++;
         }
     }
     public class TokenTypeStr : TokenType {
-        private static readonly FieldInfo gblStringsFieldInfo  = typeof (XMRInstAbstract).GetField ("gblStrings");
-        private static readonly FieldInfo sdtcStringsFieldInfo = typeof (XMRSDTypeClassInstance).GetField ("sdtcStrings");
+        private static readonly FieldInfo iarStringsFieldInfo = typeof (XMRInstArrays).GetField ("iarStrings");
 
         public TokenTypeStr (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
         public TokenTypeStr (Token original) : base (original) { }
         public override Type ToSysType () { return typeof (string); }
         public override bool IsAssignableFrom (TokenType src) { return true; }
         public override string ToString () { return "string"; }
-        public override void AssignGlobalVarSlot (TokenDeclVar declVar, ScriptObjCode scriptObjCode)
+        public override void AssignVarSlot (TokenDeclVar declVar, ref XMRInstArSizes arSizes)
         {
-            declVar.vTableArray = gblStringsFieldInfo;
-            declVar.vTableIndex = scriptObjCode.numGblStrings ++;
-        }
-        public override void AssignSDTClassFieldSlot (TokenDeclVar declVar, TokenDeclSDTypeClass sdtClass)
-        {
-            declVar.vTableArray = sdtcStringsFieldInfo;
-            declVar.vTableIndex = sdtClass.numInstStrings ++;
+            declVar.vTableArray = iarStringsFieldInfo;
+            declVar.vTableIndex = arSizes.iasStrings ++;
         }
     }
     public class TokenTypeUndef : TokenType {  // for the 'undef' constant, ie, null object pointer
@@ -1335,23 +1289,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public override string ToString () { return "undef"; }
     }
     public class TokenTypeVec : TokenType {
-        private static readonly FieldInfo gblVectorsFieldInfo  = typeof (XMRInstAbstract).GetField ("gblVectors");
-        private static readonly FieldInfo sdtcVectorsFieldInfo = typeof (XMRSDTypeClassInstance).GetField ("sdtcVectors");
+        private static readonly FieldInfo iarVectorsFieldInfo = typeof (XMRInstArrays).GetField ("iarVectors");
 
         public TokenTypeVec (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { } 
         public TokenTypeVec (Token original) : base (original) { }
         public override Type ToSysType () { return typeof (LSL_Vector); }
         public override bool IsAssignableFrom (TokenType src) { return (src is TokenTypeVec); }
         public override string ToString () { return "vector"; }
-        public override void AssignGlobalVarSlot (TokenDeclVar declVar, ScriptObjCode scriptObjCode)
+        public override void AssignVarSlot (TokenDeclVar declVar, ref XMRInstArSizes arSizes)
         {
-            declVar.vTableArray = gblVectorsFieldInfo;
-            declVar.vTableIndex = scriptObjCode.numGblVectors ++;
-        }
-        public override void AssignSDTClassFieldSlot (TokenDeclVar declVar, TokenDeclSDTypeClass sdtClass)
-        {
-            declVar.vTableArray = sdtcVectorsFieldInfo;
-            declVar.vTableIndex = sdtClass.numInstVectors ++;
+            declVar.vTableArray = iarVectorsFieldInfo;
+            declVar.vTableIndex = arSizes.iasVectors ++;
         }
     }
     public class TokenTypeVoid : TokenType {  // used only for function/method return types

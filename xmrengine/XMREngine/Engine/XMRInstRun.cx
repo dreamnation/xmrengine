@@ -821,41 +821,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         /**
-         * @brief Called when capturing a function's stack contents.
-         * @param funcName = function the frame pertains to, ie, who is doing the pushing
-         * @param callNo = call within that function that was executing when capture is being done
-         * @param nSaves = number of arguments & locals that the function wants to capture
-         * @returns pointer to object[] array so function can save its arguments & locals
-         */
-        public override object[] CaptureStackFrame (string funcName, int callNo, int nSaves)
-        {
-            XMRStackFrame sf = new XMRStackFrame ();
-            sf.nextSF   = this.stackFrames;
-            sf.funcName = funcName;
-            sf.callNo   = callNo;
-            sf.objArray = new object[nSaves];
-            this.stackFrames = sf;
-            return sf.objArray;
-        }
-
-        /**
-         * @brief Called when restoring a function's stack contents.
-         * @param funcName = function the frame pertains to, ie, who is doing the popping
-         * @param callNo = where to return the restored call number
-         * @returns pointer to object[] array so function can restore its arguments & locals
-         */
-        public override object[] RestoreStackFrame (string funcName, out int callNo)
-        {
-            XMRStackFrame sf = this.stackFrames;
-            if (sf.funcName != funcName) {
-                throw new Exception ("stack frame mismatch, expected " + funcName + ", have " + sf.funcName);
-            }
-            this.stackFrames = sf.nextSF;
-            callNo = sf.callNo;
-            return sf.objArray;
-        }
-
-        /**
          * @brief The script code should call this routine whenever it is
          *        convenient to perform a migation or switch microthreads.
          *

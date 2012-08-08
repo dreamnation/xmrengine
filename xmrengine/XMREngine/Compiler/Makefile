@@ -16,7 +16,7 @@ SADLLFILES = \
 	MMRScriptVarDict.cs \
 	XMRArray.cs \
 	XMRInstAbstract.cs \
-	XMRSDTypeClassInstance.cs
+	XMRSDTypeClObj.cs
 
 OPENSIMDLLDIR ?= ../../../bin
 SAOPENSIMDLLS = \
@@ -44,7 +44,7 @@ SECRETSRCFILES = \
 	MMRScriptVarDict_sa_secret.cs \
 	XMRArray_sa_secret.cs \
 	XMRInstAbstract_sa_secret.cs \
-	XMRSDTypeClassInstance_sa_secret.cs
+	XMRSDTypeClObj_sa_secret.cs
 
 TESTSRCFILES = \
 	IEventHandlers_tester.cs \
@@ -65,7 +65,7 @@ TESTSRCFILES = \
 	XMRArray_tester.cs \
 	xmrengtest_tester.cs \
 	XMRInstAbstract_tester.cs \
-	XMRSDTypeClassInstance_tester.cs
+	XMRSDTypeClObj_tester.cs
 
 default: xmrengcomp.zip xmrengcomp_secret.exe xmrengtest.exe
 

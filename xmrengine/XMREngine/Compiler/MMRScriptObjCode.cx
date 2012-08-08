@@ -24,35 +24,26 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	 */
 	public class ScriptObjCode
 	{
-		public int numGblArrays;        // number of array global variables it has
-		public int numGblFloats;        // number of float global variables it has
-		public int numGblIntegers;      // number of integer global variables it has
-		public int numGblLists;         // number of list global variables it has
-		public int numGblObjects;       // number of object global variables it has
-		public int numGblRotations;     // number of rotation global variables it has
-		public int numGblStrings;       // number of string global variables it has
-		public int numGblVectors;       // number of vector global variables it has
-		public int numGblSDTClObjs;     // number of script-defined class object variables it has
-		public int numGblSDTIntfObjs;   // number of script-defined interface object variables it has
+		public XMRInstArSizes glblSizes;  // number of global variables of various types
 
-		public string[] stateNames;     // convert state number to corresponding string
+		public string[] stateNames;      // convert state number to corresponding string
 
 		public ScriptEventHandler[,] scriptEventHandlerTable;
-		                                // entrypoints to all event handler functions
-		                                // 1st subscript = state code number (0=default)
-		                                // 2nd subscript = event code number
-		                                // null entry means no handler defined for that state,event
+		                                 // entrypoints to all event handler functions
+		                                 // 1st subscript = state code number (0=default)
+		                                 // 2nd subscript = event code number
+		                                 // null entry means no handler defined for that state,event
 
 		public Dictionary<string, TokenDeclSDType> sdObjTypesName;
-		                                // all script-defined types by name
+		                                 // all script-defined types by name
 		public TokenDeclSDType[] sdObjTypesIndx;
-		                                // all script-defined types by sdTypeIndex
+		                                 // all script-defined types by sdTypeIndex
 
 		public Dictionary<Type, string> sdDelTypes;
-						// all script-defined delegates (including anonymous)
+						 // all script-defined delegates (including anonymous)
 
 		public Dictionary<string, DynamicMethod> dynamicMethods;
-		                                // all dyanmic methods that could be encountered by checkpointing
+		                                 // all dyanmic methods that could be encountered by checkpointing
 
 		public DateTime fileDateUtc;
 		public int expiryDays = Int32.MaxValue;

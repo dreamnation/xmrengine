@@ -585,7 +585,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief Generate code to return type name of the argument
 		 *        Script-level prototype:  xmrArrayCppy(object,integer,object,integer,integer)
 		 */
-		private static MethodInfo arrayCopyMethodInfo = typeof (XMRSDTypeClassInstance).GetMethod ("XMRArrayCopy", new Type[] { typeof (object), typeof (int), typeof (object), typeof (int), typeof (int) });
+		private static MethodInfo arrayCopyMethodInfo = typeof (XMRSDTypeClObj).GetMethod ("XMRArrayCopy", new Type[] { typeof (object), typeof (int), typeof (object), typeof (int), typeof (int) });
 		private void CodeGenXMRArrayCopy (ScriptCodeGen scg, Token errorAt, CompValu result, CompValu[] args)
 		{
 			args[0].PushVal (scg, errorAt);

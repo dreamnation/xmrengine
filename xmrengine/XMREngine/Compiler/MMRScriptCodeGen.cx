@@ -58,7 +58,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static ConstructorInfo scriptBadCallNoExceptionConstructorInfo = typeof (ScriptBadCallNoException).GetConstructor (new Type[] { typeof (int) });
 		private static ConstructorInfo scriptChangeStateExceptionConstructorInfo = typeof (ScriptChangeStateException).GetConstructor (new Type[] { typeof (int) });
 		private static ConstructorInfo scriptUndefinedStateExceptionConstructorInfo = typeof (ScriptUndefinedStateException).GetConstructor (new Type[] { typeof (string) });
-		private static ConstructorInfo sdtClassConstructorInfo = typeof (XMRSDTypeClassInstance).GetConstructor (new Type[] { typeof (XMRInstAbstract), typeof (int) });
+		private static ConstructorInfo sdtClassConstructorInfo = typeof (XMRSDTypeClObj).GetConstructor (new Type[] { typeof (XMRInstAbstract), typeof (int) });
 		private static ConstructorInfo xmrArrayConstructorInfo = typeof (XMR_Array).GetConstructor (new Type[] { typeof (XMRInstAbstract), typeof (int), typeof (int) });
 		private static FieldInfo callModeFieldInfo     = typeof (XMRInstAbstract).GetField ("callMode");
 		private static FieldInfo doGblInitFieldInfo    = typeof (XMRInstAbstract).GetField ("doGblInit");
@@ -69,7 +69,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static FieldInfo rotationYFieldInfo    = typeof (LSL_Rotation).GetField ("y");
 		private static FieldInfo rotationZFieldInfo    = typeof (LSL_Rotation).GetField ("z");
 		private static FieldInfo rotationSFieldInfo    = typeof (LSL_Rotation).GetField ("s");
-		private static FieldInfo sdtXMRInstFieldInfo   = typeof (XMRSDTypeClassInstance).GetField ("xmrInst");
+		private static FieldInfo sdtXMRInstFieldInfo   = typeof (XMRSDTypeClObj).GetField ("xmrInst");
 		private static FieldInfo vectorXFieldInfo      = typeof (LSL_Vector).GetField ("x");
 		private static FieldInfo vectorYFieldInfo      = typeof (LSL_Vector).GetField ("y");
 		private static FieldInfo vectorZFieldInfo      = typeof (LSL_Vector).GetField ("z");
@@ -391,18 +391,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					TokenDeclSDTypeClass extends = sdtClass.extends;
 					if (extends != null) {
 						if (!extends.slotsAssigned) continue;
-						sdtClass.numInstArrays      = extends.numInstArrays;
-						sdtClass.numInstFloats      = extends.numInstFloats;
-						sdtClass.numInstIntegers    = extends.numInstIntegers;
-						sdtClass.numInstLists       = extends.numInstLists;
-						sdtClass.numInstObjects     = extends.numInstObjects;
-						sdtClass.numInstRotations   = extends.numInstRotations;
-						sdtClass.numInstStrings     = extends.numInstStrings;
-						sdtClass.numInstVectors     = extends.numInstVectors;
-						sdtClass.numInstSDTClObjs   = extends.numInstSDTClObjs;
-						sdtClass.numInstSDTIntfObjs = extends.numInstSDTIntfObjs;
-						sdtClass.numVirtFuncs       = extends.numVirtFuncs;
-						sdtClass.numInterfaces      = extends.numInterfaces;
+						sdtClass.instSizes     = extends.instSizes;
+						sdtClass.numVirtFuncs  = extends.numVirtFuncs;
+						sdtClass.numInterfaces = extends.numInterfaces;
 
 						int n = maxExtends;
 						for (TokenDeclSDTypeClass ex = extends; ex != null; ex = ex.extends) {
@@ -417,21 +408,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 					/*
 					 * Extended class's slots all assigned, assign our instance fields 
-					 * slots in the XMRSDTypeClassInstance arrays.
+					 * slots in the XMRSDTypeClObj arrays.
 					 */
 					foreach (TokenDeclVar declVar in sdtClass.members) {
 						if (declVar.retType != null) continue;
 						if (declVar.constant) continue;
 						if ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) != 0) continue;
 						if ((declVar.getProp == null) && (declVar.setProp == null)) {
-							declVar.type.AssignSDTClassFieldSlot (declVar, sdtClass);
+							declVar.type.AssignVarSlot (declVar, ref sdtClass.instSizes);
 						}
 						if ((declVar.type is TokenTypeList) ||
 						    (declVar.type is TokenTypeStr)) {
 							TokenDeclVar htDeclVar = new TokenDeclVar (declVar, null, tokenScript);
 							htDeclVar.type = new TokenTypeInt (declVar);
 							htDeclVar.name = new TokenName (declVar, "__hti_" + declVar.name.val);
-							htDeclVar.type.AssignSDTClassFieldSlot (htDeclVar, sdtClass);
+							htDeclVar.type.AssignVarSlot (htDeclVar, ref sdtClass.instSizes);
 							declVar.heapTracker = htDeclVar;
 						}
 					}
@@ -737,16 +728,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			objFileWriter.Write (COMPILED_VERSION_VALUE);
 
 			objFileWriter.Write (tokenScript.expiryDays);
-			objFileWriter.Write (scriptObjCode.numGblArrays);
-			objFileWriter.Write (scriptObjCode.numGblFloats);
-			objFileWriter.Write (scriptObjCode.numGblIntegers);
-			objFileWriter.Write (scriptObjCode.numGblLists);
-			objFileWriter.Write (scriptObjCode.numGblObjects);
-			objFileWriter.Write (scriptObjCode.numGblRotations);
-			objFileWriter.Write (scriptObjCode.numGblStrings);
-			objFileWriter.Write (scriptObjCode.numGblVectors);
-			objFileWriter.Write (scriptObjCode.numGblSDTClObjs);
-			objFileWriter.Write (scriptObjCode.numGblSDTIntfObjs);
+			scriptObjCode.glblSizes.WriteToFile (objFileWriter);
 
 			objFileWriter.Write (nStates);
 			for (int i = 0; i < nStates; i ++) {
@@ -1001,7 +983,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Make up array of all argument types as seen by the code generator.
-			 * We splice in XMRInstance or XMRSDTypeClassInstance for the first 
+			 * We splice in XMRInstance or XMRSDTypeClObj for the first 
 			 * arg as the function itself is static, followed by script-visible
 			 * arg types.
 			 */
@@ -1009,7 +991,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			int nArgs = argDecl.vars.Length;
 			Type[] argTypes = new Type[nArgs+1];
 			if (IsSDTInstMethod ()) {
-				argTypes[0] = typeof (XMRSDTypeClassInstance);
+				argTypes[0] = typeof (XMRSDTypeClObj);
 			} else {
 				argTypes[0] = typeof (XMRInstAbstract);
 			}
@@ -1051,7 +1033,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Define location of all script-level arguments so script body can access them.
-			 * The argument indices need to have +1 added to them because XMRInstance or XMRSDTypeClassInstance 
+			 * The argument indices need to have +1 added to them because XMRInstance or XMRSDTypeClObj 
 			 * is spliced in at arg 0.  Account for their heap usage just like they were local variables.
 			 */
 			TokenArgDecl argDecl = declFunc.argDecl;
@@ -2034,14 +2016,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 *        It is used to malloc the object and initialize it.
 		 *        It is defined as a script-defined type static method, so the object level
 		 *        method gets the XMRInstance pointer passed as arg 0, and the method is 
-		 *        supposed to return the allocated and constructed XMRSDTypeClassInstance
+		 *        supposed to return the allocated and constructed XMRSDTypeClObj
 		 *        object pointer.
 		 */
 		private void GenerateStmtNewobj (TokenStmtNewobj newobjStmt)
 		{
 			/*
-			 * First off, malloc a new empty XMRSDTypeClassInstance object
-			 * then call the XMRSDTypeClassInstance()-level constructor.
+			 * First off, malloc a new empty XMRSDTypeClObj object
+			 * then call the XMRSDTypeClObj()-level constructor.
 			 * Store the result in local var $objptr.
 			 */
 			newobjStmt.objptrVar.location.PopPre (this, newobjStmt);
@@ -4127,15 +4109,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (IsSDTInstMethod ()) {
 
 				// for script-defined class instance methods,
-				// arg 0 holds the XMRSDTypeClassInstance pointer
+				// arg 0 holds the XMRSDTypeClObj pointer
 				// and so we read the XMR_Instance pointer from
-				// its XMRSDTypeClassInstance.xmrInst field
+				// its XMRSDTypeClObj.xmrInst field
 				ilGen.Emit (OpCodes.Ldfld, sdtXMRInstFieldInfo);
 			}
 		}
 
 		/**
-		 * @returns true: Ldarg_0 gives XMRSDTypeClassInstance pointer
+		 * @returns true: Ldarg_0 gives XMRSDTypeClObj pointer
 		 *                - this is the case for instance methods
 		 *         false: Ldarg_0 gives XMR_Instance pointer
 		 *                - this is the case for both global functions and static methods
@@ -4539,16 +4521,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			ScriptObjCode scriptObjCode     = new ScriptObjCode ();
 			scriptObjCode.expiryDays        = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblArrays      = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblFloats      = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblIntegers    = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblLists       = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblObjects     = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblRotations   = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblStrings     = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblVectors     = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblSDTClObjs   = objFileReader.ReadInt32 ();
-			scriptObjCode.numGblSDTIntfObjs = objFileReader.ReadInt32 ();
+			scriptObjCode.glblSizes.ReadFromFile (objFileReader);
 
 			int nStates = objFileReader.ReadInt32 ();
 
@@ -4561,16 +4534,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			if (asmFileWriter != null) {
-				asmFileWriter.WriteLine ("  numGblArrays       {0}", scriptObjCode.numGblArrays);
-				asmFileWriter.WriteLine ("  numGblFloats       {0}", scriptObjCode.numGblFloats);
-				asmFileWriter.WriteLine ("  numGblIntegers     {0}", scriptObjCode.numGblIntegers);
-				asmFileWriter.WriteLine ("  numGblLists        {0}", scriptObjCode.numGblLists);
-				asmFileWriter.WriteLine ("  numGblObjects      {0}", scriptObjCode.numGblObjects);
-				asmFileWriter.WriteLine ("  numGblRotations    {0}", scriptObjCode.numGblRotations);
-				asmFileWriter.WriteLine ("  numGblStrings      {0}", scriptObjCode.numGblStrings);
-				asmFileWriter.WriteLine ("  numGblVectors      {0}", scriptObjCode.numGblVectors);
-				asmFileWriter.WriteLine ("  numGblSDTClObjs    {0}", scriptObjCode.numGblSDTClObjs);
-				asmFileWriter.WriteLine ("  numGblSDTIntfObjs  {0}", scriptObjCode.numGblSDTIntfObjs);
+				scriptObjCode.glblSizes.WriteAsmFile (asmFileWriter, "numGbl");
 			}
 
 			string gblName;
