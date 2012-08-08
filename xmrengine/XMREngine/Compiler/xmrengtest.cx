@@ -23,10 +23,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /**
          * @brief Stand-alone test program.
          *
-         * mono xmrengtest.exe <xmrobjfile> -obj <xmrobjoutput> -asm <xmrasmoutput> <sourcefile>
+         * mono xmrengtest.exe <xmrobjfile> -checkrun -obj <xmrobjoutput> -asm <xmrasmoutput> <sourcefile>
          */
         public static void Main (string[] args)
         {
+            bool doCheckRun = false;
             string asmFileName = null;
             string objFileName = null;
             string srcFileName = null;
@@ -36,6 +37,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if (arg == "-asm") {
                     if (++ i >= args.Length) goto usage;
                     asmFileName = args[i];
+                    continue;
+                }
+                if (arg == "-checkrun") {
+                    doCheckRun = true;
                     continue;
                 }
                 if (arg == "-obj") {
@@ -114,7 +119,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Console.WriteLine ("Running...");
             TestInstance inst = new TestInstance (scriptObjCode);
             inst.ehArgs = new object[0];
-            scriptObjCode.scriptEventHandlerTable[0,(int)ScriptEventCode.state_entry](inst);
+            inst.testCheckRun = doCheckRun;
+            while (true) {
+                try {
+                    scriptObjCode.scriptEventHandlerTable[0,(int)ScriptEventCode.state_entry](inst);
+                    break;
+                } catch (StackCaptureException) {
+                    if (inst.callMode != XMRInstAbstract.CALLMODE_SAVE) throw;
+                    inst.callMode = XMRInstAbstract.CALLMODE_RESTORE;
+                }
+            }
             return;
 
         usage:
@@ -128,7 +142,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
     }
 
+    public class StackCaptureException : Exception, IXMRUncatchable { }
+
     public class TestInstance : XMRInstAbstract {
+        public bool testCheckRun;
+
         public TestInstance (ScriptObjCode soc)
         {
             glblVars.AllocVarArrays (ref soc.glblSizes);
@@ -140,7 +158,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         \*********************/
 
         public override void CheckRun (int line)
-        { }
+        {
+            if (testCheckRun) {
+                switch (this.callMode) {
+                    case CALLMODE_NORMAL: {
+                        this.callMode = CALLMODE_SAVE;
+                        this.stackFrames = null;
+                        throw new StackCaptureException ();
+                    }
+                    case CALLMODE_RESTORE: {
+                        this.callMode = CALLMODE_NORMAL;
+                        break;
+                    }
+                    default: throw new Exception ("bad callMode " + this.callMode);
+                }
+            }
+        }
+
         public override int  StackLeft ()
         {
             return 1000000;
