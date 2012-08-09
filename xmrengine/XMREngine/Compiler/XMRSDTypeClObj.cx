@@ -269,22 +269,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /**
          * @brief Write the whole thing out to a stream.
          */
-        public delegate void SendValue (object obj);
-        public void Send (SendValue sendValue, XMRInstArrays.Sender sendArray)
+        public void Capture (XMRInstArrays.Sender sendValue)
         {
             sendValue (this.sdtcClass.sdTypeIndex);
-            this.instVars.SendArrays (sendArray);
+            this.instVars.SendArrays (sendValue);
         }
 
         /**
          * @brief Read the whole thing in from a stream.
          */
-        public delegate object RecvValue ();
-        public XMRSDTypeClObj (XMRInstAbstract inst, RecvValue recvValue, XMRInstArrays.Recver recvArray)
+        public XMRSDTypeClObj () { }
+        public void Restore (XMRInstAbstract inst, XMRInstArrays.Recver recvValue)
         {
             int classindex = (int)recvValue ();
             Construct (inst, classindex);
-            this.instVars.RecvArrays (recvArray);
+            this.instVars.RecvArrays (recvValue);
         }
     }
 }

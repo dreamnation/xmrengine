@@ -50,7 +50,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             iarSDTIntfObjs = (ars.iasSDTIntfObjs > 0) ? new Delegate      [ars.iasSDTIntfObjs][] : noSDTIntfObjs;
         }
 
-        public delegate void Sender (Array array);
+        public delegate void Sender (object value);
         public void SendArrays (Sender sender)
         {
             sender (iarArrays);
@@ -65,19 +65,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             sender (iarSDTIntfObjs);
         }
 
-        public delegate Array Recver (Type eleType);
+        public delegate object Recver ();
         public void RecvArrays (Recver recver)
         {
-            iarArrays      = (XMR_Array[])      recver (typeof (XMR_Array));
-            iarFloats      = (SCRIPTFLOAT[])    recver (typeof (SCRIPTFLOAT));
-            iarIntegers    = (int[])            recver (typeof (int));
-            iarLists       = (LSL_List[])       recver (typeof (LSL_List));
-            iarObjects     = (object[])         recver (typeof (object));
-            iarRotations   = (LSL_Rotation[])   recver (typeof (LSL_Rotation));
-            iarStrings     = (string[])         recver (typeof (string));
-            iarVectors     = (LSL_Vector[])     recver (typeof (LSL_Vector));
-            iarSDTClObjs   = (XMRSDTypeClObj[]) recver (typeof (XMRSDTypeClObj));
-            iarSDTIntfObjs = (Delegate[][])     recver (typeof (Delegate[]));
+            iarArrays      = (XMR_Array[])      recver ();
+            iarFloats      = (SCRIPTFLOAT[])    recver ();
+            iarIntegers    = (int[])            recver ();
+            iarLists       = (LSL_List[])       recver ();
+            iarObjects     = (object[])         recver ();
+            iarRotations   = (LSL_Rotation[])   recver ();
+            iarStrings     = (string[])         recver ();
+            iarVectors     = (LSL_Vector[])     recver ();
+            iarSDTClObjs   = (XMRSDTypeClObj[]) recver ();
+            iarSDTIntfObjs = (Delegate[][])     recver ();
         }
     }
 
@@ -538,7 +538,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             LSLROT,
             LSLSTR,
             LSLVEC,
-            OBJARRAY,
+            SYSARRAY,
             SYSDOUB,
             SYSFLOAT,
             SYSINT,
@@ -564,28 +564,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             mow.Write (this.heapLimit);
             mow.Write (this.heapLeft);
             mow.Write (this.stateCode);
-            this.glblVars.SendArrays (this.SendObjArray);
+            this.glblVars.SendArrays (this.SendObjValue);
             for (XMRStackFrame thisSF = this.stackFrames; thisSF != null; thisSF = thisSF.nextSF) {
-                Console.WriteLine ("MigrateOut*: funcName=" + thisSF.funcName + " @ " + thisSF.callNo);
-                this.SendObjValue (thisSF.funcName);
-                this.SendObjValue (thisSF.callNo);
-                this.SendObjArray (thisSF.objArray);
+                mow.Write (thisSF.funcName);
+                mow.Write (thisSF.callNo);
+                this.SendObjValue (thisSF.objArray);
             }
-            this.SendObjValue ("");
+            mow.Write ("");
             this.stackFrames       = null;
             this.migrateOutWriter  = null;
             this.migrateOutObjects = null;
-        }
-
-        /**
-         * @brief Write an array to the output stream.
-         */
-        public void SendObjArray (Array array)
-        {
-            SendObjValue ((object)(int)array.Length);
-            for (int i = 0; i < array.Length; i ++) {
-                SendObjValue (array.GetValue (i));
-            }
         }
 
         /**
@@ -596,73 +584,75 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public Dictionary<object, int> migrateOutObjects;
         public void SendObjValue (object graph)
         {
+            BinaryWriter mow = this.migrateOutWriter;
+
             /*
              * Value types (including nulls) are always output directly.
              */
             if (graph == null) {
-                this.migrateOutWriter.Write ((byte)Ser.NULL);
+                mow.Write ((byte)Ser.NULL);
                 return;
             }
             if (graph is ScriptEventCode) {
-                this.migrateOutWriter.Write ((byte)Ser.EVENTCODE);
-                this.migrateOutWriter.Write ((int)graph);
+                mow.Write ((byte)Ser.EVENTCODE);
+                mow.Write ((int)graph);
                 return;
             }
             if (graph is LSL_Float) {
-                this.migrateOutWriter.Write ((byte)Ser.LSLFLOAT);
-                this.migrateOutWriter.Write ((double)((LSL_Float)graph).value);
+                mow.Write ((byte)Ser.LSLFLOAT);
+                mow.Write ((double)((LSL_Float)graph).value);
                 return;
             }
             if (graph is LSL_Integer) {
-                this.migrateOutWriter.Write ((byte)Ser.LSLINT);
-                this.migrateOutWriter.Write ((int)((LSL_Integer)graph).value);
+                mow.Write ((byte)Ser.LSLINT);
+                mow.Write ((int)((LSL_Integer)graph).value);
                 return;
             }
             if (graph is LSL_Key) {
-                this.migrateOutWriter.Write ((byte)Ser.LSLKEY);
+                mow.Write ((byte)Ser.LSLKEY);
                 LSL_Key key = (LSL_Key)graph;
                 SendObjValue (key.m_string);  // m_string can be null
                 return;
             }
             if (graph is LSL_Rotation) {
-                this.migrateOutWriter.Write ((byte)Ser.LSLROT);
-                this.migrateOutWriter.Write ((double)((LSL_Rotation)graph).x);
-                this.migrateOutWriter.Write ((double)((LSL_Rotation)graph).y);
-                this.migrateOutWriter.Write ((double)((LSL_Rotation)graph).z);
-                this.migrateOutWriter.Write ((double)((LSL_Rotation)graph).s);
+                mow.Write ((byte)Ser.LSLROT);
+                mow.Write ((double)((LSL_Rotation)graph).x);
+                mow.Write ((double)((LSL_Rotation)graph).y);
+                mow.Write ((double)((LSL_Rotation)graph).z);
+                mow.Write ((double)((LSL_Rotation)graph).s);
                 return;
             }
             if (graph is LSL_String) {
-                this.migrateOutWriter.Write ((byte)Ser.LSLSTR);
+                mow.Write ((byte)Ser.LSLSTR);
                 LSL_String str = (LSL_String)graph;
                 SendObjValue (str.m_string);  // m_string can be null
                 return;
             }
             if (graph is LSL_Vector) {
-                this.migrateOutWriter.Write ((byte)Ser.LSLVEC);
-                this.migrateOutWriter.Write ((double)((LSL_Vector)graph).x);
-                this.migrateOutWriter.Write ((double)((LSL_Vector)graph).y);
-                this.migrateOutWriter.Write ((double)((LSL_Vector)graph).z);
+                mow.Write ((byte)Ser.LSLVEC);
+                mow.Write ((double)((LSL_Vector)graph).x);
+                mow.Write ((double)((LSL_Vector)graph).y);
+                mow.Write ((double)((LSL_Vector)graph).z);
                 return;
             }
             if (graph is bool) {
-                this.migrateOutWriter.Write ((byte)Ser.SYSBOOL);
-                this.migrateOutWriter.Write ((bool)graph);
+                mow.Write ((byte)Ser.SYSBOOL);
+                mow.Write ((bool)graph);
                 return;
             }
             if (graph is double) {
-                this.migrateOutWriter.Write ((byte)Ser.SYSDOUB);
-                this.migrateOutWriter.Write ((double)graph);
+                mow.Write ((byte)Ser.SYSDOUB);
+                mow.Write ((double)graph);
                 return;
             }
             if (graph is float) {
-                this.migrateOutWriter.Write ((byte)Ser.SYSFLOAT);
-                this.migrateOutWriter.Write ((float)graph);
+                mow.Write ((byte)Ser.SYSFLOAT);
+                mow.Write ((float)graph);
                 return;
             }
             if (graph is int) {
-                this.migrateOutWriter.Write ((byte)Ser.SYSINT);
-                this.migrateOutWriter.Write ((int)graph);
+                mow.Write ((byte)Ser.SYSINT);
+                mow.Write ((int)graph);
                 return;
             }
 
@@ -670,7 +660,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * Script instance pointer is always just that.
              */
             if (graph == this) {
-                this.migrateOutWriter.Write ((byte)Ser.XMRINST);
+                mow.Write ((byte)Ser.XMRINST);
                 return;
             }
 
@@ -684,8 +674,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
             int ident;
             if (this.migrateOutObjects.TryGetValue (graph, out ident)) {
-                this.migrateOutWriter.Write ((byte)Ser.DUPREF);
-                this.migrateOutWriter.Write (ident);
+                mow.Write ((byte)Ser.DUPREF);
+                mow.Write (ident);
                 return;
             }
 
@@ -695,7 +685,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
             ident = this.migrateOutObjects.Count;
             this.migrateOutObjects.Add (graph, ident);
-            Console.WriteLine ("SendObjValue*: " + ident + " is a " + graph.GetType ().Name);
 
             /*
              * Now output the object's value(s).
@@ -705,34 +694,34 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * again.
              */
             if (graph is LSL_List) {
-                this.migrateOutWriter.Write ((byte)Ser.LSLLIST);
+                mow.Write ((byte)Ser.LSLLIST);
                 LSL_List list = (LSL_List)graph;
                 SendObjValue (list.Data);
             } else if (graph is XMR_Array) {
-                this.migrateOutWriter.Write ((byte)Ser.XMRARRAY);
+                mow.Write ((byte)Ser.XMRARRAY);
                 ((XMR_Array)graph).SendArrayObj (this.SendObjValue);
-            } else if (graph is object[]) {
-                this.migrateOutWriter.Write ((byte)Ser.OBJARRAY);
-                object[] array = (object[])graph;
-                int len = array.Length;
-                this.migrateOutWriter.Write (len);
-                for (int i = 0; i < len; i ++) {
-                    SendObjValue (array[i]);
+            } else if (graph is Array) {
+                mow.Write ((byte)Ser.SYSARRAY);
+                Array array = (Array)graph;
+                mow.Write (SysType2String (array.GetType ().GetElementType ()));
+                mow.Write ((int)array.Length);
+                for (int i = 0; i < array.Length; i ++) {
+                    this.SendObjValue (array.GetValue (i));
                 }
             } else if (graph is string) {
-                this.migrateOutWriter.Write ((byte)Ser.SYSSTR);
-                this.migrateOutWriter.Write ((string)graph);
+                mow.Write ((byte)Ser.SYSSTR);
+                mow.Write ((string)graph);
             } else if (graph is Delegate) {
                 Delegate del = (Delegate)graph;
-                this.migrateOutWriter.Write ((byte)Ser.DELEGATE);
-                this.migrateOutWriter.Write (del.Method.Name);
+                mow.Write ((byte)Ser.DELEGATE);
+                mow.Write (del.Method.Name);
                 Type delType = del.GetType ();
                 foreach (KeyValuePair<string, TokenDeclSDType> kvp in m_ObjCode.sdObjTypesName) {
                     TokenDeclSDType sdt = kvp.Value;
                     if (sdt is TokenDeclSDTypeDelegate) {
                         TokenDeclSDTypeDelegate sdtd = (TokenDeclSDTypeDelegate)sdt;
                         if (sdtd.GetSysType () == delType) {
-                            this.migrateOutWriter.Write (kvp.Key);
+                            mow.Write (kvp.Key);
                             goto found;
                         }
                     }
@@ -741,11 +730,61 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             found:
                 SendObjValue (del.Target);
             } else if (graph is XMRSDTypeClObj) {
-                this.migrateOutWriter.Write ((byte)Ser.SDTCLOBJ);
-                ((XMRSDTypeClObj)graph).Send (this.SendObjValue, this.SendObjArray);
+                mow.Write ((byte)Ser.SDTCLOBJ);
+                ((XMRSDTypeClObj)graph).Capture (this.SendObjValue);
             } else {
                 throw new Exception ("unhandled type " + graph.GetType().ToString());
             }
+        }
+
+        /**
+         * @brief Use short strings for known type names.
+         */
+        private static string SysType2String (Type type)
+        {
+            if (type.IsArray && (type.GetArrayRank () == 1)) {
+                string str = KnownSysType2String (type.GetElementType ());
+                if (str != null) return str + "[]";
+            } else {
+                string str = KnownSysType2String (type);
+                if (str != null) return str;
+            }
+            return type.ToString ();
+        }
+        private static string KnownSysType2String (Type type)
+        {
+            if (type == typeof (bool))           return "bo";
+            if (type == typeof (Delegate))       return "de";
+            if (type == typeof (double))         return "do";
+            if (type == typeof (float))          return "fl";
+            if (type == typeof (int))            return "in";
+            if (type == typeof (LSL_List))       return "li";
+            if (type == typeof (object))         return "ob";
+            if (type == typeof (LSL_Rotation))   return "ro";
+            if (type == typeof (XMRSDTypeClObj)) return "sc";
+            if (type == typeof (string))         return "st";
+            if (type == typeof (LSL_Vector))     return "ve";
+            if (type == typeof (XMR_Array))      return "xa";
+            return null;
+        }
+        private static Type String2SysType (string str)
+        {
+            if (str.EndsWith ("[]")) {
+                return String2SysType (str.Substring (0, str.Length - 2)).MakeArrayType ();
+            }
+            if (str == "bo") return typeof (bool);
+            if (str == "de") return typeof (Delegate);
+            if (str == "do") return typeof (double);
+            if (str == "fl") return typeof (float);
+            if (str == "in") return typeof (int);
+            if (str == "li") return typeof (LSL_List);
+            if (str == "ob") return typeof (object);
+            if (str == "ro") return typeof (LSL_Rotation);
+            if (str == "sc") return typeof (XMRSDTypeClObj);
+            if (str == "st") return typeof (string);
+            if (str == "ve") return typeof (LSL_Vector);
+            if (str == "xa") return typeof (XMR_Array);
+            return Type.GetType (str, true);
         }
 
         /**
@@ -761,36 +800,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             this.heapLimit  = mir.ReadInt32 ();
             this.heapLeft   = mir.ReadInt32 ();
             this.stateCode  = mir.ReadInt32 ();
-            this.glblVars.RecvArrays (this.RecvObjArray);
+            this.glblVars.RecvArrays (this.RecvObjValue);
             XMRStackFrame lastSF  = null;
             string funcName;
-            while ((funcName = (string)this.RecvObjValue ()) != "") {
+            while ((funcName = mir.ReadString ()) != "") {
                 XMRStackFrame thisSF = new XMRStackFrame ();
                 thisSF.funcName = funcName;
-                thisSF.callNo   = (int)this.RecvObjValue ();
-                thisSF.objArray = (object[])this.RecvObjArray (typeof (object));
-                Console.WriteLine ("MigrateIn*: funcName=" + funcName + " @ " + thisSF.callNo);
+                thisSF.callNo   = mir.ReadInt32 ();
+                thisSF.objArray = (object[])this.RecvObjValue ();
                 if (lastSF == null) this.stackFrames = thisSF;
                                else lastSF.nextSF = thisSF;
                 lastSF = thisSF;
             }
             this.migrateInReader  = null;
             this.migrateInObjects = null;
-        }
-
-        /**
-         * @brief Read an array of values from the stream.
-         * @param eleType = type of each element
-         * @returns array of the elements
-         */
-        public Array RecvObjArray (Type eleType)
-        {
-            int length = (int)RecvObjValue ();
-            Array array = Array.CreateInstance (eleType, length);
-            for (int i = 0; i < length; i ++) {
-                array.SetValue (RecvObjValue (), i);
-            }
-            return array;
         }
 
         /**
@@ -801,20 +824,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public Dictionary<int, object> migrateInObjects;
         public object RecvObjValue ()
         {
+            BinaryReader mir = this.migrateInReader;
             int ident = this.migrateInObjects.Count;
-            Ser code = (Ser)this.migrateInReader.ReadByte ();
+            Ser code = (Ser)mir.ReadByte ();
             switch (code) {
                 case Ser.NULL: {
                     return null;
                 }
                 case Ser.EVENTCODE: {
-                    return (ScriptEventCode)this.migrateInReader.ReadInt32 ();
+                    return (ScriptEventCode)mir.ReadInt32 ();
                 }
                 case Ser.LSLFLOAT: {
-                    return new LSL_Float (this.migrateInReader.ReadDouble ());
+                    return new LSL_Float (mir.ReadDouble ());
                 }
                 case Ser.LSLINT: {
-                    return new LSL_Integer (this.migrateInReader.ReadInt32 ());
+                    return new LSL_Integer (mir.ReadInt32 ());
                 }
                 case Ser.LSLKEY: {
                     return new LSL_Key ((string)RecvObjValue ());
@@ -822,81 +846,78 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 case Ser.LSLLIST: {
                     LSL_List list =  new LSL_List (null);
                     this.migrateInObjects.Add (ident, list);
-                    Console.WriteLine ("RecvObjValue*: " + ident + " is a list");
                     list.Data = (object[])RecvObjValue ();
                     return list;
                 }
                 case Ser.LSLROT: {
-                    double x = this.migrateInReader.ReadDouble ();
-                    double y = this.migrateInReader.ReadDouble ();
-                    double z = this.migrateInReader.ReadDouble ();
-                    double s = this.migrateInReader.ReadDouble ();
+                    double x = mir.ReadDouble ();
+                    double y = mir.ReadDouble ();
+                    double z = mir.ReadDouble ();
+                    double s = mir.ReadDouble ();
                     return new LSL_Rotation (x, y, z, s);
                 }
                 case Ser.LSLSTR: {
                     return new LSL_String ((string)RecvObjValue ());
                 }
                 case Ser.LSLVEC: {
-                    double x = this.migrateInReader.ReadDouble ();
-                    double y = this.migrateInReader.ReadDouble ();
-                    double z = this.migrateInReader.ReadDouble ();
+                    double x = mir.ReadDouble ();
+                    double y = mir.ReadDouble ();
+                    double z = mir.ReadDouble ();
                     return new LSL_Vector (x, y, z);
                 }
-                case Ser.OBJARRAY: {
-                    int len = this.migrateInReader.ReadInt32 ();
-                    object[] array = new object[len];
+                case Ser.SYSARRAY: {
+                    Type eletype = String2SysType (mir.ReadString ());
+                    int length = mir.ReadInt32 ();
+                    Array array = Array.CreateInstance (eletype, length);
                     this.migrateInObjects.Add (ident, array);
-                    Console.WriteLine ("RecvObjValue*: " + ident + " is a object[]");
-                    for (int i = 0; i < len; i ++) {
-                        array[i] = RecvObjValue ();
+                    for (int i = 0; i < length; i ++) {
+                        array.SetValue (RecvObjValue (), i);
                     }
                     return array;
                 }
                 case Ser.SYSBOOL: {
-                    return this.migrateInReader.ReadBoolean ();
+                    return mir.ReadBoolean ();
                 }
                 case Ser.SYSDOUB: {
-                    return this.migrateInReader.ReadDouble ();
+                    return mir.ReadDouble ();
                 }
                 case Ser.SYSFLOAT: {
-                    return this.migrateInReader.ReadSingle ();
+                    return mir.ReadSingle ();
                 }
                 case Ser.SYSINT: {
-                    return this.migrateInReader.ReadInt32 ();
+                    return mir.ReadInt32 ();
                 }
                 case Ser.SYSSTR: {
-                    string s = this.migrateInReader.ReadString ();
+                    string s = mir.ReadString ();
                     this.migrateInObjects.Add (ident, s);
-                    Console.WriteLine ("RecvObjValue*: " + ident + " is a string");
                     return s;
                 }
                 case Ser.XMRARRAY: {
                     XMR_Array array = new XMR_Array (this, 0, 0);
                     this.migrateInObjects.Add (ident, array);
-                    Console.WriteLine ("RecvObjValue*: " + ident + " is a XMR_Array");
                     array.RecvArrayObj (this.RecvObjValue);
                     return array;
                 }
                 case Ser.DUPREF: {
-                    ident = this.migrateInReader.ReadInt32 ();
+                    ident = mir.ReadInt32 ();
                     return this.migrateInObjects[ident];
                 }
                 case Ser.XMRINST: {
                     return this;
                 }
                 case Ser.DELEGATE: {
-                    string name = this.migrateInReader.ReadString ();
-                    string sig  = this.migrateInReader.ReadString ();
-                    object targ = RecvObjValue ();
-                    Delegate del = GetScriptMethodDelegate (name, sig, targ);
-                    this.migrateInObjects.Add (ident, del);
-                    Console.WriteLine ("RecvObjValue*: " + ident + " is a delegate");
+                    this.migrateInObjects.Add (ident, null);  // placeholder
+                    string name  = mir.ReadString ();         // function name
+                    string sig   = mir.ReadString ();         // delegate type
+                    object targ  = this.RecvObjValue ();      // 'this' object
+                    Delegate del = this.GetScriptMethodDelegate (name, sig, targ);
+                    this.migrateInObjects[ident] = del;       // actual value
                     return del;
                 }
                 case Ser.SDTCLOBJ: {
-                    XMRSDTypeClObj clobj = new XMRSDTypeClObj (this, this.RecvObjValue, this.RecvObjArray);
+                    XMRSDTypeClObj clobj = new XMRSDTypeClObj ();
                     this.migrateInObjects.Add (ident, clobj);
-                    Console.WriteLine ("RecvObjValue*: " + ident + " is a XMRSDTypeClObj");
+                    clobj.Restore (this, this.RecvObjValue);
                     return clobj;
                 }
                 default: throw new Exception ("bad stream code " + code.ToString ());
