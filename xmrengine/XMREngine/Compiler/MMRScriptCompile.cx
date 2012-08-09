@@ -407,8 +407,8 @@ version:
                          */
                         BinaryWriter objFileWriter = new BinaryWriter (objFileStream);
                         bool ok = ScriptCodeGen.CodeGen(tokenScript, objFileWriter);
-                        if (!ok) m_log.Debug ("[XMREngine]: compile error on " + assetID);
                         if (!ok) {
+                            m_log.Debug ("[XMREngine]: compile error on " + assetID);
                             objFileStream.Close ();
                             return null;
                         }
@@ -420,14 +420,21 @@ version:
                      * If there is an old one laying around, delete it now.
                      * Then re-open the new file for reading from the beginning.
                      */
-                    File.Replace (objFileName + ".tmp", objFileName, null);
+                    if (File.Exists (objFileName)) {
+                        File.Replace (objFileName + ".tmp", objFileName, null);
+                    } else {
+                        File.Move (objFileName + ".tmp", objFileName);
+                    }
                     objFileStream = File.OpenRead (objFileName);
                 } finally {
 
                     /*
                      * In case something went wrong writing temp file, delete it.
                      */
-                    File.Delete (objFileName + ".tmp");
+                    try {
+                        File.Delete (objFileName + ".tmp");
+                    } catch {
+                    }
                 }
 
                 /*
