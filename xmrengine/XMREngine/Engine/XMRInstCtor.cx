@@ -182,7 +182,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * - either as loaded from a .state file
                  * - or initial default state_entry() event
                  */
-                LoadInitialState();
+                try {
+                    m_ObjCode = objCode;
+                    LoadInitialState();
+                } catch {
+                    // we haven't incremented refcount below
+                    // so don't let anything decrement it
+                    m_ObjCode = null;
+                    throw;
+                }
                 m_log.Debug("[XMREngine]: " + m_ItemID + " load successful");
 
                 /*
@@ -197,7 +205,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_CompiledScriptObjCode[m_AssetID]  = objCode;
                     m_CompiledScriptRefCount[m_AssetID] = 0;
                 }
-                m_ObjCode = objCode;
                 m_CompiledScriptRefCount[m_AssetID] ++;
             }
         }
@@ -620,18 +627,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         private void MigrateInEventHandler (Stream stream)
         {
-            /*
-             * Set up to migrate state in from the network stream.
-             */
-            this.migrateInReader  = new BinaryReader (stream);
-            this.migrateInStream  = stream;
-            this.migrateInObjects = new Dictionary<int, object> ();
-
-            /*
-             * Read current state code and event code from stream.
-             * And it also marks us busy (by setting this.eventCode) so we can't be
-             * started again and this event lost.
-             */
             int mv = stream.ReadByte ();
             int cv = stream.ReadByte ();
             if (mv != migrationVersion) {
@@ -640,40 +635,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (cv != ScriptCodeGen.COMPILED_VERSION_VALUE) {
                 throw new Exception ("incoming compilation version " + cv + " but accept only " + ScriptCodeGen.COMPILED_VERSION_VALUE);
             }
-            this.stateCode = (int)RecvObjValue ();
-            this.eventCode = (ScriptEventCode)RecvObjValue ();
-            this.heapLeft  = this.heapLimit - (int)RecvObjValue ();
-            this.ehArgs    = (object[])RecvObjValue ();
 
             /*
-             * Read script globals in.
+             * Restore script variables and stack and other state from stream.
+             * And it also marks us busy (by setting this.eventCode) so we can't be
+             * started again and this event lost.
              */
-            this.glblVars.RecvArrays (this.RecvObjArray);
+            this.MigrateIn (new BinaryReader (stream));
 
             /*
              * If eventCode is None, it means the script was idle when migrated.
-             * So we don't have to read script's stack in.
              */
             if (this.eventCode != ScriptEventCode.None) {
-
-                /*
-                 * We have to be running on the microthread stack to restore to the event handler.
-                 * So read the stack frames from the stream.
-                 * The first one read is the event handler function itself and the 
-                 * last one we get is the function that called CheckRun().
-                 */
-                int callNo;
-                this.stackFrames = null;
-                XMRStackFrame lastSF = null;
-                while ((callNo = this.migrateInReader.ReadInt32 ()) >= 0) {
-                    XMRStackFrame sf = new XMRStackFrame ();
-                    sf.callNo   = callNo;
-                    sf.funcName = this.migrateInReader.ReadString ();
-                    sf.objArray = (object[]) RecvObjArray (typeof (object));
-                    if (lastSF == null) this.stackFrames = sf;
-                                   else lastSF.nextSF = sf;
-                    lastSF = sf;
-                }
 
                 /*
                  * So microthread.Start() calls XMRScriptUThread.Main() which calls the
@@ -689,13 +662,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 microthread.Start ();
                 if (!this.stackFramesRestored) throw new Exception ("migrate in did not complete");
             }
-
-            /*
-             * Clear out migration state.
-             */
-            this.migrateInReader  = null;
-            this.migrateInStream  = null;
-            this.migrateInObjects = null;
         }
     }
 }

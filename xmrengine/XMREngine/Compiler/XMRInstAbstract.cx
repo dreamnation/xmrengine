@@ -158,7 +158,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public object[] ehArgs;             // event handler argument array
         public bool doGblInit = true;       // default state_entry() needs to initialize global variables
-        public uint stackLimit;             // CheckRun() must always see this much stack available
         public int heapLimit;               // let script use this many bytes of heap maximum
                                             // includes global vars, local vars, that reference heap
                                             // does not include value-type vars, that is part of stackLimit
@@ -166,6 +165,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                                             // ...atomic updates only
         public string traceHeapUse = null;  // null: quiet; else: name of script
         public int stateCode = 0;           // state the script is in (0 = 'default')
+        public ScriptEventCode eventCode = ScriptEventCode.None;
+                                            // what event handler is executing (or None if not)
 
         public int callMode = CALLMODE_NORMAL;
                                             // to capture stack frames on stackFrames:
@@ -553,27 +554,29 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         /**
          * @brief Write state out to a stream.
+         *        Do not change script state.
          */
         public void MigrateOut (BinaryWriter mow)
         {
-            this.migrateOutWriter  = mow;
-            this.migrateOutObjects = new Dictionary<object, int> ();
-            this.SendObjValue (this.ehArgs);
-            mow.Write (this.doGblInit);
-            mow.Write (this.stackLimit);
-            mow.Write (this.heapLimit);
-            mow.Write (this.heapLeft);
-            mow.Write (this.stateCode);
-            this.glblVars.SendArrays (this.SendObjValue);
-            for (XMRStackFrame thisSF = this.stackFrames; thisSF != null; thisSF = thisSF.nextSF) {
-                mow.Write (thisSF.funcName);
-                mow.Write (thisSF.callNo);
-                this.SendObjValue (thisSF.objArray);
+            try {
+                this.migrateOutWriter  = mow;
+                this.migrateOutObjects = new Dictionary<object, int> ();
+                this.SendObjValue (this.ehArgs);
+                mow.Write (this.doGblInit);
+                mow.Write (this.heapLimit - this.heapLeft);
+                mow.Write (this.stateCode);
+                mow.Write ((int)this.eventCode);
+                this.glblVars.SendArrays (this.SendObjValue);
+                for (XMRStackFrame thisSF = this.stackFrames; thisSF != null; thisSF = thisSF.nextSF) {
+                    mow.Write (thisSF.funcName);
+                    mow.Write (thisSF.callNo);
+                    this.SendObjValue (thisSF.objArray);
+                }
+                mow.Write ("");
+            } finally {
+                this.migrateOutWriter  = null;
+                this.migrateOutObjects = null;
             }
-            mow.Write ("");
-            this.stackFrames       = null;
-            this.migrateOutWriter  = null;
-            this.migrateOutObjects = null;
         }
 
         /**
@@ -792,28 +795,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public void MigrateIn (BinaryReader mir)
         {
-            this.migrateInReader  = mir;
-            this.migrateInObjects = new Dictionary<int, object> ();
-            this.ehArgs     = (object[])this.RecvObjValue ();
-            this.doGblInit  = mir.ReadBoolean ();
-            this.stackLimit = mir.ReadUInt32 ();
-            this.heapLimit  = mir.ReadInt32 ();
-            this.heapLeft   = mir.ReadInt32 ();
-            this.stateCode  = mir.ReadInt32 ();
-            this.glblVars.RecvArrays (this.RecvObjValue);
-            XMRStackFrame lastSF  = null;
-            string funcName;
-            while ((funcName = mir.ReadString ()) != "") {
-                XMRStackFrame thisSF = new XMRStackFrame ();
-                thisSF.funcName = funcName;
-                thisSF.callNo   = mir.ReadInt32 ();
-                thisSF.objArray = (object[])this.RecvObjValue ();
-                if (lastSF == null) this.stackFrames = thisSF;
-                               else lastSF.nextSF = thisSF;
-                lastSF = thisSF;
+            try {
+                this.migrateInReader  = mir;
+                this.migrateInObjects = new Dictionary<int, object> ();
+                this.ehArgs     = (object[])this.RecvObjValue ();
+                this.doGblInit  = mir.ReadBoolean ();
+                this.heapLeft   = this.heapLimit - mir.ReadInt32 ();
+                this.stateCode  = mir.ReadInt32 ();
+                this.eventCode  = (ScriptEventCode)mir.ReadInt32 ();
+                this.glblVars.RecvArrays (this.RecvObjValue);
+                XMRStackFrame lastSF  = null;
+                string funcName;
+                while ((funcName = mir.ReadString ()) != "") {
+                    XMRStackFrame thisSF = new XMRStackFrame ();
+                    thisSF.funcName = funcName;
+                    thisSF.callNo   = mir.ReadInt32 ();
+                    thisSF.objArray = (object[])this.RecvObjValue ();
+                    if (lastSF == null) this.stackFrames = thisSF;
+                                   else lastSF.nextSF = thisSF;
+                    lastSF = thisSF;
+                }
+            } finally {
+                this.migrateInReader  = null;
+                this.migrateInObjects = null;
             }
-            this.migrateInReader  = null;
-            this.migrateInObjects = null;
         }
 
         /**

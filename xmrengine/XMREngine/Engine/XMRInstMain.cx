@@ -152,11 +152,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private Dictionary<string,IScriptApi> m_Apis;
         private XMRLSL_Api m_XMRLSLApi;
 
-        public ScriptEventCode eventCode = ScriptEventCode.None;
-                                                  // event handler being executed (None when idle)
-                                                  // - code assumes that only the event handling microthread
-                                                  //   transitions eventCode from non-idle to idle
-                                                  // - idle to non-idle is always Interlocked
+        public uint stackLimit;             // CheckRun() must always see this much stack available
 
         /*
          * We will use this microthread to run the scripts event handlers.
@@ -173,22 +169,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /*
          * Set to perform migration.
          */
-        public bool         stackFramesRestored; // set true by CheckRun() when stack has been 
-                                                 // restored and is about to suspend the microthread
-        public bool         captureStackFrames;  // set true to tell CheckRun() to throw a
-                                                 // StackCaptureException() causing it to capture a
-                                                 // snapshot of the script's stack
-        public Stream       migrateInStream;
-        public BinaryReader migrateInReader;
-        public Dictionary<int, object> migrateInObjects;
-        public Stream       migrateOutStream;
-        public BinaryWriter migrateOutWriter;
-        public Dictionary<object, int> migrateOutObjects;
+        public bool stackFramesRestored; // set true by CheckRun() when stack has been 
+                                         // restored and is about to suspend the microthread
+        public bool captureStackFrames;  // set true to tell CheckRun() to throw a
+                                         // StackCaptureException() causing it to capture a
+                                         // snapshot of the script's stack
 
         /*
          * Makes sure migration data version is same on both ends.
          */
-        public static byte migrationVersion = 9;
+        public static byte migrationVersion = 10;
 
         // Scripts start suspended now. This means that event queues will
         // accept events, but will not actually run them until the core

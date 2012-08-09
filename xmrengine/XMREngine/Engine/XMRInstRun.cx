@@ -481,14 +481,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             this.ehArgs    = ehArgs;
 
             /*
-             * We are starting from beginning of event handler, no migration streams.
-             */
-            this.migrateInReader  = null;
-            this.migrateInStream  = null;
-            this.migrateOutWriter = null;
-            this.migrateOutStream = null;
-
-            /*
              * This calls ScriptUThread.Main() directly, and returns when Main() [indirectly]
              * calls Suspend() or when Main() returns, whichever occurs first.
              * Setting stackFrames = null means run the event handler from the beginning
@@ -861,10 +853,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
 
                 /*
-                 * We get here when the script state has been read in from the migrateInStream.
+                 * We get here when the script state has been read in by MigrateInEventHandler().
                  * Since the stack is completely restored at this point, any subsequent calls
-                 * withing the functions should do their normal processing instead of trying
-                 * to restore their state.
+                 * within the functions should do their normal processing instead of trying to 
+                 * restore their state.
                  */
                 if (this.callMode == CALLMODE_RESTORE) {
                     stackFramesRestored = true;

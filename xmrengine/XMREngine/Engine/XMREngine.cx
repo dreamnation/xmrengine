@@ -775,6 +775,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                                     m_StackSize, m_HeapSize, errors, false);
             } catch (Exception e1) {
                 m_log.DebugFormat("[XMREngine]: {0} first load failed ({1}), retrying after reset", itemID.ToString(), e1.Message);
+                m_log.DebugFormat("[XMREngine]:\n{0}", e1.ToString ());
                 errors = new ArrayList();
                 try {
                     instance.Initialize(localID, itemID, script,
