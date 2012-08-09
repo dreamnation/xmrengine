@@ -125,8 +125,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
             Console.WriteLine ("Running...");
             TestInstance inst = new TestInstance (scriptObjCode);
-            inst.ehArgs = new object[0];
             inst.testCheckRun = doCheckRun;
+            inst.glblVars.AllocVarArrays (ref scriptObjCode.glblSizes);
+            inst.ehArgs = new object[0];
             MemoryStream serializeStream = null;
             if (serialize) {
                 serializeStream = new MemoryStream ();
@@ -144,7 +145,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     if (inst.callMode != XMRInstAbstract.CALLMODE_SAVE) throw;
 
                     /*
-                     * If -serialize, make sure stack frame serialization works.
+                     * If -serialize, make sure script instance serialization works.
                      */
                     if (serialize) {
 
@@ -152,39 +153,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                          * Write global variables and stack frames out and discard them.
                          */
                         serializeStream.Position = 0;
-                        inst.migrateOutWriter    = new BinaryWriter (serializeStream);
-                        inst.migrateOutObjects   = new Dictionary<object, int> ();
-                        inst.glblVars.SendArrays (inst.SendObjArray);
-                        for (XMRStackFrame thisSF = inst.stackFrames; thisSF != null; thisSF = thisSF.nextSF) {
-                            inst.SendObjValue (thisSF.funcName);
-                            inst.SendObjValue (thisSF.callNo);
-                            inst.SendObjArray (thisSF.objArray);
-                        }
-                        inst.SendObjValue ("");
-                        inst.migrateOutWriter  = null;
-                        inst.migrateOutObjects = null;
-                        inst.stackFrames       = null;
+                        inst.MigrateOut (new BinaryWriter (serializeStream));
+                        long savePos = serializeStream.Position;
 
                         /*
                          * Read global variables and stack frames back in and reconstruct.
                          */
                         serializeStream.Position = 0;
-                        inst.migrateInReader     = new BinaryReader (serializeStream);
-                        inst.migrateInObjects    = new Dictionary<int, object> ();
-                        inst.glblVars.RecvArrays (inst.RecvObjArray);
-                        XMRStackFrame lastSF     = null;
-                        string funcName;
-                        while ((funcName = (string)inst.RecvObjValue ()) != "") {
-                            XMRStackFrame thisSF = new XMRStackFrame ();
-                            thisSF.funcName = funcName;
-                            thisSF.callNo   = (int)inst.RecvObjValue ();
-                            thisSF.objArray = (object[])inst.RecvObjArray (typeof (object));
-                            if (lastSF == null) inst.stackFrames = thisSF;
-                                           else lastSF.nextSF = thisSF;
-                            lastSF = thisSF;
-                        }
-                        inst.migrateInReader  = null;
-                        inst.migrateInObjects = null;
+                        inst = new TestInstance (scriptObjCode);
+                        inst.testCheckRun = doCheckRun;
+                        inst.MigrateIn (new BinaryReader (serializeStream));
+                        if (savePos != serializeStream.Position) throw new Exception ("save/restore positions different");
                     }
 
                     /*
@@ -213,7 +192,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public TestInstance (ScriptObjCode soc)
         {
-            glblVars.AllocVarArrays (ref soc.glblSizes);
             m_ObjCode = soc;
         }
 

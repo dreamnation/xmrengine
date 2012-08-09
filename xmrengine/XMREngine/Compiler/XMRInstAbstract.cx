@@ -552,6 +552,32 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         /**
+         * @brief Write state out to a stream.
+         */
+        public void MigrateOut (BinaryWriter mow)
+        {
+            this.migrateOutWriter  = mow;
+            this.migrateOutObjects = new Dictionary<object, int> ();
+            this.SendObjValue (this.ehArgs);
+            mow.Write (this.doGblInit);
+            mow.Write (this.stackLimit);
+            mow.Write (this.heapLimit);
+            mow.Write (this.heapLeft);
+            mow.Write (this.stateCode);
+            this.glblVars.SendArrays (this.SendObjArray);
+            for (XMRStackFrame thisSF = this.stackFrames; thisSF != null; thisSF = thisSF.nextSF) {
+                Console.WriteLine ("MigrateOut*: funcName=" + thisSF.funcName + " @ " + thisSF.callNo);
+                this.SendObjValue (thisSF.funcName);
+                this.SendObjValue (thisSF.callNo);
+                this.SendObjArray (thisSF.objArray);
+            }
+            this.SendObjValue ("");
+            this.stackFrames       = null;
+            this.migrateOutWriter  = null;
+            this.migrateOutObjects = null;
+        }
+
+        /**
          * @brief Write an array to the output stream.
          */
         public void SendObjArray (Array array)
@@ -720,6 +746,36 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             } else {
                 throw new Exception ("unhandled type " + graph.GetType().ToString());
             }
+        }
+
+        /**
+         * @brief Read state in from a stream.
+         */
+        public void MigrateIn (BinaryReader mir)
+        {
+            this.migrateInReader  = mir;
+            this.migrateInObjects = new Dictionary<int, object> ();
+            this.ehArgs     = (object[])this.RecvObjValue ();
+            this.doGblInit  = mir.ReadBoolean ();
+            this.stackLimit = mir.ReadUInt32 ();
+            this.heapLimit  = mir.ReadInt32 ();
+            this.heapLeft   = mir.ReadInt32 ();
+            this.stateCode  = mir.ReadInt32 ();
+            this.glblVars.RecvArrays (this.RecvObjArray);
+            XMRStackFrame lastSF  = null;
+            string funcName;
+            while ((funcName = (string)this.RecvObjValue ()) != "") {
+                XMRStackFrame thisSF = new XMRStackFrame ();
+                thisSF.funcName = funcName;
+                thisSF.callNo   = (int)this.RecvObjValue ();
+                thisSF.objArray = (object[])this.RecvObjArray (typeof (object));
+                Console.WriteLine ("MigrateIn*: funcName=" + funcName + " @ " + thisSF.callNo);
+                if (lastSF == null) this.stackFrames = thisSF;
+                               else lastSF.nextSF = thisSF;
+                lastSF = thisSF;
+            }
+            this.migrateInReader  = null;
+            this.migrateInObjects = null;
         }
 
         /**
