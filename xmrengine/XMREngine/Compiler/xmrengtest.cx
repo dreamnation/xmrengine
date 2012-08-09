@@ -23,11 +23,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /**
          * @brief Stand-alone test program.
          *
-         * mono xmrengtest.exe <xmrobjfile> -checkrun -obj <xmrobjoutput> -asm <xmrasmoutput> <sourcefile>
+         * mono xmrengtest.exe <xmrobjfile> -checkrun -serialize -obj <xmrobjoutput> -asm <xmrasmoutput> <sourcefile>
          */
         public static void Main (string[] args)
         {
             bool doCheckRun = false;
+            bool serialize = false;
             string asmFileName = null;
             string objFileName = null;
             string srcFileName = null;
@@ -48,6 +49,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     objFileName = args[i];
                     continue;
                 }
+                if (arg == "-serialize") {
+                    serialize  = true;
+                    doCheckRun = true;
+                    continue;
+                }
+                if (arg[0] == '-') goto usage;
                 if (srcFileName != null) goto usage;
                 srcFileName = arg;
             }
@@ -120,19 +127,76 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             TestInstance inst = new TestInstance (scriptObjCode);
             inst.ehArgs = new object[0];
             inst.testCheckRun = doCheckRun;
+            MemoryStream serializeStream = null;
+            if (serialize) {
+                serializeStream = new MemoryStream ();
+            }
             while (true) {
                 try {
                     scriptObjCode.scriptEventHandlerTable[0,(int)ScriptEventCode.state_entry](inst);
                     break;
                 } catch (StackCaptureException) {
+
+                    /*
+                     * Make sure we were called because CheckRun() threw and 
+                     * the code built inst.StackFrames.
+                     */
                     if (inst.callMode != XMRInstAbstract.CALLMODE_SAVE) throw;
+
+                    /*
+                     * If -serialize, make sure stack frame serialization works.
+                     */
+                    if (serialize) {
+
+                        /*
+                         * Write global variables and stack frames out and discard them.
+                         */
+                        serializeStream.Position = 0;
+                        inst.migrateOutWriter    = new BinaryWriter (serializeStream);
+                        inst.migrateOutObjects   = new Dictionary<object, int> ();
+                        inst.glblVars.SendArrays (inst.SendObjArray);
+                        for (XMRStackFrame thisSF = inst.stackFrames; thisSF != null; thisSF = thisSF.nextSF) {
+                            inst.SendObjValue (thisSF.funcName);
+                            inst.SendObjValue (thisSF.callNo);
+                            inst.SendObjArray (thisSF.objArray);
+                        }
+                        inst.SendObjValue ("");
+                        inst.migrateOutWriter  = null;
+                        inst.migrateOutObjects = null;
+                        inst.stackFrames       = null;
+
+                        /*
+                         * Read global variables and stack frames back in and reconstruct.
+                         */
+                        serializeStream.Position = 0;
+                        inst.migrateInReader     = new BinaryReader (serializeStream);
+                        inst.migrateInObjects    = new Dictionary<int, object> ();
+                        inst.glblVars.RecvArrays (inst.RecvObjArray);
+                        XMRStackFrame lastSF     = null;
+                        string funcName;
+                        while ((funcName = (string)inst.RecvObjValue ()) != "") {
+                            XMRStackFrame thisSF = new XMRStackFrame ();
+                            thisSF.funcName = funcName;
+                            thisSF.callNo   = (int)inst.RecvObjValue ();
+                            thisSF.objArray = (object[])inst.RecvObjArray (typeof (object));
+                            if (lastSF == null) inst.stackFrames = thisSF;
+                                           else lastSF.nextSF = thisSF;
+                            lastSF = thisSF;
+                        }
+                        inst.migrateInReader  = null;
+                        inst.migrateInObjects = null;
+                    }
+
+                    /*
+                     * Tell code to restore from inst.stackFrames when it is called back.
+                     */
                     inst.callMode = XMRInstAbstract.CALLMODE_RESTORE;
                 }
             }
             return;
 
         usage:
-            Console.WriteLine ("usage: mono xmrengtest.exe [ -asm <asmoutfile>|- ] [ -obj <objoutfile> ] <sourcefile>");
+            Console.WriteLine ("usage: mono xmrengtest.exe [ -asm <asmoutfile>|- ] [ -checkrun ] [ -obj <objoutfile> ] [ -serialize] <sourcefile>");
             Environment.Exit (1);
         }
 
@@ -161,15 +225,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             if (testCheckRun) {
                 switch (this.callMode) {
+
+                    /*
+                     * Code was running normally.
+                     * Suspend and write stack frames to this.StackFrames.
+                     */
                     case CALLMODE_NORMAL: {
                         this.callMode = CALLMODE_SAVE;
                         this.stackFrames = null;
                         throw new StackCaptureException ();
                     }
+
+                    /*
+                     * Code just restored itself from this.StackFrames.
+                     * Resume where it left off until it calls CheckRun() again.
+                     */
                     case CALLMODE_RESTORE: {
+                        if (this.stackFrames != null) throw new Exception ("frames left over");
                         this.callMode = CALLMODE_NORMAL;
                         break;
                     }
+
                     default: throw new Exception ("bad callMode " + this.callMode);
                 }
             }

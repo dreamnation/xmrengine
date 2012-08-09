@@ -7,6 +7,7 @@
 
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection.Emit;
 using System.Text;
@@ -318,7 +319,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private static LSL_List nullList = new LSL_List (new object[0]);
         public XMR_Array XMRosParseJSON (string json)
         {
-            XMR_Array dict = new XMR_Array ();
+            XMR_Array dict = new XMR_Array (this, 0, 0);
             int idx = ParseJSON (dict, nullList, json, 0);
             while (idx < json.Length) {
                 if (json[idx] > ' ') throw new Exception ("left-over json " + json);
@@ -521,6 +522,328 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if (isneg) dval = -dval;
                 dval *= Math.Pow (10, expon - decpt);
                 return dval;
+            }
+        }
+
+        /**
+         * @brief types of data we serialize
+         */
+        private enum Ser : byte {
+            NULL,
+            EVENTCODE,
+            LSLFLOAT,
+            LSLINT,
+            LSLKEY,
+            LSLLIST,
+            LSLROT,
+            LSLSTR,
+            LSLVEC,
+            OBJARRAY,
+            SYSDOUB,
+            SYSFLOAT,
+            SYSINT,
+            SYSSTR,
+            XMRARRAY,
+            DUPREF,
+            SYSBOOL,
+            XMRINST,
+            DELEGATE,
+            SDTCLOBJ
+        }
+
+        /**
+         * @brief Write an array to the output stream.
+         */
+        public void SendObjArray (Array array)
+        {
+            SendObjValue ((object)(int)array.Length);
+            for (int i = 0; i < array.Length; i ++) {
+                SendObjValue (array.GetValue (i));
+            }
+        }
+
+        /**
+         * @brief Write an object to the output stream.
+         * @param graph = object to send
+         */
+        public BinaryWriter migrateOutWriter;
+        public Dictionary<object, int> migrateOutObjects;
+        public void SendObjValue (object graph)
+        {
+            /*
+             * Value types (including nulls) are always output directly.
+             */
+            if (graph == null) {
+                this.migrateOutWriter.Write ((byte)Ser.NULL);
+                return;
+            }
+            if (graph is ScriptEventCode) {
+                this.migrateOutWriter.Write ((byte)Ser.EVENTCODE);
+                this.migrateOutWriter.Write ((int)graph);
+                return;
+            }
+            if (graph is LSL_Float) {
+                this.migrateOutWriter.Write ((byte)Ser.LSLFLOAT);
+                this.migrateOutWriter.Write ((double)((LSL_Float)graph).value);
+                return;
+            }
+            if (graph is LSL_Integer) {
+                this.migrateOutWriter.Write ((byte)Ser.LSLINT);
+                this.migrateOutWriter.Write ((int)((LSL_Integer)graph).value);
+                return;
+            }
+            if (graph is LSL_Key) {
+                this.migrateOutWriter.Write ((byte)Ser.LSLKEY);
+                LSL_Key key = (LSL_Key)graph;
+                SendObjValue (key.m_string);  // m_string can be null
+                return;
+            }
+            if (graph is LSL_Rotation) {
+                this.migrateOutWriter.Write ((byte)Ser.LSLROT);
+                this.migrateOutWriter.Write ((double)((LSL_Rotation)graph).x);
+                this.migrateOutWriter.Write ((double)((LSL_Rotation)graph).y);
+                this.migrateOutWriter.Write ((double)((LSL_Rotation)graph).z);
+                this.migrateOutWriter.Write ((double)((LSL_Rotation)graph).s);
+                return;
+            }
+            if (graph is LSL_String) {
+                this.migrateOutWriter.Write ((byte)Ser.LSLSTR);
+                LSL_String str = (LSL_String)graph;
+                SendObjValue (str.m_string);  // m_string can be null
+                return;
+            }
+            if (graph is LSL_Vector) {
+                this.migrateOutWriter.Write ((byte)Ser.LSLVEC);
+                this.migrateOutWriter.Write ((double)((LSL_Vector)graph).x);
+                this.migrateOutWriter.Write ((double)((LSL_Vector)graph).y);
+                this.migrateOutWriter.Write ((double)((LSL_Vector)graph).z);
+                return;
+            }
+            if (graph is bool) {
+                this.migrateOutWriter.Write ((byte)Ser.SYSBOOL);
+                this.migrateOutWriter.Write ((bool)graph);
+                return;
+            }
+            if (graph is double) {
+                this.migrateOutWriter.Write ((byte)Ser.SYSDOUB);
+                this.migrateOutWriter.Write ((double)graph);
+                return;
+            }
+            if (graph is float) {
+                this.migrateOutWriter.Write ((byte)Ser.SYSFLOAT);
+                this.migrateOutWriter.Write ((float)graph);
+                return;
+            }
+            if (graph is int) {
+                this.migrateOutWriter.Write ((byte)Ser.SYSINT);
+                this.migrateOutWriter.Write ((int)graph);
+                return;
+            }
+
+            /*
+             * Script instance pointer is always just that.
+             */
+            if (graph == this) {
+                this.migrateOutWriter.Write ((byte)Ser.XMRINST);
+                return;
+            }
+
+            /*
+             * If this same exact object was already serialized,
+             * just output an index telling the receiver to use
+             * that same old object, rather than creating a whole
+             * new object with the same values.  Also this prevents
+             * self-referencing objects (like arrays) from causing
+             * an infinite loop.
+             */
+            int ident;
+            if (this.migrateOutObjects.TryGetValue (graph, out ident)) {
+                this.migrateOutWriter.Write ((byte)Ser.DUPREF);
+                this.migrateOutWriter.Write (ident);
+                return;
+            }
+
+            /*
+             * Object not seen before, save its address with an unique
+             * ident number that the receiver can easily regenerate.
+             */
+            ident = this.migrateOutObjects.Count;
+            this.migrateOutObjects.Add (graph, ident);
+            Console.WriteLine ("SendObjValue*: " + ident + " is a " + graph.GetType ().Name);
+
+            /*
+             * Now output the object's value(s).
+             * If the object self-references, the object is alreay entered
+             * in the dictionary and so the self-reference will just emit
+             * a DUPREF tag instead of trying to output the whole object 
+             * again.
+             */
+            if (graph is LSL_List) {
+                this.migrateOutWriter.Write ((byte)Ser.LSLLIST);
+                LSL_List list = (LSL_List)graph;
+                SendObjValue (list.Data);
+            } else if (graph is XMR_Array) {
+                this.migrateOutWriter.Write ((byte)Ser.XMRARRAY);
+                ((XMR_Array)graph).SendArrayObj (this.SendObjValue);
+            } else if (graph is object[]) {
+                this.migrateOutWriter.Write ((byte)Ser.OBJARRAY);
+                object[] array = (object[])graph;
+                int len = array.Length;
+                this.migrateOutWriter.Write (len);
+                for (int i = 0; i < len; i ++) {
+                    SendObjValue (array[i]);
+                }
+            } else if (graph is string) {
+                this.migrateOutWriter.Write ((byte)Ser.SYSSTR);
+                this.migrateOutWriter.Write ((string)graph);
+            } else if (graph is Delegate) {
+                Delegate del = (Delegate)graph;
+                this.migrateOutWriter.Write ((byte)Ser.DELEGATE);
+                this.migrateOutWriter.Write (del.Method.Name);
+                Type delType = del.GetType ();
+                foreach (KeyValuePair<string, TokenDeclSDType> kvp in m_ObjCode.sdObjTypesName) {
+                    TokenDeclSDType sdt = kvp.Value;
+                    if (sdt is TokenDeclSDTypeDelegate) {
+                        TokenDeclSDTypeDelegate sdtd = (TokenDeclSDTypeDelegate)sdt;
+                        if (sdtd.GetSysType () == delType) {
+                            this.migrateOutWriter.Write (kvp.Key);
+                            goto found;
+                        }
+                    }
+                }
+                throw new Exception ("cant find script-defined delegate for " + del.Method.Name + " type " + del.GetType ());
+            found:
+                SendObjValue (del.Target);
+            } else if (graph is XMRSDTypeClObj) {
+                this.migrateOutWriter.Write ((byte)Ser.SDTCLOBJ);
+                ((XMRSDTypeClObj)graph).Send (this.SendObjValue, this.SendObjArray);
+            } else {
+                throw new Exception ("unhandled type " + graph.GetType().ToString());
+            }
+        }
+
+        /**
+         * @brief Read an array of values from the stream.
+         * @param eleType = type of each element
+         * @returns array of the elements
+         */
+        public Array RecvObjArray (Type eleType)
+        {
+            int length = (int)RecvObjValue ();
+            Array array = Array.CreateInstance (eleType, length);
+            for (int i = 0; i < length; i ++) {
+                array.SetValue (RecvObjValue (), i);
+            }
+            return array;
+        }
+
+        /**
+         * @brief Read a single value from the stream.
+         * @returns value (boxed as needed)
+         */
+        public BinaryReader migrateInReader;
+        public Dictionary<int, object> migrateInObjects;
+        public object RecvObjValue ()
+        {
+            int ident = this.migrateInObjects.Count;
+            Ser code = (Ser)this.migrateInReader.ReadByte ();
+            switch (code) {
+                case Ser.NULL: {
+                    return null;
+                }
+                case Ser.EVENTCODE: {
+                    return (ScriptEventCode)this.migrateInReader.ReadInt32 ();
+                }
+                case Ser.LSLFLOAT: {
+                    return new LSL_Float (this.migrateInReader.ReadDouble ());
+                }
+                case Ser.LSLINT: {
+                    return new LSL_Integer (this.migrateInReader.ReadInt32 ());
+                }
+                case Ser.LSLKEY: {
+                    return new LSL_Key ((string)RecvObjValue ());
+                }
+                case Ser.LSLLIST: {
+                    LSL_List list =  new LSL_List (null);
+                    this.migrateInObjects.Add (ident, list);
+                    Console.WriteLine ("RecvObjValue*: " + ident + " is a list");
+                    list.Data = (object[])RecvObjValue ();
+                    return list;
+                }
+                case Ser.LSLROT: {
+                    double x = this.migrateInReader.ReadDouble ();
+                    double y = this.migrateInReader.ReadDouble ();
+                    double z = this.migrateInReader.ReadDouble ();
+                    double s = this.migrateInReader.ReadDouble ();
+                    return new LSL_Rotation (x, y, z, s);
+                }
+                case Ser.LSLSTR: {
+                    return new LSL_String ((string)RecvObjValue ());
+                }
+                case Ser.LSLVEC: {
+                    double x = this.migrateInReader.ReadDouble ();
+                    double y = this.migrateInReader.ReadDouble ();
+                    double z = this.migrateInReader.ReadDouble ();
+                    return new LSL_Vector (x, y, z);
+                }
+                case Ser.OBJARRAY: {
+                    int len = this.migrateInReader.ReadInt32 ();
+                    object[] array = new object[len];
+                    this.migrateInObjects.Add (ident, array);
+                    Console.WriteLine ("RecvObjValue*: " + ident + " is a object[]");
+                    for (int i = 0; i < len; i ++) {
+                        array[i] = RecvObjValue ();
+                    }
+                    return array;
+                }
+                case Ser.SYSBOOL: {
+                    return this.migrateInReader.ReadBoolean ();
+                }
+                case Ser.SYSDOUB: {
+                    return this.migrateInReader.ReadDouble ();
+                }
+                case Ser.SYSFLOAT: {
+                    return this.migrateInReader.ReadSingle ();
+                }
+                case Ser.SYSINT: {
+                    return this.migrateInReader.ReadInt32 ();
+                }
+                case Ser.SYSSTR: {
+                    string s = this.migrateInReader.ReadString ();
+                    this.migrateInObjects.Add (ident, s);
+                    Console.WriteLine ("RecvObjValue*: " + ident + " is a string");
+                    return s;
+                }
+                case Ser.XMRARRAY: {
+                    XMR_Array array = new XMR_Array (this, 0, 0);
+                    this.migrateInObjects.Add (ident, array);
+                    Console.WriteLine ("RecvObjValue*: " + ident + " is a XMR_Array");
+                    array.RecvArrayObj (this.RecvObjValue);
+                    return array;
+                }
+                case Ser.DUPREF: {
+                    ident = this.migrateInReader.ReadInt32 ();
+                    return this.migrateInObjects[ident];
+                }
+                case Ser.XMRINST: {
+                    return this;
+                }
+                case Ser.DELEGATE: {
+                    string name = this.migrateInReader.ReadString ();
+                    string sig  = this.migrateInReader.ReadString ();
+                    object targ = RecvObjValue ();
+                    Delegate del = GetScriptMethodDelegate (name, sig, targ);
+                    this.migrateInObjects.Add (ident, del);
+                    Console.WriteLine ("RecvObjValue*: " + ident + " is a delegate");
+                    return del;
+                }
+                case Ser.SDTCLOBJ: {
+                    XMRSDTypeClObj clobj = new XMRSDTypeClObj (this, this.RecvObjValue, this.RecvObjArray);
+                    this.migrateInObjects.Add (ident, clobj);
+                    Console.WriteLine ("RecvObjValue*: " + ident + " is a XMRSDTypeClObj");
+                    return clobj;
+                }
+                default: throw new Exception ("bad stream code " + code.ToString ());
             }
         }
     }

@@ -35,7 +35,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public static TokenTypeSDTypeDelegate indexDelegate = new TokenTypeSDTypeDelegate (new TokenTypeObject (null), new TokenType[] { new TokenTypeInt (null) });
         public static TokenTypeSDTypeDelegate valueDelegate = new TokenTypeSDTypeDelegate (new TokenTypeObject (null), new TokenType[] { new TokenTypeInt (null) });
 
-        public XMR_Array () { }
         public XMR_Array (XMRInstAbstract inst, int line, int posn)
         {
             this.inst = inst;

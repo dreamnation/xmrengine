@@ -38,7 +38,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public XMRInstArrays instVars;
 
+        /**
+         * @brief Called by script's $new() to initialize a new object.
+         */
         public XMRSDTypeClObj (XMRInstAbstract inst, int classindex)
+        {
+            Construct (inst, classindex);
+            instVars.AllocVarArrays (ref sdtcClass.instSizes);
+        }
+
+        /**
+         * @brief Set up everything except the instVars arrays.
+         * @param inst = script instance this object is part of
+         * @param classindex = which script-defined type class this object is an onstance of
+         * @returns with the vtables filled in
+         */
+        private void Construct (XMRInstAbstract inst, int classindex)
         {
             Delegate[] thisMid = null;
             TokenDeclSDTypeClass clas = (TokenDeclSDTypeClass)inst.m_ObjCode.sdObjTypesIndx[classindex];
@@ -105,12 +120,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     sdtcITable[i] = ivec;
                 }
             }
-
-            /*
-             * These arrays hold the script non-static instance variables.
-             * Lots more shitty little mallocs...
-             */
-            instVars.AllocVarArrays (ref clas.instSizes);
         }
 
         private delegate void MarkerInterfaceDummy ();
@@ -182,7 +191,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (ob == null) return null;
 
             /*
-             * If it is already one of our delegates, extract the script-defined class object from it.
+             * If it is already one of our interfaces, extract the script-defined class object from it.
              */
             if (ob is Delegate[]) {
                 Delegate[] da = (Delegate[])ob;
@@ -255,6 +264,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Array srcarray = (Array)srcsdt.instVars.iarObjects[0];
             Array dstarray = (Array)dstsdt.instVars.iarObjects[0];
             Array.Copy (srcarray, srcstart, dstarray, dststart, count);
+        }
+
+        /**
+         * @brief Write the whole thing out to a stream.
+         */
+        public delegate void SendValue (object obj);
+        public void Send (SendValue sendValue, XMRInstArrays.Sender sendArray)
+        {
+            sendValue (this.sdtcClass.sdTypeIndex);
+            this.instVars.SendArrays (sendArray);
+        }
+
+        /**
+         * @brief Read the whole thing in from a stream.
+         */
+        public delegate object RecvValue ();
+        public XMRSDTypeClObj (XMRInstAbstract inst, RecvValue recvValue, XMRInstArrays.Recver recvArray)
+        {
+            int classindex = (int)recvValue ();
+            Construct (inst, classindex);
+            this.instVars.RecvArrays (recvArray);
         }
     }
 }

@@ -190,32 +190,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public static byte migrationVersion = 9;
 
-        /**
-         * @brief types of data we serialize
-         */
-        private enum Ser : byte {
-            NULL,
-            EVENTCODE,
-            LSLFLOAT,
-            LSLINT,
-            LSLKEY,
-            LSLLIST,
-            LSLROT,
-            LSLSTR,
-            LSLVEC,
-            OBJARRAY,
-            SYSDOUB,
-            SYSFLOAT,
-            SYSINT,
-            SYSSTR,
-            XMRARRAY,
-            DETPRMS,
-            DUPREF,
-            SYSBOOL,
-            XMRINST,
-            DELEGATE
-        }
-
         // Scripts start suspended now. This means that event queues will
         // accept events, but will not actually run them until the core
         // tells it it's OK. This is needed to prevent loss of link messages
