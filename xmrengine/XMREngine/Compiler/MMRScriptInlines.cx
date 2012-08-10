@@ -139,6 +139,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			inf = new TokenDeclInline (ifd, false, "xmrHashCode(integer)",                                    typeof (int),         null); inf.codeGen = inf.CodeGenXMRHashCodeInteger;
 			inf = new TokenDeclInline (ifd, false, "xmrHashCode(object)",                                     typeof (int),         null); inf.codeGen = inf.CodeGenXMRHashCodeObject;
 			inf = new TokenDeclInline (ifd, false, "xmrArrayCopy(object,integer,object,integer,integer)",     typeof (int),         null); inf.codeGen = inf.CodeGenXMRArrayCopy;
+			inf = new TokenDeclInline (ifd, false, "xmrArray2List(object,integer,integer)",                   typeof (LSL_List),    null); inf.codeGen = inf.CodeGenXMRArray2List;
+			inf = new TokenDeclInline (ifd, false, "xmrList2Array(list,integer,object,integer,integer)",      typeof (void),        null); inf.codeGen = inf.CodeGenXMRList2Array;
 
 			inf = new TokenDeclInline (ifd, false, "xmrFixedArrayAllocF(integer)",                            typeof (object),      null); inf.codeGen = inf.CodeGenXMRFixedArrayAllocF;
 			inf = new TokenDeclInline (ifd, false, "xmrFixedArrayGetF(object,integer)",                       typeof (SCRIPTFLOAT), null); inf.codeGen = inf.CodeGenXMRFixedArrayGetF;
@@ -594,6 +596,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			args[3].PushVal (scg, errorAt);
 			args[4].PushVal (scg, errorAt);
 			scg.ilGen.Emit (OpCodes.Call, arrayCopyMethodInfo);
+		}
+
+		private static MethodInfo array2ListMethodInfo = typeof (XMRSDTypeClObj).GetMethod ("XMRArray2List", new Type[] { typeof (object), typeof (int), typeof (int) });
+		private void CodeGenXMRArray2List (ScriptCodeGen scg, Token errorAt, CompValu result, CompValu[] args)
+		{
+			result.PopPre (scg, errorAt);
+			args[0].PushVal (scg, errorAt);
+			args[1].PushVal (scg, errorAt);
+			args[2].PushVal (scg, errorAt);
+			scg.ilGen.Emit (OpCodes.Call, array2ListMethodInfo);
+			result.PopPost (scg, errorAt);
+		}
+
+		private static MethodInfo list2ArrayMethodInfo = typeof (XMRSDTypeClObj).GetMethod ("XMRList2Array", new Type[] { typeof (LSL_List), typeof (int), typeof (object), typeof (int), typeof (int) });
+		private void CodeGenXMRList2Array (ScriptCodeGen scg, Token errorAt, CompValu result, CompValu[] args)
+		{
+			args[0].PushVal (scg, errorAt);
+			args[1].PushVal (scg, errorAt);
+			args[2].PushVal (scg, errorAt);
+			args[3].PushVal (scg, errorAt);
+			args[4].PushVal (scg, errorAt);
+			scg.ilGen.Emit (OpCodes.Call, list2ArrayMethodInfo);
 		}
 
 		/**

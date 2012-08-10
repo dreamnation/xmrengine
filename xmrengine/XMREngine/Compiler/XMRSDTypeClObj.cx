@@ -267,6 +267,99 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         /**
+         * @brief Copy from an array to a list.
+         * @param srcar = the array to copy from
+         * @param start = where to start in the array
+         * @param count = number of elements
+         * @returns the list
+         */
+        public static LSL_List XMRArray2List (object srcar, int start, int count)
+        {
+            /*
+             * Get the script-visible type of the array.
+             * We only do arrays.
+             */
+            XMRSDTypeClObj array = (XMRSDTypeClObj)srcar;
+            TokenDeclSDTypeClass sdtClass = array.sdtcClass;
+            if (sdtClass.arrayOfRank == 0) {
+                throw new InvalidCastException ("only do arrays not " + sdtClass.longName.val);
+            }
+
+            /*
+             * Validate objects they want to put in the list.
+             * We can't allow anything funky that OpenSim runtime doesn't expect.
+             */
+            Array srcarray = (Array)array.instVars.iarObjects[0];
+            object[] output = new object[count];
+            for (int i = 0; i < count; i ++) {
+                object src = srcarray.GetValue (i + start);
+                if (src == null) throw new NullReferenceException ("null element " + i);
+                if (src is SCRIPTFLOAT) {
+                    output[i] = new LSL_Float ((SCRIPTFLOAT)src);
+                    continue;
+                }
+                if (src is int) {
+                    output[i] = new LSL_Integer ((int)src);
+                    continue;
+                }
+                if (src is LSL_Rotation) {
+                    output[i] = src;
+                    continue;
+                }
+                if (src is LSL_Vector) {
+                    output[i] = src;
+                    continue;
+                }
+                if (src is string) {
+                    output[i] = new LSL_String ((string)src);
+                    continue;
+                }
+                throw new InvalidCastException ("invalid element " + i + " type " + src.GetType ().Name);
+            }
+
+            /*
+             * Make a list out of that now immutable array.
+             */
+            return new LSL_List (output);
+        }
+
+        /**
+         * @brief Copy from a list to an array.
+         * @param srclist  = list to copy from
+         * @param srcstart = where to start in the list
+         * @param dstobj   = array to copy to
+         * @param dststart = where to start in the array
+         * @param count    = number of elements
+         */
+        public static void XMRList2Array (LSL_List srclist, int srcstart, object dstobj, int dststart, int count)
+        {
+            /*
+             * Get the script-visible type of the destination.
+             * We only do arrays.
+             */
+            XMRSDTypeClObj dstarray = (XMRSDTypeClObj)dstobj;
+            TokenDeclSDTypeClass sdtClass = dstarray.sdtcClass;
+            if (sdtClass.arrayOfType == null) {
+                throw new InvalidCastException ("only do arrays not " + sdtClass.longName.val);
+            }
+
+            /*
+             * Copy from the immutable array to the mutable array.
+             * Strip off any LSL wrappers as the script code doesn't expect any.
+             */
+            object[] srcarr = srclist.Data;
+            Array dstarr    = (Array)dstarray.instVars.iarObjects[0];
+
+            for (int i = 0; i < count; i ++) {
+                object obj = srcarr[i+srcstart];
+                if (obj is LSL_Float)   obj = ((LSL_Float)obj).value;
+                if (obj is LSL_Integer) obj = ((LSL_Integer)obj).value;
+                if (obj is LSL_String)  obj = ((LSL_String)obj).m_string;
+                dstarr.SetValue (obj, i + dststart);
+            }
+        }
+
+        /**
          * @brief Write the whole thing out to a stream.
          */
         public void Capture (XMRInstArrays.Sender sendValue)

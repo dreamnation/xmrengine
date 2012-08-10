@@ -42,12 +42,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		private static Dictionary<Type, int> precedence = PrecedenceInit ();
 
-		private Type[] brkCloseOnly     = new Type[] { typeof (TokenKwBrkClose) };
-		private Type[] cmpGTOnly        = new Type[] { typeof (TokenKwCmpGT)    };
-		private Type[] colonOnly        = new Type[] { typeof (TokenKwColon)    };
-		private Type[] colonOrDotDotDot = new Type[] { typeof (TokenKwColon),   typeof (TokenKwDotDotDot) };
-		private Type[] parCloseOnly     = new Type[] { typeof (TokenKwParClose) };
-		private Type[] semiOnly         = new Type[] { typeof (TokenKwSemi)     };
+		private static readonly Type[] brkCloseOnly     = new Type[] { typeof (TokenKwBrkClose) };
+		private static readonly Type[] cmpGTOnly        = new Type[] { typeof (TokenKwCmpGT)    };
+		private static readonly Type[] colonOnly        = new Type[] { typeof (TokenKwColon)    };
+		private static readonly Type[] commaOrBrcClose  = new Type[] { typeof (TokenKwComma),   typeof (TokenKwBrcClose)  };
+		private static readonly Type[] colonOrDotDotDot = new Type[] { typeof (TokenKwColon),   typeof (TokenKwDotDotDot) };
+		private static readonly Type[] parCloseOnly     = new Type[] { typeof (TokenKwParClose) };
+		private static readonly Type[] semiOnly         = new Type[] { typeof (TokenKwSemi)     };
 
 		/**
 		 * @brief Initialize operator precedence table
@@ -919,6 +920,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				fa = new TokenDeclSDTypeClass (new TokenName (tokenScript, name));
 				CatalogSDTypeDecl (fa);
 				repeat |= REPEAT_INSTGEN;
+				((TokenDeclSDTypeClass)fa).arrayOfType = ofType;
+				((TokenDeclSDTypeClass)fa).arrayOfRank = rank;
 
 				Token t = SpliceAfter (tokenBegin, fa);
 				t = SpliceAfter (t, new TokenKwBrcOpen (t));
@@ -3036,6 +3039,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				goto modifiers;
 			}
 
+			/*
+			 * If 'new' arraytipe '{', it is an array initializer.
+			 */
+			if ((token is TokenKwBrcOpen) && (operand is TokenLValSField) && 
+			    (((TokenLValSField)operand).fieldName.val == "$new") && 
+			    ((TokenLValSField)operand).baseType.ToString ().EndsWith ("]")) {
+				operand = ParseRValNewArIni (ref token, (TokenLValSField)operand);
+				if (operand != null) goto modifiers;
+			}
+
 			return operand;
 		}
 
@@ -3322,6 +3335,66 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		private TokenRVal PerformUnOp (Token unOp, TokenRVal right)
 		{
 			return new TokenRValOpUn ((TokenKw)unOp, right);
+		}
+
+		/**
+		 * @brief Parse an array initialization expression.
+		 * @param token = points to '{' on entry
+		 * @param newCall = encapsulates a '$new' call
+		 * @return resultant operand encapsulating '$new' call and initializers
+		 *             token = points just past terminating '}'
+		 *         ...or null if parse error
+		 */
+		private TokenRVal ParseRValNewArIni (ref Token token, TokenLValSField newCall)
+		{
+			Stack<TokenList> stack  = new Stack<TokenList> ();
+			TokenRValNewArIni arini = new TokenRValNewArIni (token);
+			arini.sideEffects = true;
+			arini.arrayType   = newCall.baseType;
+			TokenList values  = null;
+			while (true) {
+
+				// open brace means start a (sub-)list
+				if (token is TokenKwBrcOpen) {
+					stack.Push (values);
+					values = new TokenList (token);
+					token  = token.nextToken;
+					continue;
+				}
+
+				// close brace means end of (sub-)list
+				// if final '}' all done parsing
+				if (token is TokenKwBrcClose) {
+					token  = token.nextToken;          // skip over the '}'
+					TokenList innerds = values;        // save the list just closed
+					arini.valueList = innerds;         // it's the top list if it's the last closed
+					values = stack.Pop ();             // pop to next outer list
+					if (values == null) return arini;  // final '}', we are done
+					values.tl.Add (innerds);           // put the inner list on end of outer list
+					if (token is TokenKwComma) {       // should have a ',' or '}' next
+						token = token.nextToken;   // skip over the ','
+					} else if (!(token is TokenKwBrcClose)) {
+						ErrorMsg (token, "expecting , or } after sublist");
+					}
+					continue;
+				}
+
+				// this is a comma that doesn't have a value expression before it
+				// so we take it to mean skip initializing element (leave it zeroes/null etc)
+				if (token is TokenKwComma) {
+					values.tl.Add (token);
+					token = token.nextToken;
+					continue;
+				}
+
+				// parse value expression and skip terminating ',' if any
+				TokenRVal append = ParseRVal (ref token, commaOrBrcClose);
+				if (append == null) return null;
+				values.tl.Add (append);
+				if (token is TokenKwComma) {
+					token = token.nextToken;
+				}
+			}
 		}
 
 		/**
@@ -3720,12 +3793,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		                                           //   i = interface number from this.intfIndices[name]
 		                                           //   j = method of interface from iface.methods[name].vTableIndex
 
+		public TokenType arrayOfType;     // if array, it's an array of this type, else null
+		public int arrayOfRank;           // if array, it has this number of dimensions, else zero
+
 		public bool slotsAssigned;        // set true when slots have been assigned...
 		public XMRInstArSizes instSizes;  // number of instance fields of various types
 		public int numVirtFuncs;          // number of virtual functions
 		public int numInterfaces;         // number of implemented interfaces
 
 		private string extendsStr;
+		private string arrayOfTypeStr;
 		private List<StackedMethod> stackedMethods;
 		private List<StackedIFace>  stackedIFaces;
 
@@ -3777,6 +3854,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				objFileWriter.Write (extends.longName.val);
 			}
 
+			objFileWriter.Write (arrayOfRank);
+			if (arrayOfRank > 0) objFileWriter.Write (arrayOfType.ToString ());
+
 			foreach (TokenDeclVar meth in members) {
 				if ((meth.retType != null) && (meth.vTableIndex >= 0)) {
 					objFileWriter.Write (meth.vTableIndex);
@@ -3811,6 +3891,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			numVirtFuncs = objFileReader.ReadInt32 ();
 
 			extendsStr = objFileReader.ReadString ();
+			arrayOfRank = objFileReader.ReadInt32 ();
+			if (arrayOfRank > 0) arrayOfTypeStr = objFileReader.ReadString ();
 
 			if (asmFileWriter != null) {
 				instSizes.WriteAsmFile (asmFileWriter, extendsStr + "." + shortName.val + ".numInst");
@@ -3874,6 +3956,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					extends.FillVTables (scriptObjCode);
 				}
 				extendsStr = null;
+			}
+			if (arrayOfTypeStr != null) {
+				arrayOfType = MakeTypeToken (arrayOfTypeStr);
+				arrayOfTypeStr = null;
 			}
 
 			if ((numVirtFuncs > 0) && (stackedMethods != null)) {
@@ -5443,6 +5529,49 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			}
 			return true;
 		}
+	}
+
+	/**
+	 * @brief encapsulates '$new' arraytype '{' ... '}'
+	 */
+	public class TokenRValNewArIni : TokenRVal {
+		public TokenType arrayType;
+		public TokenList valueList;  // TokenList : a sub-list
+		                             // TokenKwComma : a default value
+		                             // TokenRVal    : init expression
+		public TokenRValNewArIni (Token original) : base (original)
+		{
+			valueList = new TokenList (original);
+		}
+
+		// type of the expression = the array type allocated by $new()
+		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			return arrayType;
+		}
+
+		// The expression is trivial if all the initializers are trivial.
+		// An array's constructor is always trivial (no CheckRun() calls).
+		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			return ListIsTrivial (scg, valueList);
+		}
+		private bool ListIsTrivial (ScriptCodeGen scg, TokenList valList)
+		{
+			foreach (Token val in valList.tl) {
+				if (val is TokenRVal) {
+					if (!((TokenRVal)val).IsRValTrivial (scg, null)) return false;
+				}
+				if (val is TokenList) {
+					if (!ListIsTrivial (scg, (TokenList)val)) return false;
+				}
+			}
+			return true;
+		}
+	}
+	public class TokenList : Token {
+		public List<Token> tl = new List<Token> ();
+		public TokenList (Token original) : base (original) { }
 	}
 
 	/**

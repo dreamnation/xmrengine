@@ -2811,6 +2811,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (rVal is TokenRValConst)     return GenerateFromRValConst     ((TokenRValConst)rVal);
 			if (rVal is TokenRValIsType)    return GenerateFromRValIsType    ((TokenRValIsType)rVal);
 			if (rVal is TokenRValList)      return GenerateFromRValList      ((TokenRValList)rVal);
+			if (rVal is TokenRValNewArIni)  return GenerateFromRValNewArIni  ((TokenRValNewArIni)rVal);
 			if (rVal is TokenRValOpBin)     return GenerateFromRValOpBin     ((TokenRValOpBin)rVal);
 			if (rVal is TokenRValOpUn)      return GenerateFromRValOpUn      ((TokenRValOpUn)rVal);
 			if (rVal is TokenRValParen)     return GenerateFromRValParen     ((TokenRValParen)rVal);
@@ -3455,6 +3456,168 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ilGen.Emit (OpCodes.Newobj, lslListConstructorInfo);
 			newList.PopPost (this, rValList);
 			return newList;
+		}
+
+		/**
+		 * @brief New array allocation with initializer expressions.
+		 */
+		private CompValu GenerateFromRValNewArIni (TokenRValNewArIni rValNewArIni)
+		{
+			return MallocAndInitArray (rValNewArIni.arrayType, rValNewArIni.valueList);
+		}
+
+		/**
+		 * @brief Mallocate and initialize an array from its initialization list.
+		 * @param arrayType = type of the array to be allocated and initialized
+		 * @param values    = initialization value list used to size and initialize the array.
+		 * @returns memory location of the resultant initialized array.
+		 */
+		private CompValu MallocAndInitArray (TokenType arrayType, TokenList values)
+		{
+			TokenDeclSDTypeClass arrayDecl = ((TokenTypeSDTypeClass)arrayType).decl;
+			TokenType eleType = arrayDecl.arrayOfType;
+			int rank = arrayDecl.arrayOfRank;
+
+			// Get size of each of the dimensions by scanning the initialization value list
+			int[] dimSizes = new int[rank];
+			FillInDimSizes (dimSizes, 0, rank, values);
+
+			// Figure out where the array's $new() method is
+			TokenType[] newargsig = new TokenType[rank];
+			for (int k = 0; k < rank; k ++) {
+				newargsig[k] = tokenTypeInt;
+			}
+			TokenDeclVar newMeth = FindThisMember (arrayDecl, new TokenName (null, "$new"), newargsig);
+
+			// Output a call to malloc the array with all default values
+			//    array = ArrayType.$new (dimSizes[0], dimSizes[1], ...)
+			CompValu array = new CompValuTemp (arrayType, "$newarini", this);
+			array.PopPre (this, arrayType);
+			PushXMRInst ();
+			for (int k = 0; k < rank; k ++) {
+				ilGen.PushInt (dimSizes[k]);
+			}
+			ilGen.Emit (OpCodes.Call, newMeth.ilGen);
+			array.PopPost (this, arrayType);
+
+			// Figure out where the array's Set() method is
+			TokenType[] setargsig = new TokenType[rank+1];
+			for (int k = 0; k < rank; k ++) {
+				setargsig[k] = tokenTypeInt;
+			}
+			setargsig[rank] = eleType;
+			TokenDeclVar setMeth = FindThisMember (arrayDecl, new TokenName (null, "Set"), setargsig);
+
+			// Fill in the array with the initializer values
+			FillInInitVals (array, setMeth, dimSizes, 0, rank, values, eleType);
+
+			// The array is our resultant value
+			return array;
+		}
+
+		/**
+		 * @brief Compute an array's dimensions given its initialization value list
+		 * @param dimSizes = filled in with array's dimensions
+		 * @param dimNo    = what dimension the 'values' list applies to
+		 * @param rank     = total number of dimensions of the array
+		 * @param values   = list of values to initialize the array's 'dimNo' dimension with
+		 * @returns with dimSizes[dimNo..rank-1] filled in
+		 */
+		private static void FillInDimSizes (int[] dimSizes, int dimNo, int rank, TokenList values)
+		{
+			// the size of a dimension is the largest number of initializer elements at this level
+			// for dimNo 0, this is the number of elements in the top-level list
+			if (dimSizes[dimNo] < values.tl.Count) dimSizes[dimNo] = values.tl.Count;
+
+			// see if there is another dimension to calculate
+			if (++ dimNo < rank) {
+
+				// its size is the size of the largest initializer list at the next inner level
+				foreach (Token val in values.tl) {
+					if (val is TokenList) {
+						TokenList subvals = (TokenList)val;
+						FillInDimSizes (dimSizes, dimNo, rank, subvals);
+					}
+				}
+			}
+		}
+
+		/**
+		 * @brief Output code to fill in array's initialization values
+		 * @param array      = array to be filled in
+		 * @param setMeth    = the array's Set() method
+		 * @param subscripts = holds subscripts being built
+		 * @param dimNo      = which dimension the 'values' are for
+		 * @param values     = list of initialization values for dimension 'dimNo'
+		 * @param rank       = number of dimensions of 'array'
+		 * @param values     = list of values to initialize the array's 'dimNo' dimension with
+		 * @param eleType    = the element's type
+		 * @returns with code emitted to initialize array's [subscripts[0], ..., subscripts[dimNo-1], *, *, ...]
+		 *                                                          dimNo and up completely filled ---^
+		 */
+		private void FillInInitVals (CompValu array, TokenDeclVar setMeth, int[] subscripts, int dimNo, int rank, TokenList values, TokenType eleType)
+		{
+			subscripts[dimNo] = 0;
+			foreach (Token val in values.tl) {
+				CompValu initValue = null;
+
+				/*
+				 * If it is a sublist, process it.
+				 *    If we don't have enough subscripts yet, hopefully that sublist will have enough.
+				 *    If we already have enough subscripts, then that sublist can be for an element of this supposedly jagged array.
+				 */
+				if (val is TokenList) {
+					TokenList sublist = (TokenList)val;
+					if (dimNo + 1 < rank) {
+
+						/*
+						 * We don't have enough subscripts yet, hopefully the sublist has the rest.
+						 */
+						FillInInitVals (array, setMeth, subscripts, dimNo + 1, rank, sublist, eleType);
+					} else if ((eleType is TokenTypeSDTypeClass) && (((TokenTypeSDTypeClass)eleType).decl.arrayOfType == null)) {
+
+						/*
+						 * If we aren't a jagged array either, we can't do anything with the sublist.
+						 */
+						ErrorMsg (val, "too many brace levels");
+					} else {
+
+						/*
+						 * We are a jagged array, so malloc a subarray and initialize it with the sublist.
+						 * Then we can use that subarray to fill this array's element.
+						 */
+						initValue = MallocAndInitArray (eleType, sublist);
+					}
+				}
+
+				/*
+				 * If it is a value expression, then output code to compute the value.
+				 */
+				if (val is TokenRVal) {
+					if (dimNo + 1 < rank) {
+						ErrorMsg ((Token)val, "not enough brace levels");
+					} else {
+						initValue = GenerateFromRVal ((TokenRVal)val);
+					}
+				}
+
+				/*
+				 * If there is an initValue, output "array.Set (subscript[0], subscript[1], ..., initValue)"
+				 */
+				if (initValue != null) {
+					array.PushVal (this, val);
+					for (int i = 0; i <= dimNo; i ++) {
+						ilGen.PushInt (subscripts[i]);
+					}
+					initValue.PushVal (this, val, eleType);
+					ilGen.Emit (OpCodes.Call, setMeth.ilGen);
+				}
+
+				/*
+				 * That subscript is processed one way or another, on to the next.
+				 */
+				subscripts[dimNo] ++;
+			}
 		}
 
 		/**

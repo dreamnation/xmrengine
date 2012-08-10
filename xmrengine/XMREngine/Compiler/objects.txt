@@ -15,8 +15,6 @@ CLASSES
 
         <fieldquals>  <type> <fieldname> [ = <initvalue> ] ;
 
-        <methodquals> <type> <propertyname> { [ get { <methodbody> } ] [ set { <methodbody> } ] }
-
         <methodquals> [ <rettype> ] <methodname> [ : <intftype> [ . <intfmeth> ] ]
                 ( <arglist> ) [ ; | { <methodbody> } ]
     }
@@ -36,19 +34,46 @@ FIXED-DIMENSION ARRAYS
     <basetype>[,,]    - three dimensions
         ... etc
 
-    declare variable or field example:
+    declare variable or field example and allocating:
 
         integer rows = number of rows wanted;
         integer cols = number of columns wanted;
         float[,] mat = new float[,] (rows,cols);  // note: NOT new float[rows,cols]
 
+    declaring and allocating with initial values example:
+
+        integer[,] mat = new int[,] { { 1,2,3 }, { 4,5 },, { 10,11,12, } };
+
+            creates a 4 row, 3 column matrix:
+
+                [  1  2  3 ]
+                [  4  5  0 ]
+                [  0  0  0 ]
+                [ 10 11 12 ]
+
+            The ( 4,5 } got padded with zeroes to fill the row.
+            The ,, after the { 4,5 } said to skip a row.
+            The , after the 12 is ignored.
+
+            If a comma is not preceded by a value or a sublist,
+            it says to skip initializing that element of the array,
+            whatever dimension it is in.  So the second comma of 
+            ,, after the { 4,5 } said to skip initializing the 
+            whole third row of the matrix.  The comma after the 
+            12 did not skip anything because it was preceded by 
+            a value (ie 12), as is the case with all the other
+            commas.
+
+            The initialization values can be arbitrary expressions of the 
+            array element's type.
+
     access element example:
 
         mat[row,col]
 
-    methods and properties:
+    methods:
 
-        .Length = number of elements in array (all dimensions multiplied)
+        .Length() = total number of elements in array (all dimensions multiplied)
         .Length(n) = number of elements in dimension n, n=0 for leftmost dimension
 
             float[,] mat = new float[,](2,3);
@@ -86,13 +111,6 @@ INTERFACES
         [ <rettype> ] <methodname> ( <arglist> ) ;
 
     }
-
-PROPERTIES
-
-    <methodquals> <type> <propertyname> { [ get { <methodbody> } ] [ set { <methodbody> } ] }
-
-        properties can be defined at top-level for global properties
-        properties can be defined abstract, instance, static, virtual within a class
 
 Generics
 
@@ -171,7 +189,6 @@ Keywords:
     constructor - declares a script-defined class's constructor method
     delegate    - defines a type that can hold a function/method entrypoint
     final       - declares that a script-defined class's method may not be overidden by leafward classes
-    get         - defines property's getter function
     interface   - defines a script-defined interface's method prototypes
     new         - allocates a new instance of a script-defined class and calls a constructor
                 - also used on member declaration to ignore any rootward definition override
@@ -179,7 +196,6 @@ Keywords:
     private     - declares a member can be accessed only from within class
     protected   - declares a member can be accessed only from within class or a leafward class
     public      - declares a member can be accessed anywhere
-    set         - defines property's setter function
     static      - declares a script-defined class's method as being static
     this        - used to access the current script-defined class's object instance
     virtual     - declares a script-defined class's method may be overridden by leafward classes
@@ -199,4 +215,13 @@ Built-in functions:
                                     the element types must match.  If the arrays are multi-dimensional, 
                                     use srcarray.Index(idx0,idx1,...) and dstarray.Index(idx0,idx1,...) 
                                     for the srcstart and dststart parameters.
+
+    list xmrArray2List(object srcarray, integer srcstart, int count)
+            creates a list from the given subrange of the source array
+            the array elements used can be any mixture of type float,integer,rotation,string,vector
+
+    xmrList2Array(list srclist, integer srcstart, object dstarray, int dststart, int count)
+            copies elements from the source list to the destination array
+            dstarray must be an array of a type that can hold the types of the list elements
+                object[] is always valid
 

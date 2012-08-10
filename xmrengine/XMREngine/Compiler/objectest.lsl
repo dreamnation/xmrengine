@@ -317,5 +317,53 @@ default {
                 llOwnerSay (msg);
             }
         }
+
+        llOwnerSay ("jagged array initiializing");
+        integer[,][] jagint = new integer[,][] 
+            { { { 5,6,7 },, { 1,2 } }, 
+              { , { 9 }, { 8,9 }, { 3,4,5,6 }, } };
+
+        for (integer i = 0; i < jagint.Length (0); i ++) {
+            string line = "        ";
+            if (i == 0) line += "{ {";
+                   else line += "  {";
+            for (integer j = 0; j < jagint.Length (1); j ++) {
+                if (j > 0) line += ",";
+                integer[] jagintel = jagint[i,j];
+                if (jagintel == undef) {
+                    line += " undef";
+                } else {
+                    line += " { ";
+                    for (integer k = 0; k < jagintel.Length (0); k ++) {
+                        if (k > 0) line += ",";
+                        line += (string)jagintel[k];
+                    }
+                    line += " }";
+                }
+            }
+            line += " }";
+            if (i + 1 == jagint.Length (0)) line += " }";
+                                       else line += ",";
+            llOwnerSay (line);
+        }
+
+        for (integer i = 0; i < jagint.Length (0); i ++) {
+            for (integer j = 0; j < jagint.Length (1); j ++) {
+                integer[] jagintel = jagint[i,j];
+                if (jagintel == undef) continue;
+                integer numel = jagintel.Length (0);
+                integer skip = 0;
+                if (numel > 2) skip = numel - 2;
+                list lis = xmrArray2List (jagintel, skip, numel - skip);
+                string line = "   [" + i + "," + j + "]=" + (string)lis + " => ";
+                string[] copy = new string[] (numel);
+                xmrList2Array (lis, 0, copy, skip, numel - skip);
+                for (integer k = 0; k < numel; k ++) {
+                    if (k > 0) line += ",";
+                    line += (string)copy[k];
+                }
+                llOwnerSay (line);
+            }
+        }
     }
 }
