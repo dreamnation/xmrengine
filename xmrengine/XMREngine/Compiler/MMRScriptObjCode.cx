@@ -1,5 +1,5 @@
 /***************************************************\
- *  COPYRIGHT 2010, Mike Rieker, Beverly, MA, USA  *
+ *  COPYRIGHT 2012, Mike Rieker, Beverly, MA, USA  *
  *  All rights reserved.                           *
 \***************************************************/
 
@@ -11,45 +11,47 @@ using System.Reflection.Emit;
 
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
-	public delegate void ScriptEventHandler (XMRInstAbstract instance);
+    public delegate void ScriptEventHandler (XMRInstAbstract instance);
 
-	/*
-	 * This object represents the output of the compilation.
-	 * Once the compilation is complete, its contents should be
-	 * considered 'read-only', so it can be shared among multiple
-	 * instances of the script.
-	 *
-	 * It gets created by ScriptCodeGen.
-	 * It gets used by XMRInstance to create script instances.
-	 */
-	public class ScriptObjCode
-	{
-		public XMRInstArSizes glblSizes;  // number of global variables of various types
+    /*
+     * This object represents the output of the compilation.
+     * Once the compilation is complete, its contents should be
+     * considered 'read-only', so it can be shared among multiple
+     * instances of the script.
+     *
+     * It gets created by ScriptCodeGen.
+     * It gets used by XMRInstance to create script instances.
+     */
+    public class ScriptObjCode
+    {
+        public string sourceHash;         // source text hash code
 
-		public string[] stateNames;      // convert state number to corresponding string
+        public XMRInstArSizes glblSizes;  // number of global variables of various types
 
-		public ScriptEventHandler[,] scriptEventHandlerTable;
-		                                 // entrypoints to all event handler functions
-		                                 // 1st subscript = state code number (0=default)
-		                                 // 2nd subscript = event code number
-		                                 // null entry means no handler defined for that state,event
+        public string[] stateNames;       // convert state number to corresponding string
 
-		public Dictionary<string, TokenDeclSDType> sdObjTypesName;
-		                                 // all script-defined types by name
-		public TokenDeclSDType[] sdObjTypesIndx;
-		                                 // all script-defined types by sdTypeIndex
+        public ScriptEventHandler[,] scriptEventHandlerTable;
+                                          // entrypoints to all event handler functions
+                                          // 1st subscript = state code number (0=default)
+                                          // 2nd subscript = event code number
+                                          // null entry means no handler defined for that state,event
 
-		public Dictionary<Type, string> sdDelTypes;
-						 // all script-defined delegates (including anonymous)
+        public Dictionary<string, TokenDeclSDType> sdObjTypesName;
+                                          // all script-defined types by name
+        public TokenDeclSDType[] sdObjTypesIndx;
+                                          // all script-defined types by sdTypeIndex
 
-		public Dictionary<string, DynamicMethod> dynamicMethods;
-		                                 // all dyanmic methods that could be encountered by checkpointing
+        public Dictionary<Type, string> sdDelTypes;
+                                          // all script-defined delegates (including anonymous)
 
-		public DateTime fileDateUtc;
-		public int expiryDays = Int32.MaxValue;
-		public bool IsExpired ()
-		{
-			return (DateTime.UtcNow.Ticks - fileDateUtc.Ticks) / 10000000 / 86400 >= expiryDays;
-		}
-	}
+        public Dictionary<string, DynamicMethod> dynamicMethods;
+                                          // all dyanmic methods that could be encountered by checkpointing
+
+        public DateTime fileDateUtc;
+        public int expiryDays = Int32.MaxValue;
+        public bool IsExpired ()
+        {
+            return (DateTime.UtcNow.Ticks - fileDateUtc.Ticks) / 10000000 / 86400 >= expiryDays;
+        }
+    }
 }

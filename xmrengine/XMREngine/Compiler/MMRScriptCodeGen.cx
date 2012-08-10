@@ -108,12 +108,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		                                                                     "CatchExcToStr",
 		                                                                     new Type[] { typeof (Exception) });
 
-		public static bool CodeGen (TokenScript tokenScript, BinaryWriter objFileWriter)
+		public static bool CodeGen (TokenScript tokenScript, BinaryWriter objFileWriter, string sourceHash)
 		{
 			/*
 			 * Run compiler such that it has a 'this' context for convenience.
 			 */
-			ScriptCodeGen scg = new ScriptCodeGen (tokenScript, objFileWriter);
+			ScriptCodeGen scg = new ScriptCodeGen (tokenScript, objFileWriter, sourceHash);
 
 			/*
 			 * Return pointer to resultant script object code.
@@ -130,6 +130,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private BreakContTarg curContTarg  = null;
 		private int lastErrorLine = 0;
 		private int nStates = 0;
+		private string sourceHash;
 		private string lastErrorFile = "";
 		private Token errorMessageToken = null;
 		private TokenDeclVar curDeclFunc = null;
@@ -152,10 +153,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private LinkedList<CallLabel> allCallLabels = new LinkedList<CallLabel> ();
 		public  LinkedList<CompValuTemp> activeTemps = new LinkedList<CompValuTemp> ();
 
-		private ScriptCodeGen (TokenScript tokenScript, BinaryWriter objFileWriter)
+		private ScriptCodeGen (TokenScript tokenScript, BinaryWriter objFileWriter, string sourceHash)
 		{
 			this.tokenScript   = tokenScript;
 			this.objFileWriter = objFileWriter;
+			this.sourceHash    = sourceHash;
 
 			try {
 				PerformCompilation ();
@@ -715,7 +717,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			objFileWriter.Write (OBJECT_CODE_MAGIC.ToCharArray ());
 			objFileWriter.Write (COMPILED_VERSION_VALUE);
-
+			objFileWriter.Write (sourceHash);
 			objFileWriter.Write (tokenScript.expiryDays);
 			scriptObjCode.glblSizes.WriteToFile (objFileWriter);
 
@@ -4697,8 +4699,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Fill in simple parts of scriptObjCode object.
 			 */
-			ScriptObjCode scriptObjCode     = new ScriptObjCode ();
-			scriptObjCode.expiryDays        = objFileReader.ReadInt32 ();
+			ScriptObjCode scriptObjCode = new ScriptObjCode ();
+			scriptObjCode.sourceHash    = objFileReader.ReadString ();
+			scriptObjCode.expiryDays    = objFileReader.ReadInt32 ();
 			scriptObjCode.glblSizes.ReadFromFile (objFileReader);
 
 			int nStates = objFileReader.ReadInt32 ();

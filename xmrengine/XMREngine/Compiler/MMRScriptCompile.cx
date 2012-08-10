@@ -7,6 +7,8 @@
  * @brief Main program for the script compiler.
  */
 
+#define strcasecmp(s,t) String.Compare(s,t,StringComparison.OrdinalIgnoreCase)
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -23,6 +25,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
     public class ScriptCompile
     {
+        public const int MAX_WEB_SCRIPT_SIZE = 1000000;
+
         private const bool encryption  = true;  // always true for production use
         private const bool compression = true;  // always true for production use
 
@@ -333,6 +337,7 @@ version:
             string envar = null;
             string fname = Path.Combine (scriptBasePath, assetID);
             string objFileName = GetObjFileName (assetID, scriptBasePath);
+            string sourceHash = null;
 
             /*
              * If we already have an object file, don't bother compiling.
@@ -363,6 +368,86 @@ version:
                 }
 
                 /*
+                 * If source is 'XMROption' 'fetchsource' ...
+                 * read source file from the given URL.
+                 */
+                if ((tokenBegin.nextToken is TokenName) &&
+                    (strcasecmp (((TokenName)tokenBegin.nextToken).val, "xmroption") == 0) &&
+                    (tokenBegin.nextToken.nextToken is TokenName) &&
+                    (strcasecmp (((TokenName)tokenBegin.nextToken.nextToken).val, "fetchsource") == 0)) {
+
+                    try {
+
+                        /*
+                         * Open web stream.
+                         */
+                        webStream = FetchBinary (tokenBegin.nextToken.nextToken.nextToken, errorMessage);
+                        if (webStream == null) return null;
+                        StreamReader webReader = new StreamReader (webStream);
+
+                        /*
+                         * Read it all into one string.
+                         */
+                        int lineLen;
+                        int totalChars = 0;
+                        char[] lineBuff;
+                        List<char[]> stringList = new List<char[]> ();
+                        do {
+                            lineBuff    = new char[4096];
+                            lineLen     = webReader.ReadBlock (lineBuff, 0, lineBuff.Length);
+                            stringList.Add (lineBuff);
+                            totalChars += lineLen;
+                            if (totalChars > MAX_WEB_SCRIPT_SIZE) {
+                                throw new Exception ("script exceeds maximum size of " + MAX_WEB_SCRIPT_SIZE);
+                            }
+                        } while (lineLen == lineBuff.Length);
+                        
+                        webStream.Close ();
+                        webStream = null;
+                        StringBuilder sb = new StringBuilder (totalChars);
+                        foreach (char[] lineString in stringList) {
+                            sb.Append (lineString);
+                        }
+                        source = sb.ToString ();
+                    } finally {
+                        if (webStream != null) webStream.Close ();
+                    }
+
+                    /*
+                     * Maybe write script source to a file for debugging.
+                     */
+                    envar = Environment.GetEnvironmentVariable ("MMRScriptCompileSaveSource");
+                    if ((envar != null) && ((envar[0] & 1) != 0)) {
+                        m_log.DebugFormat("[XMREngine]: MMRScriptCompileSaveSource: saving to {0}.lslweb", fname);
+                        File.WriteAllText (fname + ".lslweb", source);
+                    }
+
+                    /*
+                     * Parse source string into tokens.
+                     */
+                    tokenBegin = TokenBegin.Construct(errorMessage, source);
+                    if (tokenBegin == null) {
+                        m_log.Debug ("[XMREngine]: parsing errors on " + assetID);
+                        return null;
+                    }
+                }
+
+                /*
+                 * Return source hash so caller can know if source changes.
+                 */
+                {
+                    System.Security.Cryptography.MD5 md5 = System.Security.Cryptography.MD5.Create ();
+                    byte[] sourceBytes = System.Text.Encoding.ASCII.GetBytes (source);
+                    byte[] hashBytes   = md5.ComputeHash (sourceBytes);
+                    int hashBytesLen   = hashBytes.Length;
+                    StringBuilder sb   = new StringBuilder (hashBytesLen * 2 + 2);
+                    for (int i = 0; i < hashBytesLen; i ++) {
+                        sb.Append (hashBytes[i].ToString ("X2"));
+                    }
+                    sourceHash = sb.ToString ();
+                }
+
+                /*
                  * Create object file one way or another.
                  */
                 try {
@@ -372,7 +457,8 @@ version:
                      * If source is 'XMROption' 'fetchbinary' ...,
                      * read xmrobj file from the given URL.
                      */
-                    if ((tokenBegin.nextToken is TokenName) &&
+                    if (false && //////////////// DISABLED ////////////////
+                        (tokenBegin.nextToken is TokenName) &&
                         (((TokenName)tokenBegin.nextToken).val == "XMROption") &&
                         (tokenBegin.nextToken.nextToken is TokenName) &&
                         (((TokenName)tokenBegin.nextToken.nextToken).val == "fetchbinary")) {
@@ -382,6 +468,7 @@ version:
                          */
                         webStream = FetchBinary (tokenBegin.nextToken.nextToken.nextToken, errorMessage);
                         if (webStream == null) return null;
+                        webStream = Decrypt (webStream);
 
                         /*
                          * Copy object from web and write to .xmrobj file.
@@ -406,7 +493,7 @@ version:
                          * Compile abstract syntax tree to write object file.
                          */
                         BinaryWriter objFileWriter = new BinaryWriter (objFileStream);
-                        bool ok = ScriptCodeGen.CodeGen(tokenScript, objFileWriter);
+                        bool ok = ScriptCodeGen.CodeGen(tokenScript, objFileWriter, sourceHash);
                         if (!ok) {
                             m_log.Debug ("[XMREngine]: compile error on " + assetID);
                             objFileStream.Close ();
@@ -643,7 +730,6 @@ version:
         {
             bool error = false;
             WebResponse response = null;
-            Stream webStream = null;
             string url = null;
             TokenStr urlToken = null;
             WebRequest request;
@@ -664,14 +750,14 @@ version:
                     }
                     continue;
                 }
-                errorMessage (token, "unknown item in fetchbinary option");
+                errorMessage (token, "unknown item in fetch option");
                 error = true;
             }
             if (!(token is TokenKwSemi)) {
-                errorMessage (token, "missing ; at end of fetchbinary option");
+                errorMessage (token, "missing ; at end of fetch option");
                 error = true;
             } else if (!(token.nextToken is TokenEnd)) {
-                errorMessage (token.nextToken, "extra stuff after fetchbinary option");
+                errorMessage (token.nextToken, "extra stuff after fetch option");
                 error = true;
             } else if (urlToken == null) {
                 errorMessage (token, "missing url string");
@@ -680,7 +766,7 @@ version:
             if (error) return null;
 
             url = urlToken.val;
-            m_log.DebugFormat("[XMREngine]: fetching binary from {0}", url);
+            m_log.DebugFormat("[XMREngine]: fetching from {0}", url);
 
             try {
 
@@ -688,37 +774,20 @@ version:
                  * Get stream to read from webserver.
                  */
                 if (url.StartsWith ("file://")) {
-                    webStream = File.OpenRead (url.Substring (7));
+                    return File.OpenRead (url.Substring (7));
                 } else {
-                    request   = WebRequest.Create (url);
-                    response  = request.GetResponse ();
-                    webStream = response.GetResponseStream ();
+                    request  = WebRequest.Create (url);
+                    response = request.GetResponse ();
+                    return response.GetResponseStream ();
                 }
-
-                /*
-                 * The rest of the stream is compressed & encrypted.
-                 */
-                Stream readerStream = Decrypt (webStream);
-                webStream = null;
-                return readerStream;
             } catch (Exception e) {
 
                 /*
                  * Some error, output message.
                  */
-                errorMessage (urlToken, "error fetching binary: " + e.ToString());
+                errorMessage (urlToken, "error fetching: " + e.ToString());
+                if (response != null) response.Close ();
                 return null;
-            } finally {
-
-                /*
-                 * Make sure everything is closed before we return.
-                 */
-                if (webStream != null) {
-                    webStream.Close ();
-                }
-                if (response != null) {
-                    response.Close ();
-                }
             }
         }
 #endif

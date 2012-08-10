@@ -1,7 +1,7 @@
 //////////////////////////////////////////////////////////////
 //
 // Copyright (c) 2009 Careminster Limited and Melanie Thielker
-// Copyright (c) 2010 Mike Rieker, Beverly, MA, USA
+// Copyright (c) 2012 Mike Rieker, Beverly, MA, USA
 //
 // All rights reserved
 //
@@ -42,7 +42,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         /**
          * @brief Create an XML element that gives the current state of the script.
-         *   <ScriptState Asset=m_AssetID>
+         *   <ScriptState Engine="XMREngine" SourceHash=m_ObjCode.sourceHash Asset=m_AssetID>
          *     <Snapshot>globalsandstackdump</Snapshot>
          *     <Running>m_Running</Running>
          *     <DetectArray ...
@@ -66,6 +66,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             XmlElement scriptStateN = doc.CreateElement("", "ScriptState", "");
             scriptStateN.SetAttribute("Engine", m_Engine.ScriptEngineName);
             scriptStateN.SetAttribute("Asset", m_AssetID.ToString());
+            scriptStateN.SetAttribute ("SourceHash", m_ObjCode.sourceHash);
 
             /*
              * Make sure we aren't executing part of the script so it stays 
@@ -242,7 +243,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * Now restore script stack.
                  * Microthread will suspend inside CheckRun() when restore is complete.
                  */
-		if (this.eventCode != ScriptEventCode.None) {
+        if (this.eventCode != ScriptEventCode.None) {
                     this.stackFramesRestored = false;
                     except = this.microthread.StartEx ();
                     if (except != null) {

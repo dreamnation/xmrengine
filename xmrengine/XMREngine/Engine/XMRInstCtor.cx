@@ -441,6 +441,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 throw new Exception("<ScriptState> assetID mismatch");
             }
 
+            // Also match the sourceHash in case script was
+            // loaded via 'xmroption fetchsource' and has changed
+            string sourceHash = scriptStateN.GetAttribute ("SourceHash");
+            if ((sourceHash == null) || (sourceHash != m_ObjCode.sourceHash)) {
+                throw new Exception ("<ScriptState> SourceHash mismatch");
+            }
+
             // Get various attributes
             XmlElement runningN = (XmlElement)scriptStateN.SelectSingleNode("Running");
             m_Running = bool.Parse(runningN.InnerText);
