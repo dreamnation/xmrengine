@@ -7,3 +7,4 @@ export PATH=~/mono64.267/bin:$PATH
 mono --debug xmrengtest.exe -serialize -asm while1.xmrasm    while1.lsl
 mono --debug xmrengtest.exe -serialize -asm arraytest.xmrasm arraytest.lsl
 mono --debug xmrengtest.exe -serialize -asm objectest.xmrasm objectest.lsl
+mono --debug xmrengtest.exe -serialize -asm chartest.xmrasm  chartest.lsl

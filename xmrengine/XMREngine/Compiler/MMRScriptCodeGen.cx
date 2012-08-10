@@ -2169,14 +2169,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				 */
 				CompValu rVal = GenerateFromRVal (thisCase.rVal1);
 				if (!IsConstIntExpr (rVal, out thisCase.val1)) {
-					ErrorMsg (thisCase.rVal1, "must be compile-time constant");
+					ErrorMsg (thisCase.rVal1, "must be compile-time char or integer constant");
 					return;
 				}
 				thisCase.val2 = thisCase.val1;
 				if (thisCase.rVal2 != null) {
 					rVal = GenerateFromRVal (thisCase.rVal2);
 					if (!IsConstIntExpr (rVal, out thisCase.val2)) {
-						ErrorMsg (thisCase.rVal2, "must be compile-time constant");
+						ErrorMsg (thisCase.rVal2, "must be compile-time char or integer constant");
 						return;
 					}
 				}
@@ -2550,6 +2550,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private CompValu GenerateFromLValArEle (TokenLValArEle lVal)
 		{
+			CompValu subCompValu;
+
 			/*
 			 * Compute location of array itself.
 			 */
@@ -2582,13 +2584,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
+			 * Maybe it is extracting a character from a string.
+			 */
+			if (baseCompValu.type is TokenTypeStr) {
+				subCompValu = GenerateFromRVal (lVal.subRVal);
+				return new CompValuStrChr (new TokenTypeChar (lVal), baseCompValu, subCompValu);
+			}
+
+			/*
 			 * Access should be to XMR_Array otherwise.
 			 */
 			if (!(baseCompValu.type is TokenTypeArray)) {
 				ErrorMsg (lVal, "taking subscript of non-array");
 				return baseCompValu;
 			}
-			CompValu subCompValu = GenerateFromRVal (lVal.subRVal);
+			subCompValu = GenerateFromRVal (lVal.subRVal);
 			return new CompValuArEle (new TokenTypeObject (lVal), baseCompValu, subCompValu);
 		}
 
@@ -3078,7 +3088,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Perform the ++/--.
 			 */
-			if (lVal.type is TokenTypeInt) {
+			if ((lVal.type is TokenTypeChar) || (lVal.type is TokenTypeInt)) {
 				ilGen.PushInt (1);
 			} else if (lVal.type is TokenTypeFloat) {
 				ilGen.Emit (OpCodes.Ldc_R4, 1.0f);
@@ -3132,7 +3142,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Perform the ++/--.
 			 */
-			if (lVal.type is TokenTypeInt) {
+			if ((lVal.type is TokenTypeChar) || (lVal.type is TokenTypeInt)) {
 				ilGen.PushInt (1);
 			} else if (lVal.type is TokenTypeFloat) {
 				ilGen.Emit (OpCodes.Ldc_R4, 1.0f);
@@ -3370,6 +3380,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private CompValu GenerateFromRValConst (TokenRValConst rValConst)
 		{
+			if (rValConst.val is char) {
+				return new CompValuChar (new TokenTypeChar (rValConst), (char)(rValConst.val));
+			}
 			if (rValConst.val is SCRIPTFLOAT) {
 				return new CompValuFloat (new TokenTypeFloat (rValConst), (SCRIPTFLOAT)(rValConst.val));
 			}
@@ -3779,6 +3792,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ilGen.Emit (OpCodes.Newobj, xmrArrayConstructorInfo);
 				return;
 			}
+			if (type is TokenTypeChar) {
+				ilGen.PushInt (0);
+				return;
+			}
 			if (type is TokenTypeList) {
 				ilGen.PushInt (0);
 				ilGen.Emit (OpCodes.Newarr, typeof (object));
@@ -3880,8 +3897,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private bool IsConstIntExpr (CompValu expr, out int constVal)
 		{
-			if (expr is CompValuFloat) {
-				constVal = (int)((CompValuFloat)expr).x;
+			if (expr is CompValuChar) {
+				constVal = (int)((CompValuChar)expr).x;
 				return true;
 			}
 			if (expr is CompValuInteger) {
@@ -4168,10 +4185,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			ScriptConst scriptConst = ScriptConst.Lookup (name);
 			if (scriptConst != null) {
-				CompValu val = scriptConst.rVal;
-				if (val is CompValuFloat)   rVal = new TokenRValConst (rVal, ((CompValuFloat)val).x);
-				if (val is CompValuInteger) rVal = new TokenRValConst (rVal, ((CompValuInteger)val).x);
-				if (val is CompValuString)  rVal = new TokenRValConst (rVal, ((CompValuString)val).x);
+				rVal = CompValuConst2RValConst (scriptConst.rVal, rVal);
 				if (rVal is TokenRValConst) {
 					didOne = true;
 					return rVal;
@@ -4245,12 +4259,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Otherwise tell caller we failed to simplify.
 			 */
 		foundit:
-			if (val is CompValuFloat)   rVal = new TokenRValConst (rVal, ((CompValuFloat)val).x);
-			if (val is CompValuInteger) rVal = new TokenRValConst (rVal, ((CompValuInteger)val).x);
-			if (val is CompValuString)  rVal = new TokenRValConst (rVal, ((CompValuString)val).x);
+			rVal = CompValuConst2RValConst (val, rVal);
 			if (rVal is TokenRValConst) {
 				didOne = true;
 			}
+			return rVal;
+		}
+
+		private static TokenRVal CompValuConst2RValConst (CompValu val, TokenRVal rVal)
+		{
+			if (val is CompValuChar)    rVal = new TokenRValConst (rVal, ((CompValuChar)val).x);
+			if (val is CompValuFloat)   rVal = new TokenRValConst (rVal, ((CompValuFloat)val).x);
+			if (val is CompValuInteger) rVal = new TokenRValConst (rVal, ((CompValuInteger)val).x);
+			if (val is CompValuString)  rVal = new TokenRValConst (rVal, ((CompValuString)val).x);
 			return rVal;
 		}
 

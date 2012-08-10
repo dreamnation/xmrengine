@@ -285,6 +285,31 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 	}
 
+	// The value is a character constant
+	public class CompValuChar : CompValu {
+		public char x;
+
+		public CompValuChar (TokenType type, char x) : base (type)
+		{
+			if (!(this.type is TokenTypeChar)) {
+				this.type = new TokenTypeChar (this.type);
+			}
+			this.x = x;
+		}
+		public override void PushVal (ScriptCodeGen scg, Token errorAt)
+		{
+			scg.ilGen.PushInt ((int)x);
+		}
+		public override void PushRef (ScriptCodeGen scg, Token errorAt)
+		{
+			throw new Exception ("cannot get constant's address");
+		}
+		public override void PopPost (ScriptCodeGen scg, Token errorAt)
+		{
+			throw new Exception ("cannot store into contant");
+		}
+	}
+
 	// The value is kept in a struct/class field
 	public class CompValuField : CompValu {
 		CompValu obj;
@@ -966,6 +991,40 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				throw new Exception ("can't write a constant");
 			}
 			scg.ilGen.Emit (OpCodes.Stsfld, field);
+		}
+	}
+
+	// The value is a character within a string
+	public class CompValuStrChr : CompValu {
+		private static readonly MethodInfo getCharFromStringMethodInfo = 
+				 typeof (CompValuStrChr).GetMethod ("GetCharFromString", new Type[] { typeof (string), typeof (int) });
+
+		private CompValu theString;
+		private CompValu subscript;
+
+		public CompValuStrChr (TokenType type, CompValu theString, CompValu subscript) : base (type)
+		{
+			this.theString = theString;
+			this.subscript = subscript;
+		}
+		public override void PushVal (ScriptCodeGen scg, Token errorAt)
+		{
+			theString.PushVal (scg, errorAt, new TokenTypeStr (type));
+			subscript.PushVal (scg, errorAt, new TokenTypeInt (type));
+			scg.ilGen.Emit (OpCodes.Call, getCharFromStringMethodInfo);
+		}
+		public override void PushRef (ScriptCodeGen scg, Token errorAt)
+		{
+			throw new Exception ("cannot get string character's address");
+		}
+		public override void PopPost (ScriptCodeGen scg, Token errorAt)
+		{
+			throw new Exception ("cannot store into string character");
+		}
+
+		public static char GetCharFromString (string s, int i)
+		{
+			return s[i];
 		}
 	}
 

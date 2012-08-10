@@ -318,7 +318,7 @@ default {
             }
         }
 
-        llOwnerSay ("jagged array initiializing");
+        llOwnerSay ("jagged array initializing");
         integer[,][] jagint = new integer[,][] 
             { { { 5,6,7 },, { 1,2 } }, 
               { , { 9 }, { 8,9 }, { 3,4,5,6 }, } };

@@ -360,6 +360,61 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         /**
+         * @brief Copy from an array of characters to a string.
+         * @param srcar = the array to copy from
+         * @param start = where to start in the array
+         * @param count = number of elements
+         * @returns the string
+         */
+        public static string XMRChars2String (object srcar, int start, int count)
+        {
+            /*
+             * Make sure they gave us a script-defined array object.
+             */
+            XMRSDTypeClObj array = (XMRSDTypeClObj)srcar;
+            TokenDeclSDTypeClass sdtClass = array.sdtcClass;
+            if (sdtClass.arrayOfRank == 0) {
+                throw new InvalidCastException ("only do arrays not " + sdtClass.longName.val);
+            }
+
+            /*
+             * We get a type cast error from mono if they didn't give us a character array.
+             * But if it is ok, create a string from the requested characters.
+             */
+            char[] srcarray = (char[])array.instVars.iarObjects[0];
+            return new string (srcarray, start, count);
+        }
+
+        /**
+         * @brief Copy from a string to a character array.
+         * @param srcstr   = string to copy from
+         * @param srcstart = where to start in the string
+         * @param dstobj   = array to copy to
+         * @param dststart = where to start in the array
+         * @param count    = number of elements
+         */
+        public static void XMRString2Chars (string srcstr, int srcstart, object dstobj, int dststart, int count)
+        {
+            /*
+             * Make sure they gave us a script-defined array object.
+             */
+            XMRSDTypeClObj dstarray = (XMRSDTypeClObj)dstobj;
+            TokenDeclSDTypeClass sdtClass = dstarray.sdtcClass;
+            if (sdtClass.arrayOfType == null) {
+                throw new InvalidCastException ("only do arrays not " + sdtClass.longName.val);
+            }
+
+            /*
+             * We get a type cast error from mono if they didn't give us a character array.
+             * But if it is ok, copy from the string to the character array.
+             */
+            char[] dstarr = (char[])dstarray.instVars.iarObjects[0];
+            for (int i = 0; i < count; i ++) {
+                dstarr[i+dststart] = srcstr[i+srcstart];
+            }
+        }
+
+        /**
          * @brief Write the whole thing out to a stream.
          */
         public void Capture (XMRInstArrays.Sender sendValue)

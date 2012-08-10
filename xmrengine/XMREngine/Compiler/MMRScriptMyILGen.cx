@@ -882,6 +882,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			s2t.Add ("badcallx", typeof (ScriptBadCallNoException));
 			s2t.Add ("binopstr", typeof (BinOpStr));
 			s2t.Add ("bool",     typeof (bool));
+			s2t.Add ("char",     typeof (char));
 			s2t.Add ("delegate", typeof (Delegate));
 			s2t.Add ("delarr[]", typeof (Delegate[]));
 			s2t.Add ("double",   typeof (double));

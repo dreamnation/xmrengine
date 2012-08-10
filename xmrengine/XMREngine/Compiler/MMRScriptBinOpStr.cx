@@ -42,6 +42,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		}
 
 		private static TokenTypeBool  tokenTypeBool   = new TokenTypeBool  (null);
+		private static TokenTypeChar  tokenTypeChar   = new TokenTypeChar  (null);
 		private static TokenTypeFloat tokenTypeFloat  = new TokenTypeFloat (null);
 		private static TokenTypeInt   tokenTypeInt    = new TokenTypeInt   (null);
 		private static TokenTypeList  tokenTypeList   = new TokenTypeList  (null);
@@ -106,7 +107,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			Dictionary<string, BinOpStr> bos = new Dictionary<string, BinOpStr> ();
 
-			string[] booltypes = new string[] { "bool", "float", "integer", "key", "list", "string" };
+			string[] booltypes = new string[] { "bool", "char", "float", "integer", "key", "list", "string" };
 
 			/*
 			 * Get the && and || all out of the way...
@@ -127,13 +128,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 			// boolean : somethingelse
 			DefineBinOpsBoolX (bos, "bool");
+			DefineBinOpsBoolX (bos, "char");
 			DefineBinOpsBoolX (bos, "float");
 			DefineBinOpsBoolX (bos, "integer");
 			DefineBinOpsBoolX (bos, "key");
 			DefineBinOpsBoolX (bos, "list");
 			DefineBinOpsBoolX (bos, "string");
 
+			// stuff with chars
+			DefineBinOpsChar (bos);
+
 			// somethingelse : boolean
+			DefineBinOpsXBool (bos, "char");
 			DefineBinOpsXBool (bos, "float");
 			DefineBinOpsXBool (bos, "integer");
 			DefineBinOpsXBool (bos, "key");
@@ -176,6 +182,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			bos.Add ("string+bool",    new BinOpStr (typeof (string), BinOpStrStrAddStr));
 			bos.Add ("string+float",   new BinOpStr (typeof (string), BinOpStrStrAddStr));
 			bos.Add ("string+integer", new BinOpStr (typeof (string), BinOpStrStrAddStr));
+			bos.Add ("string+char",    new BinOpStr (typeof (string), BinOpStrStrAddStr));
 
 			// Now for our final slight-of-hand, we're going to scan through all those.
 			// And wherever we see an 'integer' in the key, we are going to make another
@@ -246,6 +253,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			bos.Add (x + "*float",  new BinOpStr (typeof (SCRIPTFLOAT), BinOpStrXMulFloat, true));
 			bos.Add (x + "/float",  new BinOpStr (typeof (SCRIPTFLOAT), BinOpStrXDivFloat, true));
 			bos.Add (x + "%float",  new BinOpStr (typeof (SCRIPTFLOAT), BinOpStrXModFloat, true));
+		}
+
+		private static void DefineBinOpsChar (Dictionary<string, BinOpStr> bos)
+		{
+			bos.Add ("char==char",   new BinOpStr (typeof (bool), BinOpStrCharEqChar));
+			bos.Add ("char!=char",   new BinOpStr (typeof (bool), BinOpStrCharNeChar));
+			bos.Add ("char<char",    new BinOpStr (typeof (bool), BinOpStrCharLtChar));
+			bos.Add ("char<=char",   new BinOpStr (typeof (bool), BinOpStrCharLeChar));
+			bos.Add ("char>char",    new BinOpStr (typeof (bool), BinOpStrCharGtChar));
+			bos.Add ("char>=char",   new BinOpStr (typeof (bool), BinOpStrCharGeChar));
+			bos.Add ("char+integer", new BinOpStr (typeof (char), BinOpStrCharAddInt, true));
+			bos.Add ("char-integer", new BinOpStr (typeof (char), BinOpStrCharSubInt, true));
 		}
 
 		private static void DefineBinOpsInteger (Dictionary<string, BinOpStr> bos)
@@ -623,6 +642,84 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			right.PushVal (scg, errorAt, tokenTypeFloat);
 			scg.ilGen.Emit (OpCodes.Rem);
 			result.PopPost (scg, errorAt, tokenTypeFloat);
+		}
+
+		private static void BinOpStrCharEqChar (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
+		{
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeChar);
+			right.PushVal (scg, errorAt, tokenTypeChar);
+			scg.ilGen.Emit (OpCodes.Ceq);
+			result.PopPost (scg, errorAt, tokenTypeBool);
+		}
+
+		private static void BinOpStrCharNeChar (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
+		{
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeChar);
+			right.PushVal (scg, errorAt, tokenTypeChar);
+			scg.ilGen.Emit (OpCodes.Ceq);
+			scg.ilGen.Emit (OpCodes.Ldc_I4_1);
+			scg.ilGen.Emit (OpCodes.Xor);
+			result.PopPost (scg, errorAt, tokenTypeBool);
+		}
+
+		private static void BinOpStrCharLtChar (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
+		{
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeChar);
+			right.PushVal (scg, errorAt, tokenTypeChar);
+			scg.ilGen.Emit (OpCodes.Clt);
+			result.PopPost (scg, errorAt, tokenTypeBool);
+		}
+
+		private static void BinOpStrCharLeChar (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
+		{
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeChar);
+			right.PushVal (scg, errorAt, tokenTypeChar);
+			scg.ilGen.Emit (OpCodes.Cgt);
+			scg.ilGen.Emit (OpCodes.Ldc_I4_1);
+			scg.ilGen.Emit (OpCodes.Xor);
+			result.PopPost (scg, errorAt, tokenTypeBool);
+		}
+
+		private static void BinOpStrCharGtChar (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
+		{
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeChar);
+			right.PushVal (scg, errorAt, tokenTypeChar);
+			scg.ilGen.Emit (OpCodes.Cgt);
+			result.PopPost (scg, errorAt, tokenTypeBool);
+		}
+
+		private static void BinOpStrCharGeChar (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
+		{
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeChar);
+			right.PushVal (scg, errorAt, tokenTypeChar);
+			scg.ilGen.Emit (OpCodes.Clt);
+			scg.ilGen.Emit (OpCodes.Ldc_I4_1);
+			scg.ilGen.Emit (OpCodes.Xor);
+			result.PopPost (scg, errorAt, tokenTypeBool);
+		}
+
+		private static void BinOpStrCharAddInt (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
+		{
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeChar);
+			right.PushVal (scg, errorAt, tokenTypeInt);
+			scg.ilGen.Emit (OpCodes.Add);
+			result.PopPost (scg, errorAt, tokenTypeChar);
+		}
+
+		private static void BinOpStrCharSubInt (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
+		{
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeChar);
+			right.PushVal (scg, errorAt, tokenTypeInt);
+			scg.ilGen.Emit (OpCodes.Sub);
+			result.PopPost (scg, errorAt, tokenTypeChar);
 		}
 
 		private static void BinOpStrIntEqInt (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)

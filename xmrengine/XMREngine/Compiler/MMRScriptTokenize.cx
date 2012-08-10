@@ -147,6 +147,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         private bool optionAdvFlowCtl;  // has seen 'XMROption advFlowCtl;'
         private bool optionTryCatch;    // has seen 'XMROption tryCatch;'
         private bool optionObjects;     // has seen 'XMROption objects;'
+        private bool optionChars;       // has seen 'XMROption chars;'
 
         /**
          * @brief convert a source file in the form of a string
@@ -270,6 +271,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                         } else {
                             if (!backslash && (c == '"')) break;
                             if (backslash && (c == 'n')) c = '\n';
+                            if (backslash && (c == 't')) {
+                                sb.Append ("   ");
+                                c = ' ';
+                            }
                         }
                         backslash = false;
                         sb.Append (c);
@@ -278,6 +283,45 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                         TokenError (i, "string too long, max " + MAX_STRING_LEN);
                     } else {
                         AppendToken (new TokenStr (emsg, filNam, lineNo, i - bolIdx, sb.ToString ()));
+                    }
+                    i = j;
+                    continue;
+                }
+
+                /*
+                 * Check for quoted characters.
+                 */
+                if (c == '\'') {
+                    char cb = (char)0;
+                    bool backslash, overflow, underflow;
+                    int j;
+
+                    backslash = false;
+                    overflow  = false;
+                    underflow = true;
+                    for (j = i; ++ j < source.Length;) {
+                        c = source[j];
+                        if (c == '\\' && !backslash) {
+                            backslash = true;
+                            continue;
+                        }
+                        if (c == '\n') {
+                            lineNo ++;
+                            bolIdx = j + 1;
+                        } else {
+                            if (!backslash && (c == '\'')) break;
+                            if (backslash && (c == 'n')) c = '\n';
+                            if (backslash && (c == 't')) c = '\t';
+                        }
+                        backslash = false;
+                        overflow  = !underflow;
+                        underflow = false;
+                        cb = c;
+                    }
+                    if (underflow || overflow) {
+                        TokenError (i, "character must be exactly one character");
+                    } else {
+                        AppendToken (new TokenChar (emsg, filNam, lineNo, i - bolIdx, cb));
                     }
                     i = j;
                     continue;
@@ -316,6 +360,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                         } else if (optionObjects && objectsKeywords.ContainsKey (name)) {
                             Object[] args = new Object[] { emsg, filNam, lineNo, i - bolIdx };
                             AppendToken ((Token)objectsKeywords[name].Invoke (args));
+                        } else if (optionChars && charsKeywords.ContainsKey (name)) {
+                            Object[] args = new Object[] { emsg, filNam, lineNo, i - bolIdx };
+                            AppendToken ((Token)charsKeywords[name].Invoke (args));
                         } else {
                             AppendToken (new TokenName (emsg, filNam, lineNo, i - bolIdx, name));
                         }
@@ -339,6 +386,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                         optionTryCatch = true;
                     } else if (strcasecmp (opt, "objects") == 0) {
                         optionObjects = true;
+                    } else if (strcasecmp (opt, "chars") == 0) {
+                        optionChars = true;
                     } else {
                         lastToken.ErrorMsg ("unknown XMROption");
                     }
@@ -661,6 +710,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         private static Dictionary<string, System.Reflection.ConstructorInfo> advFlowCtlKeywords = BuildAdvFlowCtlKeywords ();
         private static Dictionary<string, System.Reflection.ConstructorInfo> tryCatchKeywords   = BuildTryCatchKeywords ();
         private static Dictionary<string, System.Reflection.ConstructorInfo> objectsKeywords    = BuildObjectsKeywords ();
+        private static Dictionary<string, System.Reflection.ConstructorInfo> charsKeywords      = BuildCharsKeywords ();
 
         private static Dictionary<string, System.Reflection.ConstructorInfo> BuildKeywords ()
         {
@@ -748,12 +798,38 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
             return kws;
         }
+
+        private static Dictionary<string, System.Reflection.ConstructorInfo> BuildCharsKeywords ()
+        {
+            Dictionary<string, System.Reflection.ConstructorInfo> kws = new Dictionary<string, System.Reflection.ConstructorInfo> ();
+
+            kws.Add ("char", GetTokenCtor (typeof (TokenTypeChar)));
+
+            return kws;
+        }
     }
 
     /**
      * @brief All output token types in addition to TokenBegin.
      *        They are all sub-types of Token.
      */
+
+    public class TokenChar : Token {
+        public char val;
+        public TokenChar (TokenErrorMessage emsg, string file, int line, int posn, char val) : base (emsg, file, line, posn)
+        {
+            this.val = val;
+        }
+        public TokenChar (Token original, char val) : base (original)
+        {
+            this.val = val;
+        }
+        // debugging
+        public override string ToString ()
+        {
+            return "'" + val + "'";
+        }
+    }
 
     public class TokenFloat : Token {
         public SCRIPTFLOAT val;
@@ -1090,6 +1166,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             if (typ == typeof (LSL_Integer))  return new TokenTypeLSLInt    (original);
             if (typ == typeof (LSL_Float))    return new TokenTypeLSLFloat  (original);
             if (typ == typeof (LSL_String))   return new TokenTypeLSLString (original);
+            if (typ == typeof (char))         return new TokenTypeChar      (original);
 
             throw new Exception ("unknown type " + typ.ToString ());
         }
@@ -1107,6 +1184,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             if (typ == "array")    return new TokenTypeArray  (original);
             if (typ == "bool")     return new TokenTypeBool   (original);
             if (typ == "void")     return new TokenTypeVoid   (original);
+            if (typ == "char")     return new TokenTypeChar   (original);
 
             throw new Exception ("unknown type " + typ);
         }
@@ -1129,6 +1207,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             if (typ == typeof (bool))         return   8;
             if (typ == typeof (XMR_Array))    return  96;
             if (typ == typeof (object))       return  32;
+            if (typ == typeof (char))         return   2;
 
             if (typ == typeof (LSL_Integer))  return  32;
             if (typ == typeof (LSL_Float))    return  32;
@@ -1193,6 +1272,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public override bool IsAssignableFrom (TokenType src) { return true; }
         public override string ToString () { return "bool"; }
     }
+    public class TokenTypeChar : TokenType {
+        private static readonly FieldInfo iarCharsFieldInfo = typeof (XMRInstArrays).GetField ("iarChars");
+
+        public TokenTypeChar (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
+        public TokenTypeChar (Token original) : base (original) { }
+        public override Type ToSysType () { return typeof (char); }
+        public override bool IsAssignableFrom (TokenType src) { return (src is TokenTypeBool) || (src is TokenTypeChar) || (src is TokenTypeInt); }
+        public override string ToString () { return "char"; }
+        public override void AssignVarSlot (TokenDeclVar declVar, ref XMRInstArSizes arSizes)
+        {
+            declVar.vTableArray = iarCharsFieldInfo;
+            declVar.vTableIndex = arSizes.iasChars ++;
+        }
+    }
     public class TokenTypeFloat : TokenType {
         private static readonly FieldInfo iarFloatsFieldInfo = typeof (XMRInstArrays).GetField ("iarFloats");
 
@@ -1213,7 +1306,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public TokenTypeInt (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
         public TokenTypeInt (Token original) : base (original) { }
         public override Type ToSysType () { return typeof (int); }
-        public override bool IsAssignableFrom (TokenType src) { return (src is TokenTypeBool) || (src is TokenTypeInt); }
+        public override bool IsAssignableFrom (TokenType src) { return (src is TokenTypeBool) || (src is TokenTypeChar) || (src is TokenTypeInt); }
         public override string ToString () { return "integer"; }
         public override void AssignVarSlot (TokenDeclVar declVar, ref XMRInstArSizes arSizes)
         {

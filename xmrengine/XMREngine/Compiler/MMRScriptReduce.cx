@@ -908,6 +908,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			TokenDeclSDType fa;
 			if (!tokenScript.sdSrcTypesTryGetValue (name, out fa)) {
 				char suffix = 'O';
+				if (ofType is TokenTypeChar)  suffix = 'C';
 				if (ofType is TokenTypeFloat) suffix = 'F';
 				if (ofType is TokenTypeInt)   suffix = 'I';
 
@@ -3093,6 +3094,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			/*
 			 * Constants.
 			 */
+			if (token is TokenChar) {
+				TokenRValConst rValConst = new TokenRValConst (token, ((TokenChar)token).val);
+				token = token.nextToken;
+				return rValConst;
+			}
 			if (token is TokenFloat) {
 				TokenRValConst rValConst = new TokenRValConst (token, ((TokenFloat)token).val);
 				token = token.nextToken;
@@ -5421,15 +5427,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			if (rVal is TokenRValConst) {
 				try {
 					object val = ((TokenRValConst)rVal).val;
+					if (castTo is TokenTypeChar) {
+						if (val is int)         val = (char)(int)val;
+					}
 					if (castTo is TokenTypeFloat) {
 						if (val is int)         val = (SCRIPTFLOAT)(int)val;
 						if (val is string)      val = new LSL_Float ((string)val).value;
 					}
 					if (castTo is TokenTypeInt) {
+						if (val is char)        val = (int)(char)val;
 						if (val is SCRIPTFLOAT) val = (int)(SCRIPTFLOAT)val;
 						if (val is string)      val = new LSL_Integer ((string)val).value;
 					}
 					if (castTo is TokenTypeStr) {
+						if (val is char)        val = TypeCast.CharToString ((char)val);
 						if (val is SCRIPTFLOAT) val = TypeCast.FloatToString ((SCRIPTFLOAT)val);
 						if (val is int)         val = TypeCast.IntegerToString ((int)val);
 					}
@@ -5446,15 +5457,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	/**
 	 * @brief all constants supposed to end up here
 	 */
-	public enum TokenRValConstType : byte { FLOAT = 0, INT = 1, STRING = 2 };
+	public enum TokenRValConstType : byte { CHAR = 0, FLOAT = 1, INT = 2, STRING = 3 };
 	public class TokenRValConst : TokenRVal {
-		public object val;	// always a system type (int, SCRIPTFLOAT, string)
+		public object val;	// always a system type (char, int, SCRIPTFLOAT, string), never LSL-wrapped
 		public TokenRValConstType type;
 		public TokenType tokType;
 
 		public TokenRValConst (Token original, object value) : base (original) {
 			val = value;
-			     if (val is int)         { type = TokenRValConstType.INT;    tokType = new TokenTypeInt   (this); }
+			     if (val is char)        { type = TokenRValConstType.CHAR;   tokType = new TokenTypeChar  (this); }
+			else if (val is int)         { type = TokenRValConstType.INT;    tokType = new TokenTypeInt   (this); }
 			else if (val is SCRIPTFLOAT) { type = TokenRValConstType.FLOAT;  tokType = new TokenTypeFloat (this); }
 			else if (val is string)      { type = TokenRValConstType.STRING; tokType = new TokenTypeStr   (this); }
 			else throw new Exception ("invalid constant type " + val.GetType ());
@@ -5473,6 +5485,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public CompValu GetCompValu ()
 		{
 			switch (type) {
+				case TokenRValConstType.CHAR:   { return new CompValuChar    (tokType, (char)val);        }
 				case TokenRValConstType.FLOAT:  { return new CompValuFloat   (tokType, (SCRIPTFLOAT)val); }
 				case TokenRValConstType.INT:    { return new CompValuInteger (tokType, (int)val);         }
 				case TokenRValConstType.STRING: { return new CompValuString  (tokType, (string)val);      }

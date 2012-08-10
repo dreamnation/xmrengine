@@ -34,6 +34,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static FieldInfo  lslIntegerValueFieldInfo   = typeof (LSL_Integer).GetField ("value");
 		private static FieldInfo  lslStringValueFieldInfo    = typeof (LSL_String).GetField ("m_string");
 		private static FieldInfo  sdtcITableFieldInfo        = typeof (XMRSDTypeClObj).GetField ("sdtcITable");
+		private static MethodInfo boolToStringMethodInfo     = typeof (TypeCast).GetMethod ("BoolToString",       new Type[] { typeof (bool) });
+		private static MethodInfo charToStringMethodInfo     = typeof (TypeCast).GetMethod ("CharToString",       new Type[] { typeof (char) });
 		private static MethodInfo floatToStringMethodInfo    = typeof (TypeCast).GetMethod ("FloatToString",      new Type[] { typeof (SCRIPTFLOAT) });
 		private static MethodInfo intToStringMethodInfo      = typeof (TypeCast).GetMethod ("IntegerToString",    new Type[] { typeof (int) });
 		private static MethodInfo listToStringMethodInfo     = typeof (TypeCast).GetMethod ("ListToString",       new Type[] { typeof (LSL_List) });
@@ -70,12 +72,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ltc.Add ("bool integer",    TypeCastBool2Integer);
 			ltc.Add ("bool object",     TypeCastBool2Object);
 			ltc.Add ("bool string",     TypeCastBool2String);
+			ltc.Add ("char integer",    TypeCastChar2Integer);
+			ltc.Add ("char object",     TypeCastChar2Object);
+			ltc.Add ("char string",     TypeCastChar2String);
 			ltc.Add ("float bool",      TypeCastFloat2Bool);
 			ltc.Add ("float integer",   TypeCastFloat2Integer);
 			ltc.Add ("float*list",      TypeCastFloat2List);
 			ltc.Add ("float object",    TypeCastFloat2Object);
 			ltc.Add ("float string",    TypeCastFloat2String);
 			ltc.Add ("integer bool",    TypeCastInteger2Bool);
+			ltc.Add ("integer char",    TypeCastInteger2Char);
 			ltc.Add ("integer float",   TypeCastInteger2Float);
 			ltc.Add ("integer*list",    TypeCastInteger2List);
 			ltc.Add ("integer object",  TypeCastInteger2Object);
@@ -84,6 +90,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ltc.Add ("list*string",     TypeCastList2String);
 			ltc.Add ("object array",    TypeCastObject2Array);
 			ltc.Add ("object bool",     TypeCastObject2Bool);
+			ltc.Add ("object char",     TypeCastObject2Char);
 			ltc.Add ("object float",    TypeCastObject2Float);
 			ltc.Add ("object integer",  TypeCastObject2Integer);
 			ltc.Add ("object list",     TypeCastObject2List);
@@ -352,6 +359,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			ilGen.Emit (OpCodes.Box, typeof (bool));
 		}
+		private static void TypeCastChar2Integer (ScriptMyILGen ilGen)
+		{
+		}
+		private static void TypeCastChar2Object (ScriptMyILGen ilGen)
+		{
+			ilGen.Emit (OpCodes.Box, typeof (char));
+		}
+		private static void TypeCastChar2String (ScriptMyILGen ilGen)
+		{
+			ilGen.Emit (OpCodes.Call, charToStringMethodInfo);
+		}
 		private static void TypeCastFloat2Bool (ScriptMyILGen ilGen)
 		{
 			ilGen.Emit (OpCodes.Ldc_R4, 0.0f);
@@ -373,6 +391,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ilGen.Emit (OpCodes.Ceq);
 			ilGen.Emit (OpCodes.Ldc_I4_1);
 			ilGen.Emit (OpCodes.Xor);
+		}
+		private static void TypeCastInteger2Char (ScriptMyILGen ilGen)
+		{
 		}
 		private static void TypeCastInteger2Float (ScriptMyILGen ilGen)
 		{
@@ -398,6 +419,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static void TypeCastObject2Bool (ScriptMyILGen ilGen)
 		{
 			ilGen.Emit (OpCodes.Unbox_Any, typeof (bool));
+		}
+		private static void TypeCastObject2Char (ScriptMyILGen ilGen)
+		{
+			ilGen.Emit (OpCodes.Unbox_Any, typeof (char));
 		}
 		private static void TypeCastObject2Float (ScriptMyILGen ilGen)
 		{
@@ -460,7 +485,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		private static void TypeCastBool2String (ScriptMyILGen ilGen)
 		{
-			ilGen.Emit (OpCodes.Newobj, rotationConstrucorStringInfo);
+			ilGen.Emit (OpCodes.Call, boolToStringMethodInfo);
 		}
 		private static void TypeCastFloat2List (ScriptMyILGen ilGen)
 		{
@@ -523,6 +548,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		public static bool     RotationToBool   (LSL_Rotation x) { return !x.Equals (SCRIPTBASECLASS.ZERO_ROTATION); }
 		public static bool     VectorToBool     (LSL_Vector x)   { return !x.Equals (SCRIPTBASECLASS.ZERO_VECTOR); }
+		public static string   BoolToString     (bool x)         { return x ? "1" : "0"; }
+		public static string   CharToString     (char x)         { return x.ToString (); }
 		public static string   FloatToString    (SCRIPTFLOAT x)  { return x.ToString ("0.000000"); }
 		public static string   IntegerToString  (int x)          { return x.ToString (); }
 		public static string   ListToString     (LSL_List x)     { return x.ToString (); }
