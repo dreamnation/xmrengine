@@ -1226,9 +1226,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ilGen.Emit (OpCodes.Ldfld, heapLimitFieldInfo);  // instance.heapLimit
 				ilGen.Emit (OpCodes.Stfld, heapLeftFieldInfo);   // instance.heapLeft
 
-				// .globalvarinit.();
+				// $globalvarinit();
 				if (tokenScript.globalVarInit.body.statements != null) {
-					new CallLabel (this);
+					if (!tokenScript.globalVarInit.IsFuncTrivial (this)) {
+						new CallLabel (this);
+					}
 					PushXMRInst ();
 					ilGen.Emit (OpCodes.Call, tokenScript.globalVarInit.ilGen);
 				}
@@ -1252,7 +1254,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				}
 				TokenDeclVar ifiFunc = ((TokenDeclSDTypeClass)curDeclFunc.sdtClass).instFieldInit;
 				if (ifiFunc.body.statements != null) {
-					new CallLabel (this);
+					if (!ifiFunc.IsFuncTrivial (this)) {
+						new CallLabel (this);
+					}
 					ilGen.Emit (OpCodes.Ldarg_0);
 					ilGen.Emit (OpCodes.Call, ifiFunc.ilGen);
 				}
@@ -3286,9 +3290,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
-			 * Stick in a label here that stack frame restore code can jump to.
+			 * Stick in a label here that stack frame restore code can jump to
+			 * in case the function being called calls CheckRun().
 			 */
-			new CallLabel (this);
+			if (!method.IsFuncTrivial (this)) new CallLabel (this);
 
 			/*
 			 * Make sure we have a place to put return value and prepare to pop return value into it.

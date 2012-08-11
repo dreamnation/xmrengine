@@ -226,9 +226,18 @@ float[,] MatMul (float[,] x, float[,] y)
     return z;
 }
 
+integer nontriv = NonTrivInit ();
+
+integer NonTrivInit ()
+{
+    llOwnerSay ("test non-trivial global init");
+    return 99;
+}
+
 default {
     state_entry ()
     {
+        llOwnerSay ("nontriv 99 = " + nontriv);
         List<string> stuff = new List<string> ();
         llOwnerSay ("typeof(stuff) = " + xmrTypeName (stuff));
         stuff.Enqueue ("abcdef");

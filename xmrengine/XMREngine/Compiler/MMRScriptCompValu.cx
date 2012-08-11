@@ -143,6 +143,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			scg.ilGen.Emit (OpCodes.Callvirt, invokeMethodInfo);
 		}
 
+		/**
+		 * @brief See if the method that would be called is known to be trivial.
+		 *        If unknown, such as calling via a delegate, return false.
+		 */
+		public virtual bool IsFuncTrivial (ScriptCodeGen scg)
+		{
+			return false;
+		}
+
 		/*
 		 * Utilities used by CompValuGlobalVar and CompValuInstField
 		 * where the value is located in a type-dependent array.
@@ -547,6 +556,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			scg.ilGen.Emit (OpCodes.Call, func.ilGen);
 		}
+
+		public override bool IsFuncTrivial (ScriptCodeGen scg)
+		{
+			return this.func.IsFuncTrivial (scg);
+		}
 	}
 
 	// The value is in a script-global variable = ScriptModule instance variable
@@ -700,6 +714,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				scg.ilGen.Emit (OpCodes.Callvirt, invokeMethodInfo);
 			}
 		}
+
+		public override bool IsFuncTrivial (ScriptCodeGen scg)
+		{
+			return this.func.IsFuncTrivial (scg);
+		}
 	}
 
 	// The value is the entrypoint of a script-defined type's interface method combined with
@@ -781,6 +800,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public override void CallPost (ScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (OpCodes.Call, methInfo);
+		}
+
+		public override bool IsFuncTrivial (ScriptCodeGen scg)
+		{
+			return true;
 		}
 	}
 
