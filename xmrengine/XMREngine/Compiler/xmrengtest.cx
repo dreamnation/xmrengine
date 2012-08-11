@@ -67,25 +67,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             string source = "# 1 \"" + srcFileName + "\"\n" + File.ReadAllText (srcFileName);
 
             /*
-             * Compute source hash.
-             */
-            {
-                System.Security.Cryptography.MD5 md5 = System.Security.Cryptography.MD5.Create ();
-                byte[] sourceBytes = System.Text.Encoding.ASCII.GetBytes (source);
-                byte[] hashBytes   = md5.ComputeHash (sourceBytes);
-                int hashBytesLen   = hashBytes.Length;
-                StringBuilder sb   = new StringBuilder (hashBytesLen * 2 + 2);
-                for (int i = 0; i < hashBytesLen; i ++) {
-                    sb.Append (hashBytes[i].ToString ("X2"));
-                }
-                sourceHash = sb.ToString ();
-            }
-
-            /*
              * Parse source string into tokens.
              */
             Console.WriteLine ("Compiling...");
-            TokenBegin tokenBegin = TokenBegin.Construct (StandAloneErrorMessage, source);
+            TokenBegin tokenBegin = TokenBegin.Construct (StandAloneErrorMessage, source, out sourceHash);
             if (tokenBegin == null) {
                 Console.WriteLine ("Parsing errors.");
                 Environment.Exit (1);

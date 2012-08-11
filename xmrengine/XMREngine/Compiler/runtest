@@ -12,3 +12,5 @@ mono --debug xmrengtest.exe -serialize -asm objectest.xmrasm objectest.lsl | tee
 diff objectest.out objectest.good
 mono --debug xmrengtest.exe -serialize -asm chartest.xmrasm  chartest.lsl  | tee chartest.out
 diff chartest.out chartest.good
+
+echo "SUCCESS"

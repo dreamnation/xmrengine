@@ -44,6 +44,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 #endif
             bool plaintext = false;
             string objFileName = null;
+            string sourceHash = null;
             List<string> sourceFileNames = new List<string> ();
 
             if (!encryption) {
@@ -131,7 +132,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Parse source string into tokens.
              */
-            TokenBegin tokenBegin = TokenBegin.Construct(StandAloneErrorMessage, source);
+            TokenBegin tokenBegin = TokenBegin.Construct(StandAloneErrorMessage, source, out sourceHash);
             if (tokenBegin == null) {
                 Console.WriteLine ("Parsing errors.");
                 Environment.Exit (1);
@@ -154,7 +155,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             BinaryWriter objFileWriter = new BinaryWriter (objFileStream);
             bool ok;
             try {
-                ok = ScriptCodeGen.CodeGen(tokenScript, objFileWriter);
+                ok = ScriptCodeGen.CodeGen(tokenScript, objFileWriter, sourceHash);
             } finally {
                 objFileWriter.Close ();
             }
@@ -361,7 +362,7 @@ version:
                 /*
                  * Parse source string into tokens.
                  */
-                TokenBegin tokenBegin = TokenBegin.Construct(errorMessage, source);
+                TokenBegin tokenBegin = TokenBegin.Construct(errorMessage, source, out sourceHash);
                 if (tokenBegin == null) {
                     m_log.Debug ("[XMREngine]: parsing errors on " + assetID);
                     return null;
@@ -425,26 +426,11 @@ version:
                     /*
                      * Parse source string into tokens.
                      */
-                    tokenBegin = TokenBegin.Construct(errorMessage, source);
+                    tokenBegin = TokenBegin.Construct(errorMessage, source, out sourceHash);
                     if (tokenBegin == null) {
                         m_log.Debug ("[XMREngine]: parsing errors on " + assetID);
                         return null;
                     }
-                }
-
-                /*
-                 * Return source hash so caller can know if source changes.
-                 */
-                {
-                    System.Security.Cryptography.MD5 md5 = System.Security.Cryptography.MD5.Create ();
-                    byte[] sourceBytes = System.Text.Encoding.ASCII.GetBytes (source);
-                    byte[] hashBytes   = md5.ComputeHash (sourceBytes);
-                    int hashBytesLen   = hashBytes.Length;
-                    StringBuilder sb   = new StringBuilder (hashBytesLen * 2 + 2);
-                    for (int i = 0; i < hashBytesLen; i ++) {
-                        sb.Append (hashBytes[i].ToString ("X2"));
-                    }
-                    sourceHash = sb.ToString ();
                 }
 
                 /*
