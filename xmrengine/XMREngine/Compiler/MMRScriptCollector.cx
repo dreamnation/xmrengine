@@ -1,0 +1,472 @@
+/***************************************************\
+ *  COPYRIGHT 2012, Mike Rieker, Beverly, MA, USA  *
+ *  All rights reserved.                           *
+\***************************************************/
+
+using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
+using System.Reflection.Emit;
+using System.Text;
+
+/**
+ * @brief Wrapper class for ILGenerator
+ *        It can write out debug output.
+ */
+
+namespace OpenSim.Region.ScriptEngine.XMREngine
+{
+	public class ScriptMyLabel {
+		public string name;
+		public int number;
+	}
+
+	public class ScriptMyLocal {
+		public string name;
+		public Type type;
+		public int number;
+	}
+
+	public abstract class GraphNode {
+		public ScriptCollector coll;
+		public GraphNode nextLin, prevLin;
+
+		public GraphNode (ScriptCollector coll)
+		{
+			this.coll = coll;
+			if (coll.lastLin == null) coll.firstLin = this;
+			                     else coll.lastLin.nextLin = this;
+			this.prevLin = coll.lastLin;
+			coll.lastLin = this;
+		}
+
+		public abstract void WriteOutOne (ScriptMyILGen ilGen);
+	}
+
+	public class GraphNodeBegin : GraphNode {
+		public GraphNodeBegin (ScriptCollector coll) : base (coll) { }
+		public override void WriteOutOne (ScriptMyILGen ilGen) { }
+	}
+
+	public class GraphNodeDeclareLocal : GraphNode {
+		public ScriptMyLocal loc;
+		public GraphNodeDeclareLocal (ScriptCollector coll, ScriptMyLocal loc) : base (coll)
+		{ 
+			this.loc = loc;
+		}
+
+		public override void WriteOutOne (ScriptMyILGen ilGen)
+		{
+			ilGen.DeclareLocal (loc);
+		}
+	}
+
+	public class GraphNodeDefineLabel : GraphNode {
+		public ScriptMyLabel lbl;
+		public GraphNodeDefineLabel (ScriptCollector coll, ScriptMyLabel lbl) : base (coll)
+		{ 
+			this.lbl = lbl;
+		}
+
+		public override void WriteOutOne (ScriptMyILGen ilGen)
+		{
+			ilGen.DefineLabel (lbl);
+		}
+	}
+
+	public class GraphNodeBeginExceptionBlock : GraphNode {
+		public GraphNodeBeginExceptionBlock (ScriptCollector coll) : base (coll)
+		{ }
+
+		public override void WriteOutOne (ScriptMyILGen ilGen)
+		{
+			ilGen.BeginExceptionBlock ();
+		}
+	}
+
+	public class GraphNodeBeginCatchBlock : GraphNode {
+		public Type excType;
+		public GraphNodeBeginCatchBlock (ScriptCollector coll, Type excType) : base (coll)
+		{ 
+			this.excType = excType;
+		}
+
+		public override void WriteOutOne (ScriptMyILGen ilGen)
+		{
+			ilGen.BeginCatchBlock (excType);
+		}
+	}
+
+	public class GraphNodeBeginFinallyBlock : GraphNode {
+		public GraphNodeBeginFinallyBlock (ScriptCollector coll) : base (coll)
+		{ }
+
+		public override void WriteOutOne (ScriptMyILGen ilGen)
+		{
+			ilGen.BeginFinallyBlock ();
+		}
+	}
+
+	public class GraphNodeEndExceptionBlock : GraphNode {
+		public GraphNodeEndExceptionBlock (ScriptCollector coll) : base (coll)
+		{ }
+
+		public override void WriteOutOne (ScriptMyILGen ilGen)
+		{
+			ilGen.EndExceptionBlock ();
+		}
+	}
+
+	public class GraphNodeEmitNull : GraphNode {
+		public OpCode opcode;
+		public GraphNodeEmitNull (ScriptCollector coll, OpCode opcode) : base (coll)
+		{
+			this.opcode = opcode;
+		}
+
+		public override void WriteOutOne (ScriptMyILGen ilGen)
+		{
+			ilGen.Emit (opcode);
+		}
+	}
+
+	public class GraphNodeEmitField : GraphNode {
+		public OpCode opcode;
+		public FieldInfo field;
+		public GraphNodeEmitField (ScriptCollector coll, OpCode opcode, FieldInfo field) : base (coll)
+		{ 
+			this.opcode = opcode;
+			this.field = field;
+		}
+
+		public override void WriteOutOne (ScriptMyILGen ilGen)
+		{
+			ilGen.Emit (opcode, field);
+		}
+	}
+
+	public class GraphNodeEmitLocal : GraphNode {
+		public OpCode opcode;
+		public ScriptMyLocal myLocal;
+		public GraphNodeEmitLocal (ScriptCollector coll, OpCode opcode, ScriptMyLocal myLocal) : base (coll)
+		{ 
+			this.opcode = opcode;
+			this.myLocal = myLocal;
+		}
+
+		public override void WriteOutOne (ScriptMyILGen ilGen)
+		{
+			ilGen.Emit (opcode, myLocal);
+		}
+	}
+
+	public class GraphNodeEmitType : GraphNode {
+		public OpCode opcode;
+		public Type type;
+		public GraphNodeEmitType (ScriptCollector coll, OpCode opcode, Type type) : base (coll)
+		{ 
+			this.opcode = opcode;
+			this.type = type;
+		}
+
+		public override void WriteOutOne (ScriptMyILGen ilGen)
+		{
+			ilGen.Emit (opcode, type);
+		}
+	}
+
+	public class GraphNodeEmitLabel : GraphNode {
+		public OpCode opcode;
+		public ScriptMyLabel myLabel;
+		public GraphNodeEmitLabel (ScriptCollector coll, OpCode opcode, ScriptMyLabel myLabel) : base (coll)
+		{ 
+			this.opcode = opcode;
+			this.myLabel = myLabel;
+		}
+
+		public override void WriteOutOne (ScriptMyILGen ilGen)
+		{
+			ilGen.Emit (opcode, myLabel);
+		}
+	}
+
+	public class GraphNodeEmitLabels : GraphNode {
+		public OpCode opcode;
+		public ScriptMyLabel[] myLabels;
+		public GraphNodeEmitLabels (ScriptCollector coll, OpCode opcode, ScriptMyLabel[] myLabels) : base (coll)
+		{ 
+			this.opcode = opcode;
+			this.myLabels = myLabels;
+		}
+
+		public override void WriteOutOne (ScriptMyILGen ilGen)
+		{
+			ilGen.Emit (opcode, myLabels);
+		}
+	}
+
+	public class GraphNodeEmitIntMeth : GraphNode {
+		public OpCode opcode;
+		public ScriptMyILGen method;
+		public GraphNodeEmitIntMeth (ScriptCollector coll, OpCode opcode, ScriptMyILGen method) : base (coll)
+		{ 
+			this.opcode = opcode;
+			this.method = method;
+		}
+
+		public override void WriteOutOne (ScriptMyILGen ilGen)
+		{
+			ilGen.Emit (opcode, method);
+		}
+	}
+
+	public class GraphNodeEmitExtMeth : GraphNode {
+		public OpCode opcode;
+		public MethodInfo method;
+		public GraphNodeEmitExtMeth (ScriptCollector coll, OpCode opcode, MethodInfo method) : base (coll)
+		{ 
+			this.opcode = opcode;
+			this.method = method;
+		}
+
+		public override void WriteOutOne (ScriptMyILGen ilGen)
+		{
+			ilGen.Emit (opcode, method);
+		}
+	}
+
+	public class GraphNodeEmitCtor : GraphNode {
+		public OpCode opcode;
+		public ConstructorInfo ctor;
+		public GraphNodeEmitCtor (ScriptCollector coll, OpCode opcode, ConstructorInfo ctor) : base (coll)
+		{ 
+			this.opcode = opcode;
+			this.ctor = ctor;
+		}
+
+		public override void WriteOutOne (ScriptMyILGen ilGen)
+		{
+			ilGen.Emit (opcode, ctor);
+		}
+	}
+
+	public class GraphNodeEmitDouble : GraphNode {
+		public OpCode opcode;
+		public double value;
+		public GraphNodeEmitDouble (ScriptCollector coll, OpCode opcode, double value) : base (coll)
+		{ 
+			this.opcode = opcode;
+			this.value = value;
+		}
+
+		public override void WriteOutOne (ScriptMyILGen ilGen)
+		{
+			ilGen.Emit (opcode, value);
+		}
+	}
+
+	public class GraphNodeEmitFloat : GraphNode {
+		public OpCode opcode;
+		public float value;
+		public GraphNodeEmitFloat (ScriptCollector coll, OpCode opcode, float value) : base (coll)
+		{ 
+			this.opcode = opcode;
+			this.value = value;
+		}
+
+		public override void WriteOutOne (ScriptMyILGen ilGen)
+		{
+			ilGen.Emit (opcode, value);
+		}
+	}
+
+	public class GraphNodeEmitInt : GraphNode {
+		public OpCode opcode;
+		public int value;
+		public GraphNodeEmitInt (ScriptCollector coll, OpCode opcode, int value) : base (coll)
+		{ 
+			this.opcode = opcode;
+			this.value = value;
+		}
+
+		public override void WriteOutOne (ScriptMyILGen ilGen)
+		{
+			ilGen.Emit (opcode, value);
+		}
+	}
+
+	public class GraphNodeEmitString : GraphNode {
+		public OpCode opcode;
+		public string value;
+		public GraphNodeEmitString (ScriptCollector coll, OpCode opcode, string value) : base (coll)
+		{ 
+			this.opcode = opcode;
+			this.value = value;
+		}
+
+		public override void WriteOutOne (ScriptMyILGen ilGen)
+		{
+			ilGen.Emit (opcode, value);
+		}
+	}
+
+	public class GraphNodeMarkLabel : GraphNode {
+		public ScriptMyLabel myLabel;
+		public GraphNodeMarkLabel (ScriptCollector coll, ScriptMyLabel myLabel) : base (coll)
+		{ 
+			this.myLabel = myLabel;
+		}
+
+		public override void WriteOutOne (ScriptMyILGen ilGen)
+		{
+			ilGen.MarkLabel (myLabel);
+		}
+	}
+
+
+	public class ScriptCollector : ScriptMyILGen {
+
+		private ScriptMyILGen wrapped;
+		public GraphNode firstLin, lastLin;
+
+		public override string methName {
+			get { return wrapped.methName; }
+			set { wrapped.methName = value; }
+		}
+
+		public ScriptCollector (ScriptMyILGen wrapped) : base (wrapped)
+		{
+			this.wrapped = wrapped;
+			new GraphNodeBegin (this);
+		}
+
+		public override ScriptMyLocal DeclareLocal (Type type, string name)
+		{
+			ScriptMyLocal loc = new ScriptMyLocal ();
+			loc.name   = name;
+			loc.type   = type;
+			loc.number = wrapped.localNumber ++;
+			new GraphNodeDeclareLocal (this, loc);
+			return loc;
+		}
+
+		public override ScriptMyLabel DefineLabel (string name)
+		{
+			ScriptMyLabel lbl = new ScriptMyLabel ();
+			lbl.name   = name;
+			lbl.number = wrapped.labelNumber ++;
+			new GraphNodeDefineLabel (this, lbl);
+			return lbl;
+		}
+
+		public override void BeginExceptionBlock ()
+		{
+			new GraphNodeBeginExceptionBlock (this);
+		}
+
+		public override void BeginCatchBlock (Type excType)
+		{
+			new GraphNodeBeginCatchBlock (this, excType);
+		}
+
+		public override void BeginFinallyBlock ()
+		{
+			new GraphNodeBeginFinallyBlock (this);
+		}
+
+		public override void EndExceptionBlock ()
+		{
+			new GraphNodeEndExceptionBlock (this);
+		}
+
+		public override void Emit (OpCode opcode)
+		{
+			new GraphNodeEmitNull (this, opcode);
+		}
+
+		public override void Emit (OpCode opcode, FieldInfo field)
+		{
+			new GraphNodeEmitField (this, opcode, field);
+		}
+
+		public override void Emit (OpCode opcode, ScriptMyLocal myLocal)
+		{
+			new GraphNodeEmitLocal (this, opcode, myLocal);
+		}
+
+		public override void Emit (OpCode opcode, Type type)
+		{
+			new GraphNodeEmitType (this, opcode, type);
+		}
+
+		public override void Emit (OpCode opcode, ScriptMyLabel myLabel)
+		{
+			new GraphNodeEmitLabel (this, opcode, myLabel);
+		}
+
+		public override void Emit (OpCode opcode, ScriptMyLabel[] myLabels)
+		{
+			new GraphNodeEmitLabels (this, opcode, myLabels);
+		}
+
+		public override void Emit (OpCode opcode, ScriptMyILGen method)
+		{
+			new GraphNodeEmitIntMeth (this, opcode, method);
+		}
+
+		public override void Emit (OpCode opcode, MethodInfo method)
+		{
+			new GraphNodeEmitExtMeth (this, opcode, method);
+		}
+
+		public override void Emit (OpCode opcode, ConstructorInfo ctor)
+		{
+			new GraphNodeEmitCtor (this, opcode, ctor);
+		}
+
+		public override void Emit (OpCode opcode, double value)
+		{
+			new GraphNodeEmitDouble (this, opcode, value);
+		}
+
+		public override void Emit (OpCode opcode, float value)
+		{
+			new GraphNodeEmitFloat (this, opcode, value);
+		}
+
+		public override void Emit (OpCode opcode, int value)
+		{
+			new GraphNodeEmitInt (this, opcode, value);
+		}
+
+		public override void Emit (OpCode opcode, string value)
+		{
+			new GraphNodeEmitString (this, opcode, value);
+		}
+
+		public override void MarkLabel (ScriptMyLabel myLabel)
+		{
+			new GraphNodeMarkLabel (this, myLabel);
+		}
+
+		/**
+		 * @brief Perform optimizations.
+		 */
+		public void Optimize ()
+		{
+		}
+
+		/**
+		 * @brief Write the whole graph out to the object file.
+		 */
+		public ScriptMyILGen WriteOutAll ()
+		{
+			for (GraphNode gn = firstLin; gn != null; gn = gn.nextLin) {
+				gn.WriteOutOne (wrapped);
+			}
+			return wrapped;
+		}
+	}
+}

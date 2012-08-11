@@ -1207,6 +1207,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ilGen.BeginExceptionBlock ();
 
 			/*
+			 * Splice in the code optimizer for the body of the function.
+			 */
+			ScriptCollector collector = new ScriptCollector (ilGen);
+			ilGen = collector;
+
+			/*
 			 * If this is the default state_entry() handler, output code to set all global
 			 * variables to their initial values.  Note that every script must have a
 			 * default state_entry() handler, we provide one if the script doesn't explicitly
@@ -1290,6 +1296,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				}
 				ilGen.Emit (OpCodes.Leave, retLabel);
 			}
+
+			/*
+			 * End of the code to be optimized.
+			 * Do optimizations then write it all out to object file.
+			 * After this, all code gets written directly to object file.
+			 */
+			collector.Optimize ();
+			ilGen = collector.WriteOutAll ();
+			collector = null;
 
 			/*
 			 * Output epilog that subtracts heap usage by local vars.

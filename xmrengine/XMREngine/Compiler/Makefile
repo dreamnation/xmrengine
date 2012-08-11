@@ -4,6 +4,7 @@ SADLLFILES = \
 	MMRInternalFuncDict.cs \
 	MMRScriptBinOpStr.cs \
 	MMRScriptCodeGen.cs \
+	MMRScriptCollector.cs \
 	MMRScriptCompValu.cs \
 	MMRScriptConsts.cs \
 	MMRScriptEventCode.cs \
@@ -31,6 +32,7 @@ SECRETSRCFILES = \
 	MMRInternalFuncDict_sa_secret.cs \
 	MMRScriptBinOpStr_sa_secret.cs \
 	MMRScriptCodeGen_sa_secret.cs \
+	MMRScriptCollector_sa_secret.cs \
 	MMRScriptCompile_sa_secret.cs \
 	MMRScriptCompValu_sa_secret.cs \
 	MMRScriptConsts_sa_secret.cs \
@@ -52,6 +54,7 @@ TESTSRCFILES = \
 	MMRInternalFuncDict_tester.cs \
 	MMRScriptBinOpStr_tester.cs \
 	MMRScriptCodeGen_tester.cs \
+	MMRScriptCollector_tester.cs \
 	MMRScriptCompValu_tester.cs \
 	MMRScriptConsts_tester.cs \
 	MMRScriptEventCode_tester.cs \
