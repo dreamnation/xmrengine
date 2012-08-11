@@ -151,7 +151,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private ScriptMyLocal retValue = null;
 		private ScriptMyLocal callNo   = null;
 		private LinkedList<CallLabel> allCallLabels = new LinkedList<CallLabel> ();
-		public  LinkedList<CompValuTemp> activeTemps = new LinkedList<CompValuTemp> ();
+		private List<ScriptMyLocal> activeTemps = new List<ScriptMyLocal> ();
 
 		private ScriptCodeGen (TokenScript tokenScript, BinaryWriter objFileWriter, string sourceHash)
 		{
@@ -1171,11 +1171,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			allCallLabels.Clear ();
 
 			/*
-			 * Clear list of active CompValuTemps.
-			 */
-			activeTemps.Clear ();
-
-			/*
 			 * Any return statements inside function body jump to this label
 			 * after putting return value in __retval.
 			 */
@@ -1406,10 +1401,29 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		/**
 		 * @brief Generate code to write all arguments and locals to the capture stack frame.
 		 *        This includes heap-tracker and temp variables.
+		 *        We only need to save what is active at the point of callLabels through because 
+		 *        those are the only points we will jump to on restore.  This save us from saving 
+		 *        all the little temp vars we create.
 		 */
 		private void GenerateFrameCaptureCode ()
 		{
-			int nSaves = curDeclFunc.argDecl.vars.Length + curDeclFunc.localVars.Count + activeTemps.Count;
+			/*
+			 * Build list of locals and temps active at all the call labels.
+			 */
+			activeTemps.Clear ();
+			foreach (CallLabel cl in allCallLabels) {
+				foreach (ScriptMyLocal lcl in cl.callLabel.whereAmI.localsReadBeforeWritten) {
+					if (!activeTemps.Contains (lcl)) {
+						activeTemps.Add (lcl);
+					}
+				}
+			}
+
+			/*
+			 * Compute total number of slots we need to save stuff.
+			 * Assume we need to save all call arguments.
+			 */
+			int nSaves = curDeclFunc.argDecl.vars.Length + activeTemps.Count;
 
 			/*
 			 * Output code to allocate a stack frame object with an object array.
@@ -1435,23 +1449,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
-			 * Copy local values to object array, boxing as needed.
+			 * Copy local and temp values to object array, boxing as needed.
 			 */
-			foreach (TokenDeclVar localVar in curDeclFunc.localVars) {
+			foreach (ScriptMyLocal lcl in activeTemps) {
 				ilGen.Emit (OpCodes.Dup);
 				ilGen.PushInt (i ++);
-				CompValu localLoc = localVar.location;
-				localLoc.PushVal (this, localVar, tokenTypeObj);
-				ilGen.Emit (OpCodes.Stelem_Ref);
-			}
-
-			/*
-			 * Copy temp values to object array, boxing as needed.
-			 */
-			foreach (CompValu temp in activeTemps) {
-				ilGen.Emit (OpCodes.Dup);
-				ilGen.PushInt (i ++);
-				temp.PushVal (this, curDeclFunc, tokenTypeObj);
+				ilGen.Emit (OpCodes.Ldloc, lcl);
+				if (lcl.type.IsValueType) ilGen.Emit (OpCodes.Box, lcl.type);
 				ilGen.Emit (OpCodes.Stelem_Ref);
 			}
 
@@ -1494,29 +1498,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
-			 * Restore local values from object array, unboxing as needed.
+			 * Restore local and temp values from object array, unboxing as needed.
 			 */
-			foreach (TokenDeclVar localVar in curDeclFunc.localVars) {
-				CompValu localLoc = localVar.location;
-				localLoc.PopPre (this, localVar);
+			foreach (ScriptMyLocal lcl in activeTemps) {
 				ilGen.Emit (OpCodes.Ldloc, objArray);
 				ilGen.PushInt (i ++);
 				ilGen.Emit (OpCodes.Ldelem_Ref);
-				TypeCast.CastTopOfStack (this, localVar, tokenTypeObj, localVar.type, true);
-				localLoc.PopPost (this, localVar);
+				if (lcl.type.IsValueType) ilGen.Emit (OpCodes.Unbox_Any, lcl.type);
+				ilGen.Emit (OpCodes.Stloc, lcl);
 			}
-
-			/*
-			 * Restore temp values from object array, unboxing as needed.
-			 */
-			foreach (CompValu temp in activeTemps) {
-				temp.PopPre (this, curDeclFunc);
-				ilGen.Emit (OpCodes.Ldloc, objArray);
-				ilGen.PushInt (i ++);
-				ilGen.Emit (OpCodes.Ldelem_Ref);
-				TypeCast.CastTopOfStack (this, curDeclFunc, tokenTypeObj, temp.type, true);
-				temp.PopPost (this, curDeclFunc);
-			}
+			activeTemps.Clear ();
 
 			/*
 			 * Output a switch statement with a case for each possible value of callNo.

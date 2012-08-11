@@ -3,6 +3,8 @@
  *  All rights reserved.                           *
 \***************************************************/
 
+#define DEBUG 0
+
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 using System;
 using System.Collections.Generic;
@@ -12,73 +14,188 @@ using System.Reflection.Emit;
 using System.Text;
 
 /**
- * @brief Wrapper class for ILGenerator
- *        It can write out debug output.
+ * @brief Wrapper class for ScriptMyILGen to do simple optimizations.
+ *        The main one is to figure out which locals are active at the labels
+ *        so the stack capture/restore code doesn't have to do everything.
+ *        Second is it removes unnecessary back-to-back stloc/ldloc's.
  */
 
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
+	/**
+	 * @brief One of these per label defined in the function.
+	 */
 	public class ScriptMyLabel {
 		public string name;
 		public int number;
+
+		public GraphNodeMarkLabel whereAmI;
 	}
 
+	/**
+	 * @brief One of these per local variable defined in the function.
+	 */
 	public class ScriptMyLocal {
 		public string name;
 		public Type type;
 		public int number;
 	}
 
+	/**
+	 * @brief One of these per opcode and label in the function plus other misc markers.
+	 *        They form the CIL instruction stream of the function.
+	 */
 	public abstract class GraphNode {
-		public ScriptCollector coll;
-		public GraphNode nextLin, prevLin;
+		public const int OPINDENT =  4;
+		public const int OPDEBLEN = 12;
 
+		public ScriptCollector coll;
+
+		/*
+		 * List of nodes in order as originally given.
+		 */
+		public GraphNode nextLin, prevLin;
+		public int linSeqNo;
+
+		/*
+		 * All graph nodes get linked to the linear list when created.
+		 */
 		public GraphNode (ScriptCollector coll)
 		{
 			this.coll = coll;
 			if (coll.lastLin == null) coll.firstLin = this;
 			                     else coll.lastLin.nextLin = this;
-			this.prevLin = coll.lastLin;
-			coll.lastLin = this;
+			this.prevLin  = coll.lastLin;
+			coll.lastLin  = this;
+			this.linSeqNo = ++ coll.linSeqNos;
 		}
 
+		/**
+		 * @brief Append to debugging string for printing out the instruction.
+		 */
+		public abstract void DebString (StringBuilder sb);
+
+		/**
+		 * @brief See if this instruction reads a local variable.
+		 */
+		public virtual ScriptMyLocal ReadsLocal  () { return null; }
+
+		/**
+		 * @brief See if this instruction writes a local variable.
+		 */
+		public virtual ScriptMyLocal WritesLocal () { return null; }
+
+		/**
+		 * @brief Write this instruction out to the wrapped object file.
+		 */
 		public abstract void WriteOutOne (ScriptMyILGen ilGen);
+
+		/**
+		 * @brief Iterate through all the possible next nodes, including the next inline node, if any.
+		 *        The next inline code is excluded if the instruction never falls through, eg, return, unconditional branch.
+		 */
+		private System.Collections.Generic.IEnumerable<GraphNode> _nextNodes;
+		public System.Collections.Generic.IEnumerable<GraphNode> NextNodes
+		{ get {
+			if (_nextNodes == null) _nextNodes = GetNNEnumerable ();
+			return _nextNodes;
+		} }
+
+		/**
+		 * @brief This default iterator always returns the next inline node as the one-and-only next node.
+		 *        Other instructions need to override it if they can possibly do other than that.
+		 */
+		protected virtual System.Collections.Generic.IEnumerable<GraphNode> GetNNEnumerable ()
+		{
+			return new NNEnumerable (this);
+		}
+
+		private class NNEnumerable : System.Collections.Generic.IEnumerable<GraphNode> {
+			private GraphNode gn;
+			public NNEnumerable (GraphNode gn)
+			{
+				this.gn = gn;
+			}
+			System.Collections.Generic.IEnumerator<GraphNode> System.Collections.Generic.IEnumerable<GraphNode>.GetEnumerator ()
+			{
+				return new NNEnumerator (gn);
+			}
+			System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator ()
+			{
+				return new NNEnumerator (gn);
+			}
+		}
+		private class NNEnumerator : System.Collections.Generic.IEnumerator<GraphNode> {
+			private GraphNode gn;
+			private GraphNode nn;
+			private int index;
+			public NNEnumerator (GraphNode gn)
+			{
+				this.gn = gn;
+			}
+			public bool MoveNext ()
+			{
+				switch (index) {
+					case 0: {
+						index ++;
+						nn = gn.nextLin;
+						return nn != null;
+					}
+					case 1: {
+						nn = null;
+						return false;
+					}
+				}
+				throw new Exception ();
+			}
+			public void Reset ()
+			{
+				index = 0;
+				nn = null;
+			}
+			GraphNode System.Collections.Generic.IEnumerator<GraphNode>.Current {
+				get { return nn; }
+			}
+			object System.Collections.IEnumerator.Current {
+				get { return nn; }
+			}
+			void System.IDisposable.Dispose() { }
+		}
 	}
 
-	public class GraphNodeBegin : GraphNode {
+	/**
+	 * @brief Things that derive from this are the beginning of a block.
+	 *        A block of code is that which begins with a label or is the beginning of all code
+	 *        and it contains no labels, ie, it can't be jumped into other than at its beginning.
+	 */
+	public abstract class GraphNodeBlock : GraphNode {
+		public List<ScriptMyLocal> localsWrittenBeforeRead = new List<ScriptMyLocal> ();
+		public List<ScriptMyLocal> localsReadBeforeWritten = new List<ScriptMyLocal> ();
+		public int hasBeenResolved;
+		public GraphNodeBlock (ScriptCollector coll) : base (coll) { }
+	}
+
+	/**
+	 * @brief This placeholder is at the beginning of the code so the first few instructions 
+	 *        belong to some block.
+	 */
+	public class GraphNodeBegin : GraphNodeBlock {
 		public GraphNodeBegin (ScriptCollector coll) : base (coll) { }
+		public override void DebString (StringBuilder sb) { sb.Append ("begin"); }
 		public override void WriteOutOne (ScriptMyILGen ilGen) { }
 	}
 
-	public class GraphNodeDeclareLocal : GraphNode {
-		public ScriptMyLocal loc;
-		public GraphNodeDeclareLocal (ScriptCollector coll, ScriptMyLocal loc) : base (coll)
-		{ 
-			this.loc = loc;
-		}
-
-		public override void WriteOutOne (ScriptMyILGen ilGen)
-		{
-			ilGen.DeclareLocal (loc);
-		}
-	}
-
-	public class GraphNodeDefineLabel : GraphNode {
-		public ScriptMyLabel lbl;
-		public GraphNodeDefineLabel (ScriptCollector coll, ScriptMyLabel lbl) : base (coll)
-		{ 
-			this.lbl = lbl;
-		}
-
-		public override void WriteOutOne (ScriptMyILGen ilGen)
-		{
-			ilGen.DefineLabel (lbl);
-		}
-	}
-
-	public class GraphNodeBeginExceptionBlock : GraphNode {
+	/**
+	 * @brief Beginning of try block.
+	 */
+	public class GraphNodeBeginExceptionBlock : GraphNodeBlock {
 		public GraphNodeBeginExceptionBlock (ScriptCollector coll) : base (coll)
 		{ }
+
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append ("  beginexceptionblock");
+		}
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
 		{
@@ -86,11 +203,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 	}
 
-	public class GraphNodeBeginCatchBlock : GraphNode {
+	/**
+	 * @brief Beginning of catch block.
+	 */
+	public class GraphNodeBeginCatchBlock : GraphNodeBlock {
 		public Type excType;
+
 		public GraphNodeBeginCatchBlock (ScriptCollector coll, Type excType) : base (coll)
 		{ 
 			this.excType = excType;
+		}
+
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append ("  begincatchblock");
 		}
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
@@ -99,9 +225,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 	}
 
-	public class GraphNodeBeginFinallyBlock : GraphNode {
+	/**
+	 * @brief Beginning of finally block.
+	 */
+	public class GraphNodeBeginFinallyBlock : GraphNodeBlock {
 		public GraphNodeBeginFinallyBlock (ScriptCollector coll) : base (coll)
 		{ }
+
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append ("  beginfinallyblock");
+		}
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
 		{
@@ -109,9 +243,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 	}
 
+	/**
+	 * @brief End of try/catch/finally block.
+	 */
 	public class GraphNodeEndExceptionBlock : GraphNode {
 		public GraphNodeEndExceptionBlock (ScriptCollector coll) : base (coll)
 		{ }
+
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append ("  endexceptionblock");
+		}
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
 		{
@@ -119,11 +261,109 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 	}
 
-	public class GraphNodeEmitNull : GraphNode {
+	/**
+	 * @brief Actual instruction emits...
+	 */
+	public abstract class GraphNodeEmit : GraphNode {
 		public OpCode opcode;
-		public GraphNodeEmitNull (ScriptCollector coll, OpCode opcode) : base (coll)
+
+		public GraphNodeEmit (ScriptCollector coll, OpCode opcode) : base (coll)
 		{
 			this.opcode = opcode;
+		}
+
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append ("".PadRight (OPINDENT));
+			sb.Append (opcode.ToString ().PadRight (OPDEBLEN));
+		}
+
+		private bool CanFallThrough ()
+		{
+			switch (opcode.FlowControl) {
+				case FlowControl.Branch:      return false;  // unconditional branch
+				case FlowControl.Break:       return false;  // break
+				case FlowControl.Call:        return true;   // call
+				case FlowControl.Cond_Branch: return true;   // conditional branch
+				case FlowControl.Next:        return true;   // falls through to next instruction
+				case FlowControl.Return:      return false;  // return
+				case FlowControl.Throw:       return false;  // throw
+				default: throw new Exception ("unknown flow control " + opcode.FlowControl);
+			}
+		}
+
+		/**
+		 * @brief If instruction is terminating, we say there is nothing following (eg, return).
+		 *        Otherwise, say the one-and-only next instruction is the next instruction inline.
+		 */
+		protected override System.Collections.Generic.IEnumerable<GraphNode> GetNNEnumerable ()
+		{
+			return new NNEnumerable (this);
+		}
+
+		private class NNEnumerable : System.Collections.Generic.IEnumerable<GraphNode> {
+			private GraphNodeEmit gn;
+			public NNEnumerable (GraphNodeEmit gn)
+			{
+				this.gn = gn;
+			}
+			System.Collections.Generic.IEnumerator<GraphNode> System.Collections.Generic.IEnumerable<GraphNode>.GetEnumerator ()
+			{
+				return new NNEnumerator (gn);
+			}
+			System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator ()
+			{
+				return new NNEnumerator (gn);
+			}
+		}
+		private class NNEnumerator : System.Collections.Generic.IEnumerator<GraphNode> {
+			private GraphNodeEmit gn;
+			private GraphNode nn;
+			private int index;
+			public NNEnumerator (GraphNodeEmit gn)
+			{
+				this.gn = gn;
+			}
+			public bool MoveNext ()
+			{
+				switch (index) {
+					case 0: {
+						if (gn.CanFallThrough ()) {
+							index ++;
+							nn = gn.nextLin;
+							return nn != null;
+						}
+						return false;
+					}
+					case 1: {
+						nn = null;
+						return false;
+					}
+				}
+				throw new Exception ();
+			}
+			public void Reset ()
+			{
+				index = 0;
+				nn = null;
+			}
+			GraphNode System.Collections.Generic.IEnumerator<GraphNode>.Current {
+				get { return nn; }
+			}
+			object System.Collections.IEnumerator.Current {
+				get { return nn; }
+			}
+			void System.IDisposable.Dispose() { }
+		}
+	}
+
+	public class GraphNodeEmitNull : GraphNodeEmit {
+		public GraphNodeEmitNull (ScriptCollector coll, OpCode opcode) : base (coll, opcode)
+		{ }
+
+		public override void DebString (StringBuilder sb)
+		{
+			base.DebString (sb);
 		}
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
@@ -132,13 +372,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 	}
 
-	public class GraphNodeEmitField : GraphNode {
-		public OpCode opcode;
+	public class GraphNodeEmitField : GraphNodeEmit {
 		public FieldInfo field;
-		public GraphNodeEmitField (ScriptCollector coll, OpCode opcode, FieldInfo field) : base (coll)
+
+		public GraphNodeEmitField (ScriptCollector coll, OpCode opcode, FieldInfo field) : base (coll, opcode)
 		{ 
-			this.opcode = opcode;
 			this.field = field;
+		}
+
+		public override void DebString (StringBuilder sb)
+		{
+			base.DebString (sb);
+			sb.Append (field.Name);
 		}
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
@@ -147,13 +392,33 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 	}
 
-	public class GraphNodeEmitLocal : GraphNode {
-		public OpCode opcode;
+	public class GraphNodeEmitLocal : GraphNodeEmit {
 		public ScriptMyLocal myLocal;
-		public GraphNodeEmitLocal (ScriptCollector coll, OpCode opcode, ScriptMyLocal myLocal) : base (coll)
+
+		public GraphNodeEmitLocal (ScriptCollector coll, OpCode opcode, ScriptMyLocal myLocal) : base (coll, opcode)
 		{ 
-			this.opcode = opcode;
 			this.myLocal = myLocal;
+		}
+
+		public override void DebString (StringBuilder sb)
+		{
+			base.DebString (sb);
+			sb.Append (myLocal.name);
+		}
+
+		public override ScriptMyLocal ReadsLocal  ()
+		{
+			if (opcode == OpCodes.Ldloc)  return myLocal;
+			if (opcode == OpCodes.Ldloca) return myLocal;
+			if (opcode == OpCodes.Stloc)  return null;
+			throw new Exception ("unknown opcode " + opcode);
+		}
+		public override ScriptMyLocal WritesLocal ()
+		{
+			if (opcode == OpCodes.Ldloc)  return null;
+			if (opcode == OpCodes.Ldloca) return myLocal;
+			if (opcode == OpCodes.Stloc)  return myLocal;
+			throw new Exception ("unknown opcode " + opcode);
 		}
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
@@ -162,13 +427,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 	}
 
-	public class GraphNodeEmitType : GraphNode {
-		public OpCode opcode;
+	public class GraphNodeEmitType : GraphNodeEmit {
 		public Type type;
-		public GraphNodeEmitType (ScriptCollector coll, OpCode opcode, Type type) : base (coll)
+
+		public GraphNodeEmitType (ScriptCollector coll, OpCode opcode, Type type) : base (coll, opcode)
 		{ 
-			this.opcode = opcode;
 			this.type = type;
+		}
+
+		public override void DebString (StringBuilder sb)
+		{
+			base.DebString (sb);
+			sb.Append (type.Name);
 		}
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
@@ -177,43 +447,221 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 	}
 
-	public class GraphNodeEmitLabel : GraphNode {
-		public OpCode opcode;
+	public class GraphNodeEmitLabel : GraphNodeEmit {
 		public ScriptMyLabel myLabel;
-		public GraphNodeEmitLabel (ScriptCollector coll, OpCode opcode, ScriptMyLabel myLabel) : base (coll)
+
+		public GraphNodeEmitLabel (ScriptCollector coll, OpCode opcode, ScriptMyLabel myLabel) : base (coll, opcode)
 		{ 
-			this.opcode = opcode;
 			this.myLabel = myLabel;
+		}
+
+		public override void DebString (StringBuilder sb)
+		{
+			base.DebString (sb);
+			sb.Append (myLabel.name);
 		}
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
 		{
 			ilGen.Emit (opcode, myLabel);
 		}
+
+		/**
+		 * @brief Conditional branches return the next inline followed by the branch target
+		 *        Unconditional branches return only the branch target
+		 *        But if the target is outside our scope (eg __retlbl), omit it from the list
+		 */
+		protected override System.Collections.Generic.IEnumerable<GraphNode> GetNNEnumerable ()
+		{
+			return new NNEnumerable (this);
+		}
+
+		private class NNEnumerable : System.Collections.Generic.IEnumerable<GraphNode> {
+			private GraphNodeEmitLabel gn;
+			public NNEnumerable (GraphNodeEmitLabel gn)
+			{
+				this.gn = gn;
+			}
+			System.Collections.Generic.IEnumerator<GraphNode> System.Collections.Generic.IEnumerable<GraphNode>.GetEnumerator ()
+			{
+				return new NNEnumerator (gn);
+			}
+			System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator ()
+			{
+				return new NNEnumerator (gn);
+			}
+		}
+		private class NNEnumerator : System.Collections.Generic.IEnumerator<GraphNode> {
+			private GraphNodeEmitLabel gn;
+			private GraphNode nn;
+			private int index;
+			public NNEnumerator (GraphNodeEmitLabel gn)
+			{
+				this.gn = gn;
+			}
+			public bool MoveNext ()
+			{
+				switch (gn.opcode.FlowControl) {
+					case FlowControl.Branch: {
+						// unconditional branch just goes to target and nothing else
+						switch (index) {
+							case 0: {
+								nn = gn.myLabel.whereAmI;
+								index ++;
+								return nn != null;
+							}
+							case 1: {
+								return false;
+							}
+						}
+						throw new Exception ();
+					}
+					case FlowControl.Cond_Branch: {
+						// conditional branch goes inline and to target
+						switch (index) {
+							case 0: {
+								nn = gn.nextLin;
+								index ++;
+								return true;
+							}
+							case 1: {
+								nn = gn.myLabel.whereAmI;
+								index ++;
+								return nn != null;
+							}
+							case 2: {
+								return false;
+							}
+						}
+						throw new Exception ();
+					}
+					default: throw new Exception ("unknown flow control " + gn.opcode.FlowControl.ToString () + 
+					                              " of " + gn.opcode.ToString ());
+				}
+			}
+			public void Reset ()
+			{
+				index = 0;
+				nn = null;
+			}
+			GraphNode System.Collections.Generic.IEnumerator<GraphNode>.Current {
+				get { return nn; }
+			}
+			object System.Collections.IEnumerator.Current {
+				get { return nn; }
+			}
+			void System.IDisposable.Dispose() { }
+		}
 	}
 
-	public class GraphNodeEmitLabels : GraphNode {
-		public OpCode opcode;
+	public class GraphNodeEmitLabels : GraphNodeEmit {
 		public ScriptMyLabel[] myLabels;
-		public GraphNodeEmitLabels (ScriptCollector coll, OpCode opcode, ScriptMyLabel[] myLabels) : base (coll)
+
+		public GraphNodeEmitLabels (ScriptCollector coll, OpCode opcode, ScriptMyLabel[] myLabels) : base (coll, opcode)
 		{ 
-			this.opcode = opcode;
 			this.myLabels = myLabels;
+		}
+
+		public override void DebString (StringBuilder sb)
+		{
+			base.DebString (sb);
+			bool first = true;
+			foreach (ScriptMyLabel lbl in myLabels) {
+				if (!first) sb.Append (',');
+				sb.Append (lbl.name);
+				first = false;
+			}
 		}
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
 		{
 			ilGen.Emit (opcode, myLabels);
 		}
+
+		/**
+		 * @brief Return list of all labels followed by the next linear instruction
+		 *        But if the target is outside our scope (eg __retlbl), omit it from the list
+		 */
+		protected override System.Collections.Generic.IEnumerable<GraphNode> GetNNEnumerable ()
+		{
+			return new NNEnumerable (this);
+		}
+
+		private class NNEnumerable : System.Collections.Generic.IEnumerable<GraphNode> {
+			private GraphNodeEmitLabels gn;
+			public NNEnumerable (GraphNodeEmitLabels gn)
+			{
+				this.gn = gn;
+			}
+			System.Collections.Generic.IEnumerator<GraphNode> System.Collections.Generic.IEnumerable<GraphNode>.GetEnumerator ()
+			{
+				return new NNEnumerator (gn);
+			}
+			System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator ()
+			{
+				return new NNEnumerator (gn);
+			}
+		}
+		private class NNEnumerator : System.Collections.Generic.IEnumerator<GraphNode> {
+			private GraphNodeEmitLabels gn;
+			private GraphNode nn;
+			private int index;
+			public NNEnumerator (GraphNodeEmitLabels gn)
+			{
+				this.gn = gn;
+			}
+			public bool MoveNext ()
+			{
+				/*
+				 * Return next from list of switch case labels.
+				 */
+				while (index < gn.myLabels.Length) {
+					nn = gn.myLabels[index++].whereAmI;
+					if (nn != null) return true;
+				}
+
+				/*
+				 * If all ran out, the switch instruction falls through.
+				 */
+				if (index == gn.myLabels.Length) {
+					index ++;
+					nn = gn.nextLin;
+					return true;
+				}
+
+				/*
+				 * Even ran out of that, say there's nothing more.
+				 */
+				nn = null;
+				return false;
+			}
+			public void Reset ()
+			{
+				index = 0;
+				nn = null;
+			}
+			GraphNode System.Collections.Generic.IEnumerator<GraphNode>.Current {
+				get { return nn; }
+			}
+			object System.Collections.IEnumerator.Current {
+				get { return nn; }
+			}
+			void System.IDisposable.Dispose() { }
+		}
 	}
 
-	public class GraphNodeEmitIntMeth : GraphNode {
-		public OpCode opcode;
+	public class GraphNodeEmitIntMeth : GraphNodeEmit {
 		public ScriptMyILGen method;
-		public GraphNodeEmitIntMeth (ScriptCollector coll, OpCode opcode, ScriptMyILGen method) : base (coll)
+
+		public GraphNodeEmitIntMeth (ScriptCollector coll, OpCode opcode, ScriptMyILGen method) : base (coll, opcode)
 		{ 
-			this.opcode = opcode;
 			this.method = method;
+		}
+
+		public override void DebString (StringBuilder sb)
+		{
+			base.DebString (sb);
+			sb.Append (method.methName);
 		}
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
@@ -222,13 +670,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 	}
 
-	public class GraphNodeEmitExtMeth : GraphNode {
-		public OpCode opcode;
+	public class GraphNodeEmitExtMeth : GraphNodeEmit {
 		public MethodInfo method;
-		public GraphNodeEmitExtMeth (ScriptCollector coll, OpCode opcode, MethodInfo method) : base (coll)
+
+		public GraphNodeEmitExtMeth (ScriptCollector coll, OpCode opcode, MethodInfo method) : base (coll, opcode)
 		{ 
-			this.opcode = opcode;
 			this.method = method;
+		}
+
+		public override void DebString (StringBuilder sb)
+		{
+			base.DebString (sb);
+			sb.Append (method.Name);
 		}
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
@@ -237,13 +690,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 	}
 
-	public class GraphNodeEmitCtor : GraphNode {
-		public OpCode opcode;
+	public class GraphNodeEmitCtor : GraphNodeEmit {
 		public ConstructorInfo ctor;
-		public GraphNodeEmitCtor (ScriptCollector coll, OpCode opcode, ConstructorInfo ctor) : base (coll)
+
+		public GraphNodeEmitCtor (ScriptCollector coll, OpCode opcode, ConstructorInfo ctor) : base (coll, opcode)
 		{ 
-			this.opcode = opcode;
 			this.ctor = ctor;
+		}
+
+		public override void DebString (StringBuilder sb)
+		{
+			base.DebString (sb);
+			sb.Append (ctor.ReflectedType.Name);
 		}
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
@@ -252,13 +710,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 	}
 
-	public class GraphNodeEmitDouble : GraphNode {
-		public OpCode opcode;
+	public class GraphNodeEmitDouble : GraphNodeEmit {
 		public double value;
-		public GraphNodeEmitDouble (ScriptCollector coll, OpCode opcode, double value) : base (coll)
+
+		public GraphNodeEmitDouble (ScriptCollector coll, OpCode opcode, double value) : base (coll, opcode)
 		{ 
-			this.opcode = opcode;
 			this.value = value;
+		}
+
+		public override void DebString (StringBuilder sb)
+		{
+			base.DebString (sb);
+			sb.Append (value);
 		}
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
@@ -267,13 +730,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 	}
 
-	public class GraphNodeEmitFloat : GraphNode {
-		public OpCode opcode;
+	public class GraphNodeEmitFloat : GraphNodeEmit {
 		public float value;
-		public GraphNodeEmitFloat (ScriptCollector coll, OpCode opcode, float value) : base (coll)
+
+		public GraphNodeEmitFloat (ScriptCollector coll, OpCode opcode, float value) : base (coll, opcode)
 		{ 
-			this.opcode = opcode;
 			this.value = value;
+		}
+
+		public override void DebString (StringBuilder sb)
+		{
+			base.DebString (sb);
+			sb.Append (value);
 		}
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
@@ -282,13 +750,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 	}
 
-	public class GraphNodeEmitInt : GraphNode {
-		public OpCode opcode;
+	public class GraphNodeEmitInt : GraphNodeEmit {
 		public int value;
-		public GraphNodeEmitInt (ScriptCollector coll, OpCode opcode, int value) : base (coll)
+
+		public GraphNodeEmitInt (ScriptCollector coll, OpCode opcode, int value) : base (coll, opcode)
 		{ 
-			this.opcode = opcode;
 			this.value = value;
+		}
+
+		public override void DebString (StringBuilder sb)
+		{
+			base.DebString (sb);
+			sb.Append (value);
 		}
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
@@ -297,13 +770,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 	}
 
-	public class GraphNodeEmitString : GraphNode {
-		public OpCode opcode;
+	public class GraphNodeEmitString : GraphNodeEmit {
 		public string value;
-		public GraphNodeEmitString (ScriptCollector coll, OpCode opcode, string value) : base (coll)
+
+		public GraphNodeEmitString (ScriptCollector coll, OpCode opcode, string value) : base (coll, opcode)
 		{ 
-			this.opcode = opcode;
 			this.value = value;
+		}
+
+		public override void DebString (StringBuilder sb)
+		{
+			base.DebString (sb);
+			sb.Append ("\"");
+			sb.Append (value);
+			sb.Append ("\"");
 		}
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
@@ -312,11 +792,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 	}
 
-	public class GraphNodeMarkLabel : GraphNode {
+	public class GraphNodeMarkLabel : GraphNodeBlock {
 		public ScriptMyLabel myLabel;
+
 		public GraphNodeMarkLabel (ScriptCollector coll, ScriptMyLabel myLabel) : base (coll)
 		{ 
 			this.myLabel = myLabel;
+		}
+
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append (myLabel.name);
+			sb.Append (":");
 		}
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
@@ -330,6 +817,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		private ScriptMyILGen wrapped;
 		public GraphNode firstLin, lastLin;
+		public int linSeqNos;
+		private bool resolvedSomething;
+		private int resolveSequence;
+
+		private List<ScriptMyLocal> declaredLocals = new List<ScriptMyLocal> ();
+		private List<ScriptMyLabel> definedLabels  = new List<ScriptMyLabel> ();
 
 		public override string methName {
 			get { return wrapped.methName; }
@@ -348,7 +841,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			loc.name   = name;
 			loc.type   = type;
 			loc.number = wrapped.localNumber ++;
-			new GraphNodeDeclareLocal (this, loc);
+			declaredLocals.Add (loc);
 			return loc;
 		}
 
@@ -357,7 +850,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ScriptMyLabel lbl = new ScriptMyLabel ();
 			lbl.name   = name;
 			lbl.number = wrapped.labelNumber ++;
-			new GraphNodeDefineLabel (this, lbl);
+			definedLabels.Add (lbl);
 			return lbl;
 		}
 
@@ -448,14 +941,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		public override void MarkLabel (ScriptMyLabel myLabel)
 		{
-			new GraphNodeMarkLabel (this, myLabel);
-		}
-
-		/**
-		 * @brief Perform optimizations.
-		 */
-		public void Optimize ()
-		{
+			myLabel.whereAmI = new GraphNodeMarkLabel (this, myLabel);
 		}
 
 		/**
@@ -463,10 +949,226 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		public ScriptMyILGen WriteOutAll ()
 		{
+			foreach (ScriptMyLocal loc in declaredLocals) {
+				wrapped.DeclareLocal (loc);
+			}
+			foreach (ScriptMyLabel lbl in definedLabels) {
+				wrapped.DefineLabel (lbl);
+			}
 			for (GraphNode gn = firstLin; gn != null; gn = gn.nextLin) {
 				gn.WriteOutOne (wrapped);
 			}
 			return wrapped;
+		}
+
+		/**
+		 * @brief Perform optimizations.
+		 */
+		public void Optimize ()
+		{
+			/*
+			 * See which variables a particular block reads before writing.
+			 * This just considers the block itself and nothing that it branches to or fallsthru to.
+			 */
+			GraphNodeBlock currentBlock = null;
+			for (GraphNode gn = firstLin; gn != null; gn = gn.nextLin) {
+				if (gn is GraphNodeBlock) currentBlock = (GraphNodeBlock)gn;
+				ScriptMyLocal rdlcl = gn.ReadsLocal ();
+				if ((rdlcl != null) &&
+				    !currentBlock.localsWrittenBeforeRead.Contains (rdlcl) && 
+				    !currentBlock.localsReadBeforeWritten.Contains (rdlcl)) {
+					currentBlock.localsReadBeforeWritten.Add (rdlcl);
+				}
+				ScriptMyLocal wrlcl = gn.WritesLocal ();
+				if ((wrlcl != null) &&
+				    !currentBlock.localsWrittenBeforeRead.Contains (wrlcl) && 
+				    !currentBlock.localsReadBeforeWritten.Contains (wrlcl)) {
+					currentBlock.localsWrittenBeforeRead.Add (wrlcl);
+				}
+			}
+
+			/*
+			 * For every block we branch to, add that blocks readables to our list of readables,
+			 * because we need to have those values valid on entry to our block.  But if we write the 
+			 * variable before we can possibly branch to that block, then we don't need to have it valid 
+			 * on entry to our block.  So basically it looks like the branch instruction is reading 
+			 * everything required by any blocks it can branch to.
+			 */
+			do {
+				this.resolvedSomething = false;
+				this.resolveSequence ++;
+				this.ResolveBlock ((GraphNodeBlock)firstLin);
+			} while (this.resolvedSomething);
+
+			/*
+			 * Remove all the stloc/ldloc that are back-to-back without the temp
+			 * being needed afterwards.
+			 */
+			for (GraphNode gn = firstLin; gn != null; gn = gn.nextLin) {
+				if ((gn is GraphNodeEmitLocal) && 
+				    (gn.nextLin is GraphNodeEmitLocal)) {
+					GraphNodeEmitLocal gnel = (GraphNodeEmitLocal)gn;
+					GraphNodeEmitLocal nnel = (GraphNodeEmitLocal)gn.nextLin;
+					if ((gnel.opcode == OpCodes.Stloc) && 
+					    (nnel.opcode == OpCodes.Ldloc) && 
+					    (gnel.myLocal == nnel.myLocal) && 
+					    !IsLocalNeededAfterThis (nnel, nnel.myLocal)) {
+						gnel.prevLin.nextLin = nnel.nextLin;
+						nnel.nextLin.prevLin = gnel.prevLin;
+						gn = gnel.prevLin;
+					}
+				}
+			}
+
+			/*
+			 * Dump out the results.
+			 */
+#if DEBUG
+			Console.WriteLine ("");
+			Console.WriteLine (methName);
+			Console.WriteLine ("  resolveSequence=" + this.resolveSequence);
+
+			Console.WriteLine ("  Locals:");
+			foreach (ScriptMyLocal loc in declaredLocals) {
+				Console.WriteLine ("    " + loc.type.Name + "  " + loc.name);
+			}
+
+			Console.WriteLine ("  Labels:");
+			foreach (ScriptMyLabel lbl in definedLabels) {
+				Console.WriteLine ("    " + lbl.name);
+			}
+
+			Console.WriteLine ("  Code:");
+			for (GraphNode gn = firstLin; gn != null; gn = gn.nextLin) {
+				StringBuilder sb = new StringBuilder ();
+				sb.Append (gn.linSeqNo.ToString ().PadLeft (5));
+				sb.Append (": ");
+				gn.DebString (sb);
+				if (gn.ReadsLocal  () != null) PadToLength (sb, 60, " [read]");
+				if (gn.WritesLocal () != null) PadToLength (sb, 68, " [write]");
+				PadToLength (sb, 72, " ->");
+				bool first = true;
+				foreach (GraphNode nn in gn.NextNodes) {
+					if (!first) sb.Append (',');
+					sb.Append (nn.linSeqNo.ToString ().PadLeft (5));
+					first = false;
+				}
+				Console.WriteLine (sb.ToString ());
+				if (gn is GraphNodeBlock) {
+					GraphNodeBlock gnb = (GraphNodeBlock)gn;
+					foreach (ScriptMyLocal lcl in gnb.localsReadBeforeWritten) {
+						Console.WriteLine ("         reads " + lcl.name);
+					}
+				}
+			}
+#endif
+		}
+
+		/**
+		 * @brief Scan the given block for branches to other blocks.
+		 *        For any locals read by those blocks, mark them as being read by this block, 
+		 *        provided this block has not written them by that point.  This makes it look 
+		 *        as though the branch instruction is reading all the locals needed by any 
+		 *        target blocks.
+		 */
+		private void ResolveBlock (GraphNodeBlock currentBlock)
+		{
+			/*
+			 * So we don't recurse forever on a backward branch.
+			 */
+			currentBlock.hasBeenResolved = this.resolveSequence;
+
+			/*
+			 * Assume we haven't written any locals yet.
+			 */
+			List<ScriptMyLocal> localsWrittenSoFar = new List<ScriptMyLocal> ();
+
+			/*
+			 * Scan through the instructions in this block.
+			 */
+			for (GraphNode gn = currentBlock; gn != null;) {
+
+				/*
+				 * See if the instruction writes a local we don't know about yet.
+				 */
+				ScriptMyLocal wrlcl = gn.WritesLocal ();
+				if ((wrlcl != null) && !localsWrittenSoFar.Contains (wrlcl)) {
+					localsWrittenSoFar.Add (wrlcl);
+				}
+
+				/*
+				 * Scan through all the possible next instructions after this.
+				 */
+				GraphNode nextFallthruNode = null;
+				foreach (GraphNode nn in gn.NextNodes) {
+					if (nn is GraphNodeBlock) {
+
+						/*
+						 * Start of a block, go through all locals needed by that block on entry.
+						 */
+						GraphNodeBlock nextBlock = (GraphNodeBlock)nn;
+						if (nextBlock.hasBeenResolved < this.resolveSequence) ResolveBlock (nextBlock);
+						foreach (ScriptMyLocal readByNextBlock in nextBlock.localsReadBeforeWritten) {
+
+							/*
+							 * If this block hasn't written it by now and this block doesn't already
+							 * require it on entry, say this block requires it on entry.
+							 */
+							if (!localsWrittenSoFar.Contains (readByNextBlock) && 
+							    !currentBlock.localsReadBeforeWritten.Contains (readByNextBlock)) {
+								currentBlock.localsReadBeforeWritten.Add (readByNextBlock);
+								this.resolvedSomething = true;
+							}
+						}
+					} else {
+
+						/*
+						 * Not start of a block, should be normal fallthru instruction.
+						 */
+						if (nextFallthruNode != null) throw new Exception (); // more than one fallthru?
+						nextFallthruNode = nn;
+					}
+				}
+
+				/*
+				 * Process next instruction if it isn't the start of a block.
+				 */
+				gn = nextFallthruNode;
+			}
+				
+		}
+
+		/**
+		 * @brief Figure out whether the value in a local var is needed after the given instruction.
+		 *        True if we reach the end of the program on all branches before reading it
+		 *        True if we write the local var on all branches before reading it
+		 *        False otherwise
+		 */
+		private bool IsLocalNeededAfterThis (GraphNode node, ScriptMyLocal local)
+		{
+			do {
+				GraphNode nextFallthruNode = null;
+				foreach (GraphNode nn in node.NextNodes) {
+					if (nn is GraphNodeBlock) {
+						if (((GraphNodeBlock)nn).localsReadBeforeWritten.Contains (local)) {
+							return true;
+						}
+					} else {
+						nextFallthruNode = nn;
+					}
+				}
+				node = nextFallthruNode;
+				if (node == null) return false;
+				if (node.ReadsLocal () == local) return true;
+			} while (node.WritesLocal () != local);
+			return false;
+		}
+
+		private static void PadToLength (StringBuilder sb, int len, string str)
+		{
+			int pad = len - sb.Length;
+			if (pad < 0) pad = 0;
+			sb.Append (str.PadLeft (pad));
 		}
 	}
 }

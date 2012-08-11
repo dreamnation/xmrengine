@@ -1087,7 +1087,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				name = "__tmp_" + (++ scg.tempCompValuNum);
 			}
 			this.localBuilder = scg.ilGen.DeclareLocal (ToSysType(), name);
-			scg.activeTemps.AddLast (this);
 		}
 		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
