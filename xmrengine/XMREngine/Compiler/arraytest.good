@@ -1,0 +1,70 @@
+Compiling...
+Running...
+llOwnerSay: c0 = 99
+llOwnerSay: c1 = 147
+llOwnerSay: c2 = 135
+llOwnerSay: c3 = 101
+llOwnerSay: c4 = 56
+llOwnerSay: c5 = 197
+llOwnerSay: c6 = 735
+llOwnerSay: SayIt: this.x=99
+llOwnerSay: SayIt: Klass.y=0
+llOwnerSay: SayIt: this.x=99
+llOwnerSay: SayIt: Klass.y=0
+llOwnerSay: k string zhis is Klass
+llOwnerSay: KlassOne.Printable
+llOwnerSay: KlassOne.Printable
+llOwnerSay: k1 string zhis is KlassOne
+llOwnerSay: SayIt: this.x=99
+llOwnerSay: SayIt: Klass.y=0
+llOwnerSay: printable k string zhis is Klass
+llOwnerSay: two different Klass both with 99: 1
+llOwnerSay: k55.x = 55
+llOwnerSay: k99.x = 99
+llOwnerSay: now the values are different: 0
+llOwnerSay: existing array:
+llOwnerSay: count=0
+llOwnerSay: arraytest
+llOwnerSay: count=2
+llOwnerSay: l=0, v=the cat is fat
+llOwnerSay: l=pig, v=dog
+llOwnerSay: 0: zz[0]=the cat is fat
+llOwnerSay: 1: zz[pig]=dog
+llOwnerSay: count=3
+llOwnerSay: l=0, v=the cat is fat
+llOwnerSay: l=pig, v=dog
+llOwnerSay: l=rat, v=snake
+llOwnerSay: 0: zz[0]=the cat is fat
+llOwnerSay: 1: zz[pig]=dog
+llOwnerSay: 2: zz[rat]=snake
+llOwnerSay: count=2
+llOwnerSay: l=pig, v=dog
+llOwnerSay: l=rat, v=snake
+llOwnerSay: 0: zz[pig]=dog
+llOwnerSay: 1: zz[rat]=snake
+llOwnerSay: count=2
+llOwnerSay: l=pig, v=schwein
+llOwnerSay: l=rat, v=snake
+llOwnerSay: 0: zz[pig]=schwein
+llOwnerSay: 1: zz[rat]=snake
+llOwnerSay: count=6
+llOwnerSay: l=pig, v=schwein
+llOwnerSay: l=rat, v=snake
+llOwnerSay: l=01, v=zero,one
+llOwnerSay: l=12, v=one,two
+llOwnerSay: l=two3, v=t.w.o,three
+llOwnerSay: l=4567, v=four,five,six,seven
+llOwnerSay: 0: zz[pig]=schwein
+llOwnerSay: 1: zz[rat]=snake
+llOwnerSay: 2: zz[01]=zero,one
+llOwnerSay: 3: zz[12]=one,two
+llOwnerSay: 4: zz[two3]=t.w.o,three
+llOwnerSay: 5: zz[4567]=four,five,six,seven
+llOwnerSay: zz[01]=zero,one
+llOwnerSay: zz[12]=one,two
+llOwnerSay: zz[two3]=t.w.o,three
+llOwnerSay: zz[4567]=four,five,six,seven
+llOwnerSay: success!
+llOwnerSay: xmrHashCode(2992)  = 2992
+llOwnerSay: xmrHashCode(29.92) = 1585822313 = 1585822313
+llOwnerSay: xmrHashCode(Hello World) = -862545276

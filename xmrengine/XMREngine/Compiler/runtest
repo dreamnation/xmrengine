@@ -4,7 +4,11 @@ time make xmrengtest.exe
 export MONO_PATH=../../../bin
 export PATH=~/mono64.267/bin:$PATH
 
-mono --debug xmrengtest.exe -serialize -asm while1.xmrasm    while1.lsl
-mono --debug xmrengtest.exe -serialize -asm arraytest.xmrasm arraytest.lsl
-mono --debug xmrengtest.exe -serialize -asm objectest.xmrasm objectest.lsl
-mono --debug xmrengtest.exe -serialize -asm chartest.xmrasm  chartest.lsl
+mono --debug xmrengtest.exe -serialize -asm while1.xmrasm    while1.lsl    | tee while1.out
+diff while1.out while1.good
+mono --debug xmrengtest.exe -serialize -asm arraytest.xmrasm arraytest.lsl | tee arraytest.out
+diff arraytest.out arraytest.good
+mono --debug xmrengtest.exe -serialize -asm objectest.xmrasm objectest.lsl | tee objectest.out
+diff objectest.out objectest.good
+mono --debug xmrengtest.exe -serialize -asm chartest.xmrasm  chartest.lsl  | tee chartest.out
+diff chartest.out chartest.good

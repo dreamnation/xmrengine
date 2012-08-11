@@ -1,0 +1,52 @@
+Compiling...
+Running...
+llOwnerSay: test non-trivial global init
+llOwnerSay: nontriv 99 = 99
+llOwnerSay: typeof(stuff) = List<string>
+llOwnerSay: count=4
+llOwnerSay: typeof (stuffenum) = List<string>.Enumerator
+llOwnerSay: element=(string) abcdef
+llOwnerSay: element=(string) 1
+llOwnerSay: element=(string) 234
+llOwnerSay: element=(string) <5.000000,6.000000,7.000000>
+llOwnerSay: s2i: two => 2
+llOwnerSay: s2i: one => 1
+llOwnerSay: s2i: three => 3
+llOwnerSay: x.Length = 6
+llOwnerSay: y.Length = 12
+llOwnerSay:   20.000000  26.000000  32.000000  38.000000  -- good
+llOwnerSay:   29.000000  38.000000  47.000000  56.000000  -- good
+llOwnerSay: typeof jagged = string[,][]
+llOwnerSay: jagged[0,0].Length=4 : 0,0,0 : 0,0,1 : 0,0,2 : 0,0,3
+llOwnerSay: jagged[0,1].Length=5 : 0,1,0 : 0,1,1 : 0,1,2 : 0,1,3 : 0,1,4
+llOwnerSay: jagged[0,2].Length=6 : 0,2,0 : 0,2,1 : 0,2,2 : 0,2,3 : 0,2,4 : 0,2,5
+llOwnerSay: jagged[0,3].Length=7 : 0,3,0 : 0,3,1 : 0,3,2 : 0,3,3 : 0,3,4 : 0,3,5 : 0,3,6
+llOwnerSay: jagged[1,0].Length=5 : 1,0,0 : 1,0,1 : 1,0,2 : 1,0,3 : 1,0,4
+llOwnerSay: jagged[1,1].Length=6 : 1,1,0 : 1,1,1 : 1,1,2 : 1,1,3 : 1,1,4 : 1,1,5
+llOwnerSay: jagged[1,2].Length=7 : 1,2,0 : 1,2,1 : 1,2,2 : 1,2,3 : 1,2,4 : 1,2,5 : 1,2,6
+llOwnerSay: jagged[1,3].Length=8 : 1,3,0 : 1,3,1 : 1,3,2 : 1,3,3 : 1,3,4 : 1,3,5 : 1,3,6 : 1,3,7
+llOwnerSay: jagged[2,0].Length=6 : 2,0,0 : 2,0,1 : 2,0,2 : 2,0,3 : 2,0,4 : 2,0,5
+llOwnerSay: jagged[2,1].Length=7 : 2,1,0 : 2,1,1 : 2,1,2 : 2,1,3 : 2,1,4 : 2,1,5 : 2,1,6
+llOwnerSay: jagged[2,2].Length=8 : 2,2,0 : 2,2,1 : 2,2,2 : 2,2,3 : 2,2,4 : 2,2,5 : 2,2,6 : 2,2,7
+llOwnerSay: jagged[2,3].Length=9 : 2,3,0 : 2,3,1 : 2,3,2 : 2,3,3 : 2,3,4 : 2,3,5 : 2,3,6 : 2,3,7 : 2,3,8
+llOwnerSay: doing array copy:
+llOwnerSay: jagged[0,0].Length=5 : 1,0,0 : 1,0,1 : 1,0,2 : 1,0,3 : 1,0,4
+llOwnerSay: jagged[0,1].Length=6 : 1,1,0 : 1,1,1 : 1,1,2 : 1,1,3 : 1,1,4 : 1,1,5
+llOwnerSay: jagged[0,2].Length=7 : 1,2,0 : 1,2,1 : 1,2,2 : 1,2,3 : 1,2,4 : 1,2,5 : 1,2,6
+llOwnerSay: jagged[0,3].Length=8 : 1,3,0 : 1,3,1 : 1,3,2 : 1,3,3 : 1,3,4 : 1,3,5 : 1,3,6 : 1,3,7
+llOwnerSay: jagged[1,0].Length=5 : 1,0,0 : 1,0,1 : 1,0,2 : 1,0,3 : 1,0,4
+llOwnerSay: jagged[1,1].Length=6 : 1,1,0 : 1,1,1 : 1,1,2 : 1,1,3 : 1,1,4 : 1,1,5
+llOwnerSay: jagged[1,2].Length=7 : 1,2,0 : 1,2,1 : 1,2,2 : 1,2,3 : 1,2,4 : 1,2,5 : 1,2,6
+llOwnerSay: jagged[1,3].Length=8 : 1,3,0 : 1,3,1 : 1,3,2 : 1,3,3 : 1,3,4 : 1,3,5 : 1,3,6 : 1,3,7
+llOwnerSay: jagged[2,0].Length=6 : 2,0,0 : 2,0,1 : 2,0,2 : 2,0,3 : 2,0,4 : 2,0,5
+llOwnerSay: jagged[2,1].Length=7 : 2,1,0 : 2,1,1 : 2,1,2 : 2,1,3 : 2,1,4 : 2,1,5 : 2,1,6
+llOwnerSay: jagged[2,2].Length=8 : 2,2,0 : 2,2,1 : 2,2,2 : 2,2,3 : 2,2,4 : 2,2,5 : 2,2,6 : 2,2,7
+llOwnerSay: jagged[2,3].Length=9 : 2,3,0 : 2,3,1 : 2,3,2 : 2,3,3 : 2,3,4 : 2,3,5 : 2,3,6 : 2,3,7 : 2,3,8
+llOwnerSay: jagged array initializing
+llOwnerSay:         { { { 5,6,7 }, undef, { 1,2 }, undef },
+llOwnerSay:           { undef, { 9 }, { 8,9 }, { 3,4,5,6 } } }
+llOwnerSay:    [0,0]=67 => ,6,7
+llOwnerSay:    [0,2]=12 => 1,2
+llOwnerSay:    [1,1]=9 => 9
+llOwnerSay:    [1,2]=89 => 8,9
+llOwnerSay:    [1,3]=56 => ,,5,6

@@ -152,7 +152,6 @@ default
 
         SaySomething ("xmrHashCode(2992)  = " + xmrHashCode (2992));
         SaySomething ("xmrHashCode(29.92) = " + xmrHashCode (29.92) + " = " + xmrHashCode (TwoNinerNinerTwo ()));
-        SaySomething ("xmrHashCode([1,2]) = " + xmrHashCode ([1,2]));
         SaySomething ("xmrHashCode(Hello World) = " + xmrHashCode ("Hello World"));
     }
 }

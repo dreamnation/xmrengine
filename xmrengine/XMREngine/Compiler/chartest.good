@@ -1,0 +1,23 @@
+Compiling...
+Running...
+llOwnerSay: varchar=c
+llOwnerSay: varchar=h
+llOwnerSay:  I see a cat
+llOwnerSay: Icat
+llOwnerSay: the cat is fat
+llOwnerSay: outstr[0]=t
+llOwnerSay: outstr[1]=h
+llOwnerSay: outstr[2]=e
+llOwnerSay: outstr[3]= 
+llOwnerSay: outstr[4]=c
+llOwnerSay: outstr[5]=a
+llOwnerSay: outstr[6]=t
+llOwnerSay: outstr[7]= 
+llOwnerSay: outstr[8]=i
+llOwnerSay: outstr[9]=s
+llOwnerSay: outstr[10]= 
+llOwnerSay: outstr[11]=f
+llOwnerSay: outstr[12]=a
+llOwnerSay: outstr[13]=t
+llOwnerSay: c > a ? 1
+llOwnerSay: c < a ? 0
