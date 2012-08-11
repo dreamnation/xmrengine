@@ -1190,6 +1190,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 *    int callNo;
 			 *    if (instance.callMode != CALLMODE_NORMAL) goto __cmRestore;
 			 */
+			callNo = null;
 			ScriptMyLabel cmRestore = null;
 			if (!isTrivial) {
 				callNo = ilGen.DeclareLocal (typeof (int), "__callNo");
@@ -2543,10 +2544,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		private CompValu GenerateFromLVal (TokenLVal lVal, TokenType[] argsig)
 		{
-			if (lVal is TokenLValArEle)  return GenerateFromLValArEle  ((TokenLValArEle)lVal);
-			if (lVal is TokenLValIField) return GenerateFromLValIField ((TokenLValIField)lVal, argsig);
-			if (lVal is TokenLValName)   return GenerateFromLValName   ((TokenLValName)lVal, argsig);
-			if (lVal is TokenLValSField) return GenerateFromLValSField ((TokenLValSField)lVal, argsig);
+			if (lVal is TokenLValArEle)     return GenerateFromLValArEle     ((TokenLValArEle)lVal);
+			if (lVal is TokenLValBaseField) return GenerateFromLValBaseField ((TokenLValBaseField)lVal, argsig);
+			if (lVal is TokenLValIField)    return GenerateFromLValIField    ((TokenLValIField)lVal, argsig);
+			if (lVal is TokenLValName)      return GenerateFromLValName      ((TokenLValName)lVal, argsig);
+			if (lVal is TokenLValSField)    return GenerateFromLValSField    ((TokenLValSField)lVal, argsig);
 			throw new Exception ("bad lval class");
 		}
 
@@ -2606,6 +2608,40 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 			subCompValu = GenerateFromRVal (lVal.subRVal);
 			return new CompValuArEle (new TokenTypeObject (lVal), baseCompValu, subCompValu);
+		}
+
+		/**
+		 * @brief using 'base' within a script-defined instance method to refer to an instance field/method 
+		 *        of the class being extended.
+		 */
+		private CompValu GenerateFromLValBaseField (TokenLValBaseField baseField, TokenType[] argsig)
+		{
+			string fieldName = baseField.fieldName.val;
+
+			TokenDeclSDType sdtDecl = curDeclFunc.sdtClass;
+			if ((sdtDecl == null) || ((curDeclFunc.sdtFlags & ScriptReduce.SDT_STATIC) != 0)) {
+				ErrorMsg (baseField, "cannot use 'base' outside instance method body");
+				return new CompValuVoid (baseField);
+			}
+
+			TokenDeclVar declVar = FindThisMember (sdtDecl.extends, baseField.fieldName, argsig);
+			if (declVar != null) {
+				if ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) != 0) {
+					ErrorMsg (baseField, "non-static reference to static member " + fieldName + ArgSigString (argsig));
+					return new CompValuVoid (baseField);
+				}
+				if (!IsSDTInstMethod ()) {
+					ErrorMsg (baseField, "cannot access instance member of class from static method");
+					return new CompValuVoid (baseField);
+				}
+				TokenType baseType = declVar.sdtClass.MakeRefToken (baseField);
+				CompValu  basePtr  = new CompValuArg (baseType, 0);
+				return (declVar.retType == null) ? (CompValu)new CompValuInstField (declVar, basePtr, true) : 
+				                                   (CompValu)new CompValuInstMeth (declVar, basePtr, true);
+			}
+
+			ErrorMsg (baseField, "no member " + fieldName + ArgSigString (argsig) + " rootward of " + sdtDecl.longName.val);
+			return new CompValuVoid (baseField);
 		}
 
 		/**
@@ -2821,7 +2857,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			if (rVal is TokenRValAsnPost)   return GenerateFromRValAsnPost   ((TokenRValAsnPost)rVal);
 			if (rVal is TokenRValAsnPre)    return GenerateFromRValAsnPre    ((TokenRValAsnPre)rVal);
-			if (rVal is TokenRValBaseField) return GenerateFromRValBaseField ((TokenRValBaseField)rVal, argsig);
 			if (rVal is TokenRValCall)      return GenerateFromRValCall      ((TokenRValCall)rVal);
 			if (rVal is TokenRValCast)      return GenerateFromRValCast      ((TokenRValCast)rVal);
 			if (rVal is TokenRValConst)     return GenerateFromRValConst     ((TokenRValConst)rVal);
@@ -3182,40 +3217,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			lVal.PopPost (this, asnPre.lVal);
 
 			return result;
-		}
-
-		/**
-		 * @brief using 'base' within a script-defined instance method to refer to an instance field/method 
-		 *        of the class being extended.
-		 */
-		private CompValu GenerateFromRValBaseField (TokenRValBaseField baseField, TokenType[] argsig)
-		{
-			string fieldName = baseField.fieldName.val;
-
-			TokenDeclSDType sdtDecl = curDeclFunc.sdtClass;
-			if ((sdtDecl == null) || ((curDeclFunc.sdtFlags & ScriptReduce.SDT_STATIC) != 0)) {
-				ErrorMsg (baseField, "cannot use 'base' outside instance method body");
-				return new CompValuVoid (baseField);
-			}
-
-			TokenDeclVar declVar = FindThisMember (sdtDecl.extends, baseField.fieldName, argsig);
-			if (declVar != null) {
-				if ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) != 0) {
-					ErrorMsg (baseField, "non-static reference to static member " + fieldName + ArgSigString (argsig));
-					return new CompValuVoid (baseField);
-				}
-				if (!IsSDTInstMethod ()) {
-					ErrorMsg (baseField, "cannot access instance member of class from static method");
-					return new CompValuVoid (baseField);
-				}
-				TokenType baseType = declVar.sdtClass.MakeRefToken (baseField);
-				CompValu  basePtr  = new CompValuArg (baseType, 0);
-				return (declVar.retType == null) ? (CompValu)new CompValuInstField (declVar, basePtr, true) : 
-				                                   (CompValu)new CompValuInstMeth (declVar, basePtr, true);
-			}
-
-			ErrorMsg (baseField, "no member " + fieldName + ArgSigString (argsig) + " rootward of " + sdtDecl.longName.val);
-			return new CompValuVoid (baseField);
 		}
 
 		/**

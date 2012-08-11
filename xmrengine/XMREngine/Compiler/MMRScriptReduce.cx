@@ -1578,7 +1578,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				/*
 				 * Set up reference to base constructor.
 				 */
-				TokenRValBaseField baseCtor = new TokenRValBaseField (token, 
+				TokenLValBaseField baseCtor = new TokenLValBaseField (token, 
 				                              new TokenName (token, "$ctor"), 
 				                              tokdeclcl);
 
@@ -1638,7 +1638,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		private void SetUpDefaultBaseCtorCall (TokenDeclVar thisCtor)
 		{
-			TokenRValBaseField baseCtor = new TokenRValBaseField (thisCtor, 
+			TokenLValBaseField baseCtor = new TokenLValBaseField (thisCtor, 
 			                              new TokenName (thisCtor, "$ctor"), 
 			                              (TokenDeclSDTypeClass)thisCtor.sdtClass);
 			TokenRValCall rvc = new TokenRValCall (thisCtor);
@@ -3214,7 +3214,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					token = token.nextToken;
 					return zhis;
 				}
-				TokenRValBaseField baseField = new TokenRValBaseField (token, 
+				TokenLValBaseField baseField = new TokenLValBaseField (token, 
 				                               (TokenName)token.nextToken.nextToken, 
 				                               (TokenDeclSDTypeClass)currentDeclFunc.sdtClass);
 				token = token.nextToken.nextToken.nextToken;
@@ -4965,6 +4965,40 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	}
 
 	/**
+	 * @brief 'base.' being used to reference a field/method of the extended class.
+	 */
+	public class TokenLValBaseField : TokenLVal {
+		public TokenName fieldName;
+		private TokenDeclSDTypeClass thisClass;
+
+		public TokenLValBaseField (Token original, TokenName fieldName, TokenDeclSDTypeClass thisClass) : base (original)
+		{
+			this.fieldName = fieldName;
+			this.thisClass = thisClass;
+		}
+
+		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			TokenDeclVar var = scg.FindThisMember (thisClass.extends, fieldName, argsig);
+			if (var != null) return var.type;
+			scg.ErrorMsg (fieldName, "unknown member for " + thisClass.extends.ToString ());
+			return new TokenTypeVoid (fieldName);
+		}
+
+		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			TokenDeclVar var = scg.FindThisMember (thisClass.extends, fieldName, argsig);
+			return (var != null) && var.IsVarTrivial (scg);
+		}
+
+		public override bool IsCallTrivial (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			TokenDeclVar var = scg.FindThisMember (thisClass.extends, fieldName, argsig);
+			return (var != null) && var.IsFuncTrivial (scg);
+		}
+	}
+
+	/**
 	 * @brief a field within an L-value struct is an L-value
 	 */
 	public class TokenLValIField : TokenLVal {
@@ -5256,40 +5290,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)
 		{
 			return lVal.IsRValTrivial (scg, null);
-		}
-	}
-
-	/**
-	 * @brief 'base.' being used to reference a field/method of the extended class.
-	 */
-	public class TokenRValBaseField : TokenRVal {
-		public TokenName fieldName;
-		private TokenDeclSDTypeClass thisClass;
-
-		public TokenRValBaseField (Token original, TokenName fieldName, TokenDeclSDTypeClass thisClass) : base (original)
-		{
-			this.fieldName = fieldName;
-			this.thisClass = thisClass;
-		}
-
-		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
-		{
-			TokenDeclVar var = scg.FindThisMember (thisClass.extends, fieldName, argsig);
-			if (var != null) return var.type;
-			scg.ErrorMsg (fieldName, "unknown member for " + thisClass.extends.ToString ());
-			return new TokenTypeVoid (fieldName);
-		}
-
-		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)
-		{
-			TokenDeclVar var = scg.FindThisMember (thisClass.extends, fieldName, argsig);
-			return (var != null) && var.IsVarTrivial (scg);
-		}
-
-		public override bool IsCallTrivial (ScriptCodeGen scg, TokenType[] argsig)
-		{
-			TokenDeclVar var = scg.FindThisMember (thisClass.extends, fieldName, argsig);
-			return (var != null) && var.IsFuncTrivial (scg);
 		}
 	}
 
