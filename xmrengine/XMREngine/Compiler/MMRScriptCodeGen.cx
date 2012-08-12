@@ -2404,7 +2404,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			ScriptMyLabel tryEndLabel = ilGen.DefineLabel ("tryend_" + tryStmt.Unique);
 
-
 			tryStmt.tryStmt.isTry = true;				// jumps out of try require Leave opcode
 										// rethrow not allowed
 										// return statements not allowed
@@ -2416,7 +2415,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				mightGetHere = true;
 			}
 			bool mightGetOut = mightGetHere;
-			ilGen.Emit (OpCodes.Leave, tryEndLabel);
+			if (mightGetHere) {
+				ilGen.Emit (OpCodes.Leave, tryEndLabel);
+			}
 			if (tryStmt.catchStmt != null) {
 				tryStmt.catchStmt.isCatch = true;		// jumps out of catch require Leave opcode
 										// rethrow allowed
@@ -2445,7 +2446,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					mightGetHere = true;
 				}
 				mightGetOut |= mightGetHere;			// remember whether or not we can get to end of try or catch at all
-				ilGen.Emit (OpCodes.Leave, tryEndLabel);
+				if (mightGetHere) {
+					ilGen.Emit (OpCodes.Leave, tryEndLabel);
+				}
 			}
 			if (tryStmt.finallyStmt != null) {
 				curBreakTarg = new BreakContTarg (ilGen, "finbreak_" + tryStmt.Unique);
