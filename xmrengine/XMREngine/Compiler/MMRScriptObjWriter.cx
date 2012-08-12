@@ -137,6 +137,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			myLocal.type   = type;
 			myLocal.name   = name;
 			myLocal.number = localNumber ++;
+			myLocal.isReferenced = true;  // so ScriptCollector won't optimize references away
 			return DeclareLocal (myLocal);
 		}
 		public ScriptMyLocal DeclareLocal (ScriptMyLocal myLocal)
@@ -551,7 +552,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					case ScriptObjWriterCode.EmitLocal: {
 						OpCode opCode = ReadOpCode (objReader);
 						int number    = objReader.ReadInt32 ();
-
 						ilGen.Emit (opCode, locals[number]);
 
 						LinePrefix (offset, dbg, ilGenArg, opCode);

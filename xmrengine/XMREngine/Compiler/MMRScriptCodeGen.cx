@@ -4048,6 +4048,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				if (htLocalVar == null) continue;
 
 				CompValu heapTracker = htLocalVar.location;
+				if (!((CompValuTemp)heapTracker).isReferenced) continue;
 				if (first) {
 					PushXMRInst ();                                  // instance
 					ilGen.Emit (OpCodes.Ldflda, heapLeftFieldInfo);  // &instance.heapLeft

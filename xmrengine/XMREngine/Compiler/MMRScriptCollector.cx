@@ -1198,7 +1198,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public ScriptMyILGen WriteOutAll ()
 		{
 			foreach (ScriptMyLocal loc in declaredLocals) {
-				wrapped.DeclareLocal (loc);
+				if (loc.isReferenced) wrapped.DeclareLocal (loc);
 			}
 			foreach (ScriptMyLabel lbl in definedLabels) {
 				wrapped.DefineLabel (lbl);
@@ -1295,7 +1295,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			} while (this.resolvedSomething);
 
 			/*
-			 * Remove all the stloc/ldloc that are back-to-back without the temp
+			 * Remove all the stloc/ldloc that are back-to-back without the local
 			 * being needed afterwards.
 			 */
 			for (GraphNode gn = firstLin; gn != null; gn = gn.nextLin) {
@@ -1311,6 +1311,29 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						nnel.nextLin.prevLin = gnel.prevLin;
 						gn = gnel.prevLin;
 					}
+				}
+			}
+
+			/*
+			 * Remove all write-only local variables, ie, those with no ldloc[a] references.
+			 * Replace any stloc instructions with pops.
+			 */
+			for (GraphNode gn = firstLin; gn != null; gn = gn.nextLin) {
+				ScriptMyLocal rdlcl = gn.ReadsLocal ();
+				if (rdlcl != null) rdlcl.isReferenced = true;
+			}
+			for (GraphNode gn = firstLin; gn != null; gn = gn.nextLin) {
+				ScriptMyLocal wrlcl = gn.WritesLocal ();
+				if ((wrlcl != null) && !wrlcl.isReferenced) {
+					if (!(gn is GraphNodeEmitLocal) || (((GraphNodeEmitLocal)gn).opcode != OpCodes.Stloc)) {
+						throw new Exception ("expecting stloc");
+					}
+					GraphNodeEmitNull pop = new GraphNodeEmitNull (this, OpCodes.Pop);
+					pop.nextLin = gn.nextLin;
+					pop.prevLin = gn.prevLin;
+					gn.nextLin.prevLin = pop;
+					gn.prevLin.nextLin = pop;
+					gn = pop;
 				}
 			}
 

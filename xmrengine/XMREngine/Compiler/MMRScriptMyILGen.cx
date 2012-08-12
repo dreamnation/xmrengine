@@ -103,5 +103,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public string name;
 		public Type type;
 		public int number;
+
+		public bool isReferenced;
 	}
 }
