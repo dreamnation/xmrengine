@@ -65,19 +65,25 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public GraphNode nextLin, prevLin;
 		public int linSeqNo;
 
-		/*
-		 * All graph nodes get linked to the linear list when created.
+		/**
+		 * @brief Save pointer to collector.
 		 */
 		public GraphNode (ScriptCollector coll)
 		{
 			this.coll = coll;
-			if (coll.lastLin == null) coll.firstLin = this;
-			                     else coll.lastLin.nextLin = this;
+		}
+
+		/**
+		 * @brief Chain graph node to end of linear list.
+		 */
+		public GraphNode ChainLin ()
+		{
+			coll.lastLin.nextLin = this;
 			this.prevLin  = coll.lastLin;
 			coll.lastLin  = this;
-			this.linSeqNo = ++ coll.linSeqNos;
 			this.tryBlock = coll.curTryBlock;
 			this.excBlock = coll.curExcBlock;
+			return this;
 		}
 
 		/**
@@ -1054,7 +1060,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		private ScriptMyILGen wrapped;
 		public GraphNode firstLin, lastLin;
-		public int linSeqNos;
 		private bool resolvedSomething;
 		private int resolveSequence;
 		public GraphNodeBeginExceptionBlock curTryBlock = null;  // pushed at beginning of try
@@ -1076,8 +1081,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		public ScriptCollector (ScriptMyILGen wrapped) : base (wrapped)
 		{
-			this.wrapped = wrapped;
-			new GraphNodeBegin (this);
+			this.wrapped       = wrapped;
+			GraphNodeBegin gnb = new GraphNodeBegin (this);
+			this.firstLin      = gnb;
+			this.lastLin       = gnb;
 		}
 
 		public override ScriptMyLocal DeclareLocal (Type type, string name)
@@ -1102,6 +1109,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public override void BeginExceptionBlock ()
 		{
 			GraphNodeBeginExceptionBlock tryBlock = new GraphNodeBeginExceptionBlock (this);
+			tryBlock.ChainLin ();
 			this.curExcBlock = tryBlock;
 			this.curTryBlock = tryBlock;
 		}
@@ -1109,6 +1117,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public override void BeginCatchBlock (Type excType)
 		{
 			GraphNodeBeginCatchBlock catchBlock = new GraphNodeBeginCatchBlock (this, excType);
+			catchBlock.ChainLin ();
 			curExcBlock.catchFinallyBlock = catchBlock;
 			curTryBlock = curExcBlock.tryBlock;
 		}
@@ -1116,6 +1125,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public override void BeginFinallyBlock ()
 		{
 			GraphNodeBeginFinallyBlock finallyBlock = new GraphNodeBeginFinallyBlock (this);
+			finallyBlock.ChainLin ();
 			curExcBlock.catchFinallyBlock = finallyBlock;
 			curTryBlock = curExcBlock.tryBlock;
 		}
@@ -1123,6 +1133,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public override void EndExceptionBlock ()
 		{
 			GraphNodeEndExceptionBlock endBlock = new GraphNodeEndExceptionBlock (this);
+			endBlock.ChainLin ();
 			curExcBlock.endBlock = endBlock;
 			curTryBlock = curExcBlock.tryBlock;
 			curExcBlock = curExcBlock.excBlock;
@@ -1130,76 +1141,77 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		public override void Emit (OpCode opcode)
 		{
-			new GraphNodeEmitNull (this, opcode);
+			new GraphNodeEmitNull (this, opcode).ChainLin ();
 		}
 
 		public override void Emit (OpCode opcode, FieldInfo field)
 		{
-			new GraphNodeEmitField (this, opcode, field);
+			new GraphNodeEmitField (this, opcode, field).ChainLin ();
 		}
 
 		public override void Emit (OpCode opcode, ScriptMyLocal myLocal)
 		{
-			new GraphNodeEmitLocal (this, opcode, myLocal);
+			new GraphNodeEmitLocal (this, opcode, myLocal).ChainLin ();
 		}
 
 		public override void Emit (OpCode opcode, Type type)
 		{
-			new GraphNodeEmitType (this, opcode, type);
+			new GraphNodeEmitType (this, opcode, type).ChainLin ();
 		}
 
 		public override void Emit (OpCode opcode, ScriptMyLabel myLabel)
 		{
 			if (opcode == OpCodes.Leave) {
-				new GraphNodeEmitLabelLeave (this, myLabel);
+				new GraphNodeEmitLabelLeave (this, myLabel).ChainLin ();
 			} else {
-				new GraphNodeEmitLabel (this, opcode, myLabel);
+				new GraphNodeEmitLabel (this, opcode, myLabel).ChainLin ();
 			}
 		}
 
 		public override void Emit (OpCode opcode, ScriptMyLabel[] myLabels)
 		{
-			new GraphNodeEmitLabels (this, opcode, myLabels);
+			new GraphNodeEmitLabels (this, opcode, myLabels).ChainLin ();
 		}
 
 		public override void Emit (OpCode opcode, ScriptMyILGen method)
 		{
-			new GraphNodeEmitIntMeth (this, opcode, method);
+			new GraphNodeEmitIntMeth (this, opcode, method).ChainLin ();
 		}
 
 		public override void Emit (OpCode opcode, MethodInfo method)
 		{
-			new GraphNodeEmitExtMeth (this, opcode, method);
+			new GraphNodeEmitExtMeth (this, opcode, method).ChainLin ();
 		}
 
 		public override void Emit (OpCode opcode, ConstructorInfo ctor)
 		{
-			new GraphNodeEmitCtor (this, opcode, ctor);
+			new GraphNodeEmitCtor (this, opcode, ctor).ChainLin ();
 		}
 
 		public override void Emit (OpCode opcode, double value)
 		{
-			new GraphNodeEmitDouble (this, opcode, value);
+			new GraphNodeEmitDouble (this, opcode, value).ChainLin ();
 		}
 
 		public override void Emit (OpCode opcode, float value)
 		{
-			new GraphNodeEmitFloat (this, opcode, value);
+			new GraphNodeEmitFloat (this, opcode, value).ChainLin ();
 		}
 
 		public override void Emit (OpCode opcode, int value)
 		{
-			new GraphNodeEmitInt (this, opcode, value);
+			new GraphNodeEmitInt (this, opcode, value).ChainLin ();
 		}
 
 		public override void Emit (OpCode opcode, string value)
 		{
-			new GraphNodeEmitString (this, opcode, value);
+			new GraphNodeEmitString (this, opcode, value).ChainLin ();
 		}
 
 		public override void MarkLabel (ScriptMyLabel myLabel)
 		{
 			myLabel.whereAmI = new GraphNodeMarkLabel (this, myLabel);
+			myLabel.whereAmI.ChainLin ();
 		}
 
 		/**
@@ -1234,8 +1246,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				if (gn is GraphNodeEmitLabelLeave) {
 					GraphNodeEmitLabelLeave leaveInstr = (GraphNodeEmitLabelLeave)gn;         // the leave instruction
 					GraphNodeMarkLabel leaveTarget = leaveInstr.myLabel.whereAmI;             // label being targeted by leave
-					GraphNodeBeginExceptionBlock leaveInstrsTryBlock  = leaveInstr.tryBlock;  // try block directly enclosing leave instr
-					                                                                          // ...it might need unwinding
 					GraphNodeBeginExceptionBlock leaveTargetsTryBlock =                       // try block directly enclosing leave target
 						(leaveTarget == null) ? null : leaveTarget.tryBlock;              // ...it must not be unwound
 
@@ -1345,6 +1355,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			Console.WriteLine ("  Code:");
+			int linSeqNos = 0;
+			for (GraphNode gn = firstLin; gn != null; gn = gn.nextLin) {
+				gn.linSeqNo = ++ linSeqNos;
+			}
 			for (GraphNode gn = firstLin; gn != null; gn = gn.nextLin) {
 				StringBuilder sb = new StringBuilder ();
 				sb.Append (gn.linSeqNo.ToString ().PadLeft (5));
@@ -1355,9 +1369,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				PadToLength (sb, 72, " ->");
 				bool first = true;
 				foreach (GraphNode nn in gn.NextNodes) {
-					if (!first) sb.Append (',');
-					sb.Append (nn.linSeqNo.ToString ().PadLeft (5));
-					first = false;
+					if (first) {
+						sb.Append (nn.linSeqNo.ToString ().PadLeft (5));
+						first = false;
+					} else {
+						sb.Append (',');
+						sb.Append (nn.linSeqNo);
+					}
 				}
 				Console.WriteLine (sb.ToString ());
 				if (gn is GraphNodeBlock) {

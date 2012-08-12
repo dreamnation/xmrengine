@@ -1402,7 +1402,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief Generate code to write all arguments and locals to the capture stack frame.
 		 *        This includes heap-tracker and temp variables.
 		 *        We only need to save what is active at the point of callLabels through because 
-		 *        those are the only points we will jump to on restore.  This save us from saving 
+		 *        those are the only points we will jump to on restore.  This saves us from saving 
 		 *        all the little temp vars we create.
 		 */
 		private void GenerateFrameCaptureCode ()
