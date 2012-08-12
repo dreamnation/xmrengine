@@ -4,13 +4,15 @@ time make xmrengtest.exe
 export MONO_PATH=../../../bin
 export PATH=~/mono64.267/bin:$PATH
 
-mono --debug xmrengtest.exe -serialize -asm while1.xmrasm    while1.lsl    2>&1 | tee while1.out
+mono --debug xmrengtest.exe -serialize -asm while1.xmrasm       while1.lsl       2>&1 | tee while1.out
 diff while1.out while1.good
-mono --debug xmrengtest.exe -serialize -asm arraytest.xmrasm arraytest.lsl 2>&1 | tee arraytest.out
+mono --debug xmrengtest.exe -serialize -asm arraytest.xmrasm    arraytest.lsl    2>&1 | tee arraytest.out
 diff arraytest.out arraytest.good
-mono --debug xmrengtest.exe -serialize -asm objectest.xmrasm objectest.lsl 2>&1 | tee objectest.out
+mono --debug xmrengtest.exe -serialize -asm objectest.xmrasm    objectest.lsl    2>&1 | tee objectest.out
 diff objectest.out objectest.good
-mono --debug xmrengtest.exe -serialize -asm chartest.xmrasm  chartest.lsl  2>&1 | tee chartest.out
+mono --debug xmrengtest.exe -serialize -asm chartest.xmrasm     chartest.lsl     2>&1 | tee chartest.out
 diff chartest.out chartest.good
+mono --debug xmrengtest.exe -serialize -asm trycatchtest.xmrasm trycatchtest.lsl 2>&1 | tee trycatchtest.out
+diff trycatchtest.out trycatchtest.good
 
 echo "SUCCESS"

@@ -1191,9 +1191,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				callNo = ilGen.DeclareLocal (typeof (int), "__callNo");
 				cmRestore = ilGen.DefineLabel ("__cmRestore");
 				PushXMRInst ();
-				if (XMRInstAbstract.CALLMODE_NORMAL != 0) throw new Exception ();
 				ilGen.Emit (OpCodes.Ldfld, ScriptCodeGen.callModeFieldInfo);
-				ilGen.Emit (OpCodes.Brtrue, cmRestore);
+				ilGen.PushInt (XMRInstAbstract.CALLMODE_NORMAL);
+				ilGen.Emit (OpCodes.Bne_Un, cmRestore);
 			}
 
 			/*
@@ -1321,8 +1321,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				endFin = ilGen.DefineLabel ("__endFin");
 				PushXMRInst ();
 				ilGen.Emit (OpCodes.Ldfld, callModeFieldInfo);
-				if (XMRInstAbstract.CALLMODE_NORMAL != 0) throw new Exception ();
-				ilGen.Emit (OpCodes.Brtrue, cmSave);
+				ilGen.PushInt (XMRInstAbstract.CALLMODE_NORMAL);
+				ilGen.Emit (OpCodes.Bne_Un, cmSave);
 			}
 			CreditAllLocalsHeapLeft ();
 			if (!isTrivial) {
@@ -1509,16 +1509,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 			activeTemps.Clear ();
 
-			/*
-			 * Output a switch statement with a case for each possible value of callNo.
-			 *
-			 *   switch (callNo) {
-			 *      case 0: goto __call_0;
-			 *      case 1: goto __call_1;
-			 *      ...
-			 *   }
-			 *   throw new ScriptBadCallNoException (callNo);
-			 */
+			OutputCallNoSwitchStmt ();
+		}
+
+		/**
+		 * @brief Output a switch statement with a case for each possible value of callNo.
+		 *
+		 *   switch (callNo) {
+		 *      case 0: goto __call_0;
+		 *      case 1: goto __call_1;
+		 *      ...
+		 *   }
+		 *   throw new ScriptBadCallNoException (callNo);
+		 */
+		private void OutputCallNoSwitchStmt ()
+		{
 			ScriptMyLabel[] callLabels = new ScriptMyLabel[allCallLabels.Count];
 			foreach (CallLabel cl in allCallLabels) {
 				callLabels[cl.index] = cl.callLabel;
@@ -1985,7 +1990,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Finally output the branch/leave opcode.
+			 * If using Leave, prefix with a call label in case the corresponding finally block
+			 * calls CheckRun() and that CheckRun() captures the stack, it will have a point to 
+			 * restore to that will properly jump back into the finally block.
 			 */
+			if (brop == OpCodes.Leave) {
+				new CallLabel (this);
+			}
 			ilGen.Emit (brop, stmtLabel.labelStruct);
 
 			/*
@@ -2089,6 +2100,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				CompValu rVal = GenerateFromRVal (retStmt.rVal);
 				rVal.PushVal (this, retStmt.rVal, curDeclFunc.retType);
 				ilGen.Emit (OpCodes.Stloc, retValue);
+			}
+
+			/*
+			 * Use a OpCodes.Leave instruction to break out of any try { } blocks.
+			 * All Leave's inside script-defined try { } need call labels (see GenerateStmtTry()).
+			 */
+			for (TokenStmtBlock stmtBlock = curStmtBlock; stmtBlock != null; stmtBlock = stmtBlock.outerStmtBlock) {
+				if (stmtBlock.isTry) {
+					new CallLabel (this);
+					break;
+				}
 			}
 			ilGen.Emit (OpCodes.Leave, retLabel);
 
@@ -2391,82 +2413,191 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		/**
-		 * @brief output code for an 'try' statement
+		 * @brief output code for a try/catch/finally block
+		 *
+		 *      int    __catCallNo = 0;                                    // call number within catch { } subblock
+		 *      int    __finCallNo = 0;                                    // call number within finally { } subblock
+		 *      int    __tryCallNo = 0;                                    // call number within try { } subblock
+		 *      object __catThrown = null;                                 // caught exception
+		 *    <oldCallLabel>:                                              // the outside world jumps here to restore us no matter ...
+		 *      try {                                                      // ... where we actually were inside of try/catch/finally
+		 *          if (callMode != CALLMODE_NORMAL) goto tryCallSw;       // if not normal, go do restore
+		 *          <try body using __tryCallNo>                           // execute script-defined code
+		 *                                                                 // ...stack capture WILL run catch/finally { } subblock
+		 *        tryBreak:                                                // break's jump here
+		 *          leave tryEnd;                                          // executes finally { } subblock and exits
+		 *        tryCallSw:                                               // restoring...
+		 *          if (__catThrown != null) goto tryThrow;                // maybe the catch { } was running
+		 *          switch (__tryCallNo) back up into <try body>           // not catching, jump back inside try, ...
+		 *                                                                 // ... maybe to a leave if we were doing finally { } subblock
+		 *        tryThrow:
+		 *          throw __catThrown;                                     // catch { } was running, jump to its beginning
+		 *      } catch (object exc) {
+		 *          __catThrown = exc;                                     // save what was thrown
+		 *          if (callMode != CALLMODE_NORMAL) goto catchCallSw;     // if not normal, go check below
+		 *          catchVar = ScriptCodeGen.CatchExcToStr (__catThrown);  // normal, see if exception we care about
+		 *          if (catchVar == null) goto catchRetro;                 // rethrow if not
+		 *          <catch body using __catCallNo>                         // execute script-defined code
+		 *        catchBreak:                                              // break's jump here
+		 *          leave tryEnd;                                          // executes finally { } subblock and exits
+		 *        catchCallSw:
+		 *          if (callMode != CALLMODE_RESTORE) goto catchRetro;     // if CALLMODE_SAVE, rethrow the exception to continue saving
+		 *          switch (__catCallNo) back up into <catch body>         // CALLMODE_RESTORE, restart catch { } code wherever it was
+		 *        catchRetro:
+		 *          rethrow;
+		 *      } finally {
+		 *          if (callMode != CALLMODE_NORMAL) goto finCallSw;       // if not normal, go check below
+		 *          <finally body using __finCallNo>                       // normal, execute script-defined code
+		 *          goto finEnd;                                           // all done
+		 *        finCallSw:
+		 *          if (callMode != CALLMODE_RESTORE) goto finEnd;         // if CALLMODE_SAVE, exit finally to contine saving
+		 *          switch (__finCallNo) back up into <finally body>       // CALLMODE_RESTORE, restart finally { } code wherever it was
+		 *        finEnd:
+		 *          endfinally                                             // jump to leave/throw target
+		 *      }
+		 *    tryEnd:
 		 */
 		private void GenerateStmtTry (TokenStmtTry tryStmt)
 		{
 			if (!mightGetHere) return;
 
+			CompValuTemp catCallNo = new CompValuTemp (tokenTypeInt, "__catCallNo_" + tryStmt.Unique, this);
+			CompValuTemp finCallNo = new CompValuTemp (tokenTypeInt, "__finCallNo_" + tryStmt.Unique, this);
+			CompValuTemp tryCallNo = new CompValuTemp (tokenTypeInt, "__tryCallNo_" + tryStmt.Unique, this);
+			CompValuTemp catThrown = new CompValuTemp (tokenTypeObj, "__catThrown_" + tryStmt.Unique, this);
+
+			BreakContTarg tryBreak    = new BreakContTarg (ilGen, "__tryBreak_"    + tryStmt.Unique);
+			ScriptMyLabel tryCallSw   = ilGen.DefineLabel (       "__tryCallSw_"   + tryStmt.Unique);
+			ScriptMyLabel tryThrow    = ilGen.DefineLabel (       "__tryThrow_"    + tryStmt.Unique);
+			BreakContTarg catchBreak  = new BreakContTarg (ilGen, "__catchBreak_"  + tryStmt.Unique);
+			ScriptMyLabel catchCallSw = ilGen.DefineLabel (       "__catchCallSw_" + tryStmt.Unique);
+			ScriptMyLabel catchRetro  = ilGen.DefineLabel (       "__catchRetro_"  + tryStmt.Unique);
+			ScriptMyLabel finCallSw   = ilGen.DefineLabel (       "__finCallSw_"   + tryStmt.Unique);
+			BreakContTarg finEnd      = new BreakContTarg (ilGen, "__finEnd_"      + tryStmt.Unique);
+			ScriptMyLabel tryEnd      = ilGen.DefineLabel (       "__tryEnd_"      + tryStmt.Unique);
+
+			catCallNo.PopPre (this, tryStmt); ilGen.Emit (OpCodes.Ldc_I4_0); catCallNo.PopPost (this, tryStmt);
+			finCallNo.PopPre (this, tryStmt); ilGen.Emit (OpCodes.Ldc_I4_0); finCallNo.PopPost (this, tryStmt);
+			tryCallNo.PopPre (this, tryStmt); ilGen.Emit (OpCodes.Ldc_I4_0); tryCallNo.PopPost (this, tryStmt);
+			catThrown.PopPre (this, tryStmt); ilGen.Emit (OpCodes.Ldnull);   catThrown.PopPost (this, tryStmt);
+
+			ScriptMyLocal saveCallNo = callNo;                      // save outer call labels
+			LinkedList<CallLabel> saveCallLabels = allCallLabels;
 			BreakContTarg oldBreakTarg = curBreakTarg;		// cannot continue out of try/catch/finally
-			BreakContTarg oldContTarg  = curContTarg;		// (break jumps to end of try/catch/finally)
+			BreakContTarg oldContTarg  = curContTarg;		// breaks jump to end of try/catch/finally subblock
 			curBreakTarg = null;
 			curContTarg  = null;
 
-			ScriptMyLabel tryEndLabel = ilGen.DefineLabel ("tryend_" + tryStmt.Unique);
+			new CallLabel (this);					//   <oldcalllabel>:
+			ilGen.BeginExceptionBlock ();				//     try {
+
+			PushXMRInst ();						//         if (inst.callMode != NORMAL) goto tryCallSw;
+			ilGen.Emit (OpCodes.Ldfld, callModeFieldInfo);
+			ilGen.PushInt (XMRInstAbstract.CALLMODE_NORMAL);
+			ilGen.Emit (OpCodes.Bne_Un, tryCallSw);
+
+			callNo = tryCallNo.localBuilder;                        // set up __tryCallNo for call labels
+			allCallLabels = new LinkedList<CallLabel> ();
 
 			tryStmt.tryStmt.isTry = true;				// jumps out of try require Leave opcode
 										// rethrow not allowed
 										// return statements not allowed
-			curBreakTarg = new BreakContTarg (ilGen, "trybreak_" + tryStmt.Unique);
-			ilGen.BeginExceptionBlock ();
-			GenerateStmtBlock (tryStmt.tryStmt);			// output the try block statement block
-			if (curBreakTarg.used) {
-				ilGen.MarkLabel (curBreakTarg.label);
-				mightGetHere = true;
-			}
-			bool mightGetOut = mightGetHere;
-			if (mightGetHere) {
-				ilGen.Emit (OpCodes.Leave, tryEndLabel);
-			}
+			curBreakTarg = tryBreak;				// breaks jump to end of try subblock
+			GenerateStmtBlock (tryStmt.tryStmt);			// output the try block statement subblock
+
+			ilGen.MarkLabel (tryBreak.label);			//       tryBreak:
+			new CallLabel (this);					//       <newCallLabel>:
+			ilGen.Emit (OpCodes.Leave, tryEnd);			//         leave tryEnd;
+
+			ilGen.MarkLabel (tryCallSw);				//       tryCallSw:
+			catThrown.PushVal (this, tryStmt);			//         if (__catThrown != null) goto tryThrow;
+			ilGen.Emit (OpCodes.Brtrue, tryThrow);
+			OutputCallNoSwitchStmt ();				//         switch (tryCallNo) ...
+
+			ilGen.MarkLabel (tryThrow);				//       tryThrow:
+			catThrown.PushVal (this, tryStmt);			//         throw __catThrown;
+			ilGen.Emit (OpCodes.Throw);				//     }
+
 			if (tryStmt.catchStmt != null) {
+				CompValu catchVarLoc = new CompValuTemp (tokenTypeStr, tryStmt.catchVar.name.val, this);
+				tryStmt.catchVar.location = catchVarLoc;
+
+				ilGen.BeginCatchBlock (typeof (Exception));	// start of the catch block
+				catThrown.PopPost (this, tryStmt);
+
+				PushXMRInst ();
+				ilGen.Emit (OpCodes.Ldfld, callModeFieldInfo);
+				ilGen.PushInt (XMRInstAbstract.CALLMODE_NORMAL);
+				ilGen.Emit (OpCodes.Bne_Un, catchCallSw);
+
+				catchVarLoc.PopPre (this, tryStmt.catchVar.name);
+				catThrown.PushVal (this, tryStmt.catchVar.name);  // convert exception object to string
+				ilGen.Emit (OpCodes.Call, catchExcToStrMethodInfo);
+				catchVarLoc.PopPost (this, tryStmt.catchVar.name);  // ... and store in catch clause var
+
+				catchVarLoc.PushVal (this, tryStmt.catchVar.name);  // see if null
+				ilGen.Emit (OpCodes.Brfalse_S, catchRetro);     // if so, rethrow exception
+
+				callNo = catCallNo.localBuilder;                // set up __catCallNo for call labels
+				allCallLabels.Clear ();
 				tryStmt.catchStmt.isCatch = true;		// jumps out of catch require Leave opcode
 										// rethrow allowed
 										// return statements not allowed
-				CompValu catchVarLoc = new CompValuTemp (tokenTypeStr, tryStmt.catchVar.name.val, this);
-				tryStmt.catchVar.location = catchVarLoc;
-				ScriptMyLabel catchLabel = ilGen.DefineLabel ("catchlbl_" + tryStmt.Unique);
-				ScriptMyLocal excLocal = ilGen.DeclareLocal (typeof (Exception), "catchexc_" + tryStmt.Unique);
-
-				curBreakTarg = new BreakContTarg (ilGen, "catchbreak_" + tryStmt.Unique);
-				ilGen.BeginCatchBlock (typeof (Exception));	// start of the catch block
-				ilGen.Emit (OpCodes.Stloc, excLocal);		// save pointer to exception object
-				catchVarLoc.PopPre (this, tryStmt.catchVar.name);
-				ilGen.Emit (OpCodes.Ldloc, excLocal);		// convert exception object to string
-				ilGen.Emit (OpCodes.Call, catchExcToStrMethodInfo);
-				catchVarLoc.PopPost (this, tryStmt.catchVar.name);  // ... and store in catch clause var
-				catchVarLoc.PushVal (this, tryStmt.catchVar.name);  // see if null
-				ilGen.Emit (OpCodes.Brtrue_S, catchLabel);
-				ilGen.Emit (OpCodes.Rethrow);			// if so, rethrow exception
-				ilGen.MarkLabel (catchLabel);			// if not, process script code
-
+				curBreakTarg = catchBreak;			// break statements jump to end of subblock
 				mightGetHere = true;				// if we can get to the 'try' assume we can get to the 'catch'
-				GenerateStmtBlock (tryStmt.catchStmt);		// output catch clause statement block
-				if (curBreakTarg.used) {
-					ilGen.MarkLabel (curBreakTarg.label);
-					mightGetHere = true;
-				}
-				mightGetOut |= mightGetHere;			// remember whether or not we can get to end of try or catch at all
-				if (mightGetHere) {
-					ilGen.Emit (OpCodes.Leave, tryEndLabel);
-				}
+				GenerateStmtBlock (tryStmt.catchStmt);		// output catch clause statement subblock
+
+				ilGen.MarkLabel (catchBreak.label);
+				new CallLabel (this);
+				ilGen.Emit (OpCodes.Leave, tryEnd);
+
+				ilGen.MarkLabel (catchCallSw);			// saving or restoring stack
+				PushXMRInst ();					// see which
+				ilGen.Emit (OpCodes.Ldfld, callModeFieldInfo);
+				ilGen.PushInt (XMRInstAbstract.CALLMODE_RESTORE);
+				ilGen.Emit (OpCodes.Bne_Un, catchRetro);	// if saving, rethrow to continue saving
+				OutputCallNoSwitchStmt ();			// restoring, jump back inside script-defined body
+
+				ilGen.MarkLabel (catchRetro);
+				ilGen.Emit (OpCodes.Rethrow);			// rethrow exception
 			}
+
 			if (tryStmt.finallyStmt != null) {
-				curBreakTarg = new BreakContTarg (ilGen, "finbreak_" + tryStmt.Unique);
-				tryStmt.finallyStmt.isFinally = true;		// cannot exit finally with jump or return statement
 				ilGen.BeginFinallyBlock ();			// start of the finally block
-				mightGetHere = true;
-				GenerateStmtBlock (tryStmt.finallyStmt);
-				if (curBreakTarg.used) {
-					ilGen.MarkLabel (curBreakTarg.label);
-				}
+
+				PushXMRInst ();
+				ilGen.Emit (OpCodes.Ldfld, callModeFieldInfo);
+				ilGen.PushInt (XMRInstAbstract.CALLMODE_NORMAL);
+				ilGen.Emit (OpCodes.Bne_Un, finCallSw);
+
+				callNo = finCallNo.localBuilder;                // set up __finCallNo for call labels
+				allCallLabels.Clear ();
+				tryStmt.finallyStmt.isFinally = true;		// cannot exit finally with jump or return statement
+				curBreakTarg = finEnd;				// break statements jump to end of subblock
+				mightGetHere = true;				// if we can get to the 'try' assume we can get to the 'catch'
+				GenerateStmtBlock (tryStmt.finallyStmt);	// output finally clause statement subblock
+				ilGen.Emit (OpCodes.Br, finEnd.label);
+
+				ilGen.MarkLabel (finCallSw);
+				PushXMRInst ();
+				ilGen.Emit (OpCodes.Ldfld, callModeFieldInfo);
+				ilGen.PushInt (XMRInstAbstract.CALLMODE_RESTORE);
+				ilGen.Emit (OpCodes.Bne_Un, finEnd.label);
+				OutputCallNoSwitchStmt ();
+
+				ilGen.MarkLabel (finEnd.label);
 				ilGen.Emit (OpCodes.Endfinally);
 			}
-			ilGen.EndExceptionBlock ();
-			ilGen.MarkLabel (tryEndLabel);
-			mightGetHere = mightGetOut;
 
-			curBreakTarg = oldBreakTarg;
-			curContTarg  = oldContTarg;
+			ilGen.EndExceptionBlock ();
+			ilGen.MarkLabel (tryEnd);
+
+			mightGetHere  = true; /////////??????????????? fix this
+
+			callNo        = saveCallNo;
+			allCallLabels = saveCallLabels;
+			curBreakTarg  = oldBreakTarg;
+			curContTarg   = oldContTarg;
 		}
 
 		/**
@@ -4048,7 +4179,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				if (htLocalVar == null) continue;
 
 				CompValu heapTracker = htLocalVar.location;
-				if (!((CompValuTemp)heapTracker).isReferenced) continue;
+				if (!((CompValuTemp)heapTracker).localBuilder.isReferenced) continue;
 				if (first) {
 					PushXMRInst ();                                  // instance
 					ilGen.Emit (OpCodes.Ldflda, heapLeftFieldInfo);  // &instance.heapLeft

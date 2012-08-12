@@ -1,0 +1,7 @@
+Compiling...
+Running...
+llOwnerSay: maybe wipe x out
+llOwnerSay: after CheckRun() in try block
+llOwnerSay: finally x=1
+llOwnerSay: after CheckRun() in finally block
+llOwnerSay: all done

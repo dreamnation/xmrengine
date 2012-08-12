@@ -32,11 +32,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		public ScriptCollector coll;
 		public GraphNodeBeginExceptionBlock tryBlock;  // start of enclosing try block
-		                                               // null in the catch/finally section
+		                                               // valid in the try section
+		                                               // null in the catch/finally sections
 		                                               // null outside of try block
 		                                               // for the try node itself, links to outer try block
 		public GraphNodeBeginExceptionBlock excBlock;  // start of enclosing try block
-		                                               // valid in the catch/finally section
+		                                               // valid in the try/catch/finally sections
 		                                               // null outside of try/catch/finally block
 		                                               // for the try node itself, links to outer try block
 
@@ -374,7 +375,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			private GraphNodeEndExceptionBlock gn;
 			private GraphNode nn;
 			private IEnumerator<GraphNodeBlock> leaveTargetEnumerator;
-			private int index;
 			public NNEnumerator (GraphNodeEndExceptionBlock gn)
 			{
 				this.gn = gn;
@@ -1096,6 +1096,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			GraphNodeBeginCatchBlock catchBlock = new GraphNodeBeginCatchBlock (this, excType);
 			catchBlock.ChainLin ();
+			if (curExcBlock.catchFinallyBlock != null) throw new Exception ("only one catch/finally allowed per try");
 			curExcBlock.catchFinallyBlock = catchBlock;
 			curTryBlock = curExcBlock.tryBlock;
 		}
@@ -1104,6 +1105,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			GraphNodeBeginFinallyBlock finallyBlock = new GraphNodeBeginFinallyBlock (this);
 			finallyBlock.ChainLin ();
+			if (curExcBlock.catchFinallyBlock != null) throw new Exception ("only one catch/finally allowed per try");
 			curExcBlock.catchFinallyBlock = finallyBlock;
 			curTryBlock = curExcBlock.tryBlock;
 		}
@@ -1214,6 +1216,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		public void Optimize ()
 		{
+			if (curExcBlock != null) throw new Exception ("exception block still open");
+
 			/*
 			 * Scan for OpCodes.Leave instructions.
 			 * For each found, its target for flow analysis purposes is the beginning of the corresponding
@@ -1242,7 +1246,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 							if (innerFinallyBlock == null) {
 								leaveInstr.unwindTo = cfb;
 							} else {
-								innerFinallyBlock.tryBlock.endBlock.leaveTargets.Add (cfb);
+								innerFinallyBlock.excBlock.endBlock.leaveTargets.Add (cfb);
 							}
 							innerFinallyBlock = cfb;
 						}
@@ -1255,7 +1259,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					if (innerFinallyBlock == null) {
 						leaveInstr.unwindTo = leaveTarget;
 					} else {
-						innerFinallyBlock.tryBlock.endBlock.leaveTargets.Add (leaveTarget);
+						if (innerFinallyBlock == null) throw new NullReferenceException ("innerFinallyBlock");
+						if (innerFinallyBlock.excBlock == null) throw new NullReferenceException ("innerFinallyBlock.excBlock");
+						if (innerFinallyBlock.excBlock.endBlock == null) throw new NullReferenceException ("innerFinallyBlock.excBlock.endBlock");
+						if (innerFinallyBlock.excBlock.endBlock.leaveTargets == null) throw new NullReferenceException ("innerFinallyBlock.excBlock.endBlock.leaveTargets");
+						innerFinallyBlock.excBlock.endBlock.leaveTargets.Add (leaveTarget);
 					}
 				}
 			}

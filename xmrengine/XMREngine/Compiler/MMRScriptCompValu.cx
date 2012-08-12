@@ -1079,7 +1079,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 	// The value is kept in a temp local variable
 	public class CompValuTemp : CompValu {
-		private ScriptMyLocal localBuilder;
+		public ScriptMyLocal localBuilder;
 
 		public CompValuTemp (TokenType type, string name, ScriptCodeGen scg) : base (type)
 		{
@@ -1088,10 +1088,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 			this.localBuilder = scg.ilGen.DeclareLocal (ToSysType(), name);
 		}
-		public bool isReferenced
-		{ get {
-			return localBuilder.isReferenced;
-		} }
 		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (OpCodes.Ldloc, localBuilder);
