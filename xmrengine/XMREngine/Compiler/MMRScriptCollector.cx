@@ -23,25 +23,6 @@ using System.Text;
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
 	/**
-	 * @brief One of these per label defined in the function.
-	 */
-	public class ScriptMyLabel {
-		public string name;
-		public int number;
-
-		public GraphNodeMarkLabel whereAmI;
-	}
-
-	/**
-	 * @brief One of these per local variable defined in the function.
-	 */
-	public class ScriptMyLocal {
-		public string name;
-		public Type type;
-		public int number;
-	}
-
-	/**
 	 * @brief One of these per opcode and label in the function plus other misc markers.
 	 *        They form the CIL instruction stream of the function.
 	 */
@@ -1058,7 +1039,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 	public class ScriptCollector : ScriptMyILGen {
 
-		private ScriptMyILGen wrapped;
+		private ScriptObjWriter wrapped;
 		public GraphNode firstLin, lastLin;
 		private bool resolvedSomething;
 		private int resolveSequence;
@@ -1070,16 +1051,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private List<ScriptMyLocal> declaredLocals = new List<ScriptMyLocal> ();
 		private List<ScriptMyLabel> definedLabels  = new List<ScriptMyLabel> ();
 
-		public override string methName {
-			get { return wrapped.methName; }
-			set { wrapped.methName = value; }
-		}
+		public override string methName { get { return wrapped.methName; } }
 
 		/**
-		 * @brief Wrap the optimizer around the object file writer to collect the instruction stream.
+		 * @brief Wrap the optimizer around the ScriptObjWriter to collect the instruction stream.
 		 *        All stream-writing calls get saved to our graph nodes instead of being written to object file.
 		 */
-		public ScriptCollector (ScriptMyILGen wrapped) : base (wrapped)
+		public ScriptCollector (ScriptObjWriter wrapped)
 		{
 			this.wrapped       = wrapped;
 			GraphNodeBegin gnb = new GraphNodeBegin (this);

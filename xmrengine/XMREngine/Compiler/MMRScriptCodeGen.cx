@@ -814,7 +814,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				GenerateStateEventHandlers (declState.name.val, declState.body);
 			}
 
-			ScriptMyILGen.TheEnd (objFileWriter);
+			ScriptObjWriter.TheEnd (objFileWriter);
 
 			scriptObjCode = null;
 		}
@@ -897,11 +897,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			int eventcode = (int)Enum.Parse (typeof (ScriptEventCode), eventname);
 			string functionName = "__seh_" + statecode.ToString() + "_" + eventcode.ToString () + "_" + 
 			                                 statename + "_" + eventname;
-			ilGen = new ScriptMyILGen (tokenScript, 
-			                           functionName,
-			                           typeof (void),
-			                           instanceTypeArg,
-			                           objFileWriter);
+			ilGen = new ScriptObjWriter (tokenScript, 
+			                             functionName,
+			                             typeof (void),
+			                             instanceTypeArg,
+			                             objFileWriter);
 			StartFunctionBody (declFunc);
 
 			/*
@@ -994,11 +994,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Set up entrypoint.
 			 */
 			string objCodeName = declFunc.GetObjCodeName ();
-			declFunc.ilGen = new ScriptMyILGen (tokenScript, 
-			                                    objCodeName,
-			                                    declFunc.retType.ToSysType (),
-			                                    argTypes,
-			                                    objFileWriter);
+			declFunc.ilGen = new ScriptObjWriter (tokenScript, 
+			                                      objCodeName,
+			                                      declFunc.retType.ToSysType (),
+			                                      argTypes,
+			                                      objFileWriter);
 
 			/*
 			 * This says how to generate a call to the function and to get a delegate.
@@ -1055,7 +1055,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Start generating code.
 			 */
-			ilGen.BegMethod ();
+			((ScriptObjWriter)ilGen).BegMethod ();
 		}
 
 		/**
@@ -1204,7 +1204,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Splice in the code optimizer for the body of the function.
 			 */
-			ScriptCollector collector = new ScriptCollector (ilGen);
+			ScriptCollector collector = new ScriptCollector ((ScriptObjWriter)ilGen);
 			ilGen = collector;
 
 			/*
@@ -1356,7 +1356,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * No more instructions for this method.
 			 */
-			ilGen.EndMethod ();
+			((ScriptObjWriter)ilGen).EndMethod ();
 			ilGen = null;
 
 			/*
@@ -4770,7 +4770,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			endMethodWrapper.descName             = descName;
 			scriptObjCode.scriptEventHandlerTable = new ScriptEventHandler[nStates,(int)ScriptEventCode.Size];
 			scriptObjCode.dynamicMethods          = new Dictionary<string, DynamicMethod> ();
-			ScriptMyILGen.CreateObjCode (scriptObjCode.sdObjTypesName, objFileReader, endMethodWrapper.EndMethod, asmFileWriter);
+			ScriptObjWriter.CreateObjCode (scriptObjCode.sdObjTypesName, objFileReader, endMethodWrapper.EndMethod, asmFileWriter);
 
 			/*
 			 * We enter all script event handler methods in the ScriptEventHandler table.

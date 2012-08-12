@@ -1,0 +1,107 @@
+/***************************************************\
+ *  COPYRIGHT 2012, Mike Rieker, Beverly, MA, USA  *
+ *  All rights reserved.                           *
+\***************************************************/
+
+using System;
+using System.Reflection;
+using System.Reflection.Emit;
+
+namespace OpenSim.Region.ScriptEngine.XMREngine
+{
+	public abstract class ScriptMyILGen
+	{
+		public abstract string methName { get; }
+		public abstract ScriptMyLocal DeclareLocal (Type type, string name);
+		public abstract ScriptMyLabel DefineLabel (string name);
+		public abstract void BeginExceptionBlock ();
+		public abstract void BeginCatchBlock (Type excType);
+		public abstract void BeginFinallyBlock ();
+		public abstract void EndExceptionBlock ();
+		public abstract void Emit (OpCode opcode);
+		public abstract void Emit (OpCode opcode, FieldInfo field);
+		public abstract void Emit (OpCode opcode, ScriptMyLocal myLocal);
+		public abstract void Emit (OpCode opcode, Type type);
+		public abstract void Emit (OpCode opcode, ScriptMyLabel myLabel);
+		public abstract void Emit (OpCode opcode, ScriptMyLabel[] myLabels);
+		public abstract void Emit (OpCode opcode, ScriptMyILGen method);
+		public abstract void Emit (OpCode opcode, MethodInfo method);
+		public abstract void Emit (OpCode opcode, ConstructorInfo ctor);
+		public abstract void Emit (OpCode opcode, double value);
+		public abstract void Emit (OpCode opcode, float value);
+		public abstract void Emit (OpCode opcode, int value);
+		public abstract void Emit (OpCode opcode, string value);
+		public abstract void MarkLabel (ScriptMyLabel myLabel);
+
+		public void PushInt (int c)
+		{
+			switch (c) {
+				case -1: {
+					Emit (OpCodes.Ldc_I4_M1);
+					return;
+				}
+				case 0: {
+					Emit (OpCodes.Ldc_I4_0);
+					return;
+				}
+				case 1: {
+					Emit (OpCodes.Ldc_I4_1);
+					return;
+				}
+				case 2: {
+					Emit (OpCodes.Ldc_I4_2);
+					return;
+				}
+				case 3: {
+					Emit (OpCodes.Ldc_I4_3);
+					return;
+				}
+				case 4: {
+					Emit (OpCodes.Ldc_I4_4);
+					return;
+				}
+				case 5: {
+					Emit (OpCodes.Ldc_I4_5);
+					return;
+				}
+				case 6: {
+					Emit (OpCodes.Ldc_I4_6);
+					return;
+				}
+				case 7: {
+					Emit (OpCodes.Ldc_I4_7);
+					return;
+				}
+				case 8: {
+					Emit (OpCodes.Ldc_I4_8);
+					return;
+				}
+				default: break;
+			}
+			if ((c >= 0) && (c <= 127)) {  // negatives dont seem to work
+				Emit (OpCodes.Ldc_I4_S, c);
+				return;
+			}
+			Emit (OpCodes.Ldc_I4, c);
+		}
+	}
+
+	/**
+	 * @brief One of these per label defined in the function.
+	 */
+	public class ScriptMyLabel {
+		public string name;
+		public int number;
+
+		public GraphNodeMarkLabel whereAmI;
+	}
+
+	/**
+	 * @brief One of these per local variable defined in the function.
+	 */
+	public class ScriptMyLocal {
+		public string name;
+		public Type type;
+		public int number;
+	}
+}

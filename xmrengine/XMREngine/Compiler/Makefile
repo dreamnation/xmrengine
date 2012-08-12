@@ -9,8 +9,9 @@ SADLLFILES = \
 	MMRScriptConsts.cs \
 	MMRScriptEventCode.cs \
 	MMRScriptInlines.cs \
-	MMRScriptObjWriter.cs \
+	MMRScriptMyILGen.cs \
 	MMRScriptObjCode.cs \
+	MMRScriptObjWriter.cs \
 	MMRScriptReduce.cs \
 	MMRScriptTokenize.cs \
 	MMRScriptTypeCast.cs \
@@ -38,8 +39,9 @@ SECRETSRCFILES = \
 	MMRScriptConsts_sa_secret.cs \
 	MMRScriptEventCode_sa_secret.cs \
 	MMRScriptInlines_sa_secret.cs \
-	MMRScriptObjWriter_sa_secret.cs \
+	MMRScriptMyILGen_sa_secret.cs \
 	MMRScriptObjCode_sa_secret.cs \
+	MMRScriptObjWriter_sa_secret.cs \
 	MMRScriptReduce_sa_secret.cs \
 	MMRScriptTokenize_sa_secret.cs \
 	MMRScriptTypeCast_sa_secret.cs \
@@ -59,8 +61,9 @@ TESTSRCFILES = \
 	MMRScriptConsts_tester.cs \
 	MMRScriptEventCode_tester.cs \
 	MMRScriptInlines_tester.cs \
-	MMRScriptObjWriter_tester.cs \
+	MMRScriptMyILGen_tester.cs \
 	MMRScriptObjCode_tester.cs \
+	MMRScriptObjWriter_tester.cs \
 	MMRScriptReduce_tester.cs \
 	MMRScriptTokenize_tester.cs \
 	MMRScriptTypeCast_tester.cs \

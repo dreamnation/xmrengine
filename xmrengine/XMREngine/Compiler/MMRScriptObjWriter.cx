@@ -1,5 +1,5 @@
 /***************************************************\
- *  COPYRIGHT 2010, Mike Rieker, Beverly, MA, USA  *
+ *  COPYRIGHT 2012, Mike Rieker, Beverly, MA, USA  *
  *  All rights reserved.                           *
 \***************************************************/
 
@@ -14,13 +14,13 @@ using System.Reflection.Emit;
 using System.Text;
 
 /**
- * @brief Wrapper class for ILGenerator
- *        It can write out debug output.
+ * @brief Wrapper class for ILGenerator.
+ *        It writes the object code to a file and can then make real ILGenerator calls
+ *        based on the file's contents.
  */
-
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
-	public enum ScriptMyILGenCode : byte {
+	public enum ScriptObjWriterCode : byte {
 		BegMethod, EndMethod, TheEnd,
 		DclLabel, DclLocal, DclMethod, MarkLabel,
 		EmitNull, EmitField, EmitLocal, EmitType, EmitLabel, EmitMethodExt, 
@@ -29,9 +29,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		BegExcBlk, BegCatBlk, BegFinBlk, EndExcBlk
 	}
 
-	public delegate void ScriptMyILGenEndMethod (DynamicMethod method);
+	public delegate void ScriptObjWriterEndMethod (DynamicMethod method);
 
-	public class ScriptMyILGen
+	public class ScriptObjWriter : ScriptMyILGen
 	{
 		private static readonly int OPCSTRWIDTH = 12;
 
@@ -43,17 +43,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic, null, 
 						new Type[] { typeof (ILGenerator) }, null);
 
-		private string _methName;
-		public virtual string methName {
-			get { return _methName; }
-			set { _methName = value; }
-		}
-
-		private BinaryWriter objWriter;
+		private BinaryWriter objFileWriter;
 
 		private Dictionary<Type, string> sdTypesRev = new Dictionary<Type, string> ();
 		public int labelNumber = 0;
 		public int localNumber = 0;
+
+		private string _methName;
+		public override string methName { get { return _methName; } }
 
 		/**
 		 * @brief Begin function declaration
@@ -61,7 +58,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @param methName   = name of the method being declared, eg, "__fun_Verify(array,list,string)"
 		 * @param retType    = its return value type
 		 * @param argTypes[] = its argument types
-		 * @param objWriter  = file to write its object code to
+		 * @param objFileWriter  = file to write its object code to
 		 *
 		 * After calling this function, the following functions should be called:
 		 *    this.BegMethod ();
@@ -75,10 +72,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * many constructors possible so we get function headers at the beginning
 		 * of the object file in case there are forward references to the functions.
 		 */
-		public ScriptMyILGen (TokenScript tokenScript, string methName, Type retType, Type[] argTypes, BinaryWriter objWriter)
+		public ScriptObjWriter (TokenScript tokenScript, string methName, Type retType, Type[] argTypes, BinaryWriter objFileWriter)
 		{
-			this.methName    = methName;
-			this.objWriter   = objWriter;
+			this._methName     = methName;
+			this.objFileWriter = objFileWriter;
 
 			/*
 			 * Build list that translates system-defined types to script defined types.
@@ -92,14 +89,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * the function header.  Then any forward reference calls to this
 			 * method will have a MethodInfo struct to call.
 			 */
-			objWriter.Write ((byte)ScriptMyILGenCode.DclMethod);
-			objWriter.Write (methName);
-			objWriter.Write (GetStrFromType (retType));
+			objFileWriter.Write ((byte)ScriptObjWriterCode.DclMethod);
+			objFileWriter.Write (methName);
+			objFileWriter.Write (GetStrFromType (retType));
 
 			int nArgs = argTypes.Length;
-			objWriter.Write (nArgs);
+			objFileWriter.Write (nArgs);
 			for (int i = 0; i < nArgs; i ++) {
-				objWriter.Write (GetStrFromType (argTypes[i]));
+				objFileWriter.Write (GetStrFromType (argTypes[i]));
 			}
 		}
 
@@ -112,8 +109,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * This tells the reader to call methodInfo.GetILGenerator()
 			 * so it can start writing CIL code for the method.
 			 */
-			objWriter.Write ((byte)ScriptMyILGenCode.BegMethod);
-			objWriter.Write (methName);
+			objFileWriter.Write ((byte)ScriptObjWriterCode.BegMethod);
+			objFileWriter.Write (methName);
 		}
 
 		/**
@@ -126,22 +123,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * been written and so it will typically call CreateDelegate()
 			 * to finalize the method and create an entrypoint.
 			 */
-			objWriter.Write ((byte)ScriptMyILGenCode.EndMethod);
+			objFileWriter.Write ((byte)ScriptObjWriterCode.EndMethod);
 
-			objWriter = null;
+			objFileWriter = null;
 		}
-
-		/**
-		 * @brief Called by ScriptCollector when making a wrapper.
-		 * @param wrapped = the real ScriptMyILGen that writes the object file
-		 */
-		protected ScriptMyILGen (ScriptMyILGen wrapped)
-		{ }
 
 		/**
 		 * @brief Declare a local variable for use by the function
 		 */
-		public virtual ScriptMyLocal DeclareLocal (Type type, string name)
+		public override ScriptMyLocal DeclareLocal (Type type, string name)
 		{
 			ScriptMyLocal myLocal = new ScriptMyLocal ();
 			myLocal.type   = type;
@@ -149,252 +139,197 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			myLocal.number = localNumber ++;
 			return DeclareLocal (myLocal);
 		}
-		public virtual ScriptMyLocal DeclareLocal (ScriptMyLocal myLocal)
+		public ScriptMyLocal DeclareLocal (ScriptMyLocal myLocal)
 		{
-			objWriter.Write ((byte)ScriptMyILGenCode.DclLocal);
-			objWriter.Write (myLocal.number);
-			objWriter.Write (myLocal.name);
-			objWriter.Write (GetStrFromType (myLocal.type));
+			objFileWriter.Write ((byte)ScriptObjWriterCode.DclLocal);
+			objFileWriter.Write (myLocal.number);
+			objFileWriter.Write (myLocal.name);
+			objFileWriter.Write (GetStrFromType (myLocal.type));
 			return myLocal;
 		}
 
 		/**
 		 * @brief Define a label for use by the function
 		 */
-		public virtual ScriptMyLabel DefineLabel (string name)
+		public override ScriptMyLabel DefineLabel (string name)
 		{
 			ScriptMyLabel myLabel = new ScriptMyLabel ();
 			myLabel.name   = name;
 			myLabel.number = labelNumber ++;
 			return DefineLabel (myLabel);
 		}
-		public virtual ScriptMyLabel DefineLabel (ScriptMyLabel myLabel)
+		public ScriptMyLabel DefineLabel (ScriptMyLabel myLabel)
 		{
-			objWriter.Write ((byte)ScriptMyILGenCode.DclLabel);
-			objWriter.Write (myLabel.number);
-			objWriter.Write (myLabel.name);
+			objFileWriter.Write ((byte)ScriptObjWriterCode.DclLabel);
+			objFileWriter.Write (myLabel.number);
+			objFileWriter.Write (myLabel.name);
 			return myLabel;
 		}
 
 		/**
 		 * @brief try/catch blocks.
 		 */
-		public virtual void BeginExceptionBlock ()
+		public override void BeginExceptionBlock ()
 		{
-			objWriter.Write ((byte)ScriptMyILGenCode.BegExcBlk);
+			objFileWriter.Write ((byte)ScriptObjWriterCode.BegExcBlk);
 		}
 
-		public virtual void BeginCatchBlock (Type excType)
+		public override void BeginCatchBlock (Type excType)
 		{
-			objWriter.Write ((byte)ScriptMyILGenCode.BegCatBlk);
-			objWriter.Write (GetStrFromType (excType));
+			objFileWriter.Write ((byte)ScriptObjWriterCode.BegCatBlk);
+			objFileWriter.Write (GetStrFromType (excType));
 		}
 
-		public virtual void BeginFinallyBlock ()
+		public override void BeginFinallyBlock ()
 		{
-			objWriter.Write ((byte)ScriptMyILGenCode.BegFinBlk);
+			objFileWriter.Write ((byte)ScriptObjWriterCode.BegFinBlk);
 		}
 
-		public virtual void EndExceptionBlock ()
+		public override void EndExceptionBlock ()
 		{
-			objWriter.Write ((byte)ScriptMyILGenCode.EndExcBlk);
+			objFileWriter.Write ((byte)ScriptObjWriterCode.EndExcBlk);
 		}
 
-		/**
-		 * @brief Emit opcodes and various operands as part of function body
-		 */
-		public void PushInt (int c)
+		public override void Emit (OpCode opcode)
 		{
-			switch (c) {
-				case -1: {
-					Emit (OpCodes.Ldc_I4_M1);
-					return;
-				}
-				case 0: {
-					Emit (OpCodes.Ldc_I4_0);
-					return;
-				}
-				case 1: {
-					Emit (OpCodes.Ldc_I4_1);
-					return;
-				}
-				case 2: {
-					Emit (OpCodes.Ldc_I4_2);
-					return;
-				}
-				case 3: {
-					Emit (OpCodes.Ldc_I4_3);
-					return;
-				}
-				case 4: {
-					Emit (OpCodes.Ldc_I4_4);
-					return;
-				}
-				case 5: {
-					Emit (OpCodes.Ldc_I4_5);
-					return;
-				}
-				case 6: {
-					Emit (OpCodes.Ldc_I4_6);
-					return;
-				}
-				case 7: {
-					Emit (OpCodes.Ldc_I4_7);
-					return;
-				}
-				case 8: {
-					Emit (OpCodes.Ldc_I4_8);
-					return;
-				}
-				default: break;
-			}
-			if ((c >= 0) && (c <= 127)) {  // negatives dont seem to work
-				Emit (OpCodes.Ldc_I4_S, c);
-				return;
-			}
-			Emit (OpCodes.Ldc_I4, c);
-		}
-
-		public virtual void Emit (OpCode opcode)
-		{
-			objWriter.Write ((byte)ScriptMyILGenCode.EmitNull);
+			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitNull);
 			WriteOpCode (opcode);
 		}
 
-		public virtual void Emit (OpCode opcode, FieldInfo field)
+		public override void Emit (OpCode opcode, FieldInfo field)
 		{
-			objWriter.Write ((byte)ScriptMyILGenCode.EmitField);
+			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitField);
 			WriteOpCode (opcode);
-			objWriter.Write (GetStrFromType (field.ReflectedType));
-			objWriter.Write (field.Name);
+			objFileWriter.Write (GetStrFromType (field.ReflectedType));
+			objFileWriter.Write (field.Name);
 		}
 
-		public virtual void Emit (OpCode opcode, ScriptMyLocal myLocal)
+		public override void Emit (OpCode opcode, ScriptMyLocal myLocal)
 		{
-			objWriter.Write ((byte)ScriptMyILGenCode.EmitLocal);
+			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitLocal);
 			WriteOpCode (opcode);
-			objWriter.Write (myLocal.number);
+			objFileWriter.Write (myLocal.number);
 		}
 
-		public virtual void Emit (OpCode opcode, Type type)
+		public override void Emit (OpCode opcode, Type type)
 		{
-			objWriter.Write ((byte)ScriptMyILGenCode.EmitType);
+			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitType);
 			WriteOpCode (opcode);
-			objWriter.Write (GetStrFromType (type));
+			objFileWriter.Write (GetStrFromType (type));
 		}
 
-		public virtual void Emit (OpCode opcode, ScriptMyLabel myLabel)
+		public override void Emit (OpCode opcode, ScriptMyLabel myLabel)
 		{
-			objWriter.Write ((byte)ScriptMyILGenCode.EmitLabel);
+			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitLabel);
 			WriteOpCode (opcode);
-			objWriter.Write (myLabel.number);
+			objFileWriter.Write (myLabel.number);
 		}
 
-		public virtual void Emit (OpCode opcode, ScriptMyLabel[] myLabels)
+		public override void Emit (OpCode opcode, ScriptMyLabel[] myLabels)
 		{
-			objWriter.Write ((byte)ScriptMyILGenCode.EmitLabels);
+			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitLabels);
 			WriteOpCode (opcode);
 			int nLabels = myLabels.Length;
-			objWriter.Write (nLabels);
+			objFileWriter.Write (nLabels);
 			for (int i = 0; i < nLabels; i ++) {
-				objWriter.Write (myLabels[i].number);
+				objFileWriter.Write (myLabels[i].number);
 			}
 		}
 
-		public virtual void Emit (OpCode opcode, ScriptMyILGen method)
+		public override void Emit (OpCode opcode, ScriptMyILGen method)
 		{
 			if (method == null) throw new ArgumentNullException ("method");
-			objWriter.Write ((byte)ScriptMyILGenCode.EmitMethodInt);
+			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitMethodInt);
 			WriteOpCode (opcode);
-			objWriter.Write (method.methName);
+			objFileWriter.Write (method.methName);
 		}
 
-		public virtual void Emit (OpCode opcode, MethodInfo method)
+		public override void Emit (OpCode opcode, MethodInfo method)
 		{
-			objWriter.Write ((byte)ScriptMyILGenCode.EmitMethodExt);
+			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitMethodExt);
 			WriteOpCode (opcode);
-			objWriter.Write (method.Name);
-			objWriter.Write (GetStrFromType (method.ReflectedType));
+			objFileWriter.Write (method.Name);
+			objFileWriter.Write (GetStrFromType (method.ReflectedType));
 			ParameterInfo[] parms = method.GetParameters ();
 			int nArgs = parms.Length;
-			objWriter.Write (nArgs);
+			objFileWriter.Write (nArgs);
 			for (int i = 0; i < nArgs; i ++) {
-				objWriter.Write (GetStrFromType (parms[i].ParameterType));
+				objFileWriter.Write (GetStrFromType (parms[i].ParameterType));
 			}
 		}
 
-		public virtual void Emit (OpCode opcode, ConstructorInfo ctor)
+		public override void Emit (OpCode opcode, ConstructorInfo ctor)
 		{
-			objWriter.Write ((byte)ScriptMyILGenCode.EmitCtor);
+			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitCtor);
 			WriteOpCode (opcode);
-			objWriter.Write (GetStrFromType (ctor.ReflectedType));
+			objFileWriter.Write (GetStrFromType (ctor.ReflectedType));
 			ParameterInfo[] parms = ctor.GetParameters ();
 			int nArgs = parms.Length;
-			objWriter.Write (nArgs);
+			objFileWriter.Write (nArgs);
 			for (int i = 0; i < nArgs; i ++) {
-				objWriter.Write (GetStrFromType (parms[i].ParameterType));
+				objFileWriter.Write (GetStrFromType (parms[i].ParameterType));
 			}
 		}
 
-		public virtual void Emit (OpCode opcode, double value)
+		public override void Emit (OpCode opcode, double value)
 		{
 			if (opcode != OpCodes.Ldc_R8) {
 				throw new Exception ("bad opcode " + opcode.ToString ());
 			}
-			objWriter.Write ((byte)ScriptMyILGenCode.EmitDouble);
+			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitDouble);
 			WriteOpCode (opcode);
-			objWriter.Write (value);
+			objFileWriter.Write (value);
 		}
 
-		public virtual void Emit (OpCode opcode, float value)
+		public override void Emit (OpCode opcode, float value)
 		{
 			if (opcode != OpCodes.Ldc_R4) {
 				throw new Exception ("bad opcode " + opcode.ToString ());
 			}
-			objWriter.Write ((byte)ScriptMyILGenCode.EmitFloat);
+			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitFloat);
 			WriteOpCode (opcode);
-			objWriter.Write (value);
+			objFileWriter.Write (value);
 		}
 
-		public virtual void Emit (OpCode opcode, int value)
+		public override void Emit (OpCode opcode, int value)
 		{
-			objWriter.Write ((byte)ScriptMyILGenCode.EmitInteger);
+			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitInteger);
 			WriteOpCode (opcode);
-			objWriter.Write (value);
+			objFileWriter.Write (value);
 		}
 
-		public virtual void Emit (OpCode opcode, string value)
+		public override void Emit (OpCode opcode, string value)
 		{
-			objWriter.Write ((byte)ScriptMyILGenCode.EmitString);
+			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitString);
 			WriteOpCode (opcode);
-			objWriter.Write (value);
+			objFileWriter.Write (value);
 		}
 
 		/**
 		 * @brief Declare that the target of a label is the next instruction.
 		 */
-		public virtual void MarkLabel (ScriptMyLabel myLabel)
+		public override void MarkLabel (ScriptMyLabel myLabel)
 		{
-			objWriter.Write ((byte)ScriptMyILGenCode.MarkLabel);
-			objWriter.Write (myLabel.number);
+			objFileWriter.Write ((byte)ScriptObjWriterCode.MarkLabel);
+			objFileWriter.Write (myLabel.number);
 		}
 
 		/**
 		 * @brief Write end-of-file marker to binary file.
 		 */
-		public static void TheEnd (BinaryWriter objWriter)
+		public static void TheEnd (BinaryWriter objFileWriter)
 		{
-			objWriter.Write ((byte)ScriptMyILGenCode.TheEnd);
+			objFileWriter.Write ((byte)ScriptObjWriterCode.TheEnd);
 		}
 
 		/**
-		 * @brief Take an object file created by ScriptMyILGen() and convert it to a series of dynamic methods.
+		 * @brief Take an object file created by ScriptObjWriter() and convert it to a series of dynamic methods.
 		 * @param sdTypes   = script-defined types
-		 * @param objReader = where to read object file from (as written by ScriptMyILGen above).
+		 * @param objReader = where to read object file from (as written by ScriptObjWriter above).
 		 * @param endMethod = called for each method defined
 		 * @param debWriter = debug file writer (or null if not wanted)
 		 */
-		public static void CreateObjCode (Dictionary<string, TokenDeclSDType> sdTypes, BinaryReader objReader, ScriptMyILGenEndMethod endMethod, TextWriter debWriter)
+		public static void CreateObjCode (Dictionary<string, TokenDeclSDType> sdTypes, BinaryReader objReader, ScriptObjWriterEndMethod endMethod, TextWriter debWriter)
 		{
 			Dictionary<string, DynamicMethod> methods = new Dictionary<string, DynamicMethod> ();
 			DynamicMethod method = null;
@@ -425,13 +360,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				/*
 				 * Read and decode next internal format code from input file (.xmrobj file).
 				 */
-				ScriptMyILGenCode code = (ScriptMyILGenCode)objReader.ReadByte ();
+				ScriptObjWriterCode code = (ScriptObjWriterCode)objReader.ReadByte ();
 				switch (code) {
 
 					/*
 					 * Reached end-of-file so we are all done.
 					 */
-					case ScriptMyILGenCode.TheEnd: {
+					case ScriptObjWriterCode.TheEnd: {
 						if (debWriter != null) debWriter.WriteLine ("TheEnd.");
 						return;
 					}
@@ -441,7 +376,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 * Method must have already been declared via DclMethod
 					 * so all we need is its name to retrieve from methods[].
 					 */
-					case ScriptMyILGenCode.BegMethod: {
+					case ScriptObjWriterCode.BegMethod: {
 						string methName = objReader.ReadString ();
 
 						method = methods[methName];
@@ -463,7 +398,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 * Call the callback to tell it the method is complete, and it can do whatever
 					 * it wants with the method.
 					 */
-					case ScriptMyILGenCode.EndMethod: {
+					case ScriptObjWriterCode.EndMethod: {
 						ilGen = null;
 						ilGenArg[0] = null;
 						endMethod (method);
@@ -474,7 +409,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					/*
 					 * Declare a label for branching to.
 					 */
-					case ScriptMyILGenCode.DclLabel: {
+					case ScriptObjWriterCode.DclLabel: {
 						int number  = objReader.ReadInt32 ();
 						string name = objReader.ReadString ();
 
@@ -486,7 +421,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					/*
 					 * Declare a local variable to store into.
 					 */
-					case ScriptMyILGenCode.DclLocal: {
+					case ScriptObjWriterCode.DclLocal: {
 						int number  = objReader.ReadInt32 ();
 						string name = objReader.ReadString ();
 						string type = objReader.ReadString ();
@@ -507,7 +442,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 * We create the DynamicMethod object at this point in case there
 					 * are forward references from other method bodies.
 					 */
-					case ScriptMyILGenCode.DclMethod: {
+					case ScriptObjWriterCode.DclMethod: {
 						string methName = objReader.ReadString ();
 						Type retType    = GetTypeFromStr (sdTypes, objReader.ReadString ());
 						int nArgs       = objReader.ReadInt32 ();
@@ -533,7 +468,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					/*
 					 * Mark a previously declared label at this spot.
 					 */
-					case ScriptMyILGenCode.MarkLabel: {
+					case ScriptObjWriterCode.MarkLabel: {
 						int number = objReader.ReadInt32 ();
 
 						ilGen.MarkLabel (labels[number]);
@@ -547,14 +482,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					/*
 					 * Try/Catch blocks.
 					 */
-					case ScriptMyILGenCode.BegExcBlk: {
+					case ScriptObjWriterCode.BegExcBlk: {
 						ilGen.BeginExceptionBlock ();
 						LinePrefix (offset, dbg, ilGenArg);
 						dbg.Append (" BeginExceptionBlock");
 						break;
 					}
 
-					case ScriptMyILGenCode.BegCatBlk: {
+					case ScriptObjWriterCode.BegCatBlk: {
 						Type excType = GetTypeFromStr (sdTypes, objReader.ReadString ());
 						ilGen.BeginCatchBlock (excType);
 						LinePrefix (offset, dbg, ilGenArg);
@@ -563,14 +498,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						break;
 					}
 
-					case ScriptMyILGenCode.BegFinBlk: {
+					case ScriptObjWriterCode.BegFinBlk: {
 						ilGen.BeginFinallyBlock ();
 						LinePrefix (offset, dbg, ilGenArg);
 						dbg.Append (" BeginFinallyBlock");
 						break;
 					}
 
-					case ScriptMyILGenCode.EndExcBlk: {
+					case ScriptObjWriterCode.EndExcBlk: {
 						ilGen.EndExceptionBlock ();
 						LinePrefix (offset, dbg, ilGenArg);
 						dbg.Append (" EndExceptionBlock");
@@ -580,7 +515,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					/*
 					 * Emit an opcode with no operand.
 					 */
-					case ScriptMyILGenCode.EmitNull: {
+					case ScriptObjWriterCode.EmitNull: {
 						OpCode opCode = ReadOpCode (objReader);
 
 						ilGen.Emit (opCode);
@@ -592,7 +527,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					/*
 					 * Emit an opcode with a FieldInfo operand.
 					 */
-					case ScriptMyILGenCode.EmitField: {
+					case ScriptObjWriterCode.EmitField: {
 						OpCode opCode      = ReadOpCode (objReader);
 						Type reflectedType = GetTypeFromStr (sdTypes, objReader.ReadString ());
 						string fieldName   = objReader.ReadString ();
@@ -613,7 +548,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					/*
 					 * Emit an opcode with a LocalBuilder operand.
 					 */
-					case ScriptMyILGenCode.EmitLocal: {
+					case ScriptObjWriterCode.EmitLocal: {
 						OpCode opCode = ReadOpCode (objReader);
 						int number    = objReader.ReadInt32 ();
 
@@ -628,7 +563,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					/*
 					 * Emit an opcode with a Type operand.
 					 */
-					case ScriptMyILGenCode.EmitType: {
+					case ScriptObjWriterCode.EmitType: {
 						OpCode opCode = ReadOpCode (objReader);
 						string name   = objReader.ReadString ();
 						Type type     = GetTypeFromStr (sdTypes, name);
@@ -644,7 +579,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					/*
 					 * Emit an opcode with a Label operand.
 					 */
-					case ScriptMyILGenCode.EmitLabel: {
+					case ScriptObjWriterCode.EmitLabel: {
 						OpCode opCode = ReadOpCode (objReader);
 						int number    = objReader.ReadInt32 ();
 
@@ -659,7 +594,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					/*
 					 * Emit an opcode with a Label array operand.
 					 */
-					case ScriptMyILGenCode.EmitLabels: {
+					case ScriptObjWriterCode.EmitLabels: {
 						OpCode opCode = ReadOpCode (objReader);
 						int nLabels   = objReader.ReadInt32 ();
 						Label[] lbls  = new Label[nLabels];
@@ -686,7 +621,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					/*
 					 * Emit an opcode with a MethodInfo operand (such as a call) of an external function.
 					 */
-					case ScriptMyILGenCode.EmitMethodExt: {
+					case ScriptObjWriterCode.EmitMethodExt: {
 						OpCode opCode   = ReadOpCode (objReader);
 						string methName = objReader.ReadString ();
 						Type methType   = GetTypeFromStr (sdTypes, objReader.ReadString ());
@@ -717,7 +652,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 * Emit an opcode with a MethodInfo operand of an internal function
 					 * (previously declared via DclMethod).
 					 */
-					case ScriptMyILGenCode.EmitMethodInt: {
+					case ScriptObjWriterCode.EmitMethodInt: {
 						OpCode opCode   = ReadOpCode (objReader);
 						string methName = objReader.ReadString ();
 
@@ -741,7 +676,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					/*
 					 * Emit an opcode with a ConstructorInfo operand.
 					 */
-					case ScriptMyILGenCode.EmitCtor: {
+					case ScriptObjWriterCode.EmitCtor: {
 						OpCode opCode   = ReadOpCode (objReader);
 						Type ctorType   = GetTypeFromStr (sdTypes, objReader.ReadString ());
 						int nArgs       = objReader.ReadInt32 ();
@@ -767,7 +702,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					/*
 					 * Emit an opcode with a constant operand of various types.
 					 */
-					case ScriptMyILGenCode.EmitDouble: {
+					case ScriptObjWriterCode.EmitDouble: {
 						OpCode opCode = ReadOpCode (objReader);
 						double value  = objReader.ReadDouble ();
 
@@ -782,7 +717,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						break;
 					}
 
-					case ScriptMyILGenCode.EmitFloat: {
+					case ScriptObjWriterCode.EmitFloat: {
 						OpCode opCode = ReadOpCode (objReader);
 						float value   = objReader.ReadSingle ();
 
@@ -797,7 +732,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						break;
 					}
 
-					case ScriptMyILGenCode.EmitInteger: {
+					case ScriptObjWriterCode.EmitInteger: {
 						OpCode opCode = ReadOpCode (objReader);
 						int value     = objReader.ReadInt32 ();
 
@@ -809,7 +744,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						break;
 					}
 
-					case ScriptMyILGenCode.EmitString: {
+					case ScriptObjWriterCode.EmitString: {
 						OpCode opCode = ReadOpCode (objReader);
 						string value  = objReader.ReadString ();
 
@@ -825,7 +760,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					/*
 					 * Who knows what?
 					 */
-					default: throw new Exception ("bad ScriptMyILGenCode " + ((byte)code).ToString ());
+					default: throw new Exception ("bad ScriptObjWriterCode " + ((byte)code).ToString ());
 				}
 
 				/*
@@ -873,7 +808,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void WriteOpCode (OpCode opcode)
 		{
-			objWriter.Write (opcode.Value);
+			objFileWriter.Write (opcode.Value);
 		}
 
 		/**
