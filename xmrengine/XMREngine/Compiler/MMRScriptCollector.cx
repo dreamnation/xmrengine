@@ -14,6 +14,46 @@ using System.Reflection.Emit;
 using System.Text;
 
 /**
+ * @brief GetNNEnumerable() gets the nextnode enumerable part of a GraphNode,
+ *        which in turn gives the list of nodes that can possibly be next in 
+ *        a flow-control sense.  It simply instantiates the NNEnumerator sub-
+ *        class which does the actual enumeration.
+ */
+#define BOILERPLATE_GETNNENUMERABLE(qual,GNT) \
+		protected qual System.Collections.Generic.IEnumerable<GraphNode> GetNNEnumerable ()						\
+		{																\
+			return new NNEnumerable (this);												\
+		}																\
+		private class NNEnumerable : System.Collections.Generic.IEnumerable<GraphNode> {						\
+			private GNT gn;														\
+			public NNEnumerable (GNT gn)												\
+			{															\
+				this.gn = gn;													\
+			}															\
+			System.Collections.Generic.IEnumerator<GraphNode> System.Collections.Generic.IEnumerable<GraphNode>.GetEnumerator ()	\
+			{															\
+				return new NNEnumerator (gn);											\
+			}															\
+			System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator ()						\
+			{															\
+				return new NNEnumerator (gn);											\
+			}															\
+		}
+
+/**
+ * @brief These methods are required as part of the interface for a NNEnumerator class.
+ *        They assume the current nextnode is stored in a member called 'nn'.
+ */
+#define BOILERPLATE_NNENUMERATOR_CURRENT_DISPOSE \
+			GraphNode System.Collections.Generic.IEnumerator<GraphNode>.Current {	\
+				get { return this.nn; }						\
+			}									\
+			object System.Collections.IEnumerator.Current {				\
+				get { return this.nn; }						\
+			}									\
+			void System.IDisposable.Dispose() { }
+
+/**
  * @brief Wrapper class for ScriptMyILGen to do simple optimizations.
  *        The main one is to figure out which locals are active at the labels
  *        so the stack capture/restore code doesn't have to do everything.
@@ -106,8 +146,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		/**
 		 * @brief This acts as a wrapper around all the other NNEnumerable's below.
-		 *        It adds the beginning of the catch/finally as a conditional branch target
-		 *        to every instruction in the corresponding try section.
+		 *        It assumes every instruction in a try { } can throw an exception so it 
+		 *        says that every instruction in a try { } can conditionally branch to 
+		 *        the beginning of the corresponding catch { } or finally { }.
 		 */
 		private class NNEnumerableCatchFinally : System.Collections.Generic.IEnumerable<GraphNode> {
 			private GraphNode gn;
@@ -166,38 +207,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				index = 0;
 				nn = null;
 			}
-			GraphNode System.Collections.Generic.IEnumerator<GraphNode>.Current {
-				get { return nn; }
-			}
-			object System.Collections.IEnumerator.Current {
-				get { return nn; }
-			}
-			void System.IDisposable.Dispose() { }
+			BOILERPLATE_NNENUMERATOR_CURRENT_DISPOSE
 		}
 
 		/**
 		 * @brief This default iterator always returns the next inline node as the one-and-only next node.
 		 *        Other instructions need to override it if they can possibly do other than that.
 		 */
-		protected virtual System.Collections.Generic.IEnumerable<GraphNode> GetNNEnumerable ()
-		{
-			return new NNEnumerable (this);
-		}
-		private class NNEnumerable : System.Collections.Generic.IEnumerable<GraphNode> {
-			private GraphNode gn;
-			public NNEnumerable (GraphNode gn)
-			{
-				this.gn = gn;
-			}
-			System.Collections.Generic.IEnumerator<GraphNode> System.Collections.Generic.IEnumerable<GraphNode>.GetEnumerator ()
-			{
-				return new NNEnumerator (gn);
-			}
-			System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator ()
-			{
-				return new NNEnumerator (gn);
-			}
-		}
+		BOILERPLATE_GETNNENUMERABLE(virtual,GraphNode)
 		private class NNEnumerator : System.Collections.Generic.IEnumerator<GraphNode> {
 			private GraphNode gn;
 			private GraphNode nn;
@@ -226,13 +243,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				index = 0;
 				nn = null;
 			}
-			GraphNode System.Collections.Generic.IEnumerator<GraphNode>.Current {
-				get { return nn; }
-			}
-			object System.Collections.IEnumerator.Current {
-				get { return nn; }
-			}
-			void System.IDisposable.Dispose() { }
+			BOILERPLATE_NNENUMERATOR_CURRENT_DISPOSE
 		}
 	}
 
@@ -264,14 +275,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	public class GraphNodeBeginExceptionBlock : GraphNodeBlock {
 		public GraphNodeBeginExceptionBlock outerTryBlock;      // next outer try opcode or null
 		public GraphNodeCatchFinallyBlock   catchFinallyBlock;  // start of associated catch or finally
-		public GraphNodeEndExceptionBlock   endBlock;           // end of associated catch or finally
+		public GraphNodeEndExceptionBlock   endExcBlock;        // end of associated catch or finally
+		public int excBlkSeqNo;                                 // debugging
 
 		public GraphNodeBeginExceptionBlock (ScriptCollector coll) : base (coll)
 		{ }
 
 		public override void DebString (StringBuilder sb)
 		{
-			sb.Append ("  beginexceptionblock");
+			sb.Append ("  beginexceptionblock_");
+			sb.Append (excBlkSeqNo);
 		}
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
@@ -301,12 +314,82 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		public override void DebString (StringBuilder sb)
 		{
-			sb.Append ("  begincatchblock");
+			sb.Append ("  begincatchblock_");
+			sb.Append (excBlock.excBlkSeqNo);
 		}
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
 		{
 			ilGen.BeginCatchBlock (excType);
+		}
+
+		/**
+		 * @brief The beginning of every catch { } conditinally branches to the beginning 
+		 *        of all outer catch { }s up to and including the next outer finally { }.
+		 */
+		BOILERPLATE_GETNNENUMERABLE(override,GraphNodeBeginCatchBlock)
+		private class NNEnumerator : System.Collections.Generic.IEnumerator<GraphNode> {
+			private GraphNodeBeginCatchBlock gn;
+			private GraphNode nn;
+			private int index;
+			public NNEnumerator (GraphNodeBeginCatchBlock gn)
+			{
+				this.gn = gn;
+			}
+			public bool MoveNext ()
+			{
+				while (true) {
+					switch (index) {
+						case 0: {
+							// start with the fallthru
+							nn = gn.nextLin;
+							index ++;
+							return true;
+						}
+
+						case 1: {
+							// get the first outer catch { } or finally { }
+							// pretend we last returned beginning of this catch { }
+							// then loop back to get next outer catch { } or finally { }
+							nn = gn;
+							break;
+						}
+
+						case 2: {
+							// nn points to a catch { } previously returned
+							// get the corresponding try { }
+							GraphNodeBeginExceptionBlock nntry = nn.excBlock;
+
+							// step out to next outer try { }
+							nntry = nntry.excBlock;
+							if (nntry == null) break;
+
+							// return corresponding catch { } or finally { }
+							nn = nntry.catchFinallyBlock;
+
+							// if it's a finally { } we don't do anything after that
+							if (nn is GraphNodeBeginFinallyBlock) index ++;
+							return true;
+						}
+
+						case 3: {
+							// we've returned the fallthru, catches and one finally
+							// so there's nothing more to say
+							nn = null;
+							return false;
+						}
+
+						default: throw new Exception ();
+					}
+					index ++;
+				}
+			}
+			public void Reset ()
+			{
+				index = 0;
+				nn = null;
+			}
+			BOILERPLATE_NNENUMERATOR_CURRENT_DISPOSE
 		}
 	}
 
@@ -314,12 +397,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	 * @brief Beginning of finally block.
 	 */
 	public class GraphNodeBeginFinallyBlock : GraphNodeCatchFinallyBlock {
+
+		// leaveTargets has a list of all the targets of any contained 
+		// leave instructions, ie, where an endfinally can possibly jump.
+		// But only those targets within the next outer finally { }, we 
+		// don't contain any targets outside of that, those targets are 
+		// stored in the actual finally that will jump to the target.
+		// The endfinally enumerator assumes that it is always possible 
+		// for it to jump to the next outer finally (as would happen for
+		// an uncaught exception), so no need to do anything special.
+		public List<GraphNodeBlock> leaveTargets = new List<GraphNodeBlock> ();
+
 		public GraphNodeBeginFinallyBlock (ScriptCollector coll) : base (coll)
 		{ }
 
 		public override void DebString (StringBuilder sb)
 		{
-			sb.Append ("  beginfinallyblock");
+			sb.Append ("  beginfinallyblock_");
+			sb.Append (excBlock.excBlkSeqNo);
 		}
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
@@ -332,83 +427,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	 * @brief End of try/catch/finally block.
 	 */
 	public class GraphNodeEndExceptionBlock : GraphNode {
-		public List<GraphNodeBlock> leaveTargets = new List<GraphNodeBlock> ();
-
 		public GraphNodeEndExceptionBlock (ScriptCollector coll) : base (coll)
 		{ }
 
 		public override void DebString (StringBuilder sb)
 		{
-			sb.Append ("  endexceptionblock");
+			sb.Append ("  endexceptionblock_");
+			sb.Append (excBlock.excBlkSeqNo);
 		}
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
 		{
 			ilGen.EndExceptionBlock ();
-		}
-
-		/**
-		 * @brief Return list of leave targets followed by the next linear instruction
-		 *        But if the target is outside our scope (eg __retlbl), omit it from the list
-		 */
-		protected override System.Collections.Generic.IEnumerable<GraphNode> GetNNEnumerable ()
-		{
-			return new NNEnumerable (this);
-		}
-		private class NNEnumerable : System.Collections.Generic.IEnumerable<GraphNode> {
-			private GraphNodeEndExceptionBlock gn;
-			public NNEnumerable (GraphNodeEndExceptionBlock gn)
-			{
-				this.gn = gn;
-			}
-			System.Collections.Generic.IEnumerator<GraphNode> System.Collections.Generic.IEnumerable<GraphNode>.GetEnumerator ()
-			{
-				return new NNEnumerator (gn);
-			}
-			System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator ()
-			{
-				return new NNEnumerator (gn);
-			}
-		}
-		private class NNEnumerator : System.Collections.Generic.IEnumerator<GraphNode> {
-			private bool doFallThru = true;
-			private GraphNodeEndExceptionBlock gn;
-			private GraphNode nn;
-			private IEnumerator<GraphNodeBlock> leaveTargetEnumerator;
-			public NNEnumerator (GraphNodeEndExceptionBlock gn)
-			{
-				this.gn = gn;
-				this.leaveTargetEnumerator = gn.leaveTargets.GetEnumerator ();
-			}
-			public bool MoveNext ()
-			{
-				if (doFallThru) {
-					nn = gn.nextLin;
-					doFallThru = false;
-					return true;
-				}
-
-				if (leaveTargetEnumerator.MoveNext ()) {
-					nn = leaveTargetEnumerator.Current;
-					return true;
-				}
-
-				nn = null;
-				return false;
-			}
-			public void Reset ()
-			{
-				doFallThru = true;
-				leaveTargetEnumerator.Reset ();
-				nn = null;
-			}
-			GraphNode System.Collections.Generic.IEnumerator<GraphNode>.Current {
-				get { return nn; }
-			}
-			object System.Collections.IEnumerator.Current {
-				get { return nn; }
-			}
-			void System.IDisposable.Dispose() { }
 		}
 	}
 
@@ -447,25 +477,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief If instruction is terminating, we say there is nothing following (eg, return).
 		 *        Otherwise, say the one-and-only next instruction is the next instruction inline.
 		 */
-		protected override System.Collections.Generic.IEnumerable<GraphNode> GetNNEnumerable ()
-		{
-			return new NNEnumerable (this);
-		}
-		private class NNEnumerable : System.Collections.Generic.IEnumerable<GraphNode> {
-			private GraphNodeEmit gn;
-			public NNEnumerable (GraphNodeEmit gn)
-			{
-				this.gn = gn;
-			}
-			System.Collections.Generic.IEnumerator<GraphNode> System.Collections.Generic.IEnumerable<GraphNode>.GetEnumerator ()
-			{
-				return new NNEnumerator (gn);
-			}
-			System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator ()
-			{
-				return new NNEnumerator (gn);
-			}
-		}
+		BOILERPLATE_GETNNENUMERABLE(override,GraphNodeEmit)
 		private class NNEnumerator : System.Collections.Generic.IEnumerator<GraphNode> {
 			private GraphNodeEmit gn;
 			private GraphNode nn;
@@ -497,13 +509,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				index = 0;
 				nn = null;
 			}
-			GraphNode System.Collections.Generic.IEnumerator<GraphNode>.Current {
-				get { return nn; }
-			}
-			object System.Collections.IEnumerator.Current {
-				get { return nn; }
-			}
-			void System.IDisposable.Dispose() { }
+			BOILERPLATE_NNENUMERATOR_CURRENT_DISPOSE
 		}
 	}
 
@@ -511,14 +517,93 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public GraphNodeEmitNull (ScriptCollector coll, OpCode opcode) : base (coll, opcode)
 		{ }
 
-		public override void DebString (StringBuilder sb)
-		{
-			base.DebString (sb);
-		}
-
 		public override void WriteOutOne (ScriptMyILGen ilGen)
 		{
 			ilGen.Emit (opcode);
+		}
+	}
+
+	public class GraphNodeEmitNullEndfinally : GraphNodeEmitNull {
+		public GraphNodeEmitNullEndfinally (ScriptCollector coll) : base (coll, OpCodes.Endfinally)
+		{ }
+
+		/**
+		 * @brief Endfinally can branch to:
+		 *          1) the corresponding EndExceptionBlock
+		 *          2) any of the corresponding BeginFinallyBlock's leaveTargets
+		 *          3) the next outer BeginFinallyBlock
+		 */
+		BOILERPLATE_GETNNENUMERABLE(override,GraphNodeEmitNullEndfinally)
+		private class NNEnumerator : System.Collections.Generic.IEnumerator<GraphNode> {
+			private bool doFallThru = true;
+			private GraphNodeEmitNullEndfinally gn;
+			private GraphNode nn;
+			private IEnumerator<GraphNodeBlock> leaveTargetEnumerator;
+			private int index;
+			public NNEnumerator (GraphNodeEmitNullEndfinally gn)
+			{
+				this.gn = gn;
+
+				// endfinally instruction must be within some try/catch/finally mess
+				GraphNodeBeginExceptionBlock thistry = gn.excBlock;
+
+				// endfinally instruction must be within some finally { } mess
+				GraphNodeBeginFinallyBlock thisfin = (GraphNodeBeginFinallyBlock)thistry.catchFinallyBlock;
+
+				// get the list of the finally { } leave instruction targets
+				this.leaveTargetEnumerator = thisfin.leaveTargets.GetEnumerator ();
+			}
+			public bool MoveNext ()
+			{
+				while (true) {
+					switch (index) {
+
+						// to start, return end of our finally { }
+						case 0: {
+							GraphNodeBeginExceptionBlock thistry = gn.excBlock;
+							nn = thistry.endExcBlock;
+							index ++;
+							return true;
+						}
+
+						// return next one of our finally { }'s leave targets
+						// ie, where any leave instructions in the try { } want 
+						// the finally { } to go to when it finishes
+						case 1: {
+							if (this.leaveTargetEnumerator.MoveNext ()) {
+								nn = this.leaveTargetEnumerator.Current;
+								return true;
+							}
+							break;
+						}
+
+						// return beginning of next outer finally { }
+						case 2: {
+							GraphNodeBeginExceptionBlock nntry = gn.excBlock;
+							while ((nntry = nntry.excBlock) != null) {
+								if (nntry.catchFinallyBlock is GraphNodeBeginFinallyBlock) {
+									nn = nntry.catchFinallyBlock;
+									return true;
+								}
+							}
+							break;
+						}
+
+						// got nothing more
+						case 3: {
+							return false;
+						}
+					}
+					index ++;
+				}
+			}
+			public void Reset ()
+			{
+				leaveTargetEnumerator.Reset ();
+				index = 0;
+				nn = null;
+			}
+			BOILERPLATE_NNENUMERATOR_CURRENT_DISPOSE
 		}
 	}
 
@@ -621,25 +706,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 *        Unconditional branches return only the branch target
 		 *        But if the target is outside our scope (eg __retlbl), omit it from the list
 		 */
-		protected override System.Collections.Generic.IEnumerable<GraphNode> GetNNEnumerable ()
-		{
-			return new NNEnumerable (this);
-		}
-		private class NNEnumerable : System.Collections.Generic.IEnumerable<GraphNode> {
-			private GraphNodeEmitLabel gn;
-			public NNEnumerable (GraphNodeEmitLabel gn)
-			{
-				this.gn = gn;
-			}
-			System.Collections.Generic.IEnumerator<GraphNode> System.Collections.Generic.IEnumerable<GraphNode>.GetEnumerator ()
-			{
-				return new NNEnumerator (gn);
-			}
-			System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator ()
-			{
-				return new NNEnumerator (gn);
-			}
-		}
+		BOILERPLATE_GETNNENUMERABLE(override,GraphNodeEmitLabel)
 		private class NNEnumerator : System.Collections.Generic.IEnumerator<GraphNode> {
 			private GraphNodeEmitLabel gn;
 			private GraphNode nn;
@@ -693,13 +760,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				index = 0;
 				nn = null;
 			}
-			GraphNode System.Collections.Generic.IEnumerator<GraphNode>.Current {
-				get { return nn; }
-			}
-			object System.Collections.IEnumerator.Current {
-				get { return nn; }
-			}
-			void System.IDisposable.Dispose() { }
+			BOILERPLATE_NNENUMERATOR_CURRENT_DISPOSE
 		}
 	}
 
@@ -711,41 +772,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public GraphNodeEmitLabelLeave (ScriptCollector coll, ScriptMyLabel myLabel) : base (coll, OpCodes.Leave, myLabel)
 		{ }
 
-		public override void DebString (StringBuilder sb)
-		{
-			base.DebString (sb);
-			sb.Append (myLabel.name);
-		}
-
-		public override void WriteOutOne (ScriptMyILGen ilGen)
-		{
-			ilGen.Emit (opcode, myLabel);
-		}
-
 		/**
-		 * @brief Leave instructions only have one unconditional target.
+		 * @brief Leave instructions have exactly one unconditional next node.
 		 *        Either the given target if within the same try block 
 		 *        or the beginning of the intervening finally block.
 		 */
-		protected override System.Collections.Generic.IEnumerable<GraphNode> GetNNEnumerable ()
-		{
-			return new NNEnumerable (this);
-		}
-		private class NNEnumerable : System.Collections.Generic.IEnumerable<GraphNode> {
-			private GraphNodeEmitLabelLeave gn;
-			public NNEnumerable (GraphNodeEmitLabelLeave gn)
-			{
-				this.gn = gn;
-			}
-			System.Collections.Generic.IEnumerator<GraphNode> System.Collections.Generic.IEnumerable<GraphNode>.GetEnumerator ()
-			{
-				return new NNEnumerator (gn);
-			}
-			System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator ()
-			{
-				return new NNEnumerator (gn);
-			}
-		}
+		BOILERPLATE_GETNNENUMERABLE(override,GraphNodeEmitLabelLeave)
 		private class NNEnumerator : System.Collections.Generic.IEnumerator<GraphNode> {
 			private GraphNodeEmitLabelLeave gn;
 			private GraphNode nn;
@@ -769,13 +801,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				index = 0;
 				nn = null;
 			}
-			GraphNode System.Collections.Generic.IEnumerator<GraphNode>.Current {
-				get { return nn; }
-			}
-			object System.Collections.IEnumerator.Current {
-				get { return nn; }
-			}
-			void System.IDisposable.Dispose() { }
+			BOILERPLATE_NNENUMERATOR_CURRENT_DISPOSE
 		}
 	}
 
@@ -807,25 +833,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief Return list of all labels followed by the next linear instruction
 		 *        But if the target is outside our scope (eg __retlbl), omit it from the list
 		 */
-		protected override System.Collections.Generic.IEnumerable<GraphNode> GetNNEnumerable ()
-		{
-			return new NNEnumerable (this);
-		}
-		private class NNEnumerable : System.Collections.Generic.IEnumerable<GraphNode> {
-			private GraphNodeEmitLabels gn;
-			public NNEnumerable (GraphNodeEmitLabels gn)
-			{
-				this.gn = gn;
-			}
-			System.Collections.Generic.IEnumerator<GraphNode> System.Collections.Generic.IEnumerable<GraphNode>.GetEnumerator ()
-			{
-				return new NNEnumerator (gn);
-			}
-			System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator ()
-			{
-				return new NNEnumerator (gn);
-			}
-		}
+		BOILERPLATE_GETNNENUMERABLE(override,GraphNodeEmitLabels)
 		private class NNEnumerator : System.Collections.Generic.IEnumerator<GraphNode> {
 			private GraphNodeEmitLabels gn;
 			private GraphNode nn;
@@ -864,13 +872,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				index = 0;
 				nn = null;
 			}
-			GraphNode System.Collections.Generic.IEnumerator<GraphNode>.Current {
-				get { return nn; }
-			}
-			object System.Collections.IEnumerator.Current {
-				get { return nn; }
-			}
-			void System.IDisposable.Dispose() { }
+			BOILERPLATE_NNENUMERATOR_CURRENT_DISPOSE
 		}
 	}
 
@@ -1043,6 +1045,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public GraphNode firstLin, lastLin;
 		private bool resolvedSomething;
 		private int resolveSequence;
+		private int excBlkSeqNos;
 		public GraphNodeBeginExceptionBlock curTryBlock = null;  // pushed at beginning of try
 		                                                         // popped at BEGINNING of catch/finally
 		public GraphNodeBeginExceptionBlock curExcBlock = null;  // pushed at beginning of try
@@ -1088,6 +1091,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			GraphNodeBeginExceptionBlock tryBlock = new GraphNodeBeginExceptionBlock (this);
 			tryBlock.ChainLin ();
+			tryBlock.excBlkSeqNo = ++ this.excBlkSeqNos;
 			this.curExcBlock = tryBlock;
 			this.curTryBlock = tryBlock;
 		}
@@ -1112,16 +1116,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		public override void EndExceptionBlock ()
 		{
-			GraphNodeEndExceptionBlock endBlock = new GraphNodeEndExceptionBlock (this);
-			endBlock.ChainLin ();
-			curExcBlock.endBlock = endBlock;
+			GraphNodeEndExceptionBlock endExcBlock = new GraphNodeEndExceptionBlock (this);
+			endExcBlock.ChainLin ();
+			curExcBlock.endExcBlock = endExcBlock;
 			curTryBlock = curExcBlock.tryBlock;
 			curExcBlock = curExcBlock.excBlock;
 		}
 
 		public override void Emit (OpCode opcode)
 		{
-			new GraphNodeEmitNull (this, opcode).ChainLin ();
+			if (opcode == OpCodes.Endfinally) {
+				new GraphNodeEmitNullEndfinally (this).ChainLin ();
+			} else {
+				new GraphNodeEmitNull (this, opcode).ChainLin ();
+			}
 		}
 
 		public override void Emit (OpCode opcode, FieldInfo field)
@@ -1232,11 +1240,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						(leaveTarget == null) ? null : leaveTarget.tryBlock;              // ...it must not be unwound
 
 					/*
-					 * The leave unwinds to the beginning of the innermost finally block being unwound.
-					 * The end of the innermost finally block conditionally branches to beginning of next innermost finally being unwound.
-					 * The end of that finally block conditionally branches to beginning of next innermost finally being unwound, etc.
+					 * Step through try { }s from the leave instruction towards its target looking for try { }s with finally { }s.
+					 * The leave instruction unconditionally branches to the beginning of the innermost one found.
+					 * The end of the last one found conditionally branches to the leave instruction's target.
+					 * If none found, the leave is a simple unconditional branch to its target.
 					 */
-					GraphNodeCatchFinallyBlock innerFinallyBlock = null;
+					GraphNodeBeginFinallyBlock innerFinallyBlock = null;
 					for (GraphNodeBeginExceptionBlock tryBlock = leaveInstr.tryBlock;
 					     tryBlock != leaveTargetsTryBlock;
 					     tryBlock  = tryBlock.tryBlock) {
@@ -1245,25 +1254,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						if (cfb is GraphNodeBeginFinallyBlock) {
 							if (innerFinallyBlock == null) {
 								leaveInstr.unwindTo = cfb;
-							} else {
-								innerFinallyBlock.excBlock.endBlock.leaveTargets.Add (cfb);
 							}
-							innerFinallyBlock = cfb;
+							innerFinallyBlock = (GraphNodeBeginFinallyBlock)cfb;
 						}
 					}
 
 					/*
-					 * The end of the outermost finally being unwound is the target of the leave instruction.
+					 * The end of the outermost finally being unwound can conditionally jump to the target of the leave instruction.
 					 * In the case of no finallies being unwound, the leave is just a simple unconditional branch.
 					 */
-					if (innerFinallyBlock == null) {
-						leaveInstr.unwindTo = leaveTarget;
+					if (innerFinallyBlock != null) {
+						innerFinallyBlock.leaveTargets.Add (leaveTarget);
 					} else {
-						if (innerFinallyBlock == null) throw new NullReferenceException ("innerFinallyBlock");
-						if (innerFinallyBlock.excBlock == null) throw new NullReferenceException ("innerFinallyBlock.excBlock");
-						if (innerFinallyBlock.excBlock.endBlock == null) throw new NullReferenceException ("innerFinallyBlock.excBlock.endBlock");
-						if (innerFinallyBlock.excBlock.endBlock.leaveTargets == null) throw new NullReferenceException ("innerFinallyBlock.excBlock.endBlock.leaveTargets");
-						innerFinallyBlock.excBlock.endBlock.leaveTargets.Add (leaveTarget);
+						leaveInstr.unwindTo = leaveTarget;
 					}
 				}
 			}

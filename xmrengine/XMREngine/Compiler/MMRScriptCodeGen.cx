@@ -3,6 +3,9 @@
  *  All rights reserved.                                *
 \********************************************************/
 
+#define DEBUG_STACKCAPRES 0
+#define DEBUG_TRYSTMT 0
+
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 using OpenSim.Region.ScriptEngine.XMREngine;
 using System;
@@ -60,31 +63,32 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static ConstructorInfo scriptUndefinedStateExceptionConstructorInfo = typeof (ScriptUndefinedStateException).GetConstructor (new Type[] { typeof (string) });
 		private static ConstructorInfo sdtClassConstructorInfo = typeof (XMRSDTypeClObj).GetConstructor (new Type[] { typeof (XMRInstAbstract), typeof (int) });
 		private static ConstructorInfo xmrArrayConstructorInfo = typeof (XMR_Array).GetConstructor (new Type[] { typeof (XMRInstAbstract), typeof (int), typeof (int) });
-		private static FieldInfo callModeFieldInfo     = typeof (XMRInstAbstract).GetField ("callMode");
-		private static FieldInfo doGblInitFieldInfo    = typeof (XMRInstAbstract).GetField ("doGblInit");
-		private static FieldInfo ehArgsFieldInfo       = typeof (XMRInstAbstract).GetField ("ehArgs");
-		public  static FieldInfo heapLeftFieldInfo     = typeof (XMRInstAbstract).GetField ("heapLeft");
-		private static FieldInfo heapLimitFieldInfo    = typeof (XMRInstAbstract).GetField ("heapLimit");
-		private static FieldInfo rotationXFieldInfo    = typeof (LSL_Rotation).GetField ("x");
-		private static FieldInfo rotationYFieldInfo    = typeof (LSL_Rotation).GetField ("y");
-		private static FieldInfo rotationZFieldInfo    = typeof (LSL_Rotation).GetField ("z");
-		private static FieldInfo rotationSFieldInfo    = typeof (LSL_Rotation).GetField ("s");
-		private static FieldInfo sdtXMRInstFieldInfo   = typeof (XMRSDTypeClObj).GetField ("xmrInst");
-		private static FieldInfo vectorXFieldInfo      = typeof (LSL_Vector).GetField ("x");
-		private static FieldInfo vectorYFieldInfo      = typeof (LSL_Vector).GetField ("y");
-		private static FieldInfo vectorZFieldInfo      = typeof (LSL_Vector).GetField ("z");
+		private static FieldInfo callModeFieldInfo       = typeof (XMRInstAbstract).GetField ("callMode");
+		private static FieldInfo doGblInitFieldInfo      = typeof (XMRInstAbstract).GetField ("doGblInit");
+		private static FieldInfo ehArgsFieldInfo         = typeof (XMRInstAbstract).GetField ("ehArgs");
+		public  static FieldInfo heapLeftFieldInfo       = typeof (XMRInstAbstract).GetField ("heapLeft");
+		private static FieldInfo heapLimitFieldInfo      = typeof (XMRInstAbstract).GetField ("heapLimit");
+		private static FieldInfo rotationXFieldInfo      = typeof (LSL_Rotation).GetField ("x");
+		private static FieldInfo rotationYFieldInfo      = typeof (LSL_Rotation).GetField ("y");
+		private static FieldInfo rotationZFieldInfo      = typeof (LSL_Rotation).GetField ("z");
+		private static FieldInfo rotationSFieldInfo      = typeof (LSL_Rotation).GetField ("s");
+		private static FieldInfo sdtXMRInstFieldInfo     = typeof (XMRSDTypeClObj).GetField ("xmrInst");
+		private static FieldInfo vectorXFieldInfo        = typeof (LSL_Vector).GetField ("x");
+		private static FieldInfo vectorYFieldInfo        = typeof (LSL_Vector).GetField ("y");
+		private static FieldInfo vectorZFieldInfo        = typeof (LSL_Vector).GetField ("z");
 
-		private static MethodInfo arrayClearMethodInfo = typeof (XMR_Array).GetMethod ("__pub_clear", new Type[] { });
-		private static MethodInfo arrayCountMethodInfo = typeof (XMR_Array).GetMethod ("__pub_count", new Type[] { });
-		private static MethodInfo arrayIndexMethodInfo = typeof (XMR_Array).GetMethod ("__pub_index", new Type[] { typeof (int) });
-		private static MethodInfo arrayValueMethodInfo = typeof (XMR_Array).GetMethod ("__pub_value", new Type[] { typeof (int) });
-		private static MethodInfo checkRunMethodInfo   = typeof (XMRInstAbstract).GetMethod ("CheckRun", new Type[] { typeof (int) });
-		private static MethodInfo ehArgUnwrapFloat     = GetStaticMethod (typeof (TypeCast), "EHArgUnwrapFloat",    new Type[] { typeof (object) });
-		private static MethodInfo ehArgUnwrapInteger   = GetStaticMethod (typeof (TypeCast), "EHArgUnwrapInteger",  new Type[] { typeof (object) });
-		private static MethodInfo ehArgUnwrapRotation  = GetStaticMethod (typeof (TypeCast), "EHArgUnwrapRotation", new Type[] { typeof (object) });
-		private static MethodInfo ehArgUnwrapString    = GetStaticMethod (typeof (TypeCast), "EHArgUnwrapString",   new Type[] { typeof (object) });
-		private static MethodInfo ehArgUnwrapVector    = GetStaticMethod (typeof (TypeCast), "EHArgUnwrapVector",   new Type[] { typeof (object) });
-		private static MethodInfo forEachMethodInfo    = typeof (XMR_Array).GetMethod ("ForEach", 
+		private static MethodInfo arrayClearMethodInfo   = typeof (XMR_Array).GetMethod ("__pub_clear", new Type[] { });
+		private static MethodInfo arrayCountMethodInfo   = typeof (XMR_Array).GetMethod ("__pub_count", new Type[] { });
+		private static MethodInfo arrayIndexMethodInfo   = typeof (XMR_Array).GetMethod ("__pub_index", new Type[] { typeof (int) });
+		private static MethodInfo arrayValueMethodInfo   = typeof (XMR_Array).GetMethod ("__pub_value", new Type[] { typeof (int) });
+		private static MethodInfo checkRunMethodInfo     = typeof (XMRInstAbstract).GetMethod ("CheckRun", new Type[] { typeof (int) });
+		private static MethodInfo consoleWriteMethodInfo = GetStaticMethod (typeof (Console),  "Write",               new Type[] { typeof (object) });
+		private static MethodInfo ehArgUnwrapFloat       = GetStaticMethod (typeof (TypeCast), "EHArgUnwrapFloat",    new Type[] { typeof (object) });
+		private static MethodInfo ehArgUnwrapInteger     = GetStaticMethod (typeof (TypeCast), "EHArgUnwrapInteger",  new Type[] { typeof (object) });
+		private static MethodInfo ehArgUnwrapRotation    = GetStaticMethod (typeof (TypeCast), "EHArgUnwrapRotation", new Type[] { typeof (object) });
+		private static MethodInfo ehArgUnwrapString      = GetStaticMethod (typeof (TypeCast), "EHArgUnwrapString",   new Type[] { typeof (object) });
+		private static MethodInfo ehArgUnwrapVector      = GetStaticMethod (typeof (TypeCast), "EHArgUnwrapVector",   new Type[] { typeof (object) });
+		private static MethodInfo forEachMethodInfo      = typeof (XMR_Array).GetMethod ("ForEach", 
 		                                                                               new Type[] { typeof (int),
 		                                                                                            typeof (object).MakeByRefType (),
 		                                                                                            typeof (object).MakeByRefType () });
@@ -106,7 +110,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		                                                                     new Type[] { typeof (string) });
 		private static MethodInfo catchExcToStrMethodInfo = GetStaticMethod (typeof (ScriptCodeGen),
 		                                                                     "CatchExcToStr",
-		                                                                     new Type[] { typeof (Exception) });
+		                                                                     new Type[] { typeof (object) });
 
 		public static bool CodeGen (TokenScript tokenScript, BinaryWriter objFileWriter, string sourceHash)
 		{
@@ -146,12 +150,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public ScriptObjCode scriptObjCode = null;
 
 		// These get cleared at beginning of every function definition
-		public  ScriptMyILGen ilGen    = null;  // the output instruction stream
-		private ScriptMyLabel retLabel = null;  // where to jump to exit function
-		private ScriptMyLocal retValue = null;
-		private ScriptMyLocal callNo   = null;
-		private LinkedList<CallLabel> allCallLabels = new LinkedList<CallLabel> ();
-		private List<ScriptMyLocal> activeTemps = new List<ScriptMyLocal> ();
+		public  ScriptMyILGen ilGen     = null;  // the output instruction stream
+		private ScriptMyLabel retLabel  = null;  // where to jump to exit function
+		private ScriptMyLocal retValue  = null;
+		private ScriptMyLocal actCallNo = null;  // for the active try/catch/finally stack or the big one outside them all
+		private LinkedList<CallLabel> actCallLabels = new LinkedList<CallLabel> ();  // for the active try/catch/finally stack or the big one outside them all
+		private LinkedList<CallLabel> allCallLabels = new LinkedList<CallLabel> ();  // this holds each and every one for all stacks in total
 
 		private ScriptCodeGen (TokenScript tokenScript, BinaryWriter objFileWriter, string sourceHash)
 		{
@@ -1168,6 +1172,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Then, when restoring stack, we can just switch to this label to
 			 * resume at the correct spot.
 			 */
+			actCallLabels.Clear ();
 			allCallLabels.Clear ();
 
 			/*
@@ -1182,13 +1187,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Output:
-			 *    int callNo;
+			 *    int __mainCallNo = -1;
 			 *    if (instance.callMode != CALLMODE_NORMAL) goto __cmRestore;
 			 */
-			callNo = null;
+			actCallNo = null;
 			ScriptMyLabel cmRestore = null;
 			if (!isTrivial) {
-				callNo = ilGen.DeclareLocal (typeof (int), "__callNo");
+				actCallNo = ilGen.DeclareLocal (typeof (int), "__mainCallNo");
+				ilGen.PushInt (-1);
+				ilGen.Emit (OpCodes.Stloc, actCallNo);
 				cmRestore = ilGen.DefineLabel ("__cmRestore");
 				PushXMRInst ();
 				ilGen.Emit (OpCodes.Ldfld, ScriptCodeGen.callModeFieldInfo);
@@ -1325,10 +1332,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ilGen.Emit (OpCodes.Bne_Un, cmSave);
 			}
 			CreditAllLocalsHeapLeft ();
+			List<ScriptMyLocal> activeTemps = null;
 			if (!isTrivial) {
 				ilGen.Emit (OpCodes.Br, endFin);
 				ilGen.MarkLabel (cmSave);
-				GenerateFrameCaptureCode ();
+				activeTemps = GenerateFrameCaptureCode ();
 				ilGen.MarkLabel (endFin);
 			}
 			ilGen.Emit (OpCodes.Endfinally);
@@ -1350,7 +1358,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			if (!isTrivial) {
 				ilGen.MarkLabel (cmRestore);
-				GenerateFrameRestoreCode ();
+				GenerateFrameRestoreCode (activeTemps);
 			}
 
 			/*
@@ -1405,12 +1413,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 *        those are the only points we will jump to on restore.  This saves us from saving 
 		 *        all the little temp vars we create.
 		 */
-		private void GenerateFrameCaptureCode ()
+		private List<ScriptMyLocal> GenerateFrameCaptureCode ()
 		{
 			/*
 			 * Build list of locals and temps active at all the call labels.
 			 */
-			activeTemps.Clear ();
+			List<ScriptMyLocal> activeTemps = new List<ScriptMyLocal> ();
 			foreach (CallLabel cl in allCallLabels) {
 				foreach (ScriptMyLocal lcl in cl.callLabel.whereAmI.localsReadBeforeWritten) {
 					if (!activeTemps.Contains (lcl)) {
@@ -1432,7 +1440,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			PushXMRInst ();
 			ilGen.Emit (OpCodes.Ldstr, ilGen.methName);
-			ilGen.Emit (OpCodes.Ldloc, callNo);
+			ilGen.Emit (OpCodes.Ldloc, actCallNo);  // __mainCallNo
 			ilGen.PushInt (nSaves);
 			ilGen.Emit (OpCodes.Call, captureStackFrameMethodInfo);
 
@@ -1460,13 +1468,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			ilGen.Emit (OpCodes.Pop);
+
+			return activeTemps;
 		}
 
 		/**
 		 * @brief Generate code to restore all arguments and locals from the restore stack frame.
 		 *        This includes heap-tracker and temp variables.
 		 */
-		private void GenerateFrameRestoreCode ()
+		private void GenerateFrameRestoreCode (List<ScriptMyLocal> activeTemps)
 		{
 			ScriptMyLocal objArray = ilGen.DeclareLocal (typeof (object[]), "__restObjArray");
 
@@ -1476,9 +1486,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			PushXMRInst ();
 			ilGen.Emit (OpCodes.Ldstr, ilGen.methName);
-			ilGen.Emit (OpCodes.Ldloca, callNo);
+			ilGen.Emit (OpCodes.Ldloca, actCallNo);  // __mainCallNo
 			ilGen.Emit (OpCodes.Call, restoreStackFrameMethodInfo);
 			ilGen.Emit (OpCodes.Stloc, objArray);
+#if DEBUG_STACKCAPRES
+			ilGen.Emit (OpCodes.Ldstr, ilGen.methName);
+			ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
+			ilGen.Emit (OpCodes.Ldstr, "*: restore mainCallNo=");
+			ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
+			ilGen.Emit (OpCodes.Ldloc, actCallNo);
+			ilGen.Emit (OpCodes.Box, typeof (int));
+			ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
+#endif
 
 			/*
 			 * Restore argument values from object array, unboxing as needed.
@@ -1492,6 +1511,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ilGen.Emit (OpCodes.Ldloc, objArray);
 				ilGen.PushInt (i);
 				ilGen.Emit (OpCodes.Ldelem_Ref);
+#if DEBUG_STACKCAPRES
+				ilGen.Emit (OpCodes.Ldstr, " ");
+				ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
+				ilGen.Emit (OpCodes.Ldstr, argVar.name.val);
+				ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
+				ilGen.Emit (OpCodes.Ldstr, "=");
+				ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
+				ilGen.Emit (OpCodes.Dup);
+				ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
+#endif
 				TypeCast.CastTopOfStack (this, argVar.name, tokenTypeObj, argLoc.type, true);
 				argLoc.PopPost (this, argVar.name);
 				i ++;
@@ -1504,16 +1533,31 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ilGen.Emit (OpCodes.Ldloc, objArray);
 				ilGen.PushInt (i ++);
 				ilGen.Emit (OpCodes.Ldelem_Ref);
+#if DEBUG_STACKCAPRES
+				ilGen.Emit (OpCodes.Ldstr, " ");
+				ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
+				ilGen.Emit (OpCodes.Ldstr, lcl.name);
+				ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
+				ilGen.Emit (OpCodes.Ldstr, "=");
+				ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
+				ilGen.Emit (OpCodes.Dup);
+				ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
+#endif
 				if (lcl.type.IsValueType) ilGen.Emit (OpCodes.Unbox_Any, lcl.type);
 				ilGen.Emit (OpCodes.Stloc, lcl);
 			}
-			activeTemps.Clear ();
+#if DEBUG_STACKCAPRES
+			ilGen.Emit (OpCodes.Ldstr, "\n");
+			ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
+#endif
 
 			OutputCallNoSwitchStmt ();
 		}
 
 		/**
-		 * @brief Output a switch statement with a case for each possible value of callNo.
+		 * @brief Output a switch statement with a case for each possible 
+		 *        value of whatever callNo is currently active, either 
+		 *        __mainCallNo or one of the try/catch/finally's callNos.
 		 *
 		 *   switch (callNo) {
 		 *      case 0: goto __call_0;
@@ -1524,14 +1568,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void OutputCallNoSwitchStmt ()
 		{
-			ScriptMyLabel[] callLabels = new ScriptMyLabel[allCallLabels.Count];
-			foreach (CallLabel cl in allCallLabels) {
+			ScriptMyLabel[] callLabels = new ScriptMyLabel[actCallLabels.Count];
+			foreach (CallLabel cl in actCallLabels) {
 				callLabels[cl.index] = cl.callLabel;
 			}
-			ilGen.Emit (OpCodes.Ldloc, callNo);
+			ilGen.Emit (OpCodes.Ldloc, actCallNo);
 			ilGen.Emit (OpCodes.Switch, callLabels);
 
-			ilGen.Emit (OpCodes.Ldloc, callNo);
+			ilGen.Emit (OpCodes.Ldloc, actCallNo);
 			ilGen.Emit (OpCodes.Newobj, scriptBadCallNoExceptionConstructorInfo);
 			ilGen.Emit (OpCodes.Throw);
 		}
@@ -1541,17 +1585,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 *        including direct calls to CheckRun().
 		 */
 		private class CallLabel {
-			public int           index;       // sequential integer, starting at 0
+			public int           index;       // sequential integer, starting at 0, within actCallLabels
+			                                  // - used for the switch statement
 			public ScriptMyLabel callLabel;   // the actual label token
 
 			public CallLabel (ScriptCodeGen scg)
 			{
 				if (!scg.curDeclFunc.IsFuncTrivial (scg)) {
-					this.index = scg.allCallLabels.Count;
+					this.index = scg.actCallLabels.Count;
+					scg.actCallLabels.AddLast (this);
 					scg.allCallLabels.AddLast (this);
-					this.callLabel = scg.ilGen.DefineLabel ("__call_" + index);
+					this.callLabel = scg.ilGen.DefineLabel ("__call_" + index + "_" + scg.allCallLabels.Count);
 					scg.ilGen.PushInt(this.index);
-					scg.ilGen.Emit (OpCodes.Stloc, scg.callNo);
+					scg.ilGen.Emit (OpCodes.Stloc, scg.actCallNo);
 					scg.ilGen.MarkLabel (this.callLabel);
 				}
 			}
@@ -2415,16 +2461,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		/**
 		 * @brief output code for a try/catch/finally block
 		 *
-		 *      int    __catCallNo = 0;                                    // call number within catch { } subblock
-		 *      int    __finCallNo = 0;                                    // call number within finally { } subblock
-		 *      int    __tryCallNo = 0;                                    // call number within try { } subblock
+		 *      int    __catCallNo = -1;                                   // call number within catch { } subblock
+		 *      int    __finCallNo = -1;                                   // call number within finally { } subblock
+		 *      int    __tryCallNo = -1;                                   // call number within try { } subblock
 		 *      object __catThrown = null;                                 // caught exception
 		 *    <oldCallLabel>:                                              // the outside world jumps here to restore us no matter ...
 		 *      try {                                                      // ... where we actually were inside of try/catch/finally
 		 *          if (callMode != CALLMODE_NORMAL) goto tryCallSw;       // if not normal, go do restore
 		 *          <try body using __tryCallNo>                           // execute script-defined code
 		 *                                                                 // ...stack capture WILL run catch/finally { } subblock
-		 *        tryBreak:                                                // break's jump here
+		 *        tryBreak:                                                // breaks jump here
 		 *          leave tryEnd;                                          // executes finally { } subblock and exits
 		 *        tryCallSw:                                               // restoring...
 		 *          if (__catThrown != null) goto tryThrow;                // maybe the catch { } was running
@@ -2433,12 +2479,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 *        tryThrow:
 		 *          throw __catThrown;                                     // catch { } was running, jump to its beginning
 		 *      } catch (object exc) {
-		 *          __catThrown = exc;                                     // save what was thrown
+		 *          catchVar = ScriptCodeGen.CatchExcToStr (exc);          // see if exception we care about
+		 *          if (catchVar == null) goto catchRetro;                 // rethrow if not (eg, StackCaptureException)
+		 *          __catThrown = exc;                                     // save what was thrown so restoring try { } will throw it again
 		 *          if (callMode != CALLMODE_NORMAL) goto catchCallSw;     // if not normal, go check below
-		 *          catchVar = ScriptCodeGen.CatchExcToStr (__catThrown);  // normal, see if exception we care about
-		 *          if (catchVar == null) goto catchRetro;                 // rethrow if not
-		 *          <catch body using __catCallNo>                         // execute script-defined code
-		 *        catchBreak:                                              // break's jump here
+		 *          <catch body using __catCallNo>                         // normal, execute script-defined code
+		 *        catchBreak:                                              // breaks jump here
 		 *          leave tryEnd;                                          // executes finally { } subblock and exits
 		 *        catchCallSw:
 		 *          if (callMode != CALLMODE_RESTORE) goto catchRetro;     // if CALLMODE_SAVE, rethrow the exception to continue saving
@@ -2471,18 +2517,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ScriptMyLabel tryThrow    = ilGen.DefineLabel (       "__tryThrow_"    + tryStmt.Unique);
 			BreakContTarg catchBreak  = new BreakContTarg (ilGen, "__catchBreak_"  + tryStmt.Unique);
 			ScriptMyLabel catchCallSw = ilGen.DefineLabel (       "__catchCallSw_" + tryStmt.Unique);
+			ScriptMyLabel catchRetro1 = ilGen.DefineLabel (       "__catchRetro1_" + tryStmt.Unique);
 			ScriptMyLabel catchRetro  = ilGen.DefineLabel (       "__catchRetro_"  + tryStmt.Unique);
 			ScriptMyLabel finCallSw   = ilGen.DefineLabel (       "__finCallSw_"   + tryStmt.Unique);
 			BreakContTarg finEnd      = new BreakContTarg (ilGen, "__finEnd_"      + tryStmt.Unique);
 			ScriptMyLabel tryEnd      = ilGen.DefineLabel (       "__tryEnd_"      + tryStmt.Unique);
 
-			catCallNo.PopPre (this, tryStmt); ilGen.Emit (OpCodes.Ldc_I4_0); catCallNo.PopPost (this, tryStmt);
-			finCallNo.PopPre (this, tryStmt); ilGen.Emit (OpCodes.Ldc_I4_0); finCallNo.PopPost (this, tryStmt);
-			tryCallNo.PopPre (this, tryStmt); ilGen.Emit (OpCodes.Ldc_I4_0); tryCallNo.PopPost (this, tryStmt);
-			catThrown.PopPre (this, tryStmt); ilGen.Emit (OpCodes.Ldnull);   catThrown.PopPost (this, tryStmt);
+			catCallNo.PopPre (this, tryStmt); ilGen.Emit (OpCodes.Ldc_I4_M1); catCallNo.PopPost (this, tryStmt);
+			finCallNo.PopPre (this, tryStmt); ilGen.Emit (OpCodes.Ldc_I4_M1); finCallNo.PopPost (this, tryStmt);
+			tryCallNo.PopPre (this, tryStmt); ilGen.Emit (OpCodes.Ldc_I4_M1); tryCallNo.PopPost (this, tryStmt);
+			catThrown.PopPre (this, tryStmt); ilGen.Emit (OpCodes.Ldnull);    catThrown.PopPost (this, tryStmt);
 
-			ScriptMyLocal saveCallNo = callNo;                      // save outer call labels
-			LinkedList<CallLabel> saveCallLabels = allCallLabels;
+			ScriptMyLocal saveCallNo = actCallNo;                   // save outer call labels
+			LinkedList<CallLabel> saveCallLabels = actCallLabels;
 			BreakContTarg oldBreakTarg = curBreakTarg;		// cannot continue out of try/catch/finally
 			BreakContTarg oldContTarg  = curContTarg;		// breaks jump to end of try/catch/finally subblock
 			curBreakTarg = null;
@@ -2490,14 +2537,41 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			new CallLabel (this);					//   <oldcalllabel>:
 			ilGen.BeginExceptionBlock ();				//     try {
+#if DEBUG_TRYSTMT
+			ilGen.Emit (OpCodes.Ldstr, "enter try*: callMode=");
+			ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
+			PushXMRInst ();
+			ilGen.Emit (OpCodes.Ldfld, callModeFieldInfo);
+			ilGen.Emit (OpCodes.Box, typeof (int));
+			ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
+			ilGen.Emit (OpCodes.Ldstr, " tryCallNo=");
+			ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
+			tryCallNo.PushVal (this, tryStmt);
+			ilGen.Emit (OpCodes.Box, typeof (int));
+			ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
+			ilGen.Emit (OpCodes.Ldstr, " catThrown.IsNull=");
+			ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
+			catThrown.PushVal (this, tryStmt);
+			ilGen.Emit (OpCodes.Ldnull);
+			ilGen.Emit (OpCodes.Ceq);
+			ilGen.Emit (OpCodes.Box, typeof (int));
+			ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
+			ilGen.Emit (OpCodes.Ldstr, " catCallNo=");
+			ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
+			catCallNo.PushVal (this, tryStmt);
+			ilGen.Emit (OpCodes.Box, typeof (int));
+			ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
+			ilGen.Emit (OpCodes.Ldstr, "\n");
+			ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
+#endif
 
 			PushXMRInst ();						//         if (inst.callMode != NORMAL) goto tryCallSw;
 			ilGen.Emit (OpCodes.Ldfld, callModeFieldInfo);
 			ilGen.PushInt (XMRInstAbstract.CALLMODE_NORMAL);
 			ilGen.Emit (OpCodes.Bne_Un, tryCallSw);
 
-			callNo = tryCallNo.localBuilder;                        // set up __tryCallNo for call labels
-			allCallLabels = new LinkedList<CallLabel> ();
+			actCallNo = tryCallNo.localBuilder;                     // set up __tryCallNo for call labels
+			actCallLabels = new LinkedList<CallLabel> ();
 
 			tryStmt.tryStmt.isTry = true;				// jumps out of try require Leave opcode
 										// rethrow not allowed
@@ -2515,6 +2589,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			OutputCallNoSwitchStmt ();				//         switch (tryCallNo) ...
 
 			ilGen.MarkLabel (tryThrow);				//       tryThrow:
+#if DEBUG_TRYSTMT
+			ilGen.Emit (OpCodes.Ldstr, "tryThrow*: catThrown=");
+			ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
+			catThrown.PushVal (this, tryStmt);
+			ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
+			ilGen.Emit (OpCodes.Ldstr, "\n");
+			ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
+#endif
 			catThrown.PushVal (this, tryStmt);			//         throw __catThrown;
 			ilGen.Emit (OpCodes.Throw);				//     }
 
@@ -2522,10 +2604,34 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				CompValu catchVarLoc = new CompValuTemp (tokenTypeStr, tryStmt.catchVar.name.val, this);
 				tryStmt.catchVar.location = catchVarLoc;
 
-				ilGen.BeginCatchBlock (typeof (Exception));	// start of the catch block
-				catThrown.PopPost (this, tryStmt);
-
+				ilGen.BeginCatchBlock (typeof (object));	// start of the catch block that can catch anything
+#if DEBUG_TRYSTMT
+				ilGen.Emit (OpCodes.Ldstr, "enter catch*: callMode=");
+				ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
 				PushXMRInst ();
+				ilGen.Emit (OpCodes.Ldfld, callModeFieldInfo);
+				ilGen.Emit (OpCodes.Box, typeof (int));
+				ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
+				ilGen.Emit (OpCodes.Ldstr, " catCallNo=");
+				ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
+				catCallNo.PushVal (this, tryStmt);
+				ilGen.Emit (OpCodes.Box, typeof (int));
+				ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
+				ilGen.Emit (OpCodes.Ldstr, " exc=");
+				ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
+				ilGen.Emit (OpCodes.Dup);
+				ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
+				ilGen.Emit (OpCodes.Ldstr, "\n");
+				ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
+#endif
+				ilGen.Emit (OpCodes.Dup);			// convert exception object to string
+				ilGen.Emit (OpCodes.Call, catchExcToStrMethodInfo);
+				catchVarLoc.PopPost (this, tryStmt.catchVar.name);  // store string in script-visible variable
+				catchVarLoc.PushVal (this, tryStmt.catchVar.name);  // see if null, ignore (exception is hidden from script)
+				ilGen.Emit (OpCodes.Brfalse, catchRetro1);	// if so, rethrow exception
+				catThrown.PopPost (this, tryStmt);		// store exception object in catThrown
+
+				PushXMRInst ();					// if (callMode != CALLMODE_NORMAL) goto catchCallSw;
 				ilGen.Emit (OpCodes.Ldfld, callModeFieldInfo);
 				ilGen.PushInt (XMRInstAbstract.CALLMODE_NORMAL);
 				ilGen.Emit (OpCodes.Bne_Un, catchCallSw);
@@ -2533,13 +2639,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				catchVarLoc.PopPre (this, tryStmt.catchVar.name);
 				catThrown.PushVal (this, tryStmt.catchVar.name);  // convert exception object to string
 				ilGen.Emit (OpCodes.Call, catchExcToStrMethodInfo);
-				catchVarLoc.PopPost (this, tryStmt.catchVar.name);  // ... and store in catch clause var
+				catchVarLoc.PopPost (this, tryStmt.catchVar.name);  // ... and store in script-visible variable
 
-				catchVarLoc.PushVal (this, tryStmt.catchVar.name);  // see if null
-				ilGen.Emit (OpCodes.Brfalse_S, catchRetro);     // if so, rethrow exception
+				catchVarLoc.PushVal (this, tryStmt.catchVar.name);  // see if null (exception is hidden from script)
+				ilGen.Emit (OpCodes.Brfalse, catchRetro);	// if so, rethrow exception
 
-				callNo = catCallNo.localBuilder;                // set up __catCallNo for call labels
-				allCallLabels.Clear ();
+				actCallNo = catCallNo.localBuilder;             // set up __catCallNo for call labels
+				actCallLabels.Clear ();
 				tryStmt.catchStmt.isCatch = true;		// jumps out of catch require Leave opcode
 										// rethrow allowed
 										// return statements not allowed
@@ -2558,7 +2664,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ilGen.Emit (OpCodes.Bne_Un, catchRetro);	// if saving, rethrow to continue saving
 				OutputCallNoSwitchStmt ();			// restoring, jump back inside script-defined body
 
+				ilGen.MarkLabel (catchRetro1);
+				ilGen.Emit (OpCodes.Pop);
 				ilGen.MarkLabel (catchRetro);
+#if DEBUG_TRYSTMT
+				ilGen.Emit (OpCodes.Ldstr, "catchRetro*: rethrowing\n");
+				ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
+#endif
 				ilGen.Emit (OpCodes.Rethrow);			// rethrow exception
 			}
 
@@ -2570,11 +2682,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ilGen.PushInt (XMRInstAbstract.CALLMODE_NORMAL);
 				ilGen.Emit (OpCodes.Bne_Un, finCallSw);
 
-				callNo = finCallNo.localBuilder;                // set up __finCallNo for call labels
-				allCallLabels.Clear ();
+				actCallNo = finCallNo.localBuilder;             // set up __finCallNo for call labels
+				actCallLabels.Clear ();
 				tryStmt.finallyStmt.isFinally = true;		// cannot exit finally with jump or return statement
 				curBreakTarg = finEnd;				// break statements jump to end of subblock
-				mightGetHere = true;				// if we can get to the 'try' assume we can get to the 'catch'
+				mightGetHere = true;				// if we can get to the 'try' assume we can get to the 'finally'
 				GenerateStmtBlock (tryStmt.finallyStmt);	// output finally clause statement subblock
 				ilGen.Emit (OpCodes.Br, finEnd.label);
 
@@ -2594,8 +2706,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			mightGetHere  = true; /////////??????????????? fix this
 
-			callNo        = saveCallNo;
-			allCallLabels = saveCallLabels;
+			actCallNo     = saveCallNo;
+			actCallLabels = saveCallLabels;
 			curBreakTarg  = oldBreakTarg;
 			curContTarg   = oldContTarg;
 		}
@@ -4762,7 +4874,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief Called at runtime to convert a caught exception to the string given to the catch clause.
 		 *        If we return null, the script's catch clause will do a rethrow before letting the script see it.
 		 */
-		public static string CatchExcToStr (Exception exc)
+		public static string CatchExcToStr (object exc)
 		{
 			if (exc is IXMRUncatchable) return null;
 			return exc.ToString ();

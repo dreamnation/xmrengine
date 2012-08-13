@@ -4,4 +4,10 @@ llOwnerSay: maybe wipe x out
 llOwnerSay: after CheckRun() in try block
 llOwnerSay: finally x=1
 llOwnerSay: after CheckRun() in finally block
+llOwnerSay: generate first call to checkrun
+llOwnerSay: generate second call to checkrun
+llOwnerSay: generate first call to checkrun inside try
+llOwnerSay: generate second call to checkrun inside try
+llOwnerSay: throwing up
+llOwnerSay: caught OpenSim.Region.ScriptEngine.XMREngine.ScriptThrownException: some exception
 llOwnerSay: all done
