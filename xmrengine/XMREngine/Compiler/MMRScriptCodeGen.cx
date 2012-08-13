@@ -13,6 +13,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Runtime.Serialization;
 using System.Text;
 using System.Threading;
 
@@ -5070,39 +5071,56 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	 * These can be detected at compile time but the moron XEngine compiles
 	 * such things, so we compile them as runtime errors.
 	 */
-	public class ScriptUndefinedStateException : Exception {
+	[SerializableAttribute]
+	public class ScriptUndefinedStateException : Exception, ISerializable {
 		public string stateName;
 		public ScriptUndefinedStateException (string stateName) : base ("undefined state " + stateName) {
 			this.stateName = stateName;
 		}
+		protected ScriptUndefinedStateException (SerializationInfo info, StreamingContext context) : base (info, context)
+		{ }
 	}
 
 	/**
 	 * @brief Thrown by a script when it attempts to change to a defined state.
 	 */
-	public class ScriptChangeStateException : Exception, IXMRUncatchable {
+	[SerializableAttribute]
+	public class ScriptChangeStateException : Exception, ISerializable, IXMRUncatchable {
 		public int newState;
 		public ScriptChangeStateException (int newState) {
 			this.newState = newState;
 		}
+		protected ScriptChangeStateException (SerializationInfo info, StreamingContext context) : base (info, context)
+		{ }
 	}
 
 	/**
 	 * @brief Thrown by a script from a 'throw' statement.
 	 */
-	public class ScriptThrownException : Exception {
+	[SerializableAttribute]
+	public class ScriptThrownException : Exception, ISerializable {
 		public ScriptThrownException (string msg) : base (msg) { }
+		protected ScriptThrownException (SerializationInfo info, StreamingContext context) : base (info, context)
+		{ }
 	}
 
-	public class OutOfHeapException : Exception {
+	[SerializableAttribute]
+	public class OutOfHeapException : Exception, ISerializable {
 		public OutOfHeapException(int heapNeeded, int heapLeft, int srcLine, int srcPosn)
 			: base ("need " + heapNeeded + ", have only " + heapLeft + 
 				" heap bytes left at " + srcLine + ":" + srcPosn)
 		{ }
+		protected OutOfHeapException (SerializationInfo info, StreamingContext context) : base (info, context)
+		{ }
 	}
+
+	[SerializableAttribute]
 	public class OutOfStackException : Exception { }
 
+	[SerializableAttribute]
 	public class ScriptBadCallNoException : Exception {
 		public ScriptBadCallNoException (int callNo) : base ("bad callNo " + callNo) { }
+		protected ScriptBadCallNoException (SerializationInfo info, StreamingContext context) : base (info, context)
+		{ }
 	}
 }

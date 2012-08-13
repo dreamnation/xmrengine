@@ -560,7 +560,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             XMRINST,
             DELEGATE,
             SDTCLOBJ,
-            SYSCHAR
+            SYSCHAR,
+            SYSERIAL
         }
 
         /**
@@ -752,7 +753,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 mow.Write ((byte)Ser.SDTCLOBJ);
                 ((XMRSDTypeClObj)graph).Capture (this.SendObjValue);
             } else {
-                throw new Exception ("unhandled type " + graph.GetType().ToString());
+                MemoryStream memoryStream = new MemoryStream ();
+                System.Runtime.Serialization.Formatters.Binary.BinaryFormatter bformatter = 
+                        new System.Runtime.Serialization.Formatters.Binary.BinaryFormatter ();
+                bformatter.Serialize (memoryStream, graph);
+                byte[] rawBytes = memoryStream.ToArray ();
+                mow.Write ((byte)Ser.SYSERIAL);
+                mow.Write ((int)rawBytes.Length);
+                mow.Write (rawBytes);
             }
         }
 
@@ -945,6 +953,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     this.migrateInObjects.Add (ident, clobj);
                     clobj.Restore (this, this.RecvObjValue);
                     return clobj;
+                }
+                case Ser.SYSERIAL: {
+                    int rawLength   = mir.ReadInt32 ();
+                    byte[] rawBytes = mir.ReadBytes (rawLength);
+                    MemoryStream memoryStream = new MemoryStream (rawBytes);
+                    System.Runtime.Serialization.Formatters.Binary.BinaryFormatter bformatter = 
+                            new System.Runtime.Serialization.Formatters.Binary.BinaryFormatter ();
+                    return bformatter.Deserialize (memoryStream);
                 }
                 default: throw new Exception ("bad stream code " + code.ToString ());
             }
