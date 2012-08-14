@@ -472,10 +472,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	 */
 	public abstract class GraphNodeEmit : GraphNode {
 		public OpCode opcode;
+		public bool isPoppable;
 
 		public GraphNodeEmit (ScriptCollector coll, OpCode opcode) : base (coll)
 		{
 			this.opcode = opcode;
+
+			// if followed by OpCodes.Pop, it can be discarded
+			isPoppable = 
+			    ((opcode.StackBehaviourPop  == StackBehaviour.Pop0) &&    // ldarg,ldloc,ldsfld
+			     (opcode.StackBehaviourPush == StackBehaviour.Push1)) || 
+			    ((opcode.StackBehaviourPop  == StackBehaviour.Pop0) &&    // ldarga,ldloca,ldc,ldsflda,...
+			     (opcode.StackBehaviourPush == StackBehaviour.Pushi)) || 
+			    (opcode == OpCodes.Ldnull) || 
+			    (opcode == OpCodes.Ldc_R4) || 
+			    (opcode == OpCodes.Ldc_R8) || 
+			    (opcode == OpCodes.Ldstr)  || 
+			    (opcode == OpCodes.Ldc_I8) || 
+			    (opcode == OpCodes.Dup);
 		}
 
 		public override void DebString (StringBuilder sb)
@@ -1333,47 +1347,74 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			} while (this.resolvedSomething);
 
 			/*
-			 * Remove all the stloc/ldloc that are back-to-back without the local
-			 * being needed afterwards.
+			 * Repeat the cutting loops as long as we keep finding stuff.
 			 */
-			for (GraphNode gn = firstLin; gn != null; gn = gn.nextLin) {
-				if ((gn is GraphNodeEmitLocal) && 
-				    (gn.nextLin is GraphNodeEmitLocal)) {
-					GraphNodeEmitLocal gnel = (GraphNodeEmitLocal)gn;
-					GraphNodeEmitLocal nnel = (GraphNodeEmitLocal)gn.nextLin;
-					if ((gnel.opcode == OpCodes.Stloc) && 
-					    (nnel.opcode == OpCodes.Ldloc) && 
-					    (gnel.myLocal == nnel.myLocal) && 
-					    !IsLocalNeededAfterThis (nnel, nnel.myLocal)) {
-						gnel.prevLin.nextLin = nnel.nextLin;
-						nnel.nextLin.prevLin = gnel.prevLin;
-						gn = gnel.prevLin;
-					}
-				}
-			}
+			bool didSomething = true;
+			do {
+				didSomething = false;
 
-			/*
-			 * Remove all write-only local variables, ie, those with no ldloc[a] references.
-			 * Replace any stloc instructions with pops.
-			 */
-			for (GraphNode gn = firstLin; gn != null; gn = gn.nextLin) {
-				ScriptMyLocal rdlcl = gn.ReadsLocal ();
-				if (rdlcl != null) rdlcl.isReferenced = true;
-			}
-			for (GraphNode gn = firstLin; gn != null; gn = gn.nextLin) {
-				ScriptMyLocal wrlcl = gn.WritesLocal ();
-				if ((wrlcl != null) && !wrlcl.isReferenced) {
-					if (!(gn is GraphNodeEmitLocal) || (((GraphNodeEmitLocal)gn).opcode != OpCodes.Stloc)) {
-						throw new Exception ("expecting stloc");
+				/*
+				 * Remove all the stloc/ldloc that are back-to-back without the local
+				 * being needed afterwards.
+				 */
+				for (GraphNode gn = firstLin; gn != null; gn = gn.nextLin) {
+					if ((gn is GraphNodeEmitLocal) && 
+					    (gn.nextLin is GraphNodeEmitLocal)) {
+						GraphNodeEmitLocal gnel = (GraphNodeEmitLocal)gn;
+						GraphNodeEmitLocal nnel = (GraphNodeEmitLocal)gn.nextLin;
+						if ((gnel.opcode == OpCodes.Stloc) && 
+						    (nnel.opcode == OpCodes.Ldloc) && 
+						    (gnel.myLocal == nnel.myLocal) && 
+						    !IsLocalNeededAfterThis (nnel, nnel.myLocal)) {
+							gnel.prevLin.nextLin = nnel.nextLin;
+							nnel.nextLin.prevLin = gnel.prevLin;
+							gn = gnel.prevLin;
+							didSomething = true;
+						}
 					}
-					GraphNodeEmitNull pop = new GraphNodeEmitNull (this, OpCodes.Pop);
-					pop.nextLin = gn.nextLin;
-					pop.prevLin = gn.prevLin;
-					gn.nextLin.prevLin = pop;
-					gn.prevLin.nextLin = pop;
-					gn = pop;
 				}
-			}
+
+				/*
+				 * Remove all write-only local variables, ie, those with no ldloc[a] references.
+				 * Replace any stloc instructions with pops.
+				 */
+				for (GraphNode gn = firstLin; gn != null; gn = gn.nextLin) {
+					ScriptMyLocal rdlcl = gn.ReadsLocal ();
+					if (rdlcl != null) rdlcl.isReferenced = true;
+				}
+				for (GraphNode gn = firstLin; gn != null; gn = gn.nextLin) {
+					ScriptMyLocal wrlcl = gn.WritesLocal ();
+					if ((wrlcl != null) && !wrlcl.isReferenced) {
+						if (!(gn is GraphNodeEmitLocal) || (((GraphNodeEmitLocal)gn).opcode != OpCodes.Stloc)) {
+							throw new Exception ("expecting stloc");
+						}
+						GraphNodeEmitNull pop = new GraphNodeEmitNull (this, OpCodes.Pop);
+						pop.nextLin = gn.nextLin;
+						pop.prevLin = gn.prevLin;
+						gn.nextLin.prevLin = pop;
+						gn.prevLin.nextLin = pop;
+						gn = pop;
+						didSomething = true;
+					}
+				}
+
+				/*
+				 * Remove any Ld<const>/Dup,Pop.
+				 */
+				for (GraphNode gn = firstLin; gn != null; gn = gn.nextLin) {
+					if ((gn is GraphNodeEmit) && 
+					    (gn.nextLin is GraphNodeEmit)) {
+						GraphNodeEmit gne = (GraphNodeEmit)gn;
+						GraphNodeEmit nne = (GraphNodeEmit)gn.nextLin;
+						if (gne.isPoppable && (nne.opcode == OpCodes.Pop)) {
+							gne.prevLin.nextLin = nne.nextLin;
+							nne.nextLin.prevLin = gne.prevLin;
+							gn = gne.prevLin;
+							didSomething = true;
+						}
+					}
+				}
+			} while (didSomething);
 
 			/*
 			 * Dump out the results.
