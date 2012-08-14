@@ -81,7 +81,10 @@ default {
                 try {
                     llOwnerSay ("multiple throw finallies 1a");
                     llOwnerSay ("multiple throw finallies 1b");
-                    throw "get me out!";
+                    CallSomethingThatCallsSomethingThatThrows ("get me out!");
+                } catch (string ex) {
+                    llOwnerSay ("inner catch " + TrimException (ex));
+                    throw;
                 } finally {
                     llOwnerSay ("multiple throw finallies 2a");
                     llOwnerSay ("multiple throw finallies 2b");
@@ -96,6 +99,16 @@ default {
             llOwnerSay ("multiple throw finallies 4a");
             llOwnerSay ("multiple throw finallies 4b");
         }
+
+        // ScriptRestoreCatchException test
+        llOwnerSay ("check stack trace capture/restore");
+        try {
+            CallSomethingThatCallsSomethingThatThrows ("can you see me now?");
+        } catch (string s) {
+            llOwnerSay ("first look:  " + TrimILFromException (s));
+            llOwnerSay ("second look: " + TrimILFromException (s));
+        }
+
         llOwnerSay ("all done");
     }
 }
@@ -105,4 +118,25 @@ string TrimException (string ex)
     integer i = llSubStringIndex (ex, "\n");
     if (i > 0) ex = llGetSubString (ex, 0, i - 1);
     return ex;
+}
+
+string TrimILFromException (string ex)
+{
+    integer i;
+    integer j;
+    while ((i = llSubStringIndex (ex, "<IL 0x")) > 0) {
+        for (j = i; ex[j] != '>'; j ++) { }
+        ex = llGetSubString (ex, 0, i + 3) + "..." + llGetSubString (ex, j, -1);
+    }
+    return ex;
+}
+
+CallSomethingThatCallsSomethingThatThrows (string msg)
+{
+    CallSomethingThatThrows (msg);
+}
+
+CallSomethingThatThrows (string msg)
+{
+    throw msg;
 }

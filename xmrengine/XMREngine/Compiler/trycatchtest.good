@@ -31,10 +31,22 @@ llOwnerSay: multiple jump finallies 4b
 llOwnerSay: multiple finallies via throw test
 llOwnerSay: multiple throw finallies 1a
 llOwnerSay: multiple throw finallies 1b
+llOwnerSay: inner catch OpenSim.Region.ScriptEngine.XMREngine.ScriptThrownException: get me out!
 llOwnerSay: multiple throw finallies 2a
 llOwnerSay: multiple throw finallies 2b
 llOwnerSay: multiple throw finallies 3a
 llOwnerSay: multiple throw finallies 3b
 llOwnerSay: multiple throw finallies 4a
 llOwnerSay: multiple throw finallies 4b
+llOwnerSay: check stack trace capture/restore
+llOwnerSay: first look:  OpenSim.Region.ScriptEngine.XMREngine.ScriptThrownException: can you see me now?
+at (wrapper dynamic-method) object.__fun_CallSomethingThatThrows(string) (OpenSim.Region.ScriptEngine.XMREngine.XMRInstAbstract,string) <IL ...>
+at (wrapper dynamic-method) object.__fun_CallSomethingThatCallsSomethingThatThrows(string) (OpenSim.Region.ScriptEngine.XMREngine.XMRInstAbstract,string) <IL ...>
+at (wrapper dynamic-method) object.__seh_0_30_default_state_entry (OpenSim.Region.ScriptEngine.XMREngine.XMRInstAbstract) <IL ...>
+
+llOwnerSay: second look: OpenSim.Region.ScriptEngine.XMREngine.ScriptThrownException: can you see me now?
+at (wrapper dynamic-method) object.__fun_CallSomethingThatThrows(string) (OpenSim.Region.ScriptEngine.XMREngine.XMRInstAbstract,string) <IL ...>
+at (wrapper dynamic-method) object.__fun_CallSomethingThatCallsSomethingThatThrows(string) (OpenSim.Region.ScriptEngine.XMREngine.XMRInstAbstract,string) <IL ...>
+at (wrapper dynamic-method) object.__seh_0_30_default_state_entry (OpenSim.Region.ScriptEngine.XMREngine.XMRInstAbstract) <IL ...>
+
 llOwnerSay: all done
