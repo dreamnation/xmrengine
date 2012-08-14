@@ -2656,9 +2656,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			curBreakTarg = tryBreak;				// breaks jump to end of try subblock
 			GenerateStmtBlock (tryStmt.tryStmt);			// output the try block statement subblock
 
-			ilGen.MarkLabel (tryBreak.label);			//       tryBreak:
-			new CallLabel (this);					//       <tryCallLabel>:
-			ilGen.Emit (OpCodes.Leave, tryEnd);			//         leave tryEnd;
+			bool tryBlockFallsOutBottom = mightGetHere;
+			if (tryBreak.used) {
+				tryBlockFallsOutBottom = true;
+				ilGen.MarkLabel (tryBreak.label);		//       tryBreak:
+				new CallLabel (this);				//       <tryCallLabel>:
+				ilGen.Emit (OpCodes.Leave, tryEnd);		//         leave tryEnd;
+			}
 
 			CallLabel tryThrow = new CallLabel (this);		//       tryThrow:<tryCallLabel>:
 #if DEBUG_TRYSTMT
@@ -2743,7 +2747,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ilGen.EndExceptionBlock ();
 			ilGen.MarkLabel (tryEnd);
 
-			mightGetHere  = true; /////////??????????????? fix this
+			mightGetHere |= catchBreak.used;			// get here if catch body falls through or has a break statement
+			mightGetHere |= tryBlockFallsOutBottom;			// also if try body falls out bottom or has a break statement
 		}
 
 		/**
@@ -2942,7 +2947,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ilGen.EndExceptionBlock ();
 			ilGen.MarkLabel (tryEnd);
 
-			mightGetHere  = true; /////////??????????????? fix this
+			mightGetHere |= finEnd.used;				// get here if finally body falls through or has a break statement
 		}
 
 		/**
@@ -3121,7 +3126,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				}
 				TokenType baseType = declVar.sdtClass.MakeRefToken (baseField);
 				CompValu  basePtr  = new CompValuArg (baseType, 0);
-				return (declVar.retType == null) ? (CompValu)new CompValuInstField (declVar, basePtr, true) : 
+				return (declVar.retType == null) ? (CompValu)new CompValuInstField (declVar, basePtr) : 
 				                                   (CompValu)new CompValuInstMeth (declVar, basePtr, true);
 			}
 
@@ -3150,7 +3155,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						ErrorMsg (lVal.fieldName, "non-static reference to static member " + fieldName);
 						return new CompValuVoid (lVal.fieldName);
 					}
-					return (declVar.retType == null) ? (CompValu)new CompValuInstField (declVar, baseRVal, false) 
+					return (declVar.retType == null) ? (CompValu)new CompValuInstField (declVar, baseRVal) 
 					                                 : (CompValu)new CompValuInstMeth (declVar, baseRVal, false);
 				}
 				ErrorMsg (lVal.fieldName, "no member " + fieldName + " in class " + sdtDecl.longName.val);
@@ -3271,7 +3276,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 				CompValu thisCompValu = new CompValuArg (var.sdtClass.MakeRefToken (lVal), 0);
 
-				return (var.retType == null) ? (CompValu)new CompValuInstField (var, thisCompValu, false) 
+				return (var.retType == null) ? (CompValu)new CompValuInstField (var, thisCompValu) 
 				                             : (CompValu)new CompValuInstMeth (var, thisCompValu, false);
 			}
 

@@ -844,13 +844,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		private TokenDeclVar declVar;
 		private CompValu baseRVal;
-		private bool ignVirt;
 
-		public CompValuInstField (TokenDeclVar declVar, CompValu baseRVal, bool ignVirt) : base (declVar.type)
+		public CompValuInstField (TokenDeclVar declVar, CompValu baseRVal) : base (declVar.type)
 		{
 			this.declVar  = declVar;
 			this.baseRVal = baseRVal;
-			this.ignVirt  = ignVirt;
 		}
 
 		public override void PushVal (ScriptCodeGen scg, Token errorAt)

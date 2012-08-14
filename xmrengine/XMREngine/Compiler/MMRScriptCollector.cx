@@ -560,7 +560,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		BOILERPLATE_GETNNENUMERABLE(override,GraphNodeEmitNullEndfinally)
 		private class NNEnumerator : System.Collections.Generic.IEnumerator<GraphNode> {
-			private bool doFallThru = true;
 			private GraphNodeEmitNullEndfinally gn;
 			private GraphNode nn;
 			private IEnumerator<GraphNodeBlock> leaveTargetEnumerator;
