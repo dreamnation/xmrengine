@@ -1100,6 +1100,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			scg.ilGen.Emit (OpCodes.Stloc, localBuilder);
 		}
+
+		public void Pop (ScriptCodeGen scg, Token errorAt)
+		{
+			scg.ilGen.Emit (OpCodes.Stloc, localBuilder);
+		}
 	}
 
 	// The value is a vector

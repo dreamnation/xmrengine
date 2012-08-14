@@ -2523,43 +2523,101 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			return tokenStmtThrow;
 		}
 
+		/**
+		 * @brief Parse a try { ... } catch { ... } finally { ... } statement block
+		 * @param token = point to 'try' keyword on entry
+		 *                points past last '}' processed on return
+		 * @returns encapsulated try/catch/finally or null if parsing error
+		 */
 		private TokenStmtTry ParseStmtTry (ref Token token)
 		{
-			TokenStmtTry tokenStmtTry = new TokenStmtTry (token);
+			/*
+			 * Parse out the 'try { ... }' part
+			 */
+			Token tryKw = token;
 			token = token.nextToken;
-			tokenStmtTry.tryStmt = ParseStmtBlock (ref token);
-			if (tokenStmtTry.tryStmt == null) return null;
-			if (token is TokenKwCatch) {
-				if (!(token.nextToken is TokenKwParOpen) ||
-				    !(token.nextToken.nextToken is TokenTypeStr) ||
-				    !(token.nextToken.nextToken.nextToken is TokenName) ||
-				    !(token.nextToken.nextToken.nextToken.nextToken is TokenKwParClose)) {
-					ErrorMsg (token, "catch must be followed by ( string <varname> ) <statement>");
-					return null;
+			TokenStmt body = ParseStmtBlock (ref token);
+
+			while (true) {
+				TokenStmtTry tokenStmtTry;
+				if (token is TokenKwCatch) {
+					if (!(token.nextToken is TokenKwParOpen) ||
+					    !(token.nextToken.nextToken is TokenTypeStr) ||
+					    !(token.nextToken.nextToken.nextToken is TokenName) ||
+					    !(token.nextToken.nextToken.nextToken.nextToken is TokenKwParClose)) {
+						ErrorMsg (token, "catch must be followed by ( string <varname> ) <statement>");
+						return null;
+					}
+					token = token.nextToken.nextToken;      // skip over 'catch' '('
+					TokenDeclVar tag = new TokenDeclVar (token.nextToken, currentDeclFunc, tokenScript);
+					tag.type = (TokenType)token;
+					token = token.nextToken;                // skip over 'string'
+					tag.name = (TokenName)token;
+					token = token.nextToken.nextToken;      // skip over <varname> ')'
+
+					tokenStmtTry = new TokenStmtTry (tryKw);
+					tokenStmtTry.tryStmt = WrapTryCatFinInBlock (body);
+					tokenStmtTry.catchVar = tag;
+					tokenScript.PushVarFrame ();
+					tokenScript.AddVarEntry (tag);
+					tokenStmtTry.catchStmt = ParseStmtBlock (ref token);
+					tokenScript.PopVarFrame ();
+					if (tokenStmtTry.catchStmt == null) return null;
+					tokenStmtTry.tryStmt.isTry     = true;
+					tokenStmtTry.tryStmt.tryStmt   = tokenStmtTry;
+					tokenStmtTry.catchStmt.isCatch = true;
+					tokenStmtTry.catchStmt.tryStmt = tokenStmtTry;
 				}
-				token = token.nextToken.nextToken;      // skip over 'catch' '('
-				TokenDeclVar tag = new TokenDeclVar (token.nextToken, currentDeclFunc, tokenScript);
-				tag.type = (TokenType)token;
-				token = token.nextToken;                // skip over 'string'
-				tag.name = (TokenName)token;
-				token = token.nextToken.nextToken;      // skip over <varname> ')'
-				tokenStmtTry.catchVar = tag;
-				tokenScript.PushVarFrame ();
-				tokenScript.AddVarEntry (tag);
-				tokenStmtTry.catchStmt = ParseStmtBlock (ref token);
-				tokenScript.PopVarFrame ();
-				if (tokenStmtTry.catchStmt == null) return null;
+				else if (token is TokenKwFinally) {
+					token = token.nextToken;
+
+					tokenStmtTry = new TokenStmtTry (tryKw);
+					tokenStmtTry.tryStmt = WrapTryCatFinInBlock (body);
+					tokenStmtTry.finallyStmt = ParseStmtBlock (ref token);
+					if (tokenStmtTry.finallyStmt == null) return null;
+					tokenStmtTry.tryStmt.isTry         = true;
+					tokenStmtTry.tryStmt.tryStmt       = tokenStmtTry;
+					tokenStmtTry.finallyStmt.isFinally = true;
+					tokenStmtTry.finallyStmt.tryStmt   = tokenStmtTry;
+				}
+				else break;
+
+				body = tokenStmtTry;
 			}
-			if (token is TokenKwFinally) {
-				token = token.nextToken;
-				tokenStmtTry.finallyStmt = ParseStmtBlock (ref token);
-				if (tokenStmtTry.finallyStmt == null) return null;
-			}
-			if ((tokenStmtTry.catchStmt == null) && (tokenStmtTry.finallyStmt == null)) {
-				ErrorMsg (tokenStmtTry, "try must have a matching catch and/or finally");
+
+			if (!(body is TokenStmtTry)) {
+				ErrorMsg (body, "try must have a matching catch and/or finally");
 				return null;
 			}
-			return tokenStmtTry;
+			return (TokenStmtTry)body;
+		}
+
+		/**
+		 * @brief Wrap a possible try/catch/finally statement block in a block statement.
+		 *
+		 * Given body = try { } catch (string s) { }
+		 *
+		 * we return { try { } catch (string s) { } }
+		 *
+		 * @param body = a TokenStmtTry or a TokenStmtBlock
+		 * @returns a TokenStmtBlock
+		 */
+		private TokenStmtBlock WrapTryCatFinInBlock (TokenStmt body)
+		{
+			if (body is TokenStmtBlock) return (TokenStmtBlock)body;
+
+			TokenStmtTry innerTry = (TokenStmtTry)body;
+
+			TokenStmtBlock wrapper = new TokenStmtBlock (body);
+			wrapper.statements     = innerTry;
+			wrapper.outerStmtBlock = currentStmtBlock;
+			wrapper.function       = currentDeclFunc;
+
+			innerTry.tryStmt.outerStmtBlock = wrapper;
+			if (innerTry.catchStmt   != null) innerTry.catchStmt.outerStmtBlock   = wrapper;
+			if (innerTry.finallyStmt != null) innerTry.finallyStmt.outerStmtBlock = wrapper;
+
+			return wrapper;
 		}
 
 		private TokenStmtWhile ParseStmtWhile (ref Token token)
@@ -5961,6 +6019,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public bool isTry;                     // true iff it's a try statement block
 		public bool isCatch;                   // true iff it's a catch statement block
 		public bool isFinally;                 // true iff it's a finally statement block
+		public TokenStmtTry tryStmt;           // set iff isTry|isCatch|isFinally is set
 
 		public TokenStmtBlock (Token original) : base (original) { }
 
@@ -6137,8 +6196,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenDeclVar catchVar;		// null iff catchStmt is null
 		public TokenStmtBlock catchStmt;	// can be null
 		public TokenStmtBlock finallyStmt;	// can be null
+		public Dictionary<string, IntermediateLeave> iLeaves = new Dictionary<string, IntermediateLeave> ();
 
 		public TokenStmtTry (Token original) : base (original) { }
+	}
+
+	public class IntermediateLeave {
+		public ScriptMyLabel jumpIntoLabel;
+		public ScriptMyLabel jumpAwayLabel;
 	}
 
 	public class TokenStmtVarIniDef : TokenStmt {

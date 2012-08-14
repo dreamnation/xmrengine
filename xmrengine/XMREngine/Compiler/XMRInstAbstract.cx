@@ -960,7 +960,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     MemoryStream memoryStream = new MemoryStream (rawBytes);
                     System.Runtime.Serialization.Formatters.Binary.BinaryFormatter bformatter = 
                             new System.Runtime.Serialization.Formatters.Binary.BinaryFormatter ();
-                    return bformatter.Deserialize (memoryStream);
+                    object graph = bformatter.Deserialize (memoryStream);
+                    this.migrateInObjects.Add (ident, graph);
+                    return graph;
                 }
                 default: throw new Exception ("bad stream code " + code.ToString ());
             }

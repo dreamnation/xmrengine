@@ -1,13 +1,40 @@
 Compiling...
 Running...
-llOwnerSay: maybe wipe x out
+llOwnerSay: just set x = 1
 llOwnerSay: after CheckRun() in try block
-llOwnerSay: finally x=1
+llOwnerSay: catch x=1
+llOwnerSay: after CheckRun() in catch block
+llOwnerSay: just set x = 2
+llOwnerSay: after CheckRun() in try block
+llOwnerSay: finally x=2
 llOwnerSay: after CheckRun() in finally block
+llOwnerSay: inside try { }
+llOwnerSay: inside first catch { } with OpenSim.Region.ScriptEngine.XMREngine.ScriptThrownException: something
+llOwnerSay: inside first finally { }
+llOwnerSay: inside second catch { } with OpenSim.Region.ScriptEngine.XMREngine.ScriptThrownException: something
+llOwnerSay: inside second finally { }
 llOwnerSay: generate first call to checkrun
 llOwnerSay: generate second call to checkrun
 llOwnerSay: generate first call to checkrun inside try
 llOwnerSay: generate second call to checkrun inside try
 llOwnerSay: throwing up
 llOwnerSay: caught OpenSim.Region.ScriptEngine.XMREngine.ScriptThrownException: some exception
+llOwnerSay: multiple finallies via jump test
+llOwnerSay: multiple jump finallies 1a
+llOwnerSay: multiple jump finallies 1b
+llOwnerSay: multiple jump finallies 2a
+llOwnerSay: multiple jump finallies 2b
+llOwnerSay: multiple jump finallies 3a
+llOwnerSay: multiple jump finallies 3b
+llOwnerSay: multiple jump finallies 4a
+llOwnerSay: multiple jump finallies 4b
+llOwnerSay: multiple finallies via throw test
+llOwnerSay: multiple throw finallies 1a
+llOwnerSay: multiple throw finallies 1b
+llOwnerSay: multiple throw finallies 2a
+llOwnerSay: multiple throw finallies 2b
+llOwnerSay: multiple throw finallies 3a
+llOwnerSay: multiple throw finallies 3b
+llOwnerSay: multiple throw finallies 4a
+llOwnerSay: multiple throw finallies 4b
 llOwnerSay: all done
