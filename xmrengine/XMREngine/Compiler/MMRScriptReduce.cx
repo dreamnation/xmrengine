@@ -205,7 +205,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 			/*
 			 * Create a function $globalvarinit to hold all explicit
-			 * global variable and static field initializations.
+			 * global variable initializations.
 			 */
 			TokenDeclVar gviFunc   = new TokenDeclVar (tokenBegin, null, tokenScript);
 			gviFunc.name           = new TokenName (gviFunc, "$globalvarinit");
@@ -1329,8 +1329,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 			/*
 			 * Create a function $instfieldnit to hold all explicit
-			 * instance field initializations.  Static field inits go 
-			 * in $globalvarinit.
+			 * instance field initializations.
 			 */
 			TokenDeclVar ifiFunc    = new TokenDeclVar (tokdeclcl, null, tokenScript);
 			ifiFunc.name            = new TokenName (ifiFunc, "$instfieldinit");
@@ -1343,6 +1342,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			ifiFunc.body            = ifiBody;
 			tokdeclcl.instFieldInit = ifiFunc;
 			tokenScript.AddVarEntry (ifiFunc);
+
+			/*
+			 * Create a function $staticfieldnit to hold all explicit
+			 * static field initializations.
+			 */
+			TokenDeclVar sfiFunc   = new TokenDeclVar (tokdeclcl, null, tokenScript);
+			sfiFunc.name           = new TokenName (sfiFunc, "$staticfieldinit");
+			sfiFunc.retType        = new TokenTypeVoid (sfiFunc);
+			sfiFunc.argDecl        = new TokenArgDecl (sfiFunc);
+			sfiFunc.sdtClass       = tokdeclcl;
+			sfiFunc.sdtFlags       = SDT_PUBLIC | SDT_STATIC | SDT_NEW;
+			TokenStmtBlock sfiBody = new TokenStmtBlock (sfiFunc);
+			sfiBody.function       = sfiFunc;
+			sfiFunc.body           = sfiBody;
+			tokdeclcl.staticFieldInit = sfiFunc;
+			tokenScript.AddVarEntry (sfiFunc);
 
 			// process declaration statements until '}'
 			while (!(token is TokenKwBrcClose)) {
@@ -1396,7 +1411,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 							TokenLValSField left = new TokenLValSField (var.init);
 							left.baseType        = tokdeclcl.MakeRefToken (var);
 							left.fieldName       = var.name;
-							DoVarInit (tokenScript.globalVarInit, left, var.init);
+							DoVarInit (sfiFunc, left, var.init);
 						} else if (var.init != null) {
 							// this.<name> = <init>;
 							TokenLValIField left = new TokenLValIField (var.init);
@@ -2728,8 +2743,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		}
 
 		/**
-		 * @brief Add variable initialization to $globalvarinit or $instfieldinit function.
-		 * @param initFunc = $globalvarinit or $instfieldinit function
+		 * @brief Add variable initialization to $globalvarinit, $staticfieldinit or $instfieldinit function.
+		 * @param initFunc = $globalvarinit, $staticfieldinit or $instfieldinit function
 		 * @param left = variable being initialized
 		 * @param init = null: initialize to default value
 		 *               else: initialize to this value
@@ -3848,6 +3863,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	public class TokenDeclSDTypeClass : TokenDeclSDType {
 		public List<TokenDeclSDTypeInterface> implements = new List<TokenDeclSDTypeInterface> ();
 		public TokenDeclVar instFieldInit;         // $instfieldinit function to do instance field initializations
+		public TokenDeclVar staticFieldInit;       // $staticfieldinit function to do static field initializations
 
 		public Dictionary<string, int> intfIndices = new Dictionary<string, int> ();  // longname => this.iFaces index
 		public TokenDeclSDTypeInterface[] iFaces;  // array of implemented interfaces

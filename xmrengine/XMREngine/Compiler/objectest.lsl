@@ -374,5 +374,29 @@ default {
                 llOwnerSay (line);
             }
         }
+
+        Vase vase = new Vase ();
+        llOwnerSay (vase.Meth0 (2999));
+        llOwnerSay (vase.Meth0 ("kaybek"));
+
+        VaseOver vaseover = new VaseOver ();
+        llOwnerSay (vaseover.Meth0 (2995));
+        llOwnerSay (vaseover.Meth0 ("whiskey"));
+
+        Vase vaseovervase = vaseover;
+        llOwnerSay (xmrTypeName (vaseovervase) + "=" + vaseovervase.Meth0 (2993));
+        llOwnerSay (xmrTypeName (vaseovervase) + "=" + vaseovervase.Meth0 ("victor"));
     }
 }
+
+class Vase {
+    private static string vasemeth0 = "Vase.Meth0: ";
+    public virtual string Meth0 (integer i) { return vasemeth0 + i; }
+    public virtual string Meth0 (string  s) { return vasemeth0 + s; }
+}
+
+class VaseOver : Vase {
+    private constant vaseovermeth0 = "VaseOver.Meth0: ";
+    public override string Meth0 (integer i) { return vaseovermeth0 + i; }
+}
+

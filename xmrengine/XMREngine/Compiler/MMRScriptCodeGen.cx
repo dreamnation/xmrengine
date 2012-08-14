@@ -1246,6 +1246,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					ilGen.Emit (OpCodes.Call, tokenScript.globalVarInit.ilGen);
 				}
 
+				// various $staticfieldinit();
+				foreach (TokenDeclSDType sdType in tokenScript.sdSrcTypesValues) {
+					if (sdType is TokenDeclSDTypeClass) {
+						TokenDeclVar sfiFunc = ((TokenDeclSDTypeClass)sdType).staticFieldInit;
+						if ((sfiFunc != null) && (sfiFunc.body.statements != null)) {
+							if (!sfiFunc.IsFuncTrivial (this)) {
+								new CallLabel (this);
+							}
+							PushXMRInst ();
+							ilGen.Emit (OpCodes.Call, sfiFunc.ilGen);
+						}
+					}
+				}
+
 				// doGblInit = 0;
 				PushXMRInst ();                                  // instance
 				ilGen.PushInt (0);
