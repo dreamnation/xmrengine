@@ -109,6 +109,31 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		/**
+		 * @brief Append full info to debugging string for printing out the instruction.
+		 */
+		public void DebStringExt (StringBuilder sb)
+		{
+			int x = sb.Length;
+			sb.Append (this.linSeqNo.ToString ().PadLeft (5));
+			sb.Append (": ");
+			this.DebString (sb);
+
+			if (this.ReadsLocal  () != null) ScriptCollector.PadToLength (sb, x + 60, " [read]");
+			if (this.WritesLocal () != null) ScriptCollector.PadToLength (sb, x + 68, " [write]");
+			ScriptCollector.PadToLength (sb, x + 72, " ->");
+			bool first = true;
+			foreach (GraphNode nn in this.NextNodes) {
+				if (first) {
+					sb.Append (nn.linSeqNo.ToString ().PadLeft (5));
+					first = false;
+				} else {
+					sb.Append (',');
+					sb.Append (nn.linSeqNo);
+				}
+			}
+		}
+
+		/**
 		 * @brief Append to debugging string for printing out the instruction.
 		 */
 		public abstract void DebString (StringBuilder sb);
@@ -583,6 +608,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 							while ((nntry = nntry.excBlock) != null) {
 								if (nntry.catchFinallyBlock is GraphNodeBeginFinallyBlock) {
 									nn = nntry.catchFinallyBlock;
+									index ++;
 									return true;
 								}
 							}
@@ -593,6 +619,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						case 3: {
 							return false;
 						}
+
+						default: throw new Exception ();
 					}
 					index ++;
 				}
@@ -1263,10 +1291,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 * The end of the outermost finally being unwound can conditionally jump to the target of the leave instruction.
 					 * In the case of no finallies being unwound, the leave is just a simple unconditional branch.
 					 */
-					if (innerFinallyBlock != null) {
-						innerFinallyBlock.leaveTargets.Add (leaveTarget);
-					} else {
+					if (innerFinallyBlock == null) {
 						leaveInstr.unwindTo = leaveTarget;
+					} else if (!innerFinallyBlock.leaveTargets.Contains (leaveTarget)) {
+						innerFinallyBlock.leaveTargets.Add (leaveTarget);
 					}
 				}
 			}
@@ -1367,28 +1395,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			Console.WriteLine ("  Code:");
+			DumpCode ();
+#endif
+		}
+
+		private void DumpCode ()
+		{
 			int linSeqNos = 0;
 			for (GraphNode gn = firstLin; gn != null; gn = gn.nextLin) {
 				gn.linSeqNo = ++ linSeqNos;
 			}
 			for (GraphNode gn = firstLin; gn != null; gn = gn.nextLin) {
 				StringBuilder sb = new StringBuilder ();
-				sb.Append (gn.linSeqNo.ToString ().PadLeft (5));
-				sb.Append (": ");
-				gn.DebString (sb);
-				if (gn.ReadsLocal  () != null) PadToLength (sb, 60, " [read]");
-				if (gn.WritesLocal () != null) PadToLength (sb, 68, " [write]");
-				PadToLength (sb, 72, " ->");
-				bool first = true;
-				foreach (GraphNode nn in gn.NextNodes) {
-					if (first) {
-						sb.Append (nn.linSeqNo.ToString ().PadLeft (5));
-						first = false;
-					} else {
-						sb.Append (',');
-						sb.Append (nn.linSeqNo);
-					}
-				}
+				gn.DebStringExt (sb);
 				Console.WriteLine (sb.ToString ());
 				if (gn is GraphNodeBlock) {
 					GraphNodeBlock gnb = (GraphNodeBlock)gn;
@@ -1397,7 +1416,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					}
 				}
 			}
-#endif
 		}
 
 		/**
@@ -1409,6 +1427,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void ResolveBlock (GraphNodeBlock currentBlock)
 		{
+			if (currentBlock.hasBeenResolved == this.resolveSequence) return;
+
 			/*
 			 * So we don't recurse forever on a backward branch.
 			 */
@@ -1446,7 +1466,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						 * Start of a block, go through all locals needed by that block on entry.
 						 */
 						GraphNodeBlock nextBlock = (GraphNodeBlock)nn;
-						if (nextBlock.hasBeenResolved < this.resolveSequence) ResolveBlock (nextBlock);
+						ResolveBlock (nextBlock);
 						foreach (ScriptMyLocal readByNextBlock in nextBlock.localsReadBeforeWritten) {
 
 							/*
@@ -1464,7 +1484,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						/*
 						 * Not start of a block, should be normal fallthru instruction.
 						 */
-						if (nextFallthruNode != null) throw new Exception (); // more than one fallthru?
+						if (nextFallthruNode != null) throw new Exception ("more than one fallthru");
 						nextFallthruNode = nn;
 					}
 				}
@@ -1472,9 +1492,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				/*
 				 * Process next instruction if it isn't the start of a block.
 				 */
+				if (nextFallthruNode == gn) throw new Exception ("can't fallthru to self");
 				gn = nextFallthruNode;
 			}
-				
 		}
 
 		/**
@@ -1503,7 +1523,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			return false;
 		}
 
-		private static void PadToLength (StringBuilder sb, int len, string str)
+		public static void PadToLength (StringBuilder sb, int len, string str)
 		{
 			int pad = len - sb.Length;
 			if (pad < 0) pad = 0;
