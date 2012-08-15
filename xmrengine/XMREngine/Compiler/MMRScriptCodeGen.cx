@@ -2903,8 +2903,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			ilGen.MarkLabel (tryCallSw);				//       tryCallSw:
 			OutputCallNoSwitchStmt ();				//         switch (tryCallNo) ...
-
-			ilGen.Emit (OpCodes.Throw);				//     }
+										//     }
 
 			ilGen.BeginCatchBlock (typeof (object));		// start of the catch block that can catch anything
 #if DEBUG_TRYSTMT

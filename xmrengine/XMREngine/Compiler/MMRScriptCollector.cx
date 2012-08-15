@@ -1268,6 +1268,29 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (curExcBlock != null) throw new Exception ("exception block still open");
 
 			/*
+			 * If an instruction says it doesn't fall through, remove all instructions to
+			 * the end of the block.
+			 */
+			for (GraphNode gn = firstLin; gn != null; gn = gn.nextLin) {
+				bool fallsthru = false;
+				foreach (GraphNode nn in gn.NextNodes) {
+					if (nn == gn.nextLin) {
+						fallsthru = true;
+						break;
+					}
+				}
+				if (!fallsthru) {
+					GraphNode nn;
+					while (((nn = gn.nextLin) != null) && !(nn is GraphNodeBlock) && 
+					                          !(nn is GraphNodeEndExceptionBlock)) {
+						if ((gn.nextLin = nn.nextLin) != null) {
+							nn.nextLin.prevLin = gn;
+						}
+					}
+				}
+			}
+
+			/*
 			 * Scan for OpCodes.Leave instructions.
 			 * For each found, its target for flow analysis purposes is the beginning of the corresponding
 			 * finally block.  And the end of the finally block gets a conditional branch target of the 
