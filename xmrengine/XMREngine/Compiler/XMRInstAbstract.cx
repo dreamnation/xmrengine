@@ -323,6 +323,55 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         /**
+         * @brief Try to cast the thrown object to the given script-defined type.
+         * @param thrown = what object was thrown
+         * @param inst = what script instance we are running in
+         * @param sdtypeindex = script-defined type to try to cast it to
+         * @returns null: thrown is not castable to sdtypename
+         *          else: an object casted to sdtypename
+         */
+        public static object XMRSDTypeCatchTryCastToSDType (object thrown, XMRInstAbstract inst, int sdtypeindex)
+        {
+            TokenDeclSDType sdType = inst.m_ObjCode.sdObjTypesIndx[sdtypeindex];
+
+            /*
+             * If it is a script-defined interface object, convert to the original XMRSDTypeClObj.
+             */
+            if (thrown is Delegate[]) {
+                thrown = ((Delegate[])thrown)[0].Target;
+            }
+
+            /*
+             * If it is a script-defined delegate object, make sure it is an instance of the expected type.
+             */
+            if (thrown is Delegate) {
+                Type ot = thrown.GetType ();
+                Type tt = sdType.GetSysType ();
+                return (ot == tt) ? thrown : null;
+            }
+
+            /*
+             * If it is a script-defined class object, make sure it is an instance of the expected class.
+             */
+            if (thrown is XMRSDTypeClObj) {
+
+                /*
+                 * Step from the object's actual class rootward.
+                 * If we find the requested class along the way, the cast is valid.
+                 * If we run off the end of the root, the cast is not valid.
+                 */
+                for (TokenDeclSDTypeClass ac = ((XMRSDTypeClObj)thrown).sdtcClass; ac != null; ac = ac.extends) {
+                    if (ac == sdType) return thrown;
+                }
+            }
+
+            /*
+             * Don't know what it is, assume it is not what caller wants.
+             */
+            return null;
+        }
+
+        /**
          * @brief Wrap osParseJSON() so we return an array to the script.
          *        No coherent example of its use in scripts on web found.
          * see http://www.json.org/ for more details on JSON

@@ -1,3 +1,5 @@
+xmroption arrays;
+xmroption objects;
 xmroption trycatch;
 
 default {
@@ -109,7 +111,55 @@ default {
             llOwnerSay ("second look: " + TrimILFromException (s));
         }
 
+        // Filter the type
+        llOwnerSay ("catch filtering...");
+        list values = [ 1, "two", 3.0, <4,4,4>, <5,5,5,5> ];
+        for (integer i = 0; i < 5; i ++) {
+            try {
+                throw values[i];
+            } catch (integer i) {
+                llOwnerSay ("caught integer " + i);
+            } catch (string s) {
+                llOwnerSay ("caught string " + s);
+            } catch (float f) {
+                llOwnerSay ("caught float " + f);
+            } catch (vector v) {
+                llOwnerSay ("caught vector " + (string)v);
+            } catch (object o) {
+                llOwnerSay ("caught unknown " + xmrTypeName (o) + " " + (string)o);
+            }
+        }
+
+        Vase vase = new VaseOne ();
+        try {
+            throw vase;
+        } catch (Vase v) {
+            llOwnerSay ("* caught vase " + v.ToString ());
+        } catch (VaseOne v1) {
+            llOwnerSay ("  caught vaseone " + v1.ToString ());
+        }
+        try {
+            throw vase;
+        } catch (VaseOne v1) {
+            llOwnerSay ("* caught vaseone " + v1.ToString ());
+        } catch (Vase v) {
+            llOwnerSay ("  caught vase " + v.ToString ());
+        }
+
         llOwnerSay ("all done");
+    }
+}
+
+class Vase {
+    public virtual string ToString ()
+    {
+        return "this is a Vase";
+    }
+}
+class VaseOne : Vase {
+    public override string ToString ()
+    {
+        return "this is a VaseOne";
     }
 }
 

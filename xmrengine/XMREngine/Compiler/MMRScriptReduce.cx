@@ -2557,25 +2557,25 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				TokenStmtTry tokenStmtTry;
 				if (token is TokenKwCatch) {
 					if (!(token.nextToken is TokenKwParOpen) ||
-					    !(token.nextToken.nextToken is TokenTypeStr) ||
+					    !(token.nextToken.nextToken is TokenType) ||
 					    !(token.nextToken.nextToken.nextToken is TokenName) ||
 					    !(token.nextToken.nextToken.nextToken.nextToken is TokenKwParClose)) {
-						ErrorMsg (token, "catch must be followed by ( string <varname> ) <statement>");
+						ErrorMsg (token, "catch must be followed by ( <type> <varname> ) { <statement>... }");
 						return null;
 					}
-					token = token.nextToken.nextToken;      // skip over 'catch' '('
+					token = token.nextToken.nextToken;     // skip over 'catch' '('
 					TokenDeclVar tag = new TokenDeclVar (token.nextToken, currentDeclFunc, tokenScript);
 					tag.type = (TokenType)token;
-					token = token.nextToken;                // skip over 'string'
+					token    = token.nextToken;            // skip over <type>
 					tag.name = (TokenName)token;
-					token = token.nextToken.nextToken;      // skip over <varname> ')'
+					token    = token.nextToken.nextToken;  // skip over <varname> ')'
 
 					tokenStmtTry = new TokenStmtTry (tryKw);
-					tokenStmtTry.tryStmt = WrapTryCatFinInBlock (body);
-					tokenStmtTry.catchVar = tag;
+					tokenStmtTry.tryStmt           = WrapTryCatFinInBlock (body);
+					tokenStmtTry.catchVar          = tag;
 					tokenScript.PushVarFrame ();
 					tokenScript.AddVarEntry (tag);
-					tokenStmtTry.catchStmt = ParseStmtBlock (ref token);
+					tokenStmtTry.catchStmt         = ParseStmtBlock (ref token);
 					tokenScript.PopVarFrame ();
 					if (tokenStmtTry.catchStmt == null) return null;
 					tokenStmtTry.tryStmt.isTry     = true;
@@ -2587,8 +2587,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					token = token.nextToken;
 
 					tokenStmtTry = new TokenStmtTry (tryKw);
-					tokenStmtTry.tryStmt = WrapTryCatFinInBlock (body);
-					tokenStmtTry.finallyStmt = ParseStmtBlock (ref token);
+					tokenStmtTry.tryStmt               = WrapTryCatFinInBlock (body);
+					tokenStmtTry.finallyStmt           = ParseStmtBlock (ref token);
 					if (tokenStmtTry.finallyStmt == null) return null;
 					tokenStmtTry.tryStmt.isTry         = true;
 					tokenStmtTry.tryStmt.tryStmt       = tokenStmtTry;

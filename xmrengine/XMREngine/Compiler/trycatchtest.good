@@ -9,16 +9,16 @@ llOwnerSay: after CheckRun() in try block
 llOwnerSay: finally x=2
 llOwnerSay: after CheckRun() in finally block
 llOwnerSay: inside try { }
-llOwnerSay: inside first catch { } with OpenSim.Region.ScriptEngine.XMREngine.ScriptThrownException: something
+llOwnerSay: inside first catch { } with something
 llOwnerSay: inside first finally { }
-llOwnerSay: inside second catch { } with OpenSim.Region.ScriptEngine.XMREngine.ScriptThrownException: something
+llOwnerSay: inside second catch { } with something
 llOwnerSay: inside second finally { }
 llOwnerSay: generate first call to checkrun
 llOwnerSay: generate second call to checkrun
 llOwnerSay: generate first call to checkrun inside try
 llOwnerSay: generate second call to checkrun inside try
 llOwnerSay: throwing up
-llOwnerSay: caught OpenSim.Region.ScriptEngine.XMREngine.ScriptThrownException: some exception
+llOwnerSay: caught some exception
 llOwnerSay: multiple finallies via jump test
 llOwnerSay: multiple jump finallies 1a
 llOwnerSay: multiple jump finallies 1b
@@ -31,7 +31,7 @@ llOwnerSay: multiple jump finallies 4b
 llOwnerSay: multiple finallies via throw test
 llOwnerSay: multiple throw finallies 1a
 llOwnerSay: multiple throw finallies 1b
-llOwnerSay: inner catch OpenSim.Region.ScriptEngine.XMREngine.ScriptThrownException: get me out!
+llOwnerSay: inner catch get me out!
 llOwnerSay: multiple throw finallies 2a
 llOwnerSay: multiple throw finallies 2b
 llOwnerSay: multiple throw finallies 3a
@@ -39,14 +39,14 @@ llOwnerSay: multiple throw finallies 3b
 llOwnerSay: multiple throw finallies 4a
 llOwnerSay: multiple throw finallies 4b
 llOwnerSay: check stack trace capture/restore
-llOwnerSay: first look:  OpenSim.Region.ScriptEngine.XMREngine.ScriptThrownException: can you see me now?
-at (wrapper dynamic-method) object.__fun_CallSomethingThatThrows(string) (OpenSim.Region.ScriptEngine.XMREngine.XMRInstAbstract,string) <IL ...>
-at (wrapper dynamic-method) object.__fun_CallSomethingThatCallsSomethingThatThrows(string) (OpenSim.Region.ScriptEngine.XMREngine.XMRInstAbstract,string) <IL ...>
-at (wrapper dynamic-method) object.__seh_0_30_default_state_entry (OpenSim.Region.ScriptEngine.XMREngine.XMRInstAbstract) <IL ...>
-
-llOwnerSay: second look: OpenSim.Region.ScriptEngine.XMREngine.ScriptThrownException: can you see me now?
-at (wrapper dynamic-method) object.__fun_CallSomethingThatThrows(string) (OpenSim.Region.ScriptEngine.XMREngine.XMRInstAbstract,string) <IL ...>
-at (wrapper dynamic-method) object.__fun_CallSomethingThatCallsSomethingThatThrows(string) (OpenSim.Region.ScriptEngine.XMREngine.XMRInstAbstract,string) <IL ...>
-at (wrapper dynamic-method) object.__seh_0_30_default_state_entry (OpenSim.Region.ScriptEngine.XMREngine.XMRInstAbstract) <IL ...>
-
+llOwnerSay: first look:  can you see me now?
+llOwnerSay: second look: can you see me now?
+llOwnerSay: catch filtering...
+llOwnerSay: caught integer 1
+llOwnerSay: caught string two
+llOwnerSay: caught float 3.000000
+llOwnerSay: caught vector <4.000000,4.000000,4.000000>
+llOwnerSay: caught unknown rotation <5.000000,5.000000,5.000000,5.000000>
+llOwnerSay: * caught vase this is a VaseOne
+llOwnerSay: * caught vaseone this is a VaseOne
 llOwnerSay: all done

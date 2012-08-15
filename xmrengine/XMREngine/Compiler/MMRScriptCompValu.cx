@@ -900,6 +900,46 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 	}
 
+	// The value is an element of a list
+	public class CompValuListEl : CompValu {
+		private static readonly MethodInfo getElementFromListMethodInfo = 
+				 typeof (CompValuListEl).GetMethod ("GetElementFromList", new Type[] { typeof (LSL_List), typeof (int) });
+
+		private CompValu theList;
+		private CompValu subscript;
+
+		public CompValuListEl (TokenType type, CompValu theList, CompValu subscript) : base (type)
+		{
+			this.theList   = theList;
+			this.subscript = subscript;
+		}
+		public override void PushVal (ScriptCodeGen scg, Token errorAt)
+		{
+			theList.PushVal (scg, errorAt, new TokenTypeList (type));
+			subscript.PushVal (scg, errorAt, new TokenTypeInt (type));
+			scg.ilGen.Emit (OpCodes.Call, getElementFromListMethodInfo);
+		}
+		public override void PushRef (ScriptCodeGen scg, Token errorAt)
+		{
+			throw new Exception ("cannot get list element's address");
+		}
+		public override void PopPost (ScriptCodeGen scg, Token errorAt)
+		{
+			throw new Exception ("cannot store into list element");
+		}
+
+		public static object GetElementFromList (LSL_List lis, int idx)
+		{
+			object element = lis.Data[idx];
+			if (element is LSL_Float)                return TypeCast.EHArgUnwrapFloat    (element);
+			if (element is LSL_Integer)              return TypeCast.EHArgUnwrapInteger  (element);
+			if (element is LSL_String)               return TypeCast.EHArgUnwrapString   (element);
+			if (element is OpenMetaverse.Quaternion) return TypeCast.EHArgUnwrapRotation (element);
+			if (element is OpenMetaverse.Vector3)    return TypeCast.EHArgUnwrapVector   (element);
+			return element;
+		}
+	}
+
 	// The value is a null
 	public class CompValuNull : CompValu {
 		public CompValuNull (TokenType type) : base (type) { }
