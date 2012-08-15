@@ -726,8 +726,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Very first line might contain "//" scriptengine ":".
              */
+            string firstline = "";
             if (script.StartsWith("//")) {
-                string firstline = "";
                 int lineEnd = script.IndexOf('\n');
                 if (lineEnd > 1) firstline = script.Substring(0, lineEnd).Trim();
                 int colon = firstline.IndexOf(':');
@@ -738,7 +738,29 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * Make sure the default or requested engine is us.
              */
             if (engineName != ScriptEngineName) {
-                return;
+
+                /*
+                 * Not us, if requested engine exists, silently ignore script and let
+                 * requested engine handle it.
+                 */
+                IScriptModule[] engines = m_Scene.RequestModuleInterfaces<IScriptModule> ();
+                foreach (IScriptModule eng in engines) {
+                    if (eng.ScriptEngineName == engineName) {
+                        return;
+                    }
+                }
+
+                /*
+                 * Requested engine not defined, warn on console.
+                 * Then we try to handle it if we're the default engine, else we ignore it.
+                 */
+                m_log.Warn ("[XMREngine]: " + itemID.ToString() + " requests undefined/disabled engine " + engineName);
+                m_log.Info ("[XMREngine]: first line: " + firstline);
+                if (defEngine != ScriptEngineName) {
+                    m_log.Info ("[XMREngine]: leaving it to the default script engine (" + defEngine + ") to process it");
+                    return;
+                }
+                m_log.Info ("[XMREngine]: will attempt to processing it anyway as default script engine");
             }
 
             /*
