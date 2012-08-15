@@ -376,27 +376,48 @@ default {
         }
 
         Vase vase = new Vase ();
-        llOwnerSay (vase.Meth0 (2999));
-        llOwnerSay (vase.Meth0 ("kaybek"));
+        llOwnerSay (vase.Meth0 (2999));        // Vase.Meth0: 2999
+        llOwnerSay (vase.Meth0 ("kaybek"));    // Vase.Meth0: kaybek
 
         VaseOver vaseover = new VaseOver ();
-        llOwnerSay (vaseover.Meth0 (2995));
-        llOwnerSay (vaseover.Meth0 ("whiskey"));
+        llOwnerSay (vaseover.Meth0 (2995));       // VaseOver.Meth0: 2995
+        llOwnerSay (vaseover.Meth0 ("whiskey"));  // VaseOvwe.Meth0: whiskey
 
         Vase vaseovervase = vaseover;
-        llOwnerSay (xmrTypeName (vaseovervase) + "=" + vaseovervase.Meth0 (2993));
-        llOwnerSay (xmrTypeName (vaseovervase) + "=" + vaseovervase.Meth0 ("victor"));
+        llOwnerSay (xmrTypeName (vaseovervase) + "=" + vaseovervase.Meth0 (2993));      // VaseOver=VaseOver.Meth0: 2003
+        llOwnerSay (xmrTypeName (vaseovervase) + "=" + vaseovervase.Meth0 ("victor"));  // VaseOver=Vase.Meth0: victor
+
+        IFace1 vaseoveriface1 = (Vase)vaseover;
+        llOwnerSay (xmrTypeName (vaseoveriface1) + "=" + vaseoveriface1.IFace1A (42));           // VaseOver=VaseOver.Meth0: 42
+        llOwnerSay (xmrTypeName (vaseoveriface1) + "=" + vaseoveriface1.IFace1B ("farenheit"));  // VaseOver=Vase.Meth0: farenheit
+
+        IFace2 vaseoveriface2 = vaseover;
+        llOwnerSay (xmrTypeName (vaseoveriface2) + "+" + vaseoveriface2.IFace2A (11, 45));                   // VaseOver=VaseOver.IFace2A: 1145
+        llOwnerSay (xmrTypeName (vaseoveriface2) + "+" + vaseoveriface2.IFace2B ("eleven-", "forty-five"));  // VaseOver=VaseOver.IFace2B: eleven-forty-five
     }
 }
 
-class Vase {
-    private static string vasemeth0 = "Vase.Meth0: ";
-    public virtual string Meth0 (integer i) { return vasemeth0 + i; }
-    public virtual string Meth0 (string  s) { return vasemeth0 + s; }
+interface IFace1 {
+    string IFace1A (integer i);
+    string IFace1B (string s);
 }
 
-class VaseOver : Vase {
+interface IFace2 {
+    string IFace2A (integer i, integer j);
+    string IFace2B (string s, string t);
+}
+
+class Vase : IFace1 {
+    private static string vasemeth0 = "Vase.Meth0: ";
+    public virtual string Meth0 (integer i) : IFace1.IFace1A { return vasemeth0 + i; }
+    public virtual string Meth0 (string  s) : IFace1.IFace1B { return vasemeth0 + s; }
+}
+
+class VaseOver : Vase, IFace2 {
     private constant vaseovermeth0 = "VaseOver.Meth0: ";
     public override string Meth0 (integer i) { return vaseovermeth0 + i; }
+    public new virtual string Meth0 (string s) { return vaseovermeth0 + s; }
+    private string IFace2A (integer i, integer j) : IFace2 { return "VaseOver.IFace2A: " + i + j; }
+    private string IFace2B (string  s, string  t) : IFace2 { return "VaseOver.IFace2B: " + s + t; }
 }
 

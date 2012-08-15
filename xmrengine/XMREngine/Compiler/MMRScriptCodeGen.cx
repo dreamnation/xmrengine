@@ -375,7 +375,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
-			 * Assign slots for all instance fields and virtual methods of script-defined types.
+			 * Assign slots for all instance fields and virtual methods of script-defined classes.
 			 */
 			int maxExtends = tokenScript.sdSrcTypesCount;
 			bool didOne;

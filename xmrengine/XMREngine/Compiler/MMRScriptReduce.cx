@@ -1531,7 +1531,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					continue;
 				}
 				if (token is TokenKwVirtual) {
-					token = AddQualifierFlag (token, SDT_VIRTUAL, SDT_ABSTRACT | SDT_NEW | SDT_STATIC);
+					token = AddQualifierFlag (token, SDT_VIRTUAL, SDT_ABSTRACT | SDT_STATIC);
 					continue;
 				}
 				break;
@@ -3956,6 +3956,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				objFileWriter.Write (numMeths);
 				for (int j = 0; j < numMeths; j ++) {
 					TokenDeclVar meth = meths[j];
+					objFileWriter.Write (meth.vTableIndex);
 					objFileWriter.Write (meth.GetObjCodeName ());
 					objFileWriter.Write (meth.GetDelType ().decl.GetWholeSig ());
 				}
@@ -4001,10 +4002,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					iMethTypes[i] = new Type[numMeths];
 					for (int j = 0; j < numMeths; j ++) {
 						StackedIFace si;
-						si.iFaceIndex = i;
-						si.methIndex  = j;
-						si.methName   = objFileReader.ReadString ();
-						si.methSig    = objFileReader.ReadString ();
+						si.iFaceIndex  = i;
+						si.methIndex   = j;
+						si.vTableIndex = objFileReader.ReadInt32 ();
+						si.methName    = objFileReader.ReadString ();
+						si.methSig     = objFileReader.ReadString ();
 						stackedIFaces.Add (si);
 					}
 				}
@@ -4018,10 +4020,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		}
 
 		private struct StackedIFace {
-			public int iFaceIndex;
-			public int methIndex;
-			public string methName;
-			public string methSig;
+			public int iFaceIndex;   // which implemented interface
+			public int methIndex;    // which method of that interface
+			public int vTableIndex;  // <0: implemented by non-virtual; else: implemented by virtual
+			public string methName;  // object code name of implementing method (GetObjCodeName)
+			public string methSig;   // method signature incl return type (GetWholeSig)
 		}
 
 		/**
@@ -4069,19 +4072,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					int i = sm.methVTI;
 					string methName  = sm.methName;
 					DynamicMethod dm = scriptObjCode.dynamicMethods[methName];
-					vDynMeths[i]  = dm;
-					vMethTypes[i] = GetDynamicMethodDelegateType (dm, sm.methSig);
+					vDynMeths[i]     = dm;
+					vMethTypes[i]    = GetDynamicMethodDelegateType (dm, sm.methSig);
 				}
 				stackedMethods = null;
 			}
 
 			if (stackedIFaces != null) {
 				foreach (StackedIFace si in stackedIFaces) {
-					int i = si.iFaceIndex;
-					int j = si.methIndex;
+					int i   = si.iFaceIndex;
+					int j   = si.methIndex;
+					int vti = si.vTableIndex;
 					string methName  = si.methName;
 					DynamicMethod dm = scriptObjCode.dynamicMethods[methName];
-					iDynMeths[i][j]  = dm;
+					iDynMeths[i][j]  = (vti < 0) ? dm : vDynMeths[vti];
 					iMethTypes[i][j] = GetDynamicMethodDelegateType (dm, si.methSig);
 				}
 				stackedIFaces = null;
