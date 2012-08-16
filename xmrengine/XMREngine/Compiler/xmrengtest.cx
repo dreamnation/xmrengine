@@ -117,9 +117,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (asmFileName != null) {
                 asmFileWriter = (asmFileName != "-") ? File.CreateText (asmFileName) : Console.Out;
             }
-            ScriptObjCode scriptObjCode = ScriptCodeGen.PerformGeneration ("", objFileReader, asmFileWriter);
-            objFileReader.Close ();
-            if (asmFileWriter != null) asmFileWriter.Close ();
+            ScriptObjCode scriptObjCode;
+            try {
+                scriptObjCode = ScriptCodeGen.PerformGeneration ("", objFileReader, asmFileWriter);
+            } finally {
+                objFileReader.Close ();
+                if (asmFileWriter != null) asmFileWriter.Close ();
+            }
 
             /*
              * Instantiate the script and run its default state_entry() handler.
