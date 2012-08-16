@@ -1079,6 +1079,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 #define DEFBINOP3(name,op) \
         public static object name (object left, object right)                       \
         {                                                                           \
+            if ((left is char) && (right is int)) {                                 \
+                return (char)((char)left op (int)right);                            \
+            }                                                                       \
             if ((left is SCRIPTFLOAT) && (right is SCRIPTFLOAT)) {                  \
                 return (SCRIPTFLOAT)left op (SCRIPTFLOAT)right;                     \
             }                                                                       \
@@ -1097,6 +1100,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             if ((left is int) && (right is string)) {                               \
                 return TypeCast.IntegerToString((int)left) op (string)right;        \
             }                                                                       \
+            if ((left is string) && (right is char)) {                              \
+                return (string)left op (char)right;                                 \
+            }                                                                       \
             if ((left is string) && (right is SCRIPTFLOAT)) {                       \
                 return (string)left op TypeCast.FloatToString((SCRIPTFLOAT)right);  \
             }                                                                       \
@@ -1107,6 +1113,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                 return (string)left op (string)right;                               \
             }                                                                       \
             return null;                                                            \
+        }
+
+#define DEFBINOP4(name,op) \
+        public static object name (object left, object right)       \
+        {                                                           \
+            if ((left is char) && (right is int)) {                 \
+                return (char)((char)left op (int)right);            \
+            }                                                       \
+            if ((left is int) && (right is int)) {                  \
+                return (int)left op (int)right;                     \
+            }                                                       \
+            if ((left is int) && (right is SCRIPTFLOAT)) {          \
+                return (int)left op (SCRIPTFLOAT)right;             \
+            }                                                       \
+            if ((left is SCRIPTFLOAT) && (right is int)) {          \
+                return (SCRIPTFLOAT)left op (int)right;             \
+            }                                                       \
+            if ((left is SCRIPTFLOAT) && (right is SCRIPTFLOAT)) {  \
+                return (SCRIPTFLOAT)left op (SCRIPTFLOAT)right;     \
+            }                                                       \
+            return null;                                            \
         }
 
 #define DEFUNOP1(name,op) \
@@ -1139,7 +1166,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         DEFBINOP1(Div,/)
         DEFBINOP1(Mod,%)
         DEFBINOP1(Mul,*)
-        DEFBINOP1(Sub,-)
 
         DEFBINOP2(And,&)
         DEFBINOP2(LSh,<<)
@@ -1148,6 +1174,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         DEFBINOP2(Xor,^)
 
         DEFBINOP3(Add,+)
+        DEFBINOP4(Sub,-)
 
         public static object Null (object right)
         {

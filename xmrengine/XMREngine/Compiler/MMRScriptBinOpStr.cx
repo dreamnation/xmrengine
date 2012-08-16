@@ -177,12 +177,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 			// Contrary to some beliefs, scripts do things like string+integer and integer+string
 			bos.Add ("bool+string",    new BinOpStr (typeof (string), BinOpStrStrAddStr));
+			bos.Add ("char+string",    new BinOpStr (typeof (string), BinOpStrStrAddStr));
 			bos.Add ("float+string",   new BinOpStr (typeof (string), BinOpStrStrAddStr));
 			bos.Add ("integer+string", new BinOpStr (typeof (string), BinOpStrStrAddStr));
-			bos.Add ("string+bool",    new BinOpStr (typeof (string), BinOpStrStrAddStr));
-			bos.Add ("string+float",   new BinOpStr (typeof (string), BinOpStrStrAddStr));
-			bos.Add ("string+integer", new BinOpStr (typeof (string), BinOpStrStrAddStr));
-			bos.Add ("string+char",    new BinOpStr (typeof (string), BinOpStrStrAddStr));
+			bos.Add ("string+bool",    new BinOpStr (typeof (string), BinOpStrStrAddStr, true));
+			bos.Add ("string+char",    new BinOpStr (typeof (string), BinOpStrStrAddStr, true));
+			bos.Add ("string+float",   new BinOpStr (typeof (string), BinOpStrStrAddStr, true));
+			bos.Add ("string+integer", new BinOpStr (typeof (string), BinOpStrStrAddStr, true));
 
 			// Now for our final slight-of-hand, we're going to scan through all those.
 			// And wherever we see an 'integer' in the key, we are going to make another

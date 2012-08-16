@@ -12,17 +12,17 @@ XMRE supports several extensions to the LSL to make it easier to write scripts.
     trycatch - provide mechanism to catch exceptions
 
 Note:  The keywords that are part of the extensions will not be recognized 
-       until the corresponding XMROption statement has been given, so the 
+       until the corresponding xmroption statement has been given, so the 
        new keywords don't interfere with existing scripts.
 
-       The parts of the XMROption statement are case-insensitive.
+       The parts of the xmroption statement are case-insensitive.
 
 
 
 Provide advanced flow-control statements similar to other programming 
 languages.
 
-Enabled by 'XMROption' 'advFlowCtl' ';'
+Enabled by:  xmroption advflowctl;
 
 Keywords:
 
@@ -59,6 +59,7 @@ Keywords:
     '}'
 
 
+ASSOCIATIVE ARRAYS
 
 Arrays are associative in that the index can be any immutable type, and any 
 given array can have a mix of index types and a mix of value types.  In 
@@ -67,9 +68,9 @@ array functionality.
 
 Unlike other LSL script types, arrays are mutable.  So, unlike lists, arrays 
 can be passed to a function, the function can modify the array, and the caller 
-will see the changes made by the function.
+will see the changes made by the function, all without any array copying.
 
-Enabled by 'XMROption' 'arrays' ';'
+Enabled by:  xmroption arrays;
 
 Keywords:
 
@@ -120,7 +121,7 @@ Retrieve element:
 
     Example:
 
-        llSay(0, (string)ar[3]);
+        llOwnerSay((string)ar[3]);
 
 Test type of object:
 
@@ -145,7 +146,7 @@ Iterate through all elements:
     foreach (k,v in ar) {
         k holds the index
         v holds the value
-        llSay(0, "ar[" + (string)k + "]=" + (string)v);
+        llOwnerSay("ar[" + (string)k + "]=" + (string)v);
     }
 
     // alternatively:
@@ -155,14 +156,13 @@ Iterate through all elements:
     for (integer i = 0; i < n; i ++) {
         k = ar.index(i);
         v = ar.value(i);
-        llSay(0, (string)i + ": ar[" + (string)k + "]=" + (string)v);
+        llOwnerSay((string)i + ": ar[" + (string)k + "]=" + (string)v);
     }
 
 
+CHARACTER DATATYPE
 
-Enable with:
-
-    'xmroption' 'chars' ';'
+Enabled by:  xmroption chars;
 
 Keyword:
 
@@ -178,6 +178,7 @@ Permitted operators -> result type (bool is an integer with value of 0 or 1):
     char >= char    -> bool
     char + integer  -> char
     char - integer  -> char
+    char + string   -> string
     string + char   -> string
     string[integer] -> char
     char ++         -> char
@@ -220,24 +221,57 @@ Built-in functions:
             dststart  = where in dstarray to start writing at (zero based)
             count     = number of characters to extract
 
+Note:  The 'xmroption objects;' option must be enabled to access datatype 
+       char[].
+
+xmroption advflowctl;  // 'switch'
+xmroption chars;
+xmroption objects;     // fixed-dimension arrays
+default {
+    state_entry ()
+    {
+        char[] icat = new char[] { 'I', 'c', 'a', 't' };
+        string line = "";
+        for (integer i = 0; i < icat.Length (); i ++) {
+            char ch = icat[i];
+            if (line != "") line += " ";
+            switch (ch) {
+                case 'a' + 2: {
+                    line += "see";
+                    break;
+                }
+                case 't': {
+                    line += "cat";
+                    break;
+                }
+                default: {
+                    line += ch;
+                    break;
+                }
+            }
+        }
+        llOwnerSay (line + '!');
+    }
+}
+
 
+FETCH SOURCE FROM WEB SERVER
 
 Read script source from a web server.
 
-Triggered by:
+Enabled by:  xmroption fetchsource <url>;
 
-    XMROption FetchSource url ;
-
-...where url is a string giving the location of the script (including 
+...where <url> is a string giving the location of the script (including 
 the "'s), such as:
 
     xmroption fetchsource "http://mywebserver.com/somescriptfile.lsl";
 
 You put your script source file on a web server so it can be fetched via http.  
 Then, instead of a normal script source inworld, you would put the fetchsource 
-statement.  It must be the only source statement in the inworld script (you can 
-put comments in there if you like).  When the region servers need the script 
-source file, they will read it from the webserver.
+statement in the inworld script.  It must be the only source statement in the 
+inworld script (except that you can put comments in there if you like).  When 
+the region servers need the script source file, they will read it from the 
+webserver.
 
 This lets you maintain script source files on a webserver instead of using the 
 inworld script editor window.  You can use git and splice files togther with 
@@ -248,14 +282,15 @@ script and compiles it, it does not require access to the source again as it
 keeps a compiled object-code version cached.  So it will not re-fetch the 
 source from the server and so if you make changes, you will need to retrigger 
 a download.  This can be done by adding or removing whitespace from the inworld 
-script file containing the XMROption FetchSource statement.
+script file containing the xmroption fetchsource statement.
 
 
+OBJECTS
 
 Script-defined types provide a mechanism to make programming scripts easier 
 instead of having to resort to tricks like manipulating lists.
 
-XMROption objects;  // to enable
+Enabled by:  xmroption objects;
 
 Keywords:
 
@@ -277,6 +312,7 @@ Keywords:
     virtual     - declares a script-defined class's method may be overridden by leafward classes
 
     Note:  Use 'undef' instead of 'null' to mean no object being referenced.
+           Requires the 'xmroption arrays;' statement to enable.
 
 CLASSES
 
@@ -298,9 +334,10 @@ CLASSES
                 ( <arglist> ) [ ; | { <methodbody> } ]
     }
 
-    Instance methods and instance field initializers have 'base' and 'this' available.
-    'this.' is implied when accessing instance fields or methods from within an instance 
-    method or field initializer as is common with similar oo languages.
+    Instance methods and instance field initializers have 'base' and 'this' 
+    available.  'this.' is implied when accessing instance fields or methods 
+    from within an instance method or field initializer as is common with 
+    similar oo languages.
 
 DELEGATES
 
@@ -393,9 +430,9 @@ INTERFACES
 
 Generics
 
-    Class, Delegate, Interfaces definitions can have generic prototypes in their names 
-    and the prototypes can be referenced in the body of the definition as is common with 
-    similar oo languages.
+    Class, Delegate, Interfaces definitions can have generic prototypes in 
+    their names and the prototypes can be referenced in the body of the 
+    definition as is common with similar oo languages.
 
     Example:
 
@@ -455,7 +492,8 @@ Other Definitions
               static : one shared by all instances of the object
 
     <methodbody> : must use 'this' to refer to instance fields and methods
-                   can use 'base' to refer to extended class's fields and methods
+                   can use 'base' to refer to extended class's fields and 
+                   methods
 
 Built-in functions:
 
@@ -480,12 +518,12 @@ Built-in functions:
             dstarray must be an array of a type that can hold the types of the list elements
                 object[] is always valid
 
-
 
+EXCEPTION HANDLING
 
 Provide a mechanism for catching exceptions.
 
-Enabled by 'XMROption' 'tryCatch' ';'
+Enabled by:  xmroption trycatch;
 
 Keywords:
 
@@ -495,10 +533,55 @@ Keywords:
     try
 
     'try' '{' statements ... '}'
-    [ 'catch' '(' 'string' name ')' '{' statements ... '}' ]
+    [ 'catch' '(' type name ')' '{' statements ... '}' ]
     [ 'finally' '{' statements ... '}' ]
 
-    'throw' stringexpr ';'
+    'throw' expression ';'
 
-    'throw' ';'     // rethrow from within a 'catch' statement block
+    'throw' ';'     // rethrow from within a 'catch' clause
 
+    A single try can include any number (greater than zero) of catch and/or 
+    finally clauses, in any order.  They are stepped through one-by-one and 
+    executed as needed.  try/catch/finally can be nested in any combination.
+
+    The expression of a throw statement within a try clause can be of any type, 
+    eg, integer, string, script-defined object type.  It will match a the first 
+    catch clause whose parameter type is assignable from the value of thrown 
+    expression.  Any finally clauses between the throw and the corresponding 
+    catch are executed before the catch.  Then the single catch is executed.  
+    If the catch rethrows the execption, then the search for a compatible catch 
+    clause resumes, executing finally clauses until a match is found.  If a 
+    catch does not rethrow the execption, all finally clauses outside the catch 
+    are executed and all catch clauses outside the catch are ignored.
+
+    If an exception is thrown and no compatible catch clause is found, all 
+    finally clauses are executed in order and the script is terminated and an 
+    error message is printed.  This also applies to an exception thrown outside 
+    any try clause trivially as there can't be any catch clauses for it to 
+    match and there won't be any finally clauses to execute either, the script 
+    is simply terminated and an error message is printed.
+
+xmroption arrays;    // for type 'object'
+xmroption trycatch;
+default {
+    state_entry ()
+    {
+        llOwnerSay ("catch filtering...");
+        list values = [ 1, "two", 3.0, <4,4,4>, <5,5,5,5> ];
+        for (integer i = 0; i < 5; i ++) {
+            try {
+                throw values[i];
+            } catch (integer i) {
+                llOwnerSay ("caught integer " + i);
+            } catch (string s) {
+                llOwnerSay ("caught string " + s);
+            } catch (float f) {
+                llOwnerSay ("caught float " + f);
+            } catch (vector v) {
+                llOwnerSay ("caught vector " + (string)v);
+            } catch (object o) {
+                llOwnerSay ("caught other " + xmrTypeName (o) + " " + (string)o);
+            }
+        }
+    }
+}
