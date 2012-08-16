@@ -1,0 +1,6 @@
+#!/bin/bash -v
+./modxmrasm < arraytest.xmrasm     > arraytest.modasm
+./modxmrasm < chartest.xmrasm      > chartest.modasm
+./modxmrasm < objectest.xmrasm     > objectest.modasm
+./modxmrasm < trycatchtest.xmrasm  > trycatchtest.modasm
+./modxmrasm < while1.xmrasm        > while1.modasm
