@@ -3081,9 +3081,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				/*
 				 * See if comma-separated list of values.
 				 */
-				bool sideEffects = false;
 				TokenRVal subscriptRVals;
-				int numSubscripts = SplitCommaRVals (tokenLValArEle.subRVal, out subscriptRVals, ref sideEffects);
+				int numSubscripts = SplitCommaRVals (tokenLValArEle.subRVal, out subscriptRVals);
 				if (numSubscripts > 1) {
 
 					/*
@@ -3092,7 +3091,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					TokenRValList rValList = new TokenRValList (tokenLValArEle);
 					rValList.rVal = subscriptRVals;
 					rValList.nItems = numSubscripts;
-					rValList.sideEffects = sideEffects;
 					tokenLValArEle.subRVal = rValList;
 				}
 
@@ -3202,15 +3200,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				TokenRVal rValAll = ParseRVal (ref token, cmpGTOnly);
 				if (rValAll == null) return null;
 				TokenRVal rVals;
-				bool sideEffects = false;
-				int nVals = SplitCommaRVals (rValAll, out rVals, ref sideEffects);
+				int nVals = SplitCommaRVals (rValAll, out rVals);
 				switch (nVals) {
 					case 3: {
 						TokenRValVec rValVec = new TokenRValVec (openBkt);
 						rValVec.xRVal = rVals;
 						rValVec.yRVal = (TokenRVal)rVals.nextToken;
 						rValVec.zRVal = (TokenRVal)rVals.nextToken.nextToken;
-						rValVec.sideEffects = sideEffects;
 						return rValVec;
 					}
 					case 4: {
@@ -3219,7 +3215,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						rValRot.yRVal = (TokenRVal)rVals.nextToken;
 						rValRot.zRVal = (TokenRVal)rVals.nextToken.nextToken;
 						rValRot.wRVal = (TokenRVal)rVals.nextToken.nextToken.nextToken;
-						rValRot.sideEffects = sideEffects;
 						return rValRot;
 					}
 					default: {
@@ -3241,7 +3236,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				} else {
 					TokenRVal rValAll = ParseRVal (ref token, brkCloseOnly);
 					if (rValAll == null) return null;
-					rValList.nItems = SplitCommaRVals (rValAll, out rValList.rVal, ref rValList.sideEffects);
+					rValList.nItems = SplitCommaRVals (rValAll, out rValList.rVal);
 				}
 				return rValList;
 			}
@@ -3353,7 +3348,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			} else {
 				rValCall.args = ParseRVal (ref token, parCloseOnly);
 				if (rValCall.args == null) return null;
-				rValCall.nArgs = SplitCommaRVals (rValCall.args, out rValCall.args, ref rValCall.sideEffects);
+				rValCall.nArgs = SplitCommaRVals (rValCall.args, out rValCall.args);
 			}
 
 			currentDeclFunc.unknownTrivialityCalls.AddLast (rValCall);
@@ -3428,9 +3423,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			Stack<TokenList> stack  = new Stack<TokenList> ();
 			TokenRValNewArIni arini = new TokenRValNewArIni (token);
-			arini.sideEffects = true;
-			arini.arrayType   = newCall.baseType;
-			TokenList values  = null;
+			arini.arrayType  = newCall.baseType;
+			TokenList values = null;
 			while (true) {
 
 				// open brace means start a (sub-)list
@@ -3494,7 +3488,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			token = token.nextToken;
 			tokenRValParen.rVal = ParseRVal (ref token, parCloseOnly);
 			if (tokenRValParen.rVal == null) return null;
-			tokenRValParen.sideEffects = tokenRValParen.rVal.sideEffects;
 			return tokenRValParen;
 		}
 
@@ -3503,26 +3496,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 * @param rValAll = expression containing commas
 		 * @returns number of comma separated values
 		 *          rVals = values in a null-terminated list linked by rVals.nextToken
-		 *          sideEffects |= some of the values have side effects
 		 */
-		private int SplitCommaRVals (TokenRVal rValAll, out TokenRVal rVals, ref bool sideEffects)
+		private int SplitCommaRVals (TokenRVal rValAll, out TokenRVal rVals)
 		{
 			if (!(rValAll is TokenRValOpBin) || !(((TokenRValOpBin)rValAll).opcode is TokenKwComma)) {
 				rVals = rValAll;
 				if (rVals.nextToken != null) throw new Exception ("expected null");
-				sideEffects |= rValAll.sideEffects;
 				return 1;
 			}
 			TokenRValOpBin opBin = (TokenRValOpBin)rValAll;
 			TokenRVal rValLeft, rValRight;
-			bool sel = false;
-			bool ser = false;
-			int leftCount  = SplitCommaRVals (opBin.rValLeft,  out rValLeft,  ref sel);
-			int rightCount = SplitCommaRVals (opBin.rValRight, out rValRight, ref ser);
+			int leftCount  = SplitCommaRVals (opBin.rValLeft,  out rValLeft);
+			int rightCount = SplitCommaRVals (opBin.rValRight, out rValRight);
 			rVals = rValLeft;
 			while (rValLeft.nextToken != null) rValLeft = (TokenRVal)rValLeft.nextToken;
 			rValLeft.nextToken = rValRight;
-			sideEffects |= sel | ser;
 			return leftCount + rightCount;
 		}
 
@@ -5033,7 +5021,31 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
 		{
-			return new TokenTypeObject (subRVal);
+			TokenType baseType = baseRVal.GetRValType (scg, null);
+
+			/*
+			 * Maybe referencing element of a fixed-dimension array.
+			 */
+			if ((baseType is TokenTypeSDTypeClass) && (((TokenTypeSDTypeClass)baseType).decl.arrayOfType != null)) {
+				return ((TokenTypeSDTypeClass)baseType).decl.arrayOfType;
+			}
+
+			/*
+			 * Maybe referencing single character of a string.
+			 */
+			if (baseType is TokenTypeStr) {
+				return new TokenTypeChar (this);
+			}
+
+			/*
+			 * Assume XMR_Array element or extracting element from list.
+			 */
+			if ((baseType is TokenTypeArray) || (baseType is TokenTypeList)) {
+				return new TokenTypeObject (this);
+			}
+
+			scg.ErrorMsg (this, "unknown array reference");
+			return new TokenTypeVoid (this);
 		}
 
 		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)
@@ -5090,6 +5102,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			TokenType baseType = baseRVal.GetRValType (scg, null);
 			if (baseType is TokenTypeSDTypeClass) {
 				TokenDeclVar var = scg.FindThisMember ((TokenTypeSDTypeClass)baseType, fieldName, argsig);
+				if (var != null) return var.type;
+			}
+			if (baseType is TokenTypeSDTypeInterface) {
+				TokenDeclVar var = scg.FindSingleMember (((TokenTypeSDTypeInterface)baseType).decl.methProtos, fieldName, argsig);
 				if (var != null) return var.type;
 			}
 			if (baseType is TokenTypeArray) {
@@ -5269,12 +5285,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	 */
 	public delegate TokenRVal TCCLookup (TokenRVal rVal, ref bool didOne);
 	public abstract class TokenRVal : Token {
-		public bool sideEffects = false;  // the value (or some sub-value) has side effects
-		                                  // - constants are always false
-		                                  // - we assume calls always have side effects
-		                                  // - post increment/decrement are always true
-		                                  // - any assignment operator (=, +=, etc) always true
-		                                  // - all others inherit from their operands
 		public TokenRVal (Token original) : base (original) { }
 
 		/**
@@ -5335,9 +5345,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenLVal lVal;
 		public Token postfix;
 
-		public TokenRValAsnPost (Token original) : base (original) {
-			sideEffects = true;
-		}
+		public TokenRValAsnPost (Token original) : base (original) { }
 
 		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
 		{
@@ -5357,9 +5365,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public Token prefix;
 		public TokenLVal lVal;
 
-		public TokenRValAsnPre (Token original) : base (original) {
-			sideEffects = true;
-		}
+		public TokenRValAsnPre (Token original) : base (original) { }
+
 		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
 		{
 			return lVal.GetRValType (scg, argsig);
@@ -5384,10 +5391,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenRVal args;  // null-terminated TokenRVal list
 		public int nArgs;       // number of elements in args
 
-		public TokenRValCall (Token original) : base (original)
-		{
-			sideEffects = true;
-		}
+		public TokenRValCall (Token original) : base (original) { }
 
 		private TokenType[] myArgSig;
 
@@ -5479,7 +5483,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			castTo = type;
 			rVal   = value;
-			sideEffects = value.sideEffects;
 		}
 
 		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
@@ -5678,19 +5681,45 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			rValLeft  = left;
 			opcode    = op;
 			rValRight = right;
-
-			CalcSideEffects();
 		}
 
 		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
 		{
-			string key = rValLeft.GetRValType (scg, argsig).ToString () + opcode.ToString () + 
-			             rValRight.GetRValType (scg, argsig).ToString ();
+			/*
+			 * Comparisons and the like always return bool.
+			 */
+			string opstr = opcode.ToString ();
+			if ((opstr == "==") || (opstr == "!=") || (opstr == ">=") || (opstr == ">") || 
+			    (opstr == "&&") || (opstr == "||") || (opstr == "<=") || (opstr == "<")) {
+				return new TokenTypeBool (opcode);
+			}
 
+			/*
+			 * Assignments are always the type of the left-hand operand, 
+			 * including stuff like "+=".
+			 */
+			if (opstr.EndsWith ("=")) {
+				return rValLeft.GetRValType (scg, argsig);
+			}
+
+			/*
+			 * string+something or something+string is always string.
+			 */
+			string lType = rValLeft.GetRValType (scg, argsig).ToString ();
+			string rType = rValRight.GetRValType (scg, argsig).ToString ();
+			if ((opstr == "+") && ((lType == "string") || (rType == "string"))) {
+				return new TokenTypeStr (opcode);
+			}
+
+			/*
+			 * Everything else depends on both operands.
+			 */
+			string key = lType + opstr + rType;
 			BinOpStr binOpStr;
 			if (BinOpStr.defined.TryGetValue (key, out binOpStr)) {
 				return TokenType.FromSysType (opcode, binOpStr.outtype);
 			}
+
 			scg.ErrorMsg (opcode, "undefined operation " + key);
 			return new TokenTypeVoid (opcode);
 		}
@@ -5720,16 +5749,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			return this;
 		}
 
-		private void CalcSideEffects()
-		{
-			sideEffects = rValLeft.sideEffects || rValRight.sideEffects;
-			if (!sideEffects) {
-				string opStr = opcode.ToString ();
-				sideEffects = opStr.EndsWith ("=") && (opStr != ">=") && 
-				              (opStr != "<=") && (opStr != "!=") && (opStr != "==");
-			}
-		}
-
 		// debugging
 		public override void DebString (StringBuilder sb)
 		{
@@ -5749,9 +5768,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public TokenRValOpUn (TokenKw op, TokenRVal right) : base (op)
 		{
-			opcode      = op;
-			rVal        = right;
-			sideEffects = right.sideEffects;
+			opcode = op;
+			rVal   = right;
 		}
 
 		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)

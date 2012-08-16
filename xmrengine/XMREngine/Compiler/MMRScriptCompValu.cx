@@ -63,22 +63,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				                                    new Type[] { typeof (string), typeof (string), typeof (object) });
 
 		public TokenType type;        // type of the value and where in the source it was used
-		public bool isFinal;          // true iff value cannot be changed by any side effects
-		                              // - ie, PushVal() is idempotent (no calls, autoincrements, assignment, etc)
-		                              // - temps do not change because we allocate a new one each time
-		                              // - constants never change because they are constant
-		                              // - expressions consisting of all isFinal operands are final
 
 		public CompValu (TokenType type)
 		{
-			this.type    = type;
-			this.isFinal = true;
-		}
-
-		public CompValu (TokenType type, bool isFinal)
-		{
-			this.type    = type;
-			this.isFinal = isFinal;
+			this.type = type;
 		}
 
 		public Type ToSysType()
