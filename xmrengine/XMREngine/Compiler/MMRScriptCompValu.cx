@@ -884,7 +884,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
-			throw new Exception ("cannot store into contant");
+			throw new Exception ("cannot store into constant");
 		}
 	}
 
@@ -913,7 +913,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
-			throw new Exception ("cannot store into list element");
+			scg.ErrorMsg (errorAt, "cannot store into list element");
+			scg.ilGen.Emit (OpCodes.Pop);
 		}
 
 		public static object GetElementFromList (LSL_List lis, int idx)
@@ -1069,7 +1070,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
-			throw new Exception ("cannot store into string character");
+			scg.ErrorMsg (errorAt, "cannot store into string character");
+			scg.ilGen.Emit (OpCodes.Pop);
 		}
 
 		public static char GetCharFromString (string s, int i)
