@@ -95,7 +95,7 @@ class Kunta {
             return new Enumerator (this);
         }
 
-        public class Enumerator : IEnumerator<KeyValuePair<K,V>> {
+        private class Enumerator : IEnumerator<KeyValuePair<K,V>> {
             private Dictionary<K,V> thedict;
             private IEnumerator<KeyValuePair<K,V>> listenum;
             private integer index;
@@ -138,7 +138,7 @@ class Kunta {
             }
         }
 
-        public class KeyList : ICountable<K> {
+        private class KeyList : ICountable<K> {
             private Dictionary<K,V> dict;
 
             public constructor (Dictionary<K,V> dict)
@@ -154,7 +154,7 @@ class Kunta {
                 return new Enumerator (this.dict);
             }
 
-            public class Enumerator : IEnumerator<K> {
+            private class Enumerator : IEnumerator<K> {
                 public IEnumerator<KeyValuePair<K,V>> listenum;
 
                 public constructor (Dictionary<K,V> thedict)
@@ -182,7 +182,7 @@ class Kunta {
             }
         }
 
-        public class ValueList : ICountable<V> {
+        private class ValueList : ICountable<V> {
             private Dictionary<K,V> dict;
 
             public constructor (Dictionary<K,V> dict)
@@ -198,7 +198,7 @@ class Kunta {
                 return new Enumerator (this.dict);
             }
 
-            public class Enumerator : IEnumerator<V> {
+            private class Enumerator : IEnumerator<V> {
                 public IEnumerator<KeyValuePair<K,V>> listenum;
 
                 public constructor (Dictionary<K,V> thedict)
@@ -287,7 +287,7 @@ class Kunta {
             return new Enumerator (this);
         }
 
-        public class Enumerator : IEnumerator<T> {
+        private class Enumerator : IEnumerator<T> {
             private List<T> thelist;
             private integer atend;
             private Node current;

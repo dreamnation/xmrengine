@@ -3143,6 +3143,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			TokenDeclVar declVar = FindThisMember (sdtDecl.extends, baseField.fieldName, argsig);
 			if (declVar != null) {
+				CheckAccess (declVar, baseField.fieldName);
 				if ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) != 0) {
 					ErrorMsg (baseField, "non-static reference to static member " + fieldName + ArgSigString (argsig));
 					return new CompValuVoid (baseField);
@@ -3178,6 +3179,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				TokenDeclSDTypeClass sdtDecl = sdtType.decl;
 				TokenDeclVar declVar = FindThisMember (sdtDecl, lVal.fieldName, argsig);
 				if (declVar != null) {
+					CheckAccess (declVar, lVal.fieldName);
 					if ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) != 0) {
 						ErrorMsg (lVal.fieldName, "non-static reference to static member " + fieldName);
 						return new CompValuVoid (lVal.fieldName);
@@ -3383,6 +3385,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				TokenTypeSDTypeClass sdtType = (TokenTypeSDTypeClass)stType;
 				TokenDeclVar declVar = FindThisMember (sdtType.decl, lVal.fieldName, argsig);
 				if (declVar != null) {
+					CheckAccess (declVar, lVal.fieldName);
 					if ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) == 0) {
 						ErrorMsg (lVal.fieldName, "static reference to non-static member " + fieldName);
 						return new CompValuVoid (lVal.fieldName);
@@ -3590,6 +3593,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				TokenName funcName = new TokenName (token.opcode, "$op" + opcodeIndex);
 				TokenDeclVar declFunc = FindThisMember (sdtDecl, funcName, argsig);
 				if (declFunc != null) {
+					CheckAccess (declFunc, funcName);
 					CompValu method = new CompValuInstMeth (declFunc, left, false);
 					CompValu[] argRVals = new CompValu[] { right };
 					return GenerateACall (method, argRVals, token);
@@ -3784,6 +3788,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				TokenName funcName = new TokenName (token.opcode, "$op" + token.opcode.ToString ());
 				TokenDeclVar declFunc = FindThisMember (sdtDecl, funcName, zeroArgs);
 				if (declFunc != null) {
+					CheckAccess (declFunc, funcName);
 					CompValu method = new CompValuInstMeth (declFunc, inRVal, false);
 					return GenerateACall (method, zeroCompValus, token);
 				}
@@ -5091,7 +5096,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					ErrorMsg (members[i], "  " + members[i].argDecl.GetArgSig ());
 				}
 			}
-			CheckAccess (members[0], name);
 			return members[0];
 		}
 
