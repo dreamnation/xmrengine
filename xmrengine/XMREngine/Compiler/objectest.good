@@ -12,6 +12,12 @@ llOwnerSay: element=(string) <5.000000,6.000000,7.000000>
 llOwnerSay: s2i: two => 2
 llOwnerSay: s2i: one => 1
 llOwnerSay: s2i: three => 3
+llOwnerSay: s2i.key = two
+llOwnerSay: s2i.key = one
+llOwnerSay: s2i.key = three
+llOwnerSay: s2i.value = 2
+llOwnerSay: s2i.value = 1
+llOwnerSay: s2i.value = 3
 llOwnerSay: x.Length = 6
 llOwnerSay: y.Length = 12
 llOwnerSay:   20.000000  26.000000  32.000000  38.000000  -- good

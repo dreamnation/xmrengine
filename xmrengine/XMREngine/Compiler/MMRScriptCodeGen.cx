@@ -3162,7 +3162,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		/**
-		 * @brief we have an L-value token that is an instance field/method within a struct.
+		 * @brief We have an L-value token that is an instance field/method within a struct.
 		 * @returns a CompValu giving the type and location of the field/method in the struct.
 		 */
 		private CompValu GenerateFromLValIField (TokenLValIField lVal, TokenType[] argsig)
@@ -3195,10 +3195,64 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (baseRVal.type is TokenTypeSDTypeInterface) {
 				TokenTypeSDTypeInterface sdtType = (TokenTypeSDTypeInterface)baseRVal.type;
 				TokenDeclSDTypeInterface sdtDecl = sdtType.decl;
-				TokenDeclVar declVar = FindSingleMember (sdtDecl.methProtos, lVal.fieldName, argsig);
+				TokenDeclSDTypeInterface impl;
+				TokenDeclVar declVar = sdtDecl.FindIFaceMember (this, lVal.fieldName, argsig, out impl);
 				if (declVar != null) {
-					return new CompValuIntfMeth (declVar, baseRVal);
+
+					/*
+					 * Maybe accessing a method declared directly by that interface.
+					 */
+					if (impl == sdtDecl) return new CompValuIntfMeth (declVar, baseRVal);
+
+					/*
+					 * Accessing a method of another interface that the primary interface says it implements.
+					 * In this case, we have to cast from the primary interface to that secondary interface.
+					 *
+					 * interface IEnumerable {
+					 *     IEnumerator GetEnumerator ();
+					 * }
+					 * interface ICountable : IEnumerable {
+					 *     integer GetCount ();
+					 * }
+					 * class List : ICountable {
+					 *     public GetCount () : ICountable { ... }
+					 *     public GetEnumerator () : IEnumerator { ... }
+					 * }
+					 *
+					 *     ICountable aList = new List ();
+					 *     IEnumerator anEnumer = aList.GetEnumerator ();   << we are here
+					 *                                                      << baseRVal = aList
+					 *                                                      << sdtDecl = ICountable
+					 *                                                      << impl = IEnumerator
+					 *                                                      << fieldName = GetEnumerator
+					 *                                                      << argsig = ()
+					 * So we have to cast aList from ICountable to IEnumerable.
+					 */
+
+					// make type token for the secondary interface type
+					TokenType subIntfType = impl.MakeRefToken (lVal);
+
+					// make a temp variable of the secondary interface type
+					CompValuTemp castBase = new CompValuTemp (subIntfType, null, this);
+
+					// output code to cast from the primary interface to the secondary interface
+					// this is 2 basic steps:
+					// 1) cast from primary interface object -> class object
+					//    ...gets it from interfaceObject.delegateArray[0].Target
+					// 2) cast from class object -> secondary interface object
+					//    ...gets it from classObject.sdtcITable[interfaceIndex]
+					baseRVal.PushVal (this, lVal.baseRVal, subIntfType);
+
+					// save result of casting in temp
+					castBase.Pop (this, lVal);
+
+					// now set up reference to the method
+					return new CompValuIntfMeth (declVar, castBase);
 				}
+
+				/*
+				 * Can't find it anywhere.
+				 */
 				ErrorMsg (lVal.fieldName, "no member " + fieldName + " in interface " + sdtDecl.longName.val);
 				return new CompValuVoid (lVal.fieldName);
 			}

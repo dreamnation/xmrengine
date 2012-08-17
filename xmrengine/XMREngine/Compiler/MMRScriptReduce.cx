@@ -1281,9 +1281,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						}
 					} else if (u is TokenTypeSDTypeInterface) {
 						TokenDeclSDTypeInterface i = ((TokenTypeSDTypeInterface)u).decl;
-						if (!tokdeclcl.implements.Contains (i)) {
-							tokdeclcl.implements.Add (i);
-						}
+						i.AddToClassDecl (tokdeclcl);
 					} else {
 						ErrorMsg (u, "expecting class or interface name");
 						if (u is TokenKwBrcOpen) break;
@@ -1761,6 +1759,25 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			tokdeclin.outerSDType = outerSDType;
 			tokdeclin.accessLevel = flags;
 			u = u.nextToken;
+
+			// next can be ':' followed by list of implemented interfaces
+			if (u is TokenKwColon) {
+				u = u.nextToken;
+				while (true) {
+					if (u is TokenTypeSDTypeInterface) {
+						TokenDeclSDTypeInterface i = ((TokenTypeSDTypeInterface)u).decl;
+						if (!tokdeclin.implements.Contains (i)) {
+							tokdeclin.implements.Add (i);
+						}
+					} else {
+						ErrorMsg (u, "expecting interface name");
+						if (u is TokenKwBrcOpen) break;
+					}
+					u = u.nextToken;
+					if (!(u is TokenKwComma)) break;
+					u = u.nextToken;
+				}
+			}
 
 			// next must be '{' to open interface declaration body
 			if (!(u is TokenKwBrcOpen)) {
@@ -4319,7 +4336,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	}
 
 	public class TokenDeclSDTypeInterface : TokenDeclSDType {
-		public VarDict methProtos = new VarDict ();
+		public VarDict methProtos = new VarDict ();	// any class this implements this interface
+								// must implement all of these methods
+
+		public List<TokenDeclSDTypeInterface> implements = new List<TokenDeclSDTypeInterface> ();
+								// any class that implements this interface
+								// must also implement all of these interfaces
 
 		public TokenDeclSDTypeInterface (TokenName shortName) : base (shortName)
 		{
@@ -4354,6 +4376,55 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public override void ReadFromFile (BinaryReader objFileReader, TextWriter asmFileWriter)
 		{ }
+
+		/**
+		 * @brief Add this interface to the list of interfaces implemented by a class if not already.
+		 *        And also add this interface's implemented interfaces to the class for those not already there, 
+		 *        just as if the class itself had declared to implement those interfaces.
+		 */
+		public void AddToClassDecl (TokenDeclSDTypeClass tokdeclcl)
+		{
+			if (!tokdeclcl.implements.Contains (this)) {
+				tokdeclcl.implements.Add (this);
+				foreach (TokenDeclSDTypeInterface subimpl in this.implements) {
+					subimpl.AddToClassDecl (tokdeclcl);
+				}
+			}
+		}
+
+		/**
+		 * @brief See if the 'this' interface implements the new interface.
+		 *        Do a recursive (deep) check.
+		 */
+		public bool Implements (TokenDeclSDTypeInterface newDecl)
+		{
+			foreach (TokenDeclSDTypeInterface ii in this.implements) {
+				if (ii == newDecl) return true;
+				if (ii.Implements (newDecl)) return true;
+			}
+			return false;
+		}
+
+		/**
+		 * @brief Scan an interface and all its implemented interfaces for a method.
+		 * @param scg = script code generator (ie, which script is being compiled)
+		 * @param fieldName = name of the method being looked for
+		 * @param argsig = the method's argument signature
+		 * @returns null: no such method; intf = undefined
+		 *          else: method; intf = which interface actually found in
+		 */
+		public TokenDeclVar FindIFaceMember (ScriptCodeGen scg, TokenName fieldName, TokenType[] argsig, out TokenDeclSDTypeInterface intf)
+		{
+			intf = this;
+			TokenDeclVar var = scg.FindSingleMember (this.methProtos, fieldName, argsig);
+			if (var == null) {
+				foreach (TokenDeclSDTypeInterface ii in this.implements) {
+					var = ii.FindIFaceMember (scg, fieldName, argsig, out intf);
+					if (var != null) break;
+				}
+			}
+			return var;
+		}
 	}
 
 	/**
@@ -5050,7 +5121,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			TokenDeclVar var = scg.FindThisMember (thisClass.extends, fieldName, argsig);
 			if (var != null) return var.type;
-			scg.ErrorMsg (fieldName, "unknown member for " + thisClass.extends.ToString ());
+			scg.ErrorMsg (fieldName, "unknown member of " + thisClass.extends.ToString ());
 			return new TokenTypeVoid (fieldName);
 		}
 
@@ -5068,7 +5139,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	}
 
 	/**
-	 * @brief a field within an L-value struct is an L-value
+	 * @brief a field within an struct is an L-value
 	 */
 	public class TokenLValIField : TokenLVal {
 		public TokenRVal baseRVal;
@@ -5084,7 +5155,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				if (var != null) return var.type;
 			}
 			if (baseType is TokenTypeSDTypeInterface) {
-				TokenDeclVar var = scg.FindSingleMember (((TokenTypeSDTypeInterface)baseType).decl.methProtos, fieldName, argsig);
+				TokenDeclSDTypeInterface baseIntfDecl = ((TokenTypeSDTypeInterface)baseType).decl;
+				TokenDeclVar var = baseIntfDecl.FindIFaceMember (scg, fieldName, argsig, out baseIntfDecl);
 				if (var != null) return var.type;
 			}
 			if (baseType is TokenTypeArray) {

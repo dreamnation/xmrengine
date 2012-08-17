@@ -45,7 +45,7 @@ default {
         stuff.Enqueue (1);
         stuff.Enqueue ((string)[2,3,4]);
         stuff.Enqueue (<5,6,7>);
-        llOwnerSay ("count=" + stuff.Count ());
+        llOwnerSay ("count=" + stuff.GetCount ());
         integer first = 1;
         for (IEnumerator<string> stuffenum = stuff.GetEnumerator (); stuffenum.MoveNext ();) {
             if (first) llOwnerSay ("typeof (stuffenum) = " + xmrTypeName (stuffenum));
@@ -57,9 +57,16 @@ default {
         s2i.Add ("one", 1);
         s2i.Add ("two", 2);
         s2i.Add ("three", 3);
-        for (IEnumerator<KeyValuePair<string,integer>> kvpenum = s2i.GetEnumerator (); kvpenum.MoveNext ();) {
+        ICountable<KeyValuePair<string,integer>> s2iCountable = (ICountable<KeyValuePair<string,integer>>) s2i;
+        for (IEnumerator<KeyValuePair<string,integer>> kvpenum = s2iCountable.GetEnumerator (); kvpenum.MoveNext ();) {
             KeyValuePair<string,integer> kvp = kvpenum.GetCurrent ();
             llOwnerSay ("s2i: " + kvp.kee + " => " + kvp.value);
+        }
+        for (IEnumerator<string> keyenum = s2i.GetKeyList ().GetEnumerator (); keyenum.MoveNext ();) {
+            llOwnerSay ("s2i.key = " + keyenum.GetCurrent ());
+        }
+        for (IEnumerator<integer> valenum = s2i.GetValueList ().GetEnumerator (); valenum.MoveNext ();) {
+            llOwnerSay ("s2i.value = " + valenum.GetCurrent ());
         }
 
         float[,] x = new float[,](2,3);  // 2 rows, 3 columns

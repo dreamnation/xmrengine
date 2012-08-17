@@ -1,8 +1,12 @@
-// Kunta's Dictionary/List implementation, 1.0.0
+// Kunta's Dictionary/List implementation, 1.1.0
 
 xmroption advflowctl;
 xmroption arrays;
 xmroption objects;
+
+interface ICountable<T> : IEnumerable<T> {
+    integer GetCount ();
+}
 
 interface IEnumerable<T> {
     IEnumerator<T> GetEnumerator ();
@@ -14,7 +18,8 @@ interface IEnumerator<T> {
     Reset ();
 }
 
-class Dictionary<K,V> : IEnumerable<KeyValuePair<K,V>> {
+class Dictionary<K,V> : ICountable<KeyValuePair<K,V>> {
+    public integer count;
     public integer hashSize;
     public List<KeyValuePair<K,V>>[] kvpss;
 
@@ -48,6 +53,7 @@ class Dictionary<K,V> : IEnumerable<KeyValuePair<K,V>> {
             this.kvpss[index] = kvps = new List<KeyValuePair<K,V>> ();
         }
         kvps.Enqueue (kvp);
+        count ++;
         return kvp;
     }
 
@@ -62,6 +68,23 @@ class Dictionary<K,V> : IEnumerable<KeyValuePair<K,V>> {
             if (kvp.kee == kee) return kvp;
         }
         return undef;
+    }
+
+    public integer GetCount () : ICountable<KeyValuePair<K,V>>
+    {
+        return count;
+    }
+
+    public KeyList   keyList   = new KeyList   (this);
+    public ValueList valueList = new ValueList (this);
+
+    public ICountable<K> GetKeyList ()
+    {
+        return keyList;
+    }
+    public ICountable<V> GetValueList ()
+    {
+        return valueList;
     }
 
     // iterate through list of key-value pairs
@@ -97,7 +120,7 @@ class Dictionary<K,V> : IEnumerable<KeyValuePair<K,V>> {
                 if (this.listenum.MoveNext ()) break;
             @done;
                 do {
-                    if (this.index >= this.thedict.hashSize) return 0;
+                    if (this.index >= thedict.hashSize) return 0;
                     kvps = this.thedict.kvpss[this.index++];
                 } while (kvps == undef);
                 this.listenum = kvps.GetEnumerator ();
@@ -112,6 +135,92 @@ class Dictionary<K,V> : IEnumerable<KeyValuePair<K,V>> {
             this.listenum = undef;
         }
     }
+
+    public class KeyList : ICountable<K> {
+        public Dictionary<K,V> dict;
+        public constructor (Dictionary<K,V> dict)
+        {
+            this.dict = dict;
+        }
+        public integer GetCount () : ICountable<K>
+        {
+            return this.dict.GetCount ();
+        }
+        public IEnumerator<K> GetEnumerator () : IEnumerable<K>
+        {
+            return new Enumerator (this.dict);
+        }
+
+        public class Enumerator : IEnumerator<K> {
+            public IEnumerator<KeyValuePair<K,V>> listenum;
+
+            public constructor (Dictionary<K,V> thedict)
+            {
+                listenum = thedict.GetEnumerator ();
+            }
+
+            // get key element currently pointed to
+            public K GetCurrent () : IEnumerator<K>
+            {
+                return this.listenum.GetCurrent ().kee;
+            }
+
+            // move to next element in list
+            public integer MoveNext () : IEnumerator<K>
+            {
+                return listenum.MoveNext ();
+            }
+
+            // reset back to just before beginning of list
+            public Reset () : IEnumerator<K>
+            {
+                this.listenum.Reset ();
+            }
+        }
+    }
+
+    public class ValueList : ICountable<V> {
+        public Dictionary<K,V> dict;
+        public constructor (Dictionary<K,V> dict)
+        {
+            this.dict = dict;
+        }
+        public integer GetCount () : ICountable<V>
+        {
+            return this.dict.GetCount ();
+        }
+        public IEnumerator<V> GetEnumerator () : IEnumerable<V>
+        {
+            return new Enumerator (this.dict);
+        }
+
+        public class Enumerator : IEnumerator<V> {
+            public IEnumerator<KeyValuePair<K,V>> listenum;
+
+            public constructor (Dictionary<K,V> thedict)
+            {
+                listenum = thedict.GetEnumerator ();
+            }
+
+            // get value element currently pointed to
+            public V GetCurrent () : IEnumerator<V>
+            {
+                return this.listenum.GetCurrent ().value;
+            }
+
+            // move to next element in list
+            public integer MoveNext () : IEnumerator<V>
+            {
+                return listenum.MoveNext ();
+            }
+
+            // reset back to just before beginning of list
+            public Reset () : IEnumerator<V>
+            {
+                this.listenum.Reset ();
+            }
+        }
+    }
 }
 
 class KeyValuePair<K,V> {
@@ -119,7 +228,7 @@ class KeyValuePair<K,V> {
     public V value;
 }
 
-class List<T> : IEnumerable<T> {
+class List<T> : ICountable<T> {
     public Enumerator.Node first;
     public Enumerator.Node last;
     public integer count;
@@ -163,7 +272,7 @@ class List<T> : IEnumerable<T> {
     }
 
     // see how many are in list
-    public integer Count ()
+    public integer GetCount () : ICountable<T>
     {
         return count;
     }

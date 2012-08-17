@@ -171,10 +171,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
-			 * One script-defined interface type cannot be cast to another script-defined interface type.
+			 * One script-defined interface type cannot be cast to another script-defined interface type, 
+			 * unless the old interface declares that it implements the new interface.  That proves that 
+			 * the underlying object, no matter what type, implements the new interface.
 			 */
 			if ((oldType is TokenTypeSDTypeInterface) && (newType is TokenTypeSDTypeInterface)) {
-				goto illcast;
+				TokenDeclSDTypeInterface oldDecl = ((TokenTypeSDTypeInterface)oldType).decl;
+				TokenDeclSDTypeInterface newDecl = ((TokenTypeSDTypeInterface)newType).decl;
+				if (!oldDecl.Implements (newDecl)) goto illcast;
+				scg.ilGen.Emit (OpCodes.Ldstr, newType.ToString ());
+				scg.ilGen.Emit (OpCodes.Call, sdTypeClassCastObj2IFaceMethodInfo);
+				return;
 			}
 
 			/*
