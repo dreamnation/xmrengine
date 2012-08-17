@@ -39,7 +39,7 @@ default {
     state_entry ()
     {
         llOwnerSay ("nontriv 99 = " + nontriv);
-        List<string> stuff = new List<string> ();
+        Kunta.List<string> stuff = new Kunta.List<string> ();
         llOwnerSay ("typeof(stuff) = " + xmrTypeName (stuff));
         stuff.Enqueue ("abcdef");
         stuff.Enqueue (1);
@@ -47,25 +47,25 @@ default {
         stuff.Enqueue (<5,6,7>);
         llOwnerSay ("count=" + stuff.GetCount ());
         integer first = 1;
-        for (IEnumerator<string> stuffenum = stuff.GetEnumerator (); stuffenum.MoveNext ();) {
+        for (Kunta.IEnumerator<string> stuffenum = stuff.GetEnumerator (); stuffenum.MoveNext ();) {
             if (first) llOwnerSay ("typeof (stuffenum) = " + xmrTypeName (stuffenum));
             llOwnerSay ("element=(" + xmrTypeName (stuffenum.GetCurrent ()) + ") " + stuffenum.GetCurrent ());
             first = 0;
         }
 
-        Dictionary<string,integer> s2i = new Dictionary<string,integer> (23);
+        Kunta.Dictionary<string,integer> s2i = new Kunta.Dictionary<string,integer> (23);
         s2i.Add ("one", 1);
         s2i.Add ("two", 2);
         s2i.Add ("three", 3);
-        ICountable<KeyValuePair<string,integer>> s2iCountable = (ICountable<KeyValuePair<string,integer>>) s2i;
-        for (IEnumerator<KeyValuePair<string,integer>> kvpenum = s2iCountable.GetEnumerator (); kvpenum.MoveNext ();) {
-            KeyValuePair<string,integer> kvp = kvpenum.GetCurrent ();
+        Kunta.ICountable<Kunta.KeyValuePair<string,integer>> s2iCountable = (Kunta.ICountable<Kunta.KeyValuePair<string,integer>>) s2i;
+        for (Kunta.IEnumerator<Kunta.KeyValuePair<string,integer>> kvpenum = s2iCountable.GetEnumerator (); kvpenum.MoveNext ();) {
+            Kunta.KeyValuePair<string,integer> kvp = kvpenum.GetCurrent ();
             llOwnerSay ("s2i: " + kvp.kee + " => " + kvp.value);
         }
-        for (IEnumerator<string> keyenum = s2i.GetKeyList ().GetEnumerator (); keyenum.MoveNext ();) {
+        for (Kunta.IEnumerator<string> keyenum = s2i.GetKeyList ().GetEnumerator (); keyenum.MoveNext ();) {
             llOwnerSay ("s2i.key = " + keyenum.GetCurrent ());
         }
-        for (IEnumerator<integer> valenum = s2i.GetValueList ().GetEnumerator (); valenum.MoveNext ();) {
+        for (Kunta.IEnumerator<integer> valenum = s2i.GetValueList ().GetEnumerator (); valenum.MoveNext ();) {
             llOwnerSay ("s2i.value = " + valenum.GetCurrent ());
         }
 

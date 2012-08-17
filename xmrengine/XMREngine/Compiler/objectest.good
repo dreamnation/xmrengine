@@ -2,9 +2,9 @@ Compiling...
 Running...
 llOwnerSay: test non-trivial global init
 llOwnerSay: nontriv 99 = 99
-llOwnerSay: typeof(stuff) = List<string>
+llOwnerSay: typeof(stuff) = Kunta.List<string>
 llOwnerSay: count=4
-llOwnerSay: typeof (stuffenum) = List<string>.Enumerator
+llOwnerSay: typeof (stuffenum) = Kunta.List<string>.Enumerator
 llOwnerSay: element=(string) abcdef
 llOwnerSay: element=(string) 1
 llOwnerSay: element=(string) 234

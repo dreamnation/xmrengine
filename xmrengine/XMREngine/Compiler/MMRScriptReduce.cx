@@ -1468,6 +1468,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		/**
 		 * @brief Parse out abstract/override/private/protected/public/static/virtual keywords.
+		 * @param token = first token to evaluate
+		 * @returns flags found; token = unprocessed token
 		 */
 		private Dictionary<uint, Token> foundFlags = new Dictionary<uint, Token> ();
 		private uint ParseQualifierFlags (ref Token token)
@@ -1744,7 +1746,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		/**
 		 * @brief Parse an interface declaration.
-		 * @param token = points to  ParseDeclInterface keyword on entry
+		 * @param token = points to TokenDeclSDTypeInterface token on entry
 		 *                points just past closing '}' on return
 		 * @param outerSDType = null: this is a top-level interface
 		 *                      else: this interface is being defined inside this type
@@ -3564,6 +3566,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		                                             // else points to defining script-defined type
 		public Dictionary<string, TokenDeclSDType> innerSDTypes = new Dictionary<string, TokenDeclSDType> ();
 		                                             // indexed by shortName
+		public Token begToken;                       // token that begins the definition (might be this or something like 'public')
 		public Token endToken;                       // the '}' or ';' that ends the definition
 
 		// generic instantiation assumes none of the rest needs to be cloned (well except for the shortName)
@@ -3651,7 +3654,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			instdecl.outerSDType = this.outerSDType;
 
 			/*
-			 * Splice instantiation (instdecl) in just before the prototype (this).
+			 * The generic prototype may have stuff like 'public' just before it and we need to copy that too.
+			 */
+			Token prefix;
+			for (prefix = this; (prefix = prefix.prevToken) != null;) {
+				if (!(prefix is TokenKwPublic) && !(prefix is TokenKwProtected) && !(prefix is TokenKwPrivate)) break;
+			}
+			this.begToken = prefix.nextToken;
+
+			/*
+			 * Splice in a copy of the prefix tokens, just before the beginning token of prototype (this.begToken).
+			 */
+			while ((prefix = prefix.nextToken) != this) {
+				SpliceSourceToken (prefix.CopyToken (prefix));
+			}
+
+			/*
+			 * Splice instantiation (instdecl) in just before the beginning token of prototype (this.begToken).
 			 */
 			SpliceSourceToken (instdecl);
 
@@ -3756,11 +3775,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 			return instdecl;
 		}
+
+		/**
+		 * @brief Splice a source token in just before the type's beginning keyword.
+		 */
 		private void SpliceSourceToken (Token it)
 		{
-			it.nextToken = this;
-			(it.prevToken = this.prevToken).nextToken = it;
-			this.prevToken = it;
+			it.nextToken = this.begToken;
+			(it.prevToken = this.begToken.prevToken).nextToken = it;
+			this.begToken.prevToken = it;
 		}
 
 		/**
