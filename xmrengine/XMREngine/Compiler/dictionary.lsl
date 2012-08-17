@@ -22,9 +22,11 @@ class Kunta {
     }
 
     public class Dictionary<K,V> : ICountable<KeyValuePair<K,V>> {
-        public integer count;
-        public integer hashSize;
-        public List<KeyValuePair<K,V>>[] kvpss;
+        private integer count;
+        private integer hashSize;
+        private List<KeyValuePair<K,V>>[] kvpss;
+        private KeyList   keyList   = new KeyList   (this);
+        private ValueList valueList = new ValueList (this);
 
         public constructor ()
         {
@@ -78,9 +80,6 @@ class Kunta {
             return count;
         }
 
-        public KeyList   keyList   = new KeyList   (this);
-        public ValueList valueList = new ValueList (this);
-
         public ICountable<K> GetKeyList ()
         {
             return keyList;
@@ -97,9 +96,9 @@ class Kunta {
         }
 
         public class Enumerator : IEnumerator<KeyValuePair<K,V>> {
-            public Dictionary<K,V> thedict;
-            public IEnumerator<KeyValuePair<K,V>> listenum;
-            public integer index;
+            private Dictionary<K,V> thedict;
+            private IEnumerator<KeyValuePair<K,V>> listenum;
+            private integer index;
 
             public constructor (Dictionary<K,V> thedict)
             {
@@ -140,7 +139,8 @@ class Kunta {
         }
 
         public class KeyList : ICountable<K> {
-            public Dictionary<K,V> dict;
+            private Dictionary<K,V> dict;
+
             public constructor (Dictionary<K,V> dict)
             {
                 this.dict = dict;
@@ -183,7 +183,8 @@ class Kunta {
         }
 
         public class ValueList : ICountable<V> {
-            public Dictionary<K,V> dict;
+            private Dictionary<K,V> dict;
+
             public constructor (Dictionary<K,V> dict)
             {
                 this.dict = dict;
@@ -232,9 +233,9 @@ class Kunta {
     }
 
     public class List<T> : ICountable<T> {
-        public Enumerator.Node first;
-        public Enumerator.Node last;
-        public integer count;
+        private Enumerator.Node first;
+        private Enumerator.Node last;
+        private integer count;
 
         // add to end of list
         public Enqueue (T obj)
@@ -287,9 +288,9 @@ class Kunta {
         }
 
         public class Enumerator : IEnumerator<T> {
-            public List<T> thelist;
-            public integer atend;
-            public Node current;
+            private List<T> thelist;
+            private integer atend;
+            private Node current;
 
             public constructor (List<T> thelist)
             {
