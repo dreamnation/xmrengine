@@ -1062,7 +1062,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                 /*
                  * Return the whole thing as one string.
                  */
-                StringBuilder sb = new StringBuilder (total);
+                StringBuilder sb = new StringBuilder (total + url.Length + 20);
+                sb.Append ("# 1 \"");
+                sb.Append (url);
+                sb.Append ("\"\n");
                 foreach (char[] fullBuff in fullBuffs) {
                     sb.Append (fullBuff);
                 }
