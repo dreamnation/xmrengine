@@ -1,5 +1,5 @@
 /***************************************************\
- *  COPYRIGHT 2009, Mike Rieker, Beverly, MA, USA  *
+ *  COPYRIGHT 2012, Mike Rieker, Beverly, MA, USA  *
  *  All rights reserved.                           *
 \***************************************************/
 
@@ -21,6 +21,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Net;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Text;
@@ -143,48 +145,120 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         private string filNam;          // current source file name
         private string source;          // the whole script source code
         private Token lastToken;        // last token created so far
+        private string cameFrom;        // where the source came from
+        private TextWriter saveSource;  // save copy of source here (or null)
         private bool optionArrays;      // has seen 'XMROption arrays;'
         private bool optionAdvFlowCtl;  // has seen 'XMROption advFlowCtl;'
         private bool optionTryCatch;    // has seen 'XMROption tryCatch;'
         private bool optionObjects;     // has seen 'XMROption objects;'
         private bool optionChars;       // has seen 'XMROption chars;'
+        public int expiryDays;          // has seen 'XMROption expiryDays;'
 
         /**
          * @brief convert a source file in the form of a string
          *        to a list of raw tokens
-         * @param emsg   = where to output messages to
-         * @param source = whole source file contents
+         * @param cameFrom = where the source came from
+         * @param emsg     = where to output messages to
+         * @param source   = whole source file contents
          * @returns null: conversion error, message already output
          *          else: list of tokens, starting with TokenBegin, ending with TokenEnd.
          */
-        public static TokenBegin Construct (TokenErrorMessage emsg, string source, out string sourceHash)
+        public static TokenBegin Construct (string cameFrom, TextWriter saveSource, TokenErrorMessage emsg, string source, out string sourceHash)
         {
-            /*
-             * Return source hash so caller can know if source changes.
-             */
-            System.Security.Cryptography.MD5 md5 = System.Security.Cryptography.MD5.Create ();
-            byte[] sourceBytes = System.Text.Encoding.ASCII.GetBytes (source);
-            byte[] hashBytes   = md5.ComputeHash (sourceBytes);
-            int hashBytesLen   = hashBytes.Length;
-            StringBuilder sb   = new StringBuilder (hashBytesLen * 2 + 2);
-            for (int i = 0; i < hashBytesLen; i ++) {
-                sb.Append (hashBytes[i].ToString ("X2"));
-            }
-            sourceHash = sb.ToString ();
+            sourceHash = null;
 
             /*
              * Now do the tokenization.
              */
             TokenBegin tokenBegin = new TokenBegin (emsg, "", 0, 0);
+            tokenBegin.cameFrom   = cameFrom;
+            tokenBegin.saveSource = saveSource;
             tokenBegin.lastToken  = tokenBegin;
             tokenBegin.source     = source;
+            tokenBegin.filNam     = "";
+            if (saveSource != null) saveSource.WriteLine (source);
             tokenBegin.Tokenize ();
             if (tokenBegin.youveAnError) return null;
             tokenBegin.AppendToken (new TokenEnd (emsg, tokenBegin.filNam, ++ tokenBegin.lineNo, 0));
+
+            /*
+             * Return source hash so caller can know if source changes.
+             */
+            System.Security.Cryptography.MD5 md5 = System.Security.Cryptography.MD5.Create ();
+            byte[] hashBytes = md5.ComputeHash (new TokenStream (tokenBegin));
+            int hashBytesLen = hashBytes.Length;
+            StringBuilder sb = new StringBuilder (hashBytesLen * 2);
+            for (int i = 0; i < hashBytesLen; i ++) {
+                sb.Append (hashBytes[i].ToString ("X2"));
+            }
+            sourceHash = sb.ToString ();
+            if (saveSource != null) {
+                saveSource.WriteLine ("");
+                saveSource.WriteLine ("********************************************************************************");
+                saveSource.WriteLine ("****  source hash: " + sourceHash);
+                saveSource.WriteLine ("********************************************************************************");
+            }
+
             return tokenBegin;
         }
 
         private TokenBegin (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
+
+        /*
+         * Stream consisting of all the tokens.
+         * Null delimeters between the tokens.
+         * Used for creating the source hash.
+         */
+        private class TokenStream : Stream {
+            private Token curTok;
+            private bool delim;
+            private byte[] curBuf;
+            private int curOfs;
+            private int curLen;
+
+            public TokenStream (Token t)
+            {
+                curTok = t;
+            }
+
+            public override bool CanRead  { get { return true;  } }
+            public override bool CanSeek  { get { return false; } }
+            public override bool CanWrite { get { return false; } }
+            public override long Length   { get { return 0; } }
+            public override long Position { get { return 0; } set { } }
+
+            public override void Write (byte[] buffer, int offset, int count) { }
+            public override void Flush () { }
+            public override long Seek (long offset, SeekOrigin origin) { return 0; }
+            public override void SetLength (long value) { }
+
+            public override int Read (byte[] buffer, int offset, int count)
+            {
+                int len, total;
+                for (total = 0; total < count; total += len) {
+                    while ((len = curLen - curOfs) <= 0) {
+                        if (curTok is TokenEnd) goto done;
+                        curTok = curTok.nextToken;
+                        if (curTok is TokenEnd) goto done;
+                        curBuf = System.Text.Encoding.UTF8.GetBytes (curTok.ToString ());
+                        curOfs = 0;
+                        curLen = curBuf.Length;
+                        delim  = true;
+                    }
+                    if (delim) {
+                        buffer[offset+total] = 0;
+                        delim = false;
+                        len   = 1;
+                    } else {
+                        if (len > count - total) len = count - total;
+                        Array.Copy (curBuf, curOfs, buffer, offset + total, len);
+                        curOfs += len;
+                    }
+                }
+              done:
+                return total;
+            }
+        }
 
         /*
          * Produces raw token stream: names, numbers, strings, keywords/delimeters.
@@ -195,10 +269,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
          */
         private void Tokenize ()
         {
-            youveAnError = false;
             bolIdx = 0;
             lineNo = 0;
-            filNam = "";
             for (int i = 0; i < source.Length; i ++) {
                 char c = source[i];
                 if (c == '\n') {
@@ -409,6 +481,70 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                     }
                     lastToken = lastToken.prevToken.prevToken;
                     lastToken.nextToken = null;
+                    continue;
+                }
+
+                /*
+                 * Handle 'xmroption' 'expirydays' numberofdays ';'
+                 */
+                if ((c == ';') && 
+                    (lastToken is TokenInt) && 
+                    (lastToken.prevToken is TokenName) && 
+                    (lastToken.prevToken.prevToken is TokenName) &&
+                    (strcasecmp(((TokenName)lastToken.prevToken.prevToken).val, "xmroption") == 0) && 
+                    (strcasecmp(((TokenName)lastToken.prevToken).val, "expirydays") == 0)) {
+                    expiryDays = ((TokenInt)lastToken).val;
+                    this.lastToken = lastToken.prevToken.prevToken.prevToken;
+                    this.lastToken.nextToken = null;
+                    continue;
+                }
+
+
+                /*
+                 * Handle 'xmroption' 'include' sourceurl ';'
+                 */
+                if ((c == ';') && 
+                    (lastToken is TokenStr) && 
+                    (lastToken.prevToken is TokenName) && 
+                    (lastToken.prevToken.prevToken is TokenName) &&
+                    (strcasecmp(((TokenName)lastToken.prevToken.prevToken).val, "xmroption") == 0) && 
+                    (strcasecmp(((TokenName)lastToken.prevToken).val, "include") == 0)) {
+
+                    string newURL      = ((TokenStr)lastToken).val;
+                    if (newURL == "") {
+                        lastToken.ErrorMsg ("empty URL string");
+                        continue;
+                    }
+                    string newCameFrom = CreateURL (this.cameFrom, newURL);
+                    string newSource   = ReadSourceFromURL (newCameFrom);
+
+                    this.lastToken     = lastToken.prevToken.prevToken.prevToken;
+                    this.lastToken.nextToken = null;
+
+                    if (newSource != null) {
+                        if (saveSource != null) {
+                            saveSource.WriteLine ("");
+                            saveSource.WriteLine ("********************************************************************************");
+                            saveSource.WriteLine ("****  include url: " + newCameFrom);
+                            saveSource.WriteLine ("********************************************************************************");
+                            saveSource.WriteLine (newSource);
+                        }
+
+                        string saveSourc    = this.source;
+                        string saveFilNam   = this.filNam;
+                        string saveCameFrom = this.cameFrom;
+                        int saveBolIdx      = this.bolIdx;
+                        int saveLineNo      = this.lineNo;
+                        this.source   = newSource;
+                        this.filNam   = newURL;
+                        this.cameFrom = newCameFrom;
+                        this.Tokenize ();
+                        this.source   = saveSourc;
+                        this.filNam   = saveFilNam;
+                        this.cameFrom = saveCameFrom;
+                        this.bolIdx   = saveBolIdx;
+                        this.lineNo   = saveLineNo;
+                    }
                     continue;
                 }
 
@@ -823,6 +959,121 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
             return kws;
         }
+
+        /**
+         * @brief Create a URL from a base URL and a relative string
+         * @param oldurl = base url string
+         * @param relurl = relative url
+         * @returns new url string
+         */
+        private static string CreateURL (string oldurl, string relurl)
+        {
+            if (relurl.IndexOf ("://") >= 0) return relurl;
+            StringBuilder newurl = new StringBuilder (oldurl.Length + relurl.Length);
+            if (relurl[0] == '/') {
+                // file:///oldname + /newname => file:///newname
+                // http://webserver.com/oldname + /newname => http://webserver.com/newname
+                int i = oldurl.IndexOf ("://") + 3;
+                int j = oldurl.IndexOf ('/', i);
+                if (j < 0) j = oldurl.Length;
+                newurl.Append (oldurl.Substring (0, j));
+                newurl.Append (relurl);
+            } else {
+                // file:///oldname + newname => file:///newname
+                // http://webserver.com/oldname + newname => http://webserver.com/newname
+                int i = oldurl.LastIndexOf ('/') + 1;
+                newurl.Append (oldurl.Substring (0, i));
+                newurl.Append (relurl);
+            }
+            return newurl.ToString ();
+        }
+
+        /**
+         * @brief Read source file from a webserver somewhere out there.
+         */
+        private const int MAX_INCLUDE_SIZE = 100000;
+        private Dictionary<string, string> scriptIncludes = new Dictionary<string, string> ();
+        private string ReadSourceFromURL (string url)
+        {
+            WebResponse response = null;
+            Stream stream = null;
+            StreamReader reader = null;
+            WebRequest request = null;
+
+            try {
+
+                /*
+                 * Get stream to read from webserver.
+                 */
+                if (url.StartsWith ("file://")) {
+                    stream   = File.OpenRead (url.Substring (7));
+                } else {
+                    request  = WebRequest.Create (url);
+                    response = request.GetResponse ();
+                    stream   = response.GetResponseStream ();
+                }
+                reader = new StreamReader (stream);
+
+                /*
+                 * Read file from stream.
+                 */
+                char[] buf = new char[4000];
+                int len = 0;
+                int total = 0;
+                List<char[]> fullBuffs = new List<char[]> ();
+                string signature = null;
+
+                while (true) {
+
+                    /*
+                     * Read a big chunk of characters.
+                     */
+                    len = reader.ReadBlock (buf, 0, buf.Length);
+
+                    /*
+                     * Signature is first line of the first chunk read and must be contained therein.
+                     * If an include file with the same signature has already been seen by this script, 
+                     * this include file is ignored.
+                     */
+                    if (signature == null) {
+                        signature   = new String (buf, 0, len);
+                        int siglen  = signature.IndexOf ('\n');
+                        if (siglen <= 0) {
+                            throw new Exception ("missing signature in first " + len + " characters: " + url);
+                        }
+                        signature   = signature.Substring (0, siglen);
+                        if (scriptIncludes.ContainsKey (signature)) return null;
+                        scriptIncludes.Add (signature, "");
+                    }
+
+                    /*
+                     * Signature is ok, stash full blocks away and keep reading.
+                     * If short read, means we have hit the end of the stream.
+                     */
+                    total += len;
+                    if (total > MAX_INCLUDE_SIZE) {
+                        throw new Exception ("script include exceeds maximum " + MAX_INCLUDE_SIZE + ": " + url);
+                    }
+                    if (len < buf.Length) break;
+                    fullBuffs.Add (buf);
+                    buf = new char[4000];
+                }
+
+                /*
+                 * Return the whole thing as one string.
+                 */
+                StringBuilder sb = new StringBuilder (total);
+                foreach (char[] fullBuff in fullBuffs) {
+                    sb.Append (fullBuff);
+                }
+                sb.Append (buf, 0, len);
+                return sb.ToString ();
+            } finally {
+                     if (reader   != null) reader.Close ();
+                else if (stream   != null) stream.Close ();
+                else if (response != null) response.Close ();
+            }
+        }
     }
 
     /**
@@ -840,10 +1091,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         {
             this.val = val;
         }
-        // debugging
         public override string ToString ()
         {
-            return "'" + val + "'";
+            switch (val) {
+                case '\'': return "'\\''";
+                case '\\': return "'\\\\'";
+                case '\n': return "'\\n'";
+                case '\t': return "'\\t'";
+                default:   return "'" + val + "'";
+            }
         }
     }
 
@@ -853,7 +1109,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         {
             this.val = val;
         }
-        // debugging
         public override string ToString ()
         {
             return val.ToString ();
@@ -870,7 +1125,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         {
             this.val = val;
         }
-        // debugging
         public override string ToString ()
         {
             return val.ToString ();
@@ -899,10 +1153,46 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         {
             this.val = val;
         }
-        // debugging
         public override string ToString ()
         {
-            return "\"" + val + "\"";
+            if ((val.IndexOf ('"') < 0) && 
+                (val.IndexOf ('\\') < 0) && 
+                (val.IndexOf ('\n') < 0) && 
+                (val.IndexOf ('\t') < 0)) return "\"" + val + "\"";
+
+            int len = val.Length;
+            StringBuilder sb = new StringBuilder (len * 2 + 2);
+            sb.Append ('"');
+            for (int i = 0; i < len; i ++) {
+                char c = val[i];
+                switch (c) {
+                    case '"': {
+                        sb.Append ('\\');
+                        sb.Append ('"');
+                        break;
+                    }
+                    case '\\': {
+                        sb.Append ('\\');
+                        sb.Append ('\\');
+                        break;
+                    }
+                    case '\n': {
+                        sb.Append ('\\');
+                        sb.Append ('n');
+                        break;
+                    }
+                    case '\t': {
+                        sb.Append ('\\');
+                        sb.Append ('t');
+                        break;
+                    }
+                    default: {
+                        sb.Append (c);
+                        break;
+                    }
+                }
+            }
+            return sb.ToString ();
         }
     }
 

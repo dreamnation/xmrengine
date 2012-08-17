@@ -118,11 +118,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Read whole source into memory.
              */
+            string cameFrom = null;
             StringBuilder sourceBuilder = new StringBuilder ();
             if (sourceFileNames.Count == 0) {
                 sourceBuilder.Append (Console.In.ReadToEnd ());
+                cameFrom = "console://";
             } else {
                 foreach (string sourceFileName in sourceFileNames) {
+                    if (cameFrom == null) cameFrom = "file://" + sourceFileName;
                     sourceBuilder.Append ("# 1 \"" + sourceFileName + "\"\n");
                     sourceBuilder.Append (File.ReadAllText (sourceFileName));
                 }
@@ -132,7 +135,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Parse source string into tokens.
              */
-            TokenBegin tokenBegin = TokenBegin.Construct(StandAloneErrorMessage, source, out sourceHash);
+            TokenBegin tokenBegin = TokenBegin.Construct(cameFrom, null, StandAloneErrorMessage, source, out sourceHash);
             if (tokenBegin == null) {
                 Console.WriteLine ("Parsing errors.");
                 Environment.Exit (1);
@@ -339,6 +342,7 @@ version:
             string fname = Path.Combine (scriptBasePath, assetID);
             string objFileName = GetObjFileName (assetID, scriptBasePath);
             string sourceHash = null;
+            TextWriter saveSource = null;
 
             /*
              * If we already have an object file, don't bother compiling.
@@ -356,81 +360,22 @@ version:
                 envar = Environment.GetEnvironmentVariable ("MMRScriptCompileSaveSource");
                 if ((envar != null) && ((envar[0] & 1) != 0)) {
                     m_log.DebugFormat("[XMREngine]: MMRScriptCompileSaveSource: saving to {0}.lsl", fname);
-                    File.WriteAllText (fname + ".lsl", source);
+                    saveSource = File.CreateText (fname + ".lsl");
                 }
 
                 /*
                  * Parse source string into tokens.
                  */
-                TokenBegin tokenBegin = TokenBegin.Construct(errorMessage, source, out sourceHash);
+                string cameFrom = "asset:///" + assetID;
+                TokenBegin tokenBegin;
+                try {
+                    tokenBegin = TokenBegin.Construct(cameFrom, saveSource, errorMessage, source, out sourceHash);
+                } finally {
+                    if (saveSource != null) saveSource.Close ();
+                }
                 if (tokenBegin == null) {
                     m_log.Debug ("[XMREngine]: parsing errors on " + assetID);
                     return null;
-                }
-
-                /*
-                 * If source is 'XMROption' 'fetchsource' ...
-                 * read source file from the given URL.
-                 */
-                if ((tokenBegin.nextToken is TokenName) &&
-                    (strcasecmp (((TokenName)tokenBegin.nextToken).val, "xmroption") == 0) &&
-                    (tokenBegin.nextToken.nextToken is TokenName) &&
-                    (strcasecmp (((TokenName)tokenBegin.nextToken.nextToken).val, "fetchsource") == 0)) {
-
-                    try {
-
-                        /*
-                         * Open web stream.
-                         */
-                        webStream = FetchBinary (tokenBegin.nextToken.nextToken.nextToken, errorMessage);
-                        if (webStream == null) return null;
-                        StreamReader webReader = new StreamReader (webStream);
-
-                        /*
-                         * Read it all into one string.
-                         */
-                        int lineLen;
-                        int totalChars = 0;
-                        char[] lineBuff;
-                        List<char[]> stringList = new List<char[]> ();
-                        do {
-                            lineBuff    = new char[4096];
-                            lineLen     = webReader.ReadBlock (lineBuff, 0, lineBuff.Length);
-                            stringList.Add (lineBuff);
-                            totalChars += lineLen;
-                            if (totalChars > MAX_WEB_SCRIPT_SIZE) {
-                                throw new Exception ("script exceeds maximum size of " + MAX_WEB_SCRIPT_SIZE);
-                            }
-                        } while (lineLen == lineBuff.Length);
-                        
-                        webStream.Close ();
-                        webStream = null;
-                        StringBuilder sb = new StringBuilder (totalChars);
-                        foreach (char[] lineString in stringList) {
-                            sb.Append (lineString);
-                        }
-                        source = sb.ToString ();
-                    } finally {
-                        if (webStream != null) webStream.Close ();
-                    }
-
-                    /*
-                     * Maybe write script source to a file for debugging.
-                     */
-                    envar = Environment.GetEnvironmentVariable ("MMRScriptCompileSaveSource");
-                    if ((envar != null) && ((envar[0] & 1) != 0)) {
-                        m_log.DebugFormat("[XMREngine]: MMRScriptCompileSaveSource: saving to {0}.lslweb", fname);
-                        File.WriteAllText (fname + ".lslweb", source);
-                    }
-
-                    /*
-                     * Parse source string into tokens.
-                     */
-                    tokenBegin = TokenBegin.Construct(errorMessage, source, out sourceHash);
-                    if (tokenBegin == null) {
-                        m_log.Debug ("[XMREngine]: parsing errors on " + assetID);
-                        return null;
-                    }
                 }
 
                 /*

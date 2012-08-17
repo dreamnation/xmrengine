@@ -31,6 +31,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             bool serialize = false;
             string asmFileName = null;
             string objFileName = null;
+            string savFileName = null;
             string srcFileName = null;
             string sourceHash  = null;
 
@@ -50,6 +51,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     objFileName = args[i];
                     continue;
                 }
+                if (arg == "-save") {
+                    if (++ i >= args.Length) goto usage;
+                    savFileName = args[i];
+                    continue;
+                }
                 if (arg == "-serialize") {
                     serialize  = true;
                     doCheckRun = true;
@@ -64,13 +70,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Read whole source into memory.
              */
-            string source = "# 1 \"" + srcFileName + "\"\n" + File.ReadAllText (srcFileName);
+            FileInfo srcFileInfo = new FileInfo (srcFileName);
+            string source = "# 1 \"" + srcFileName + "\"\n" + File.ReadAllText (srcFileInfo.FullName);
 
             /*
              * Parse source string into tokens.
              */
             Console.WriteLine ("Compiling...");
-            TokenBegin tokenBegin = TokenBegin.Construct (StandAloneErrorMessage, source, out sourceHash);
+            string cameFrom = "file://" + srcFileInfo.FullName;
+            TextWriter saveSource = null;
+            if (savFileName != null) saveSource = File.CreateText (savFileName);
+            TokenBegin tokenBegin;
+            try {
+                tokenBegin = TokenBegin.Construct (cameFrom, saveSource, StandAloneErrorMessage, source, out sourceHash);
+            } finally {
+                if (saveSource != null) saveSource.Close ();
+            }
             if (tokenBegin == null) {
                 Console.WriteLine ("Parsing errors.");
                 Environment.Exit (1);
@@ -180,7 +195,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return;
 
         usage:
-            Console.WriteLine ("usage: mono xmrengtest.exe [ -asm <asmoutfile>|- ] [ -checkrun ] [ -obj <objoutfile> ] [ -serialize] <sourcefile>");
+            Console.WriteLine ("usage: mono xmrengtest.exe [ -asm <asmoutfile>|- ] [ -checkrun ] [ -obj <objoutfile> ] [ -save <sourceoutfile> ] [ -serialize] <sourcefile>");
             Environment.Exit (1);
         }
 

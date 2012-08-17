@@ -4,7 +4,7 @@ XMRE supports several extensions to the LSL to make it easier to write scripts.
     advflowctl - provide traditional break/continue/switch/case statements
     arrays - provide an associative mutable datatype
     chars - provide the character datatype
-    fetchsource - script source can be stored on arbirary web server
+    include - read source from another location
     inline events - handle event processing inline instead of using event 
                     handlers
     objects - provide mechanism to create script-definable class types
@@ -255,34 +255,51 @@ default {
 }
 
 
-FETCH SOURCE FROM WEB SERVER
+INCLUDE SOURCE FROM WEB SERVER
 
 Read script source from a web server.
 
-Enabled by:  xmroption fetchsource <url>;
+Enabled by:  xmroption include <url>;
 
 ...where <url> is a string giving the location of the script (including 
 the "'s), such as:
 
-    xmroption fetchsource "http://mywebserver.com/somescriptfile.lsl";
+    xmroption include "http://mywebserver.com/somescriptfile.lsl";
 
 You put your script source file on a web server so it can be fetched via http.  
-Then, instead of a normal script source inworld, you would put the fetchsource 
-statement in the inworld script.  It must be the only source statement in the 
-inworld script (except that you can put comments in there if you like).  When 
-the region servers need the script source file, they will read it from the 
-webserver.
+Then, instead of a normal script source inworld, you would put the xmroption 
+include statement in the inworld script.  When the region servers need the 
+script source file, they will read it from the webserver.
 
 This lets you maintain script source files on a webserver instead of using the 
 inworld script editor window.  You can use git and splice files togther with 
 cpp or whatever you want.
+
+The file is read from the webserver and spliced in the script file replacing 
+the xmroption include statement.  A script may contain more than one xmroption 
+include statement, and included source files may contain xmroption include 
+statements.  A URL within an included source file may be relative, eg, if the 
+current source file is from "http://mywebserver.com/myxmrlibrary/tanks.lsl", an 
+xmroption include "wheels.lsl"; would open URL 
+"http://mywebserver.com/myxmrlibrary/wheels.lsl".
+
+Each included source file is considered to have a signature that uniquely 
+identifies it.  This signature is the first line of text of the included source 
+file.  If an attempt is made to include a source file with the same signature 
+more than once in the same script, only the first include with that signature 
+is processed, the others are ignored.  This allows for libraries that may do 
+includes of other libraries and so it is not feasible to determine if an 
+include has already been done by another library or not.  The signature line 
+should be a comment beginning with '//' such as:
+
+    // Scrypt Kyddy's web access library, v1.0.0
 
 One thing to note however is that once a webserver fetches a source for a 
 script and compiles it, it does not require access to the source again as it 
 keeps a compiled object-code version cached.  So it will not re-fetch the 
 source from the server and so if you make changes, you will need to retrigger 
 a download.  This can be done by adding or removing whitespace from the inworld 
-script file containing the xmroption fetchsource statement.
+script file containing the xmroption include statement.
 
 
 OBJECTS

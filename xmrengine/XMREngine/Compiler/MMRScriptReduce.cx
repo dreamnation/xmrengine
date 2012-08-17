@@ -144,28 +144,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * eg, state bodies, functions, global variables.
 			 */
 			tokenScript = new TokenScript (tokenBegin.nextToken);
-
-			/*
-			 * 'XMROption' 'expiryDays' <integer> ';'
-			 * Parse and remove from source token stream.
-			 */
-			for (Token t = tokenBegin; !(t is TokenEnd); t = t.nextToken) {
-				if ((t is TokenName) &&
-				    (t.nextToken is TokenName) && 
-				    (t.nextToken.nextToken is TokenInt) && 
-				    (t.nextToken.nextToken.nextToken is TokenKwSemi)) {
-					TokenName t1 = (TokenName)t;
-					TokenName t2 = (TokenName)t1.nextToken;
-					TokenInt  t3 = (TokenInt)t2.nextToken;
-					if ((t1.val.ToLower () == "xmroption") && 
-					    (t2.val.ToLower () == "expirydays")) {
-						tokenScript.expiryDays = t3.val;
-						t = t3.nextToken;
-						t1.prevToken.nextToken = t.nextToken;
-						t.nextToken.prevToken = t1.prevToken;
-					}
-				}
-			}
+			tokenScript.expiryDays = tokenBegin.expiryDays;
 
 			/*
 			 * 'class', 'delegate', 'instance' all define types.
