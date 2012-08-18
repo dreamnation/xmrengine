@@ -52,6 +52,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private string _methName;
 		public override string methName { get { return _methName; } }
 
+		public Type   retType;
+		public Type[] argTypes;
+
 		/**
 		 * @brief Begin function declaration
 		 * @param sdTypes    = script-defined types
@@ -75,6 +78,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public ScriptObjWriter (TokenScript tokenScript, string methName, Type retType, Type[] argTypes, BinaryWriter objFileWriter)
 		{
 			this._methName     = methName;
+			this.retType       = retType;
+			this.argTypes      = argTypes;
 			this.objFileWriter = objFileWriter;
 
 			/*
@@ -237,7 +242,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 		}
 
-		public override void Emit (OpCode opcode, ScriptMyILGen method)
+		public override void Emit (OpCode opcode, ScriptObjWriter method)
 		{
 			if (method == null) throw new ArgumentNullException ("method");
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitMethodInt);

@@ -24,7 +24,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public abstract void Emit (OpCode opcode, Type type);
 		public abstract void Emit (OpCode opcode, ScriptMyLabel myLabel);
 		public abstract void Emit (OpCode opcode, ScriptMyLabel[] myLabels);
-		public abstract void Emit (OpCode opcode, ScriptMyILGen method);
+		public abstract void Emit (OpCode opcode, ScriptObjWriter method);
 		public abstract void Emit (OpCode opcode, MethodInfo method);
 		public abstract void Emit (OpCode opcode, ConstructorInfo ctor);
 		public abstract void Emit (OpCode opcode, double value);
@@ -94,6 +94,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public int number;
 
 		public GraphNodeMarkLabel whereAmI;
+		public int stackDepth = -1;
 	}
 
 	/**

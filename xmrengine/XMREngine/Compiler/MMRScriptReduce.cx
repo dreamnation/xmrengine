@@ -4816,7 +4816,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		                                       // reduction puts all calls here
 		                                       // compilation sorts it all out
 
-		public ScriptMyILGen ilGen;            // codegen stores emitted code here
+		public ScriptObjWriter ilGen;          // codegen stores emitted code here
 
 		/**
 		 * @brief Set up a variable declaration token.

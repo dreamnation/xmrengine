@@ -2752,7 +2752,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			mightGetHere = true;					// if we can get to the 'try' assume we can get to the 'catch'
 			GenerateStmtBlock (tryStmt.catchStmt);			// output catch clause statement subblock
 
-			ilGen.MarkLabel (catchBreak.label);
+			if (catchBreak.used) {
+				ilGen.MarkLabel (catchBreak.label);
+			}
 			new CallLabel (this);
 			ilGen.Emit (OpCodes.Leave, tryEnd);
 
@@ -2881,7 +2883,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			curBreakTarg = tryBreak;				// breaks jump to end of try subblock
 			GenerateStmtBlock (tryStmt.tryStmt);			// output the try block statement subblock
 
-			ilGen.MarkLabel (tryBreak.label);			//       tryBreak:
+			if (tryBreak.used) {
+				ilGen.MarkLabel (tryBreak.label);		//       tryBreak:
+			}
 			new CallLabel (this);					//       <newCallLabel>:
 			ilGen.Emit (OpCodes.Leave, tryEnd);			//         leave tryEnd;
 

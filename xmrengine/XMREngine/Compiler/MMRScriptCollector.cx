@@ -134,6 +134,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		/**
+		 * @brief See if it's possible for it to fall through to the next inline (nextLin) instruction.
+		 */
+		public virtual bool CanFallThrough ()
+		{
+			return true;
+		}
+
+		/**
 		 * @brief Append to debugging string for printing out the instruction.
 		 */
 		public abstract void DebString (StringBuilder sb);
@@ -304,7 +312,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public int excBlkSeqNo;                                 // debugging
 
 		public GraphNodeBeginExceptionBlock (ScriptCollector coll) : base (coll)
-		{ }
+		{
+			// we should always start try blocks with nothing on stack
+			// ...as CLI wipes stack for various conditions
+			if (!coll.optimizing && (coll.stackDepth != 0)) {
+				throw new Exception ("stack depth " + coll.stackDepth);
+			}
+		}
 
 		public override void DebString (StringBuilder sb)
 		{
@@ -323,7 +337,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	 */
 	public abstract class GraphNodeCatchFinallyBlock : GraphNodeBlock {
 		public GraphNodeCatchFinallyBlock (ScriptCollector coll) : base (coll)
-		{ }
+		{
+			// we should always start catch/finally blocks with nothing on stack
+			// ...as CLI wipes stack for various conditions
+			if (!coll.optimizing && (coll.stackDepth != 0)) {
+				throw new Exception ("stack depth " + coll.stackDepth);
+			}
+		}
 	}
 
 	/**
@@ -335,6 +355,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public GraphNodeBeginCatchBlock (ScriptCollector coll, Type excType) : base (coll)
 		{
 			this.excType = excType;
+
+			// catch block always enters with one value on stack
+			if (!coll.optimizing) {
+				coll.stackDepth = 1;
+			}
 		}
 
 		public override void DebString (StringBuilder sb)
@@ -453,7 +478,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	 */
 	public class GraphNodeEndExceptionBlock : GraphNode {
 		public GraphNodeEndExceptionBlock (ScriptCollector coll) : base (coll)
-		{ }
+		{
+			// we should always end exception blocks with nothing on stack
+			// ...as CLI wipes stack for various conditions
+			if (!coll.optimizing && (coll.stackDepth != 0)) {
+				throw new Exception ("stack depth " + coll.stackDepth);
+			}
+		}
 
 		public override void DebString (StringBuilder sb)
 		{
@@ -476,6 +507,72 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public GraphNodeEmit (ScriptCollector coll, OpCode opcode) : base (coll)
 		{
 			this.opcode = opcode;
+
+			// compute resultant stack depth
+			// the derivitive class' constructors handle any Varpop/Varpush amounts
+			if (!coll.optimizing) {
+				int stack = coll.stackDepth;
+
+				if ((stack != 0) && ((opcode == OpCodes.Endfinally) || (opcode == OpCodes.Leave) || (opcode == OpCodes.Rethrow))) {
+					throw new Exception (opcode + " stack depth " + stack);
+				}
+				if ((stack != 1) && (opcode == OpCodes.Throw)) {
+					throw new Exception (opcode + " stack depth " + stack);
+				}
+
+				switch (opcode.StackBehaviourPop) {
+					case StackBehaviour.Pop0:                           break;
+					case StackBehaviour.Pop1:              stack --;    break;
+					case StackBehaviour.Pop1_pop1:         stack -= 2;  break;
+					case StackBehaviour.Popi:              stack --;    break;
+					case StackBehaviour.Popi_pop1:         stack -= 2;  break;
+					case StackBehaviour.Popi_popi:         stack -= 2;  break;
+					case StackBehaviour.Popi_popi8:        stack -= 2;  break;
+					case StackBehaviour.Popi_popr4:        stack -= 2;  break;
+					case StackBehaviour.Popi_popr8:        stack -= 2;  break;
+					case StackBehaviour.Popref:            stack --;    break;
+					case StackBehaviour.Popref_pop1:       stack -= 2;  break;
+					case StackBehaviour.Popref_popi:       stack -= 2;  break;
+					case StackBehaviour.Popref_popi_pop1:  stack -= 3;  break;
+					case StackBehaviour.Popref_popi_popi:  stack -= 3;  break;
+					case StackBehaviour.Popref_popi_popi8: stack -= 3;  break;
+					case StackBehaviour.Popref_popi_popr4: stack -= 3;  break;
+					case StackBehaviour.Popref_popi_popr8: stack -= 3;  break;
+					case StackBehaviour.Varpop:                         break;
+					default: throw new Exception (opcode + "unknown pop behavior " + opcode.StackBehaviourPop);
+				}
+				switch (opcode.StackBehaviourPush) {
+					case StackBehaviour.Push0:                          break;
+					case StackBehaviour.Push1:             stack ++;    break;
+					case StackBehaviour.Push1_push1:       stack += 2;  break;
+					case StackBehaviour.Pushi:             stack ++;    break;
+					case StackBehaviour.Pushi8:            stack ++;    break;
+					case StackBehaviour.Pushr4:            stack ++;    break;
+					case StackBehaviour.Pushr8:            stack ++;    break;
+					case StackBehaviour.Pushref:           stack ++;    break;
+					case StackBehaviour.Varpush:                        break;
+					default: throw new Exception (opcode + "unknown push behavior " + opcode.StackBehaviourPush);
+				}
+				if (stack < 0) throw new Exception ("stack depth negative");
+				coll.stackDepth = stack;
+			}
+		}
+
+		/**
+		 * @brief See if it's possible for it to fall through to the next inline (nextLin) instruction.
+		 */
+		public override bool CanFallThrough ()
+		{
+			switch (opcode.FlowControl) {
+				case FlowControl.Branch:      return false;  // unconditional branch
+				case FlowControl.Break:       return true;   // break
+				case FlowControl.Call:        return true;   // call
+				case FlowControl.Cond_Branch: return true;   // conditional branch
+				case FlowControl.Next:        return true;   // falls through to next instruction
+				case FlowControl.Return:      return false;  // return
+				case FlowControl.Throw:       return false;  // throw
+				default: throw new Exception ("unknown flow control " + opcode.FlowControl);
+			}
 		}
 
 		// if followed by OpCodes.Pop, it can be discarded
@@ -498,20 +595,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			sb.Append ("".PadRight (OPINDENT));
 			sb.Append (opcode.ToString ().PadRight (OPDEBLEN));
-		}
-
-		private bool CanFallThrough ()
-		{
-			switch (opcode.FlowControl) {
-				case FlowControl.Branch:      return false;  // unconditional branch
-				case FlowControl.Break:       return false;  // break
-				case FlowControl.Call:        return true;   // call
-				case FlowControl.Cond_Branch: return true;   // conditional branch
-				case FlowControl.Next:        return true;   // falls through to next instruction
-				case FlowControl.Return:      return false;  // return
-				case FlowControl.Throw:       return false;  // throw
-				default: throw new Exception ("unknown flow control " + opcode.FlowControl);
-			}
 		}
 
 		/**
@@ -556,7 +639,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 	public class GraphNodeEmitNull : GraphNodeEmit {
 		public GraphNodeEmitNull (ScriptCollector coll, OpCode opcode) : base (coll, opcode)
-		{ }
+		{
+			// OpCodes.Ret pops from the stack iff the return type is not void
+			if (!coll.optimizing && (opcode == OpCodes.Ret) && (this.coll.wrapped.retType != typeof (void))) {
+				coll.stackDepth --;
+			}
+		}
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
 		{
@@ -731,6 +819,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public GraphNodeEmitLabel (ScriptCollector coll, OpCode opcode, ScriptMyLabel myLabel) : base (coll, opcode)
 		{
 			this.myLabel = myLabel;
+
+			// if a target doesn't have a depth yet, set its depth to the depth after instruction executes
+			// otherwise, make sure it matches all other branches to that target and what fell through to it
+			if (!coll.optimizing) {
+				if (myLabel.stackDepth < 0) myLabel.stackDepth = coll.stackDepth;
+				else if (myLabel.stackDepth != coll.stackDepth) {
+					throw new Exception ("stack depth mismatch at " + myLabel.name);
+				}
+			}
 		}
 
 		public override void DebString (StringBuilder sb)
@@ -854,6 +951,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public GraphNodeEmitLabels (ScriptCollector coll, OpCode opcode, ScriptMyLabel[] myLabels) : base (coll, opcode)
 		{
 			this.myLabels = myLabels;
+
+			// if a target doesn't have a depth yet, set its depth to the depth after instruction executes
+			// otherwise, make sure it matches all other branches to that target and what fell through to it
+			if (!coll.optimizing) {
+				foreach (ScriptMyLabel myLabel in myLabels) {
+					if (myLabel.stackDepth < 0) myLabel.stackDepth = coll.stackDepth;
+					else if (myLabel.stackDepth != coll.stackDepth) {
+						throw new Exception ("stack depth mismatch at " + myLabel.name);
+					}
+				}
+			}
 		}
 
 		public override void DebString (StringBuilder sb)
@@ -920,11 +1028,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	}
 
 	public class GraphNodeEmitIntMeth : GraphNodeEmit {
-		public ScriptMyILGen method;
+		public ScriptObjWriter method;
 
-		public GraphNodeEmitIntMeth (ScriptCollector coll, OpCode opcode, ScriptMyILGen method) : base (coll, opcode)
+		public GraphNodeEmitIntMeth (ScriptCollector coll, OpCode opcode, ScriptObjWriter method) : base (coll, opcode)
 		{
 			this.method = method;
+
+			// calls have Varpop so pop the number of arguments
+			// the internal methods are all static so the arg list include the 'this' stack value
+			// calls are also Varpush so they push a return value iff non-void
+			if (!coll.optimizing) {
+				coll.stackDepth -= this.method.argTypes.Length;
+				if (this.method.retType != typeof (void)) coll.stackDepth ++;
+			}
 		}
 
 		public override void DebString (StringBuilder sb)
@@ -945,6 +1061,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public GraphNodeEmitExtMeth (ScriptCollector coll, OpCode opcode, MethodInfo method) : base (coll, opcode)
 		{
 			this.method = method;
+
+			// calls have Varpop so pop the number of arguments
+			// calls are also Varpush so they push a return value iff non-void
+			if (!coll.optimizing) {
+				coll.stackDepth -= this.method.GetParameters ().Length;
+				if ((this.method.CallingConvention & CallingConventions.HasThis) != 0) coll.stackDepth --;
+				if (this.method.ReturnType != typeof (void)) coll.stackDepth ++;
+			}
 		}
 
 		public override void DebString (StringBuilder sb)
@@ -965,6 +1089,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public GraphNodeEmitCtor (ScriptCollector coll, OpCode opcode, ConstructorInfo ctor) : base (coll, opcode)
 		{
 			this.ctor = ctor;
+
+			// constructors have Varpop so pop the number of arguments
+			// OpCodes.Newobj is Pushref so we don't need to say it pushes anything
+			if (!coll.optimizing) {
+				coll.stackDepth -= this.ctor.GetParameters ().Length;
+			}
 		}
 
 		public override void DebString (StringBuilder sb)
@@ -1084,11 +1214,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 	public class ScriptCollector : ScriptMyILGen {
 
-		private ScriptObjWriter wrapped;
+		public ScriptObjWriter wrapped;
 		public GraphNode firstLin, lastLin;
 		private bool resolvedSomething;
 		private int resolveSequence;
 		private int excBlkSeqNos;
+		public bool optimizing;
+		public int stackDepth;
+
 		public GraphNodeBeginExceptionBlock curTryBlock = null;  // pushed at beginning of try
 		                                                         // popped at BEGINNING of catch/finally
 		public GraphNodeBeginExceptionBlock curExcBlock = null;  // pushed at beginning of try
@@ -1204,7 +1337,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			new GraphNodeEmitLabels (this, opcode, myLabels).ChainLin ();
 		}
 
-		public override void Emit (OpCode opcode, ScriptMyILGen method)
+		public override void Emit (OpCode opcode, ScriptObjWriter method)
 		{
 			new GraphNodeEmitIntMeth (this, opcode, method).ChainLin ();
 		}
@@ -1243,6 +1376,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			myLabel.whereAmI = new GraphNodeMarkLabel (this, myLabel);
 			myLabel.whereAmI.ChainLin ();
+
+			// if previous instruction can fall through to this label,
+			//     if the label doesn't yet have a stack depth, mark it with current stack depth
+			//     else, the label's stack depth from forward branches and current stack depth must match
+			// else,
+			//     label must have had a forward branch to it so we can know stack depth
+			//     set the current stack depth to the label's stack depth as of that forward branch
+			if (!this.optimizing) {
+				if (myLabel.whereAmI.prevLin.CanFallThrough ()) {
+					if (myLabel.stackDepth < 0) {
+						myLabel.stackDepth = this.stackDepth;
+					} else if (myLabel.stackDepth != this.stackDepth) {
+						throw new Exception ("stack depth mismatch at " + myLabel.name);
+					}
+				} else {
+					if (myLabel.stackDepth < 0) {
+						throw new Exception ("stack depth unknown at " + myLabel.name);
+					}
+					this.stackDepth = myLabel.stackDepth;
+				}
+			}
 		}
 
 		/**
@@ -1268,20 +1422,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public void Optimize ()
 		{
 			if (curExcBlock != null) throw new Exception ("exception block still open");
+			optimizing = true;
 
 			/*
 			 * If an instruction says it doesn't fall through, remove all instructions to
 			 * the end of the block.
 			 */
 			for (GraphNode gn = firstLin; gn != null; gn = gn.nextLin) {
-				bool fallsthru = false;
-				foreach (GraphNode nn in gn.NextNodes) {
-					if (nn == gn.nextLin) {
-						fallsthru = true;
-						break;
-					}
-				}
-				if (!fallsthru) {
+				if (!gn.CanFallThrough ()) {
 					GraphNode nn;
 					while (((nn = gn.nextLin) != null) && !(nn is GraphNodeBlock) && 
 					                          !(nn is GraphNodeEndExceptionBlock)) {
