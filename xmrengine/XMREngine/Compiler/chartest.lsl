@@ -15,7 +15,7 @@ default {
 
         char[] icat = new char[] { 'I', 'c', 'a', 't' };
         string line = "";
-        for (integer i = 0; i < icat.Length (); i ++) {
+        for (integer i = 0; i < icat.Length; i ++) {
             char ch = icat[i];
             switch (ch) {
                 case 2 + (integer)'a': {

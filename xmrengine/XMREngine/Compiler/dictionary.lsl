@@ -8,7 +8,7 @@ xmroption objects;
 class Kunta {
 
     public interface ICountable<T> : IEnumerable<T> {
-        integer GetCount ();
+        integer Count { get; }
     }
 
     public interface IEnumerable<T> {
@@ -75,19 +75,19 @@ class Kunta {
             return undef;
         }
 
-        public integer GetCount () : ICountable<KeyValuePair<K,V>>
-        {
+        public integer Count : ICountable<KeyValuePair<K,V>>
+        { get {
             return count;
-        }
+        } }
 
-        public ICountable<K> GetKeyList ()
-        {
+        public ICountable<K> Keys
+        { get {
             return keyList;
-        }
-        public ICountable<V> GetValueList ()
-        {
+        } }
+        public ICountable<V> Values
+        { get {
             return valueList;
-        }
+        } }
 
         // iterate through list of key-value pairs
         public IEnumerator<KeyValuePair<K,V>> GetEnumerator () : IEnumerable<KeyValuePair<K,V>>
@@ -145,10 +145,10 @@ class Kunta {
             {
                 this.dict = dict;
             }
-            public integer GetCount () : ICountable<K>
-            {
-                return this.dict.GetCount ();
-            }
+            public integer Count : ICountable<K>
+            { get {
+                return this.dict.Count;
+            } }
             public IEnumerator<K> GetEnumerator () : IEnumerable<K>
             {
                 return new Enumerator (this.dict);
@@ -189,10 +189,10 @@ class Kunta {
             {
                 this.dict = dict;
             }
-            public integer GetCount () : ICountable<V>
-            {
-                return this.dict.GetCount ();
-            }
+            public integer Count : ICountable<V>
+            { get {
+                return this.dict.Count;
+            } }
             public IEnumerator<V> GetEnumerator () : IEnumerable<V>
             {
                 return new Enumerator (this.dict);
@@ -276,10 +276,10 @@ class Kunta {
         }
 
         // see how many are in list
-        public integer GetCount () : ICountable<T>
-        {
+        public integer Count : ICountable<T>
+        { get {
             return count;
-        }
+        } }
 
         // iterate through list
         public IEnumerator<T> GetEnumerator () : IEnumerable<T>

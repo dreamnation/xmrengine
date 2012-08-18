@@ -938,12 +938,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             kws.Add ("delegate",    GetTokenCtor (typeof (TokenKwDelegate)));
             kws.Add ("destructor",  GetTokenCtor (typeof (TokenKwDestructor)));
             kws.Add ("final",       GetTokenCtor (typeof (TokenKwFinal)));
+            kws.Add ("get",         GetTokenCtor (typeof (TokenKwGet)));
             kws.Add ("interface",   GetTokenCtor (typeof (TokenKwInterface)));
             kws.Add ("new",         GetTokenCtor (typeof (TokenKwNew)));
             kws.Add ("override",    GetTokenCtor (typeof (TokenKwOverride)));
             kws.Add ("private",     GetTokenCtor (typeof (TokenKwPrivate)));
             kws.Add ("protected",   GetTokenCtor (typeof (TokenKwProtected)));
             kws.Add ("public",      GetTokenCtor (typeof (TokenKwPublic)));
+            kws.Add ("set",         GetTokenCtor (typeof (TokenKwSet)));
             kws.Add ("static",      GetTokenCtor (typeof (TokenKwStatic)));
             kws.Add ("this",        GetTokenCtor (typeof (TokenKwThis)));
             kws.Add ("virtual",     GetTokenCtor (typeof (TokenKwVirtual)));
@@ -1299,6 +1301,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
     DEFTOKENKW(Finally    , "finally",     Null, Null, false)
     DEFTOKENKW(For        , "for",         Null, Null, false)
     DEFTOKENKW(ForEach    , "foreach",     Null, Null, false)
+    DEFTOKENKW(Get        , "get",         Null, Null, false)
     DEFTOKENKW(If         , "if",          Null, Null, false)
     DEFTOKENKW(In         , "in",          Null, Null, false)
     DEFTOKENKW(Interface  , "interface",   Null, Null, false)
@@ -1310,6 +1313,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
     DEFTOKENKW(Protected  , "protected",   Null, Null, false)
     DEFTOKENKW(Public     , "public",      Null, Null, false)
     DEFTOKENKW(Ret        , "return",      Null, Null, false)
+    DEFTOKENKW(Set        , "set",         Null, Null, false)
     DEFTOKENKW(State      , "state",       Null, Null, false)
     DEFTOKENKW(Static     , "static",      Null, Null, false)
     DEFTOKENKW(Switch     , "switch",      Null, Null, false)

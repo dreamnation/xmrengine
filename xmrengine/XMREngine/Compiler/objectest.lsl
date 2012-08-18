@@ -45,7 +45,7 @@ default {
         stuff.Enqueue (1);
         stuff.Enqueue ((string)[2,3,4]);
         stuff.Enqueue (<5,6,7>);
-        llOwnerSay ("count=" + stuff.GetCount ());
+        llOwnerSay ("count=" + stuff.Count);
         integer first = 1;
         for (Kunta.IEnumerator<string> stuffenum = stuff.GetEnumerator (); stuffenum.MoveNext ();) {
             if (first) llOwnerSay ("typeof (stuffenum) = " + xmrTypeName (stuffenum));
@@ -62,17 +62,17 @@ default {
             Kunta.KeyValuePair<string,integer> kvp = kvpenum.GetCurrent ();
             llOwnerSay ("s2i: " + kvp.kee + " => " + kvp.value);
         }
-        for (Kunta.IEnumerator<string> keyenum = s2i.GetKeyList ().GetEnumerator (); keyenum.MoveNext ();) {
+        for (Kunta.IEnumerator<string> keyenum = s2i.Keys.GetEnumerator (); keyenum.MoveNext ();) {
             llOwnerSay ("s2i.key = " + keyenum.GetCurrent ());
         }
-        for (Kunta.IEnumerator<integer> valenum = s2i.GetValueList ().GetEnumerator (); valenum.MoveNext ();) {
+        for (Kunta.IEnumerator<integer> valenum = s2i.Values.GetEnumerator (); valenum.MoveNext ();) {
             llOwnerSay ("s2i.value = " + valenum.GetCurrent ());
         }
 
         float[,] x = new float[,](2,3);  // 2 rows, 3 columns
         float[,] y = new float[,](3,4);  // 3 rows, 4 columns
-        llOwnerSay ("x.Length = " + x.Length ());
-        llOwnerSay ("y.Length = " + y.Length ());
+        llOwnerSay ("x.Length = " + x.Length);
+        llOwnerSay ("y.Length = " + y.Length);
         for (integer i = 0; i < 2; i ++) {
             for (integer j = 0; j < 3; j ++) {
                 x[i,j] = i + j + 1;
@@ -113,8 +113,8 @@ default {
         }
         for (integer i = 0; i < 3; i ++) {
             for (integer j = 0; j < 4; j ++) {
-                integer len = jagged[i,j].Length ();
-                string msg = "jagged[" + i + "," + j + "].Length=" + jagged[i,j].Length ();
+                integer len = jagged[i,j].Length;
+                string msg = "jagged[" + i + "," + j + "].Length=" + jagged[i,j].Length;
                 for (integer k = 0; k < len; k ++) {
                     msg += " : " + jagged[i,j][k];
                 }
@@ -126,8 +126,8 @@ default {
         xmrArrayCopy ((object)jagged, jagged.Index(1,0), (object)jagged, jagged.Index(0,0), 4);
         for (integer i = 0; i < 3; i ++) {
             for (integer j = 0; j < 4; j ++) {
-                integer len = jagged[i,j].Length ();
-                string msg = "jagged[" + i + "," + j + "].Length=" + jagged[i,j].Length ();
+                integer len = jagged[i,j].Length;
+                string msg = "jagged[" + i + "," + j + "].Length=" + jagged[i,j].Length;
                 for (integer k = 0; k < len; k ++) {
                     msg += " : " + jagged[i,j][k];
                 }

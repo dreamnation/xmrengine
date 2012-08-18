@@ -236,6 +236,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				}
 
 				/*
+				 * <type> <name> { [ get { <body> } ] [ set { <body> } ] }
+				 */
+				if ((token is TokenType) &&
+				    (token.nextToken is TokenName) &&
+				    (token.nextToken.nextToken is TokenKwBrcOpen)) {
+					ParseProperty (ref token, false, true);
+					continue;
+				}
+
+				/*
 				 * <type> <name> <funcargs> <funcbody>
 				 * global function returning specified type
 				 */
@@ -967,15 +977,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				t = SpliceAfter (t, new TokenKwBrcClose (t));
 
 				/*
-				 *        public integer Length () {
+				 *        public integer Length { get {
 				 *            return this.len0 * this.len1 * ... ;
-				 *        }
+				 *        } }
 				 */
 				t = SpliceAfter (t, new TokenKwPublic (t));
 				t = SpliceAfter (t, new TokenTypeInt (t));
 				t = SpliceAfter (t, new TokenName (t, "Length"));
-				t = SpliceAfter (t, new TokenKwParOpen (t));
-				t = SpliceAfter (t, new TokenKwParClose (t));
+				t = SpliceAfter (t, new TokenKwBrcOpen (t));
+				t = SpliceAfter (t, new TokenKwGet (t));
 				t = SpliceAfter (t, new TokenKwBrcOpen (t));
 
 				t = SpliceAfter (t, new TokenKwRet (t));
@@ -987,6 +997,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				}
 				t = SpliceAfter (t, new TokenKwSemi (t));
 
+				t = SpliceAfter (t, new TokenKwBrcClose (t));
 				t = SpliceAfter (t, new TokenKwBrcClose (t));
 
 				/*
@@ -1401,6 +1412,29 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				}
 
 				/*
+				 * <type> <name> [ : <implintfs> ] { [ get { <body> } ] [ set { <body> } ] }
+				 */
+				if ((token is TokenType) &&
+				    (token.nextToken is TokenName) &&
+				    (token.nextToken.nextToken is TokenKwBrcOpen || 
+				     token.nextToken.nextToken is TokenKwColon)) {
+					TokenDeclVar var = ParseProperty (ref token, (flags & SDT_ABSTRACT) != 0, true);
+					if (var != null) {
+						var.sdtClass = tokdeclcl;
+						var.sdtFlags = flags;
+						if (var.getProp != null) {
+							var.getProp.sdtClass = tokdeclcl;
+							var.getProp.sdtFlags = flags;
+						}
+						if (var.setProp != null) {
+							var.setProp.sdtClass = tokdeclcl;
+							var.setProp.sdtFlags = flags;
+						}
+					}
+					continue;
+				}
+
+				/*
 				 * 'constructor' '(' arglist ')' [ ':' [ 'base' ] '(' baseconstructorcall ')' ] '{' body '}'
 				 */
 				if (token is TokenKwConstructor) {
@@ -1535,6 +1569,149 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			}
 			foundFlags[add] = token;
 			return token.nextToken;
+		}
+
+		/**
+		 * @brief Parse a property declaration.
+		 * @param token = points to the property type token on entry
+		 *                points just past the closing brace on return
+		 * @param abs = true: property is abstract
+		 *             false: property is concrete
+		 * @param imp = allow implemented interface specs
+		 * @returns null: parse failure
+		 *          else: property
+		 */
+		private TokenDeclVar ParseProperty (ref Token token, bool abs, bool imp)
+		{
+			/*
+			 * Parse out the property's type and name.
+			 *   <type> <name>
+			 */
+			TokenType type = (TokenType)token;
+			TokenName name = (TokenName)token.nextToken;
+			token = token.nextToken.nextToken;
+
+			/*
+			 * Maybe it claims to implement some interface properties.
+			 *   [ ':' <ifacetype>[.<propname>] ',' ... ]
+			 */
+			TokenIntfImpl implements = null;
+			if (token is TokenKwColon) {
+				implements = ParseImplements (ref token, name);
+				if (implements == null) return null;
+				if (!imp) {
+					ErrorMsg (token, "cannot implement interface property");
+				}
+			}
+
+			/*
+			 * Should have an opening brace.
+			 */
+			if (!(token is TokenKwBrcOpen)) {
+				ErrorMsg (token, "expect { to open property definition");
+				token = SkipPastSemi (token);
+				return null;
+			}
+			token = token.nextToken;
+
+			/*
+			 * Parse out the getter and/or setter.
+			 *   'get' { <body> | ';' }
+			 *   'set' { <body> | ';' }
+			 */
+			TokenDeclVar getFunc = null;
+			TokenDeclVar setFunc = null;
+			while (!(token is TokenKwBrcClose)) {
+
+				/*
+				 * Maybe create a getter function.
+				 */
+				if (token is TokenKwGet) {
+					TokenArgDecl argDecl = new TokenArgDecl (token);
+
+					getFunc = new TokenDeclVar (token, null, tokenScript);
+					getFunc.name       = new TokenName (token, name.val + "$get");
+					getFunc.retType    = type;
+					getFunc.argDecl    = argDecl;
+					getFunc.implements = MakePropertyImplements (implements, "$get");
+
+					token = token.nextToken;
+					if (!ParseFunctionBody (ref token, getFunc, abs)) {
+						getFunc = null;
+					} else if (!tokenScript.AddVarEntry (getFunc)) {
+						ErrorMsg (getFunc, "duplicate getter");
+					}
+					continue;
+				}
+
+				/*
+				 * Maybe create a setter function.
+				 */
+				if (token is TokenKwSet) {
+					TokenArgDecl argDecl = new TokenArgDecl (token);
+					argDecl.AddArg (type, new TokenName (token, "value"));
+
+					setFunc = new TokenDeclVar (token, null, tokenScript);
+					setFunc.name       = new TokenName (token, name.val + "$set");
+					setFunc.retType    = new TokenTypeVoid (token);
+					setFunc.argDecl    = argDecl;
+					setFunc.implements = MakePropertyImplements (implements, "$set");
+
+					token = token.nextToken;
+					if (!ParseFunctionBody (ref token, setFunc, abs)) {
+						setFunc = null;
+					} else if (!tokenScript.AddVarEntry (setFunc)) {
+						ErrorMsg (setFunc, "duplicate setter");
+					}
+					continue;
+				}
+
+				ErrorMsg (token, "expecting get or set");
+				token = SkipPastSemi (token);
+				return null;
+			}
+			token = token.nextToken;
+
+			if ((getFunc == null) && (setFunc == null)) {
+				ErrorMsg (name, "must specify at least one of get, set");
+				return null;
+			}
+
+			/*
+			 * Set up a variable for the property.
+			 */
+			TokenDeclVar tokenDeclVar = new TokenDeclVar (name, null, tokenScript);
+			tokenDeclVar.type    = type;
+			tokenDeclVar.name    = name;
+			tokenDeclVar.getProp = getFunc;
+			tokenDeclVar.setProp = setFunc;
+
+			/*
+			 * Can't be same name already in block.
+			 */
+			if (!tokenScript.AddVarEntry (tokenDeclVar)) {
+				ErrorMsg (tokenDeclVar, "duplicate member " + name.val);
+				return null;
+			}
+			return tokenDeclVar;
+		}
+
+		/**
+		 * @brief Given a list of implemented interface methods, create a similar list with suffix added to all the names
+		 * @param implements = original list of implemented interface methods
+		 * @param suffix = string to be added to end of implemented interface method names
+		 * @returns list similar to implements with suffix added to end of implemented interface method names
+		 */
+		private TokenIntfImpl MakePropertyImplements (TokenIntfImpl implements, string suffix)
+		{
+			TokenIntfImpl gsimpls = null;
+			for (TokenIntfImpl impl = implements; impl != null; impl = (TokenIntfImpl)impl.nextToken) {
+				TokenIntfImpl gsimpl = new TokenIntfImpl (impl.intfType, 
+				                                          new TokenName (impl.methName, impl.methName.val + suffix));
+				gsimpl.nextToken = gsimpls;
+				gsimpls = gsimpl;
+			}
+			return gsimpls;
 		}
 
 		/**
@@ -1791,7 +1968,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 			// start a var definition frame to collect the interface members
 			tokenScript.PushVarFrame ();
-			tokdeclin.methProtos = tokenScript.variablesStack;
+			tokdeclin.methsNProps = tokenScript.variablesStack;
 
 			// process declaration statements until '}'
 			while (!(token is TokenKwBrcClose)) {
@@ -1838,9 +2015,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				}
 
 				/*
+				 * <type> <name> { [ get ; ] [ set ; ] }
+				 * abstract property
+				 */
+				if ((token is TokenType) &&
+				    (token.nextToken is TokenName) &&
+				    (token.nextToken.nextToken is TokenKwBrcOpen)) {
+					ParseProperty (ref token, true, false);
+					continue;
+				}
+
+				/*
 				 * That's all we support in an interface declaration.
 				 */
-				ErrorMsg (token, "expecting method prototype");
+				ErrorMsg (token, "expecting method or property prototype");
 				token = SkipPastSemi (token);
 			}
 
@@ -1961,9 +2149,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 * @brief Parse interface implementation list.
 		 * @param token = points to ':' on entry
 		 *                points just past list on return
-		 * @param simpleName = simple name (no arg signature) of method that 
-		 *                     is implementing the interface method
-		 * @returns list of implemented interface methods
+		 * @param simpleName = simple name (no arg signature) of method/property that 
+		 *                     is implementing the interface method/property
+		 * @returns list of implemented interface methods/properties
 		 */
 		private TokenIntfImpl ParseImplements (ref Token token, TokenName simpleName)
 		{
@@ -3574,7 +3762,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenDeclSDTypeClass extends;         // only non-null for TokenDeclSDTypeClass's
 		public uint accessLevel;                     // SDT_PRIVATE, SDT_PROTECTED or SDT_PUBLIC
 		                                             // ... all top-level types are SDT_PUBLIC
-		public VarDict members = new VarDict ();     // declared fields, methods, if any
+		public VarDict members = new VarDict ();     // declared fields, methods, properties if any
 
 		public Dictionary<string, int> genParams;    // list of parameters for generic prototypes
 		                                             // null for non-generic prototypes
@@ -4359,12 +4547,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	}
 
 	public class TokenDeclSDTypeInterface : TokenDeclSDType {
-		public VarDict methProtos = new VarDict ();	// any class this implements this interface
-								// must implement all of these methods
+		public VarDict methsNProps = new VarDict ();	// any class this implements this interface
+								// must implement all of these methods & properties
 
 		public List<TokenDeclSDTypeInterface> implements = new List<TokenDeclSDTypeInterface> ();
 								// any class that implements this interface
-								// must also implement all of these interfaces
+								// must also implement all of the methods & properties 
+								// of all of these interfaces
 
 		public TokenDeclSDTypeInterface (TokenName shortName) : base (shortName)
 		{
@@ -4429,17 +4618,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		}
 
 		/**
-		 * @brief Scan an interface and all its implemented interfaces for a method.
+		 * @brief Scan an interface and all its implemented interfaces for a method or property
 		 * @param scg = script code generator (ie, which script is being compiled)
-		 * @param fieldName = name of the method being looked for
+		 * @param fieldName = name of the member being looked for
 		 * @param argsig = the method's argument signature
-		 * @returns null: no such method; intf = undefined
-		 *          else: method; intf = which interface actually found in
+		 * @returns null: no such member; intf = undefined
+		 *          else: member; intf = which interface actually found in
 		 */
 		public TokenDeclVar FindIFaceMember (ScriptCodeGen scg, TokenName fieldName, TokenType[] argsig, out TokenDeclSDTypeInterface intf)
 		{
 			intf = this;
-			TokenDeclVar var = scg.FindSingleMember (this.methProtos, fieldName, argsig);
+			TokenDeclVar var = scg.FindSingleMember (this.methsNProps, fieldName, argsig);
 			if (var == null) {
 				foreach (TokenDeclSDTypeInterface ii in this.implements) {
 					var = ii.FindIFaceMember (scg, fieldName, argsig, out intf);
@@ -4757,7 +4946,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	}
 
 	/**
-	 * @brief encapsulate the declaration of a field/function/method/variable.
+	 * @brief encapsulate the declaration of a field/function/method/property/variable.
 	 */
 
 	public enum Triviality {  // function triviality: has no loops and doesn't call anything that has loops
@@ -4878,7 +5067,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		public bool IsVarTrivial (ScriptCodeGen scg)
 		{
-			// variables is a trivial access
+			// reading or writing a property involves a function call however
+			// so we need to check the triviality of the property functions
+			if ((getProp != null) && !getProp.IsFuncTrivial (scg)) return false;
+			if ((setProp != null) && !setProp.IsFuncTrivial (scg)) return false;
+
+			// otherwise for variables it is a trivial access
 			// and likewise for getting a delegate that points to a function
 			return true;
 		}
@@ -5197,12 +5391,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)
 		{
 			/*
-			 * Triviality of accessing the member is equal to triviality of accessing 
-			 * the pointer to the instance.
-			 *
-			 * In the case of a method, this is accessing it as a delegate, not calling it.
+			 * If getting pointer to instance isn't trivial, then accessing the member isn't trivial either.
 			 */
-			return baseRVal.IsRValTrivial (scg, null);
+			if (!baseRVal.IsRValTrivial (scg, null)) return false;
+
+			/*
+			 * Accessing a member of a class depends on the member.
+			 * In the case of a method, this is accessing it as a delegate, not calling it, and 
+			 * argsig simply serves as selecting which of possibly overloaded methods to select.
+			 * The case of accessing a property, however, depends on the property implementation, 
+			 * as there could be looping inside the property code.
+			 */
+			TokenType baseType = baseRVal.GetRValType (scg, null);
+			if (baseType is TokenTypeSDTypeClass) {
+				TokenDeclVar var = scg.FindThisMember ((TokenTypeSDTypeClass)baseType, fieldName, argsig);
+				return (var != null) && var.IsVarTrivial (scg);
+			}
+
+			/*
+			 * Accessing the members of anything else (arrays, rotations, vectors) is always trivial.
+			 */
+			return true;
 		}
 
 		/**
@@ -5327,8 +5536,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)
 		{
 			/*
-			 * Accessing a member is always trivial.
-			 * In the case of a method, this is accessing it as a delegate, not calling it.
+			 * Accessing a member of a class depends on the member.
+			 * In the case of a method, this is accessing it as a delegate, not calling it, and 
+			 * argsig simply serves as selecting which of possibly overloaded methods to select.
+			 * The case of accessing a property, however, depends on the property implementation, 
+			 * as there could be looping inside the property code.
+			 */
+			if (baseType is TokenTypeSDTypeClass) {
+				TokenDeclVar var = scg.FindThisMember ((TokenTypeSDTypeClass)baseType, fieldName, argsig);
+				return (var != null) && var.IsVarTrivial (scg);
+			}
+
+			/*
+			 * Accessing the fields/methods/properties of anything else (arrays, rotations, vectors) is always trivial.
 			 */
 			return true;
 		}

@@ -619,44 +619,84 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 	// The value is the entrypoint of a script-defined type's interface method combined with
 	// the pointer used to access the method.  Thus there is one of these per call site.
-	public class CompValuIntfMeth : CompValu {
-		private TokenDeclVar func;
+	public class CompValuIntfMember : CompValu {
+		private TokenDeclVar declVar;
 		private CompValu baseRVal;
+		private CompValu setProp;
 
-		public CompValuIntfMeth (TokenDeclVar declFunc, CompValu baseRVal) : base (declFunc.GetDelType ())
+		public CompValuIntfMember (TokenDeclVar declVar, CompValu baseRVal) : base (declVar.GetDelType ())
 		{
-			this.func     = declFunc;  // which element of the baseRVal vector to be accessed
+			this.declVar  = declVar;   // which element of the baseRVal vector to be accessed
 			this.baseRVal = baseRVal;  // the vector of delegates implementing the interface
 		}
 
+		/**
+		 * @brief Reading a method's value means getting a delegate to that method.
+		 *        Reading a property's value means calling the getter method for that property.
+		 */
 		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
-			baseRVal.PushVal (scg, errorAt);                        // push pointer to delegate array on stack
-			scg.ilGen.PushInt (func.vTableIndex);                   // select which delegate to access
-			scg.ilGen.Emit (OpCodes.Ldelem, typeof (Delegate));     // push delegate on stack
-			scg.ilGen.Emit (OpCodes.Castclass, type.ToSysType ());  // cast to correct delegate class
+			if (declVar.retType != null) {
+				baseRVal.PushVal (scg, errorAt);                        // push pointer to delegate array on stack
+				scg.ilGen.PushInt (declVar.vTableIndex);                // select which delegate to access
+				scg.ilGen.Emit (OpCodes.Ldelem, typeof (Delegate));     // push delegate on stack
+				scg.ilGen.Emit (OpCodes.Castclass, type.ToSysType ());  // cast to correct delegate class
+			} else if (declVar.getProp != null) {
+				CompValu getProp = new CompValuIntfMember (declVar.getProp, baseRVal);
+				if (!declVar.getProp.IsFuncTrivial (scg)) {
+					throw new Exception ("should have been wrapped by AccessInterfaceMember()");
+				}
+				getProp.CallPre  (scg, errorAt);                        // reading property, call its getter
+				getProp.CallPost (scg, errorAt);                        // ... with no arguments
+			} else {
+				scg.ErrorMsg (errorAt, "member not readable");
+				scg.PushDefaultValue (declVar.type);
+			}
 		}
+
+		/**
+		 * @brief Can't get the address of either a method or a property.
+		 */
 		public override void PushRef (ScriptCodeGen scg, Token errorAt)
 		{
-			throw new Exception ("cannot get ref to interface method");
+			scg.ErrorMsg (errorAt, "member has no address");
+			scg.ilGen.Emit (OpCodes.Ldnull);
+		}
+
+		/**
+		 * @brief Can't write a method.
+		 *        For property, it means calling the setter method for that property.
+		 */
+		public override void PopPre (ScriptCodeGen scg, Token errorAt)
+		{
+			if (declVar.setProp != null) {
+				// a property's value is calling its set method with the value as the argument
+				if (!declVar.setProp.IsFuncTrivial (scg)) new ScriptCodeGen.CallLabel (scg);
+				this.setProp = new CompValuIntfMember (declVar.setProp, baseRVal);
+				this.setProp.CallPre  (scg, errorAt);  // prepare for the one value argument to be pushed
+			} else {
+				// read-only property
+				scg.ErrorMsg (errorAt, "member not writable");
+			}
 		}
 		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
-			throw new Exception ("cannot store into interface method");
+			if (declVar.setProp != null) {
+				this.setProp.CallPost (scg, errorAt);
+			} else {
+				scg.ilGen.Emit (OpCodes.Pop);
+			}
 		}
 
-		public override void CallPre (ScriptCodeGen scg, Token errorAt)
-		{
-			// push interface method's delegate on stack
-			this.PushVal (scg, errorAt);
-		}
-		public override void CallPost (ScriptCodeGen scg, Token errorAt)
-		{
-			// call via delegate Invoke(...) method
-			TokenTypeSDTypeDelegate ttd = (TokenTypeSDTypeDelegate)type;
-			MethodInfo invokeMethodInfo = ttd.decl.GetInvokerInfo ();
-			scg.ilGen.Emit (OpCodes.Callvirt, invokeMethodInfo);
-		}
+		/**
+		 * @brief We just defer to the default CallPre() and CallPost() methods.
+		 *        They expect this.PushVal() to push a delegate to the method to be called.
+		 *        If this member is a method, our PushVal() will read the correct element 
+		 *        of the iTable array and push it on the stack, ready for Invoke() to be
+		 *        called.  If this member is a property, the only way it can be called is 
+		 *        if the property is a delegate, in which case PushVal() will retrieve the 
+		 *        delegate by calling the property's getter method.
+		 */
 	}
 
 	// The value is the entrypoint of an internal instance method
@@ -803,7 +843,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				this.setProp = new CompValuInstMember (declVar.setProp, baseRVal, ignoreVirt);
 				this.setProp.CallPre  (scg, errorAt);
 			} else {
-				// write-only property
+				// read-only property
 				scg.ErrorMsg (errorAt, "member not writable");
 			}
 		}
