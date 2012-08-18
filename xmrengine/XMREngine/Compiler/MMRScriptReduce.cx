@@ -4790,6 +4790,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		                                       // global funcs: not used (-1)
 		                                       // virt funcs: which slot in vTable[] array it is stored
 		                                       // instance func: not used (-1)
+		public TokenDeclVar getProp;           // if property, function that reads value
+		public TokenDeclVar setProp;           // if property, function that writes value
 
 		public TokenDeclVar heapTracker;       // shadow variable that keeps track of this var's heap usage
 		                                       // ... or null if not necessary

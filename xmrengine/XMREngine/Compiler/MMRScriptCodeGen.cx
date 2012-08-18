@@ -1596,7 +1596,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief There is one of these per call that can possibly call CheckRun(),
 		 *        including direct calls to CheckRun().
 		 */
-		private class CallLabel {
+		public class CallLabel {
 			public int           index;       // sequential integer, starting at 0, within actCallLabels
 			                                  // - used for the switch statement
 			public ScriptMyLabel callLabel;   // the actual label token
@@ -1876,13 +1876,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			CompValu      arrayRVal    = GenerateFromRVal (forEachStmt.arrayRVal);
 
 			if (forEachStmt.keyLVal != null) {
-				keyLVal = GenerateFromLVal (forEachStmt.keyLVal);
+				keyLVal = GenerateFromLVal (forEachStmt.keyLVal, true);
 				if (!(keyLVal.type is TokenTypeObject)) {
 					ErrorMsg (forEachStmt.arrayRVal, "must be object");
 				}
 			}
 			if (forEachStmt.valLVal != null) {
-				valLVal = GenerateFromLVal (forEachStmt.valLVal);
+				valLVal = GenerateFromLVal (forEachStmt.valLVal, true);
 				if (!(valLVal.type is TokenTypeObject)) {
 					ErrorMsg (forEachStmt.arrayRVal, "must be object");
 				}
@@ -2976,7 +2976,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			if (!mightGetHere) return;
 
-			CompValu left = GenerateFromLVal (varIniDefStmt.var);
+			CompValu left = GenerateFromLVal (varIniDefStmt.var, true);
 			left.PopPre (this, varIniDefStmt);
 			PushDefaultValue (left.type);
 			left.PopPost (this, varIniDefStmt);
@@ -3046,18 +3046,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		/**
 		 * @brief Get the type and location of an L-value (eg, variable)
+		 * @param lVal    = L-value expression to evaluate
+		 * @param writing = true iff location will be written
+		 * @param argsig  = null: it's a field/property
+		 *                  else: select overload method that fits these arg types
 		 */
-		private CompValu GenerateFromLVal (TokenLVal lVal)
+		private CompValu GenerateFromLVal (TokenLVal lVal, bool writing)
 		{
-			return GenerateFromLVal (lVal, null);
+			return GenerateFromLVal (lVal, writing, null);
 		}
-		private CompValu GenerateFromLVal (TokenLVal lVal, TokenType[] argsig)
+		private CompValu GenerateFromLVal (TokenLVal lVal, bool writing, TokenType[] argsig)
 		{
 			if (lVal is TokenLValArEle)     return GenerateFromLValArEle     ((TokenLValArEle)lVal);
-			if (lVal is TokenLValBaseField) return GenerateFromLValBaseField ((TokenLValBaseField)lVal, argsig);
-			if (lVal is TokenLValIField)    return GenerateFromLValIField    ((TokenLValIField)lVal, argsig);
-			if (lVal is TokenLValName)      return GenerateFromLValName      ((TokenLValName)lVal, argsig);
-			if (lVal is TokenLValSField)    return GenerateFromLValSField    ((TokenLValSField)lVal, argsig);
+			if (lVal is TokenLValBaseField) return GenerateFromLValBaseField ((TokenLValBaseField)lVal, writing, argsig);
+			if (lVal is TokenLValIField)    return GenerateFromLValIField    ((TokenLValIField)lVal,    writing, argsig);
+			if (lVal is TokenLValName)      return GenerateFromLValName      ((TokenLValName)lVal,      writing, argsig);
+			if (lVal is TokenLValSField)    return GenerateFromLValSField    ((TokenLValSField)lVal,    writing, argsig);
 			throw new Exception ("bad lval class");
 		}
 
@@ -3131,7 +3135,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief using 'base' within a script-defined instance method to refer to an instance field/method 
 		 *        of the class being extended.
 		 */
-		private CompValu GenerateFromLValBaseField (TokenLValBaseField baseField, TokenType[] argsig)
+		private CompValu GenerateFromLValBaseField (TokenLValBaseField baseField, bool writing, TokenType[] argsig)
 		{
 			string fieldName = baseField.fieldName.val;
 
@@ -3140,22 +3144,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ErrorMsg (baseField, "cannot use 'base' outside instance method body");
 				return new CompValuVoid (baseField);
 			}
+			if (!IsSDTInstMethod ()) {
+				ErrorMsg (baseField, "cannot access instance member of base class from static method");
+				return new CompValuVoid (baseField);
+			}
 
 			TokenDeclVar declVar = FindThisMember (sdtDecl.extends, baseField.fieldName, argsig);
 			if (declVar != null) {
 				CheckAccess (declVar, baseField.fieldName);
-				if ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) != 0) {
-					ErrorMsg (baseField, "non-static reference to static member " + fieldName + ArgSigString (argsig));
-					return new CompValuVoid (baseField);
-				}
-				if (!IsSDTInstMethod ()) {
-					ErrorMsg (baseField, "cannot access instance member of class from static method");
-					return new CompValuVoid (baseField);
-				}
 				TokenType baseType = declVar.sdtClass.MakeRefToken (baseField);
 				CompValu  basePtr  = new CompValuArg (baseType, 0);
-				return (declVar.retType == null) ? (CompValu)new CompValuInstField (declVar, basePtr) : 
-				                                   (CompValu)new CompValuInstMeth (declVar, basePtr, true);
+				return AccessInstanceMember (declVar, basePtr, baseField, writing, true);
 			}
 
 			ErrorMsg (baseField, "no member " + fieldName + ArgSigString (argsig) + " rootward of " + sdtDecl.longName.val);
@@ -3166,7 +3165,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief We have an L-value token that is an instance field/method within a struct.
 		 * @returns a CompValu giving the type and location of the field/method in the struct.
 		 */
-		private CompValu GenerateFromLValIField (TokenLValIField lVal, TokenType[] argsig)
+		private CompValu GenerateFromLValIField (TokenLValIField lVal, bool writing, TokenType[] argsig)
 		{
 			CompValu baseRVal = GenerateFromRVal (lVal.baseRVal);
 			string fieldName = lVal.fieldName.val + ArgSigString (argsig);
@@ -3180,12 +3179,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				TokenDeclVar declVar = FindThisMember (sdtDecl, lVal.fieldName, argsig);
 				if (declVar != null) {
 					CheckAccess (declVar, lVal.fieldName);
-					if ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) != 0) {
-						ErrorMsg (lVal.fieldName, "non-static reference to static member " + fieldName);
-						return new CompValuVoid (lVal.fieldName);
-					}
-					return (declVar.retType == null) ? (CompValu)new CompValuInstField (declVar, baseRVal) 
-					                                 : (CompValu)new CompValuInstMeth (declVar, baseRVal, false);
+					return AccessInstanceMember (declVar, baseRVal, lVal, writing, false);
 				}
 				ErrorMsg (lVal.fieldName, "no member " + fieldName + " in class " + sdtDecl.longName.val);
 				return new CompValuVoid (lVal.fieldName);
@@ -3315,7 +3309,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 *                       eg, "(string,integer,list)"
 		 * @returns a CompValu giving the type and location of the function, method or variable.
 		 */
-		private CompValu GenerateFromLValName (TokenLValName lVal, TokenType[] argsig)
+		private CompValu GenerateFromLValName (TokenLValName lVal, bool writing, TokenType[] argsig)
 		{
 			/*
 			 * Look in variable stack then look for built-in constants and functions.
@@ -3358,22 +3352,51 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				}
 
 				CompValu thisCompValu = new CompValuArg (var.sdtClass.MakeRefToken (lVal), 0);
-
-				return (var.retType == null) ? (CompValu)new CompValuInstField (var, thisCompValu) 
-				                             : (CompValu)new CompValuInstMeth (var, thisCompValu, false);
+				return AccessInstanceMember (var, thisCompValu, lVal, writing, false);
 			}
 
 			/*
 			 * It's a local variable, static field, global, constant, etc.
 			 */
-			return var.location;
+			return var.location;  ///??? what about property ???///
+		}
+
+		/**
+		 * @brief Access a script-defined type's instance member
+		 * @param declVar = which member (field,method,property) to access
+		 * @param basePtr = points to particular object instance
+		 * @param writing = true iff about to write to member
+		 * @param ignoreVirt = true: access declVar's method directly; else: maybe use vTable
+		 * @returns where the field/method/property is located
+		 */
+		private CompValu AccessInstanceMember (TokenDeclVar declVar, CompValu basePtr, Token errorAt, bool writing, bool ignoreVirt)
+		{
+			if ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) != 0) {
+				ErrorMsg (errorAt, "non-static reference to static member " + declVar.name.val);
+				return new CompValuVoid (declVar);
+			}
+
+			/*
+			 * If reading the member is non-trivial, read it now and put result in a temporary.
+			 * This is so we don't have a non-trivial call with other values on the stack.
+			 *
+			 * Otherwise, return a direct reference to the member.
+			 */
+			CompValu member;
+			if (!writing && (declVar.getProp != null) && !declVar.getProp.IsFuncTrivial (this)) {
+				member = new CompValuInstMember (declVar.getProp, basePtr, ignoreVirt);
+				member = GenerateACall (member, zeroCompValus, errorAt);
+			} else {
+				member = new CompValuInstMember (declVar, basePtr, ignoreVirt);
+			}
+			return member;
 		}
 
 		/**
 		 * @brief we have an L-value token that is a static member within a struct.
 		 * @returns a CompValu giving the type and location of the member in the struct.
 		 */
-		private CompValu GenerateFromLValSField (TokenLValSField lVal, TokenType[] argsig)
+		private CompValu GenerateFromLValSField (TokenLValSField lVal, bool writing, TokenType[] argsig)
 		{
 			TokenType stType = lVal.baseType;
 			string fieldName = lVal.fieldName.val + ArgSigString (argsig);
@@ -3390,7 +3413,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						ErrorMsg (lVal.fieldName, "static reference to non-static member " + fieldName);
 						return new CompValuVoid (lVal.fieldName);
 					}
-					return declVar.location;
+					return declVar.location;  ///??? what about property ???///
 				}
 			}
 
@@ -3445,7 +3468,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (rVal is TokenRValThis)      cVal = GenerateFromRValThis      ((TokenRValThis)rVal);
 			if (rVal is TokenRValUndef)     cVal = GenerateFromRValUndef     ((TokenRValUndef)rVal);
 			if (rVal is TokenRValVec)       cVal = GenerateFromRValVec       ((TokenRValVec)rVal);
-			if (rVal is TokenLVal)          cVal = GenerateFromLVal          ((TokenLVal)rVal, argsig);
+			if (rVal is TokenLVal)          cVal = GenerateFromLVal          ((TokenLVal)rVal, false, argsig);
 
 			if (cVal == null) throw new Exception ("bad rval class " + rVal.GetType ().ToString ());
 
@@ -3503,7 +3526,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					ErrorMsg (token, "invalid L-value for =");
 					return GenerateFromRVal (token.rValLeft);
 				}
-				left  = GenerateFromLVal ((TokenLVal)token.rValLeft);
+				left  = GenerateFromLVal ((TokenLVal)token.rValLeft, true);
 				right = GenerateFromRVal (token.rValRight, left.GetArgTypes ());
 				left.PopPre (this, token.rValLeft);
 				right.PushVal (this, token.rValRight, left.type);  // push (left.type)right
@@ -3539,10 +3562,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 					/*
 					 * Figure out where to put the result.
-					 * A temp if '+', or back in original var if '+='.
+					 * A temp if '+', or back in original L-value if '+='.
 					 */
-					CompValu retcv = scocvs[0];
-					if (opcodeIndex == "+") retcv = new CompValuTemp (new TokenTypeStr (token.opcode), null, this);
+					CompValu retcv;
+					if (opcodeIndex == "+") {
+						retcv = new CompValuTemp (new TokenTypeStr (token.opcode), null, this);
+					} else {
+						retcv = GenerateFromLVal ((TokenLVal)token.rValLeft, true);
+					}
 					retcv.PopPre (this, token);
 
 					/*
@@ -3579,22 +3606,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * because LSL is supposed to be right-to-left evaluation.
 			 */
 			right = GenerateFromRVal (token.rValRight);
-			left  = GenerateFromRVal (token.rValLeft);
 
 			/*
 			 * If left is a script-defined class and there is a method with the operator's name,
 			 * convert this to a call to that method with the right value as its single parameter.
 			 * Except don't if the right value is 'undef' so they can always compare to undef.
 			 */
-			if ((left.type is TokenTypeSDTypeClass) && !(right.type is TokenTypeUndef)) {
-				TokenTypeSDTypeClass sdtType = (TokenTypeSDTypeClass)left.type;
+			TokenType leftType = token.rValLeft.GetRValType (this, null);
+			if ((leftType is TokenTypeSDTypeClass) && !(right.type is TokenTypeUndef)) {
+				TokenTypeSDTypeClass sdtType = (TokenTypeSDTypeClass)leftType;
 				TokenDeclSDTypeClass sdtDecl = sdtType.decl;
 				TokenType[] argsig = new TokenType[] { right.type };
 				TokenName funcName = new TokenName (token.opcode, "$op" + opcodeIndex);
 				TokenDeclVar declFunc = FindThisMember (sdtDecl, funcName, argsig);
 				if (declFunc != null) {
 					CheckAccess (declFunc, funcName);
-					CompValu method = new CompValuInstMeth (declFunc, left, false);
+					left = GenerateFromRVal (token.rValLeft);
+					CompValu method = AccessInstanceMember (declFunc, left, token, false, false);
 					CompValu[] argRVals = new CompValu[] { right };
 					return GenerateACall (method, argRVals, token);
 				}
@@ -3603,7 +3631,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Formulate key string for binOpStrings = (lefttype)(operator)(righttype)
 			 */
-			string leftIndex = left.type.ToString ();
+			string leftIndex = leftType.ToString ();
 			string rightIndex = right.type.ToString ();
 			string key = leftIndex + opcodeIndex + rightIndex;
 
@@ -3622,6 +3650,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				 * Nothing like +=, -=, %=, etc, generate a boolean, only the comparisons.
 				 */
 				if ((binOpStr.outtype != typeof (bool)) && opcodeIndex.EndsWith ("=")) {
+					if (!(token.rValLeft is TokenLVal)) {
+						ErrorMsg (token.rValLeft, "invalid L-value");
+						return GenerateFromRVal (token.rValLeft);
+					}
+					left = GenerateFromLVal ((TokenLVal)token.rValLeft, true);
 					binOpStr.emitBO (this, token, left, right, left);
 					////????DebitHeapLeft (left, true, token.rValLeft);
 					return left;
@@ -3629,7 +3662,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 				/*
 				 * It's of the form left binop right.
+				 * Compute left, perform operation then put result in a temp.
 				 */
+				left = GenerateFromRVal (token.rValLeft);
 				CompValu retRVal = new CompValuTemp (TokenType.FromSysType (token.opcode, binOpStr.outtype), null, this);
 				binOpStr.emitBO (this, token, left, right, retRVal);
 				return retRVal;
@@ -3640,9 +3675,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * This will compare list pointers, null pointers, script-defined type pointers, array pointers, etc.
 			 * It will show equal iff the memory addresses are equal and that is good enough.
 			 */
-			if (!left.type.ToSysType().IsValueType && !right.type.ToSysType().IsValueType && ((opcodeIndex == "==") || (opcodeIndex == "!="))) {
-				CompValu retRVal = new CompValuTemp (new TokenTypeInt (token), null, this);
-				retRVal.PopPre (this, token);
+			if (!leftType.ToSysType().IsValueType && !right.type.ToSysType().IsValueType && ((opcodeIndex == "==") || (opcodeIndex == "!="))) {
+				CompValuTemp retRVal = new CompValuTemp (new TokenTypeInt (token), null, this);
+				left = GenerateFromRVal (token.rValLeft);
 				left.PushVal (this, token.rValLeft);
 				right.PushVal (this, token.rValRight);
 				ilGen.Emit (OpCodes.Ceq);
@@ -3650,7 +3685,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					ilGen.PushInt (1);
 					ilGen.Emit (OpCodes.Xor);
 				}
-				retRVal.PopPost (this, token);
+				retRVal.Pop (this, token);
 				return retRVal;
 			}
 
@@ -3669,7 +3704,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 * We can only actually process it if the resultant type is of the left type.
 					 * So for example, we can't do float += list, as float + list gives a list.
 					 */
-					if (binOpStr.outtype == left.type.ToSysType ()) {
+					if (binOpStr.outtype == leftType.ToSysType ()) {
 
 						/*
 						 * Types are ok, see if the '=' (read/modify/write) form is allowed...
@@ -3677,10 +3712,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						if (binOpStr.rmwOK) {
 							if (!(token.rValLeft is TokenLVal)) {
 								ErrorMsg (token, "invalid L-value for <op>=");
-							} else {
-								binOpStr.emitBO (this, token, left, right, left);
-								////????DebitHeapLeft (left, true, token.rValLeft);
+								return GenerateFromRVal (token.rValLeft);
 							}
+							left = GenerateFromLVal ((TokenLVal)token.rValLeft, true);
+							binOpStr.emitBO (this, token, left, right, left);
+							////????DebitHeapLeft (left, true, token.rValLeft);
 							return left;
 						}
 					}
@@ -3789,7 +3825,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				TokenDeclVar declFunc = FindThisMember (sdtDecl, funcName, zeroArgs);
 				if (declFunc != null) {
 					CheckAccess (declFunc, funcName);
-					CompValu method = new CompValuInstMeth (declFunc, inRVal, false);
+					CompValu method = AccessInstanceMember (declFunc, inRVal, token, false, false);
 					return GenerateACall (method, zeroCompValus, token);
 				}
 			}
@@ -3805,7 +3841,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private CompValu GenerateFromRValAsnPost (TokenRValAsnPost asnPost)
 		{
-			CompValu lVal = GenerateFromLVal (asnPost.lVal);
+			CompValu lVal = GenerateFromLVal (asnPost.lVal, true);
 
 			/*
 			 * Make up a temp to save original value in.
@@ -3861,7 +3897,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private CompValu GenerateFromRValAsnPre (TokenRValAsnPre asnPre)
 		{
-			CompValu lVal = GenerateFromLVal (asnPre.lVal);
+			CompValu lVal = GenerateFromLVal (asnPre.lVal, true);
 
 			/*
 			 * Make up a temp to put result in.
@@ -3988,15 +4024,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
-			 * Stick in a label here that stack frame restore code can jump to
-			 * in case the function being called calls CheckRun().
-			 */
-			if (!method.IsFuncTrivial (this)) new CallLabel (this);
-
-			/*
 			 * Make sure we have a place to put return value.
 			 */
 			result = new CompValuTemp (retType, null, this);
+
+			/*
+			 * Stick in a label here that stack frame restore code can jump to
+			 * in case the function being called calls CheckRun().
+			 */
+			if (!method.IsCallTrivial (this)) new CallLabel (this);
 
 			/*
 			 * Push whatever the function/method needs as a this argument, if anything.

@@ -135,7 +135,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief See if the method that would be called is known to be trivial.
 		 *        If unknown, such as calling via a delegate, return false.
 		 */
-		public virtual bool IsFuncTrivial (ScriptCodeGen scg)
+		public virtual bool IsCallTrivial (ScriptCodeGen scg)
 		{
 			return false;
 		}
@@ -545,7 +545,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			scg.ilGen.Emit (OpCodes.Call, func.ilGen);
 		}
 
-		public override bool IsFuncTrivial (ScriptCodeGen scg)
+		public override bool IsCallTrivial (ScriptCodeGen scg)
 		{
 			return this.func.IsFuncTrivial (scg);
 		}
@@ -614,98 +614,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			scg.ErrorMsg (errorAt, "cannot use built-in for delegate, wrap it");
 			scg.ilGen.Emit (OpCodes.Pop);
-		}
-	}
-
-	// The value is the entrypoint of a script-defined type's instance method combined with
-	// the pointer used to access the method.  Thus there is one of these per call site.
-	public class CompValuInstMeth : CompValu {
-		private TokenDeclVar func;
-		private CompValu baseRVal;
-		private bool ignVirt;
-
-		private static FieldInfo vTableFieldInfo = typeof (XMRSDTypeClObj).GetField ("sdtcVTable");
-
-		public CompValuInstMeth (TokenDeclVar declFunc, CompValu baseRVal, bool ignVirt) : base (declFunc.GetDelType ())
-		{
-			this.func     = declFunc;
-			this.baseRVal = baseRVal;
-			this.ignVirt  = ignVirt;
-		}
-
-		public override void PushVal (ScriptCodeGen scg, Token errorAt)
-		{
-			if ((func.sdtFlags & ScriptReduce.SDT_STATIC) != 0) throw new Exception ("dont use for statics");
-
-			if (ignVirt || (func.vTableIndex < 0)) {
-
-				/*
-				 * Non-virtual instance method, create a delegate that references the method.
-				 */
-				string dtn = type.ToString ();
-				if (dtn.StartsWith ("delegate ")) dtn = dtn.Substring (9);
-
-				// delegateinstance = (signature)scriptinstance.GetScriptMethodDelegate (methName, signature, arg0);
-				//   where methName = __fun_<sdtclass>.<methname>(<argtypes>)
-				//        signature = <rettype>(<argtypes>)
-				//             arg0 = sdt istance (XMRSDTypeClObj) 'this' value
-				scg.PushXMRInst ();                                     // [0] scriptinstance
-				scg.ilGen.Emit (OpCodes.Ldstr, func.ilGen.methName);    // [1] method name
-				scg.ilGen.Emit (OpCodes.Ldstr, dtn);                    // [2] delegate type name
-				baseRVal.PushVal (scg, errorAt);                        // [3] sdtinstance
-				scg.ilGen.Emit (OpCodes.Callvirt, gsmdMethodInfo);      // [0] delegate instance
-				scg.ilGen.Emit (OpCodes.Castclass, type.ToSysType ());  // [0] cast to correct delegate class
-			} else {
-
-				/*
-				 * Virtual instance method, get the delegate from the vtable.
-				 */
-				baseRVal.PushVal (scg, errorAt);                        // 'this' selecting the instance
-				scg.ilGen.Emit (OpCodes.Ldfld, vTableFieldInfo);        // get pointer to instance's vtable array
-				scg.ilGen.PushInt (func.vTableIndex);                   // select vtable element
-				scg.ilGen.Emit (OpCodes.Ldelem, typeof (Delegate));     // get delegate pointer = 'this' for 'Invoke()'
-				scg.ilGen.Emit (OpCodes.Castclass, type.ToSysType ());  // cast to correct delegate class
-			}
-		}
-		public override void PushRef (ScriptCodeGen scg, Token errorAt)
-		{
-			throw new Exception ("cannot get ref to instance method");
-		}
-		public override void PopPost (ScriptCodeGen scg, Token errorAt)
-		{
-			throw new Exception ("cannot store into instance method");
-		}
-
-		public override void CallPre (ScriptCodeGen scg, Token errorAt)
-		{
-			if ((func.sdtFlags & ScriptReduce.SDT_STATIC) != 0) throw new Exception ("dont use for statics");
-
-			if (ignVirt || (func.vTableIndex < 0)) {
-				baseRVal.PushVal (scg, errorAt);                        // 'this' being passed directly to method
-			} else {
-				baseRVal.PushVal (scg, errorAt);                        // 'this' selecting the instance
-				scg.ilGen.Emit (OpCodes.Ldfld, vTableFieldInfo);        // get pointer to instance's vtable array
-				scg.ilGen.PushInt (func.vTableIndex);                   // select vtable element
-				scg.ilGen.Emit (OpCodes.Ldelem, typeof (Delegate));     // get delegate pointer = 'this' for 'Invoke()'
-				scg.ilGen.Emit (OpCodes.Castclass, type.ToSysType ());  // cast to correct delegate class
-			}
-		}
-		public override void CallPost (ScriptCodeGen scg, Token errorAt)
-		{
-			if (ignVirt || (func.vTableIndex < 0)) {
-				// non-virt instance, just call function directly
-				scg.ilGen.Emit (OpCodes.Call, func.ilGen);
-			} else {
-				// virtual, call via delegate Invoke(...) method
-				TokenTypeSDTypeDelegate ttd = (TokenTypeSDTypeDelegate)type;
-				MethodInfo invokeMethodInfo = ttd.decl.GetInvokerInfo ();
-				scg.ilGen.Emit (OpCodes.Callvirt, invokeMethodInfo);
-			}
-		}
-
-		public override bool IsFuncTrivial (ScriptCodeGen scg)
-		{
-			return this.func.IsFuncTrivial (scg);
 		}
 	}
 
@@ -790,7 +698,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			scg.ilGen.Emit (OpCodes.Call, methInfo);
 		}
 
-		public override bool IsFuncTrivial (ScriptCodeGen scg)
+		public override bool IsCallTrivial (ScriptCodeGen scg)
 		{
 			return true;
 		}
@@ -825,41 +733,179 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 	}
 
-	// The value is in a field of a script-defined type class instance, ie, 
-	// one of the arrays contained within XMRSDTypeClObj.instVars
-	public class CompValuInstField : CompValu {
+	// The value is in a member of a script-defined type class instance.
+	//       field: value is in one of the arrays contained within XMRSDTypeClObj.instVars
+	//      method: value is a delegate; can be called
+	//    property: reading and writing is via a method call
+	public class CompValuInstMember : CompValu {
 		private static readonly FieldInfo instVarsFieldInfo = typeof (XMRSDTypeClObj).GetField ("instVars");
+		private static readonly FieldInfo vTableFieldInfo   = typeof (XMRSDTypeClObj).GetField ("sdtcVTable");
 
-		private TokenDeclVar declVar;
-		private CompValu baseRVal;
+		private TokenDeclVar declVar;  // member being accessed
+		private CompValu baseRVal;     // pointer to particular object instance
+		private bool ignoreVirt;       // ignore virtual attribute; use declVar's non-virtual method/property
 
-		public CompValuInstField (TokenDeclVar declVar, CompValu baseRVal) : base (declVar.type)
+		private CompValu setProp;
+
+		public CompValuInstMember (TokenDeclVar declVar, CompValu baseRVal, bool ignoreVirt) : base (declVar.type)
 		{
-			this.declVar  = declVar;
-			this.baseRVal = baseRVal;
+			this.declVar    = declVar;
+			this.baseRVal   = baseRVal;
+			this.ignoreVirt = ignoreVirt;
 		}
 
 		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
-			baseRVal.PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Ldfld, instVarsFieldInfo);
-			EmitFieldPushVal (scg, declVar);
+			if (declVar.retType != null) {
+				// a method's value, ie, without applying the (arglist), is a delegate...
+				PushValMethod (scg, errorAt);
+			} else if (declVar.vTableArray != null) {
+				// a field's value is its XMRSDTypeClObj.instVars array element
+				baseRVal.PushVal (scg, errorAt);
+				scg.ilGen.Emit (OpCodes.Ldfld, instVarsFieldInfo);
+				EmitFieldPushVal (scg, declVar);
+			} else if (declVar.getProp != null) {
+				// a property's value is calling its get method with no arguments
+				if (!declVar.getProp.IsFuncTrivial (scg)) {
+					throw new Exception ("should have been wrapped by AccessInstanceMember()");
+				}
+				CompValu getProp = new CompValuInstMember (declVar.getProp, baseRVal, ignoreVirt);
+				getProp.CallPre  (scg, errorAt);
+				getProp.CallPost (scg, errorAt);
+			} else {
+				// write-only property
+				scg.ErrorMsg (errorAt, "member not readable");
+				scg.PushDefaultValue (declVar.type);
+			}
 		}
 		public override void PushRef (ScriptCodeGen scg, Token errorAt)
 		{
-			baseRVal.PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Ldfld, instVarsFieldInfo);
-			EmitFieldPushRef (scg, declVar);
+			if (declVar.vTableArray != null) {
+				// a field's value is its XMRSDTypeClObj.instVars array element
+				baseRVal.PushVal (scg, errorAt);
+				scg.ilGen.Emit (OpCodes.Ldfld, instVarsFieldInfo);
+				EmitFieldPushRef (scg, declVar);
+			} else {
+				scg.ErrorMsg (errorAt, "member has no address");
+				scg.ilGen.Emit (OpCodes.Ldnull);
+			}
 		}
 		public override void PopPre (ScriptCodeGen scg, Token errorAt)
 		{
-			baseRVal.PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Ldfld, instVarsFieldInfo);
-			EmitFieldPopPre (scg, declVar);
+			if (declVar.vTableArray != null) {
+				// a field's value is its XMRSDTypeClObj.instVars array element
+				baseRVal.PushVal (scg, errorAt);
+				scg.ilGen.Emit (OpCodes.Ldfld, instVarsFieldInfo);
+				EmitFieldPopPre (scg, declVar);
+			} else if (declVar.setProp != null) {
+				// a property's value is calling its set method with the value as the argument
+				if (!declVar.setProp.IsFuncTrivial (scg)) new ScriptCodeGen.CallLabel (scg);
+				this.setProp = new CompValuInstMember (declVar.setProp, baseRVal, ignoreVirt);
+				this.setProp.CallPre  (scg, errorAt);
+			} else {
+				// write-only property
+				scg.ErrorMsg (errorAt, "member not writable");
+			}
 		}
 		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
-			EmitFieldPopPost (scg, declVar);
+			if (declVar.vTableArray != null) {
+				EmitFieldPopPost (scg, declVar);
+			} else if (declVar.setProp != null) {
+				this.setProp.CallPost (scg, errorAt);
+			} else {
+				scg.ilGen.Emit (OpCodes.Pop);
+			}
+		}
+
+		public override void CallPre (ScriptCodeGen scg, Token errorAt)
+		{
+			if (declVar.retType != null) {
+				CallPreMethod (scg, errorAt);
+			} else {
+				base.CallPre (scg, errorAt);
+			}
+		}
+		public override void CallPost (ScriptCodeGen scg, Token errorAt)
+		{
+			if (declVar.retType != null) {
+				CallPostMethod (scg, errorAt);
+			} else {
+				base.CallPost (scg, errorAt);
+			}
+		}
+
+		public override bool IsCallTrivial (ScriptCodeGen scg)
+		{
+			// if not a method, it's a call via delegate, which we assume to be non-trivial
+			if (declVar.retType == null) return false;
+
+			// otherwise, ask that method if calling it is trivial
+			return this.declVar.IsFuncTrivial (scg);
+		}
+
+		/**
+		 * @brief A PushVal() for a method means to push a delegate for the method on the stack.
+		 */
+		private void PushValMethod (ScriptCodeGen scg, Token errorAt)
+		{
+			if ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) != 0) throw new Exception ("dont use for statics");
+
+			if (ignoreVirt || (declVar.vTableIndex < 0)) {
+
+				/*
+				 * Non-virtual instance method, create a delegate that references the method.
+				 */
+				string dtn = type.ToString ();
+
+				// delegateinstance = (signature)scriptinstance.GetScriptMethodDelegate (methName, signature, arg0);
+				//   where methName = __fun_<sdtclass>.<methname>(<argtypes>)
+				//        signature = <rettype>(<argtypes>)
+				//             arg0 = sdt istance (XMRSDTypeClObj) 'this' value
+				scg.PushXMRInst ();                                     // [0] scriptinstance
+				scg.ilGen.Emit (OpCodes.Ldstr, declVar.ilGen.methName); // [1] method name
+				scg.ilGen.Emit (OpCodes.Ldstr, dtn);                    // [2] delegate type name
+				baseRVal.PushVal (scg, errorAt);                        // [3] sdtinstance
+				scg.ilGen.Emit (OpCodes.Callvirt, gsmdMethodInfo);      // [0] delegate instance
+				scg.ilGen.Emit (OpCodes.Castclass, type.ToSysType ());  // [0] cast to correct delegate class
+			} else {
+
+				/*
+				 * Virtual instance method, get the delegate from the vtable.
+				 */
+				baseRVal.PushVal (scg, errorAt);                        // 'this' selecting the instance
+				scg.ilGen.Emit (OpCodes.Ldfld, vTableFieldInfo);        // get pointer to instance's vtable array
+				scg.ilGen.PushInt (declVar.vTableIndex);                // select vtable element
+				scg.ilGen.Emit (OpCodes.Ldelem, typeof (Delegate));     // get delegate pointer = 'this' for 'Invoke()'
+				scg.ilGen.Emit (OpCodes.Castclass, type.ToSysType ());  // cast to correct delegate class
+			}
+		}
+
+		private void CallPreMethod (ScriptCodeGen scg, Token errorAt)
+		{
+			if ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) != 0) throw new Exception ("dont use for statics");
+
+			if (ignoreVirt || (declVar.vTableIndex < 0)) {
+				baseRVal.PushVal (scg, errorAt);                        // 'this' being passed directly to method
+			} else {
+				baseRVal.PushVal (scg, errorAt);                        // 'this' selecting the instance
+				scg.ilGen.Emit (OpCodes.Ldfld, vTableFieldInfo);        // get pointer to instance's vtable array
+				scg.ilGen.PushInt (declVar.vTableIndex);                // select vtable element
+				scg.ilGen.Emit (OpCodes.Ldelem, typeof (Delegate));     // get delegate pointer = 'this' for 'Invoke()'
+				scg.ilGen.Emit (OpCodes.Castclass, type.ToSysType ());  // cast to correct delegate class
+			}
+		}
+		private void CallPostMethod (ScriptCodeGen scg, Token errorAt)
+		{
+			if (ignoreVirt || (declVar.vTableIndex < 0)) {
+				// non-virt instance, just call function directly
+				scg.ilGen.Emit (OpCodes.Call, declVar.ilGen);
+			} else {
+				// virtual, call via delegate Invoke(...) method
+				TokenTypeSDTypeDelegate ttd = (TokenTypeSDTypeDelegate)type;
+				MethodInfo invokeMethodInfo = ttd.decl.GetInvokerInfo ();
+				scg.ilGen.Emit (OpCodes.Callvirt, invokeMethodInfo);
+			}
 		}
 	}
 
