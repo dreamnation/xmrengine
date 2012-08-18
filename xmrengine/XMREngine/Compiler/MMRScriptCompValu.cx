@@ -1111,27 +1111,44 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		public CompValuTemp (TokenType type, string name, ScriptCodeGen scg) : base (type)
 		{
-			if (name == null) {
-				name = "__tmp_" + (++ scg.tempCompValuNum);
+			if (!(type is TokenTypeVoid)) {
+				if (name == null) {
+					name = "__tmp_" + (++ scg.tempCompValuNum);
+				}
+				this.localBuilder = scg.ilGen.DeclareLocal (ToSysType(), name);
 			}
-			this.localBuilder = scg.ilGen.DeclareLocal (ToSysType(), name);
 		}
 		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
-			scg.ilGen.Emit (OpCodes.Ldloc, localBuilder);
+			if (localBuilder != null) {
+				scg.ilGen.Emit (OpCodes.Ldloc, localBuilder);
+			}
 		}
 		public override void PushRef (ScriptCodeGen scg, Token errorAt)
 		{
-			scg.ilGen.Emit (OpCodes.Ldloca, localBuilder);
+			if (localBuilder != null) {
+				scg.ilGen.Emit (OpCodes.Ldloca, localBuilder);
+			} else {
+				throw new Exception ("cannot get void address");
+			}
 		}
 		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
-			scg.ilGen.Emit (OpCodes.Stloc, localBuilder);
+			if (localBuilder != null) {
+				scg.ilGen.Emit (OpCodes.Stloc, localBuilder);
+			}
 		}
 
+		public void Pop (ScriptCodeGen scg, Token errorAt, TokenType stackType)
+		{
+			TypeCast.CastTopOfStack (scg, errorAt, stackType, this.type, false);
+			this.Pop (scg, errorAt);
+		}
 		public void Pop (ScriptCodeGen scg, Token errorAt)
 		{
-			scg.ilGen.Emit (OpCodes.Stloc, localBuilder);
+			if (localBuilder != null) {
+				scg.ilGen.Emit (OpCodes.Stloc, localBuilder);
+			}
 		}
 	}
 
