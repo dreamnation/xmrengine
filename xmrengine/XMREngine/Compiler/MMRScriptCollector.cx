@@ -521,37 +521,39 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				}
 
 				switch (opcode.StackBehaviourPop) {
-					case StackBehaviour.Pop0:                           break;
-					case StackBehaviour.Pop1:              stack --;    break;
-					case StackBehaviour.Pop1_pop1:         stack -= 2;  break;
-					case StackBehaviour.Popi:              stack --;    break;
-					case StackBehaviour.Popi_pop1:         stack -= 2;  break;
-					case StackBehaviour.Popi_popi:         stack -= 2;  break;
-					case StackBehaviour.Popi_popi8:        stack -= 2;  break;
-					case StackBehaviour.Popi_popr4:        stack -= 2;  break;
-					case StackBehaviour.Popi_popr8:        stack -= 2;  break;
-					case StackBehaviour.Popref:            stack --;    break;
-					case StackBehaviour.Popref_pop1:       stack -= 2;  break;
-					case StackBehaviour.Popref_popi:       stack -= 2;  break;
-					case StackBehaviour.Popref_popi_pop1:  stack -= 3;  break;
-					case StackBehaviour.Popref_popi_popi:  stack -= 3;  break;
-					case StackBehaviour.Popref_popi_popi8: stack -= 3;  break;
-					case StackBehaviour.Popref_popi_popr4: stack -= 3;  break;
-					case StackBehaviour.Popref_popi_popr8: stack -= 3;  break;
-					case StackBehaviour.Varpop:                         break;
-					default: throw new Exception (opcode + "unknown pop behavior " + opcode.StackBehaviourPop);
+					case StackBehaviour.Pop0:                            break;
+					case StackBehaviour.Pop1:               stack --;    break;
+					case StackBehaviour.Pop1_pop1:          stack -= 2;  break;
+					case StackBehaviour.Popi:               stack --;    break;
+					case StackBehaviour.Popi_pop1:          stack -= 2;  break;
+					case StackBehaviour.Popi_popi:          stack -= 2;  break;
+					case StackBehaviour.Popi_popi_popi:     stack -= 3;  break;
+					case StackBehaviour.Popi_popi8:         stack -= 2;  break;
+					case StackBehaviour.Popi_popr4:         stack -= 2;  break;
+					case StackBehaviour.Popi_popr8:         stack -= 2;  break;
+					case StackBehaviour.Popref:             stack --;    break;
+					case StackBehaviour.Popref_pop1:        stack -= 2;  break;
+					case StackBehaviour.Popref_popi:        stack -= 2;  break;
+					case StackBehaviour.Popref_popi_pop1:   stack -= 3;  break;
+					case StackBehaviour.Popref_popi_popi:   stack -= 3;  break;
+					case StackBehaviour.Popref_popi_popi8:  stack -= 3;  break;
+					case StackBehaviour.Popref_popi_popr4:  stack -= 3;  break;
+					case StackBehaviour.Popref_popi_popr8:  stack -= 3;  break;
+					case StackBehaviour.Popref_popi_popref: stack -= 3;  break;
+					case StackBehaviour.Varpop:                          break;
+					default: throw new Exception (opcode + " unknown pop behavior " + opcode.StackBehaviourPop);
 				}
 				switch (opcode.StackBehaviourPush) {
-					case StackBehaviour.Push0:                          break;
-					case StackBehaviour.Push1:             stack ++;    break;
-					case StackBehaviour.Push1_push1:       stack += 2;  break;
-					case StackBehaviour.Pushi:             stack ++;    break;
-					case StackBehaviour.Pushi8:            stack ++;    break;
-					case StackBehaviour.Pushr4:            stack ++;    break;
-					case StackBehaviour.Pushr8:            stack ++;    break;
-					case StackBehaviour.Pushref:           stack ++;    break;
-					case StackBehaviour.Varpush:                        break;
-					default: throw new Exception (opcode + "unknown push behavior " + opcode.StackBehaviourPush);
+					case StackBehaviour.Push0:                           break;
+					case StackBehaviour.Push1:              stack ++;    break;
+					case StackBehaviour.Push1_push1:        stack += 2;  break;
+					case StackBehaviour.Pushi:              stack ++;    break;
+					case StackBehaviour.Pushi8:             stack ++;    break;
+					case StackBehaviour.Pushr4:             stack ++;    break;
+					case StackBehaviour.Pushr8:             stack ++;    break;
+					case StackBehaviour.Pushref:            stack ++;    break;
+					case StackBehaviour.Varpush:                         break;
+					default: throw new Exception (opcode + " unknown push behavior " + opcode.StackBehaviourPush);
 				}
 				if (stack < 0) throw new Exception ("stack depth negative");
 				coll.stackDepth = stack;
@@ -1202,7 +1204,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public override void DebString (StringBuilder sb)
 		{
 			sb.Append (myLabel.name);
-			sb.Append (":");
+			sb.Append (":  [");
+			sb.Append (myLabel.stackDepth);
+			sb.Append (']');
 		}
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
