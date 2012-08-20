@@ -6,6 +6,12 @@ xmrOPtion expIRYdays 5;
 
 xmroption include "dictionary.lsl";
 
+integer _gblPropTrivial;
+integer gblPropTrivial { get { return _gblPropTrivial; } set { _gblPropTrivial = value; } }
+integer _gblPropCheckRun;
+integer gblPropCheckRun { get { llOwnerSay ("gblPropCheckRun: getting " + _gblPropCheckRun); return _gblPropCheckRun; }
+                          set { llOwnerSay ("gblPropCheckRun: setting " + value); _gblPropCheckRun = value; } }
+
 float[,] MatMul (float[,] x, float[,] y)
 {
     integer jMax = x.Length (0);  // rows of X
@@ -35,6 +41,11 @@ integer NonTrivInit ()
     return 99;
 }
 
+SaySomething(string s)
+{
+    llOwnerSay (s);
+}
+
 default {
     state_entry ()
     {
@@ -52,6 +63,12 @@ default {
             llOwnerSay ("element=(" + xmrTypeName (stuffenum.GetCurrent ()) + ") " + stuffenum.GetCurrent ());
             first = 0;
         }
+
+        gblPropTrivial = 987;
+        llOwnerSay ("gblPropTrivial=" + gblPropTrivial);
+        gblPropCheckRun = 789;
+        gblPropCheckRun ++;
+        SaySomething ("gblPropCheckRun=" + gblPropCheckRun);
 
         Kunta.Dictionary<string,integer> s2i = new Kunta.Dictionary<string,integer> (23);
         s2i.Add ("one", 1);

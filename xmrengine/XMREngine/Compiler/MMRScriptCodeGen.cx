@@ -157,6 +157,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private ScriptMyLocal actCallNo = null;  // for the active try/catch/finally stack or the big one outside them all
 		private LinkedList<CallLabel> actCallLabels = new LinkedList<CallLabel> ();  // for the active try/catch/finally stack or the big one outside them all
 		private LinkedList<CallLabel> allCallLabels = new LinkedList<CallLabel> ();  // this holds each and every one for all stacks in total
+		public  CallLabel openCallLabel = null;  // only one call label can be open at a time
+		                                         // - the call label is open from the time of CallPre() until corresponding CallPost()
+		                                         // - so no non-trivial pushes/pops etc allowed between a CallPre() and a CallPost()
 
 		private ScriptCodeGen (TokenScript tokenScript, BinaryWriter objFileWriter, string sourceHash)
 		{
@@ -226,7 +229,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Make sure we have delegates for all script-defined functions and methods,
-			 * creating anonymous ones if needed.
+			 * creating anonymous ones if needed.  Note that this includes all property 
+			 * getter and setter methods.
 			 */
 			foreach (TokenDeclVar declFunc in tokenScript.variablesStack) {
 				if (declFunc.retType != null) {
@@ -293,7 +297,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				if (declVar.retType != null) continue;
 
 				/*
-				 * Create entry in the value array for the variable.
+				 * Create entry in the value array for the variable or property.
 				 */
 				declVar.location = new CompValuGlobalVar (declVar, scriptObjCode);
 
@@ -340,7 +344,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					if ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) == 0) continue;
 
 					/*
-					 * Create entry in the value array for the field.
+					 * Create entry in the value array for the static field or static property.
 					 */
 					declVar.location = new CompValuGlobalVar (declVar, scriptObjCode);
 
@@ -1184,6 +1188,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			actCallLabels.Clear ();
 			allCallLabels.Clear ();
+			openCallLabel = null;
 
 			/*
 			 * Any return statements inside function body jump to this label
@@ -1246,12 +1251,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ilGen.Emit (OpCodes.Stfld, heapLeftFieldInfo);   // instance.heapLeft
 
 				// $globalvarinit();
-				if (tokenScript.globalVarInit.body.statements != null) {
-					if (!tokenScript.globalVarInit.IsFuncTrivial (this)) {
-						new CallLabel (this);
-					}
-					PushXMRInst ();
-					ilGen.Emit (OpCodes.Call, tokenScript.globalVarInit.ilGen);
+				TokenDeclVar gviFunc = tokenScript.globalVarInit;
+				if (gviFunc.body.statements != null) {
+					gviFunc.location.CallPre  (this, gviFunc);
+					gviFunc.location.CallPost (this, gviFunc);
 				}
 
 				// various $staticfieldinit();
@@ -1259,11 +1262,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					if (sdType is TokenDeclSDTypeClass) {
 						TokenDeclVar sfiFunc = ((TokenDeclSDTypeClass)sdType).staticFieldInit;
 						if ((sfiFunc != null) && (sfiFunc.body.statements != null)) {
-							if (!sfiFunc.IsFuncTrivial (this)) {
-								new CallLabel (this);
-							}
-							PushXMRInst ();
-							ilGen.Emit (OpCodes.Call, sfiFunc.ilGen);
+							sfiFunc.location.CallPre  (this, sfiFunc);
+							sfiFunc.location.CallPost (this, sfiFunc);
 						}
 					}
 				}
@@ -1287,11 +1287,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				}
 				TokenDeclVar ifiFunc = ((TokenDeclSDTypeClass)curDeclFunc.sdtClass).instFieldInit;
 				if (ifiFunc.body.statements != null) {
-					if (!ifiFunc.IsFuncTrivial (this)) {
-						new CallLabel (this);
-					}
-					ilGen.Emit (OpCodes.Ldarg_0);
-					ilGen.Emit (OpCodes.Call, ifiFunc.ilGen);
+					CompValu thisCompValu = new CompValuArg (ifiFunc.sdtClass.MakeRefToken (ifiFunc), 0);
+					CompValu ifiFuncLocn  = new CompValuInstMember (ifiFunc, thisCompValu, true);
+					ifiFuncLocn.CallPre  (this, ifiFunc);
+					ifiFuncLocn.CallPost (this, ifiFunc);
 				}
 			}
 
@@ -1327,6 +1326,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * End of the code to be optimized.
 			 * Do optimizations then write it all out to object file.
 			 * After this, all code gets written directly to object file.
+			 * Optimization must be completed before GenerateFrameCaptureCode()
+			 * because GenerateFrameCaptureCode() needs the list of vars valid
+			 * at the __call_ labels.
 			 */
 			collector.Optimize ();
 			ilGen = collector.WriteOutAll ();
@@ -1334,9 +1336,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Output epilog that subtracts heap usage by local vars.
+			 * It also saves stack frame state if CALLMODE_SAVE.
 			 *
 			 *   finally {
-			 *      if (instance.callMode ! 0) goto __cmSave;
+			 *      if (instance.callMode != CALLMODE_NORMAL) goto __cmSave;
 			 *      CreditAllLocalsHeapLeft();
 			 *      goto __endFin;
 			 *   __cmSave:
@@ -1606,6 +1609,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		/**
 		 * @brief There is one of these per call that can possibly call CheckRun(),
 		 *        including direct calls to CheckRun().
+		 *        They mark points that the stack capture/restore code will save & restore to.
+		 *        All object-code level local vars active at the call label's point will 
+		 *        be saved & restored.
+		 *
+		 *            callNo = 5;
+		 *        __call_5:
+		 *            push call arguments from temps
+		 *            call SomethingThatCallsCheckRun()
+		 *
+		 *        If SomethingThatCallsCheckRun() actually calls CheckRun(), our restore code
+		 *        will restore our args, locals & temps, then jump to __call_5, which will then 
+		 *        call SomethingThatCallsCheckRun() again, which will restore its stuff likewise.
+		 *        When eventually the actual CheckRun() call is restored, it will turn off restore 
+		 *        mode (by changing callMode from CALLMODE_RESTORE to CALLMODE_NORMAL) and return, 
+		 *        allowing the code to run normally from that point.
 		 */
 		public class CallLabel {
 			public int           index;       // sequential integer, starting at 0, within actCallLabels
@@ -1614,15 +1632,47 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			public CallLabel (ScriptCodeGen scg)
 			{
+				if (scg.openCallLabel != null) throw new Exception ("call label already open");
+
 				if (!scg.curDeclFunc.IsFuncTrivial (scg)) {
+					this.index = scg.actCallLabels.Count;
+					string name = "__call_" + index + "_" + scg.allCallLabels.Count;
+
+					/*
+					 * If there is anything on the evaluation stack, pop it all off into temps.
+					 * They will get captured/restored by the frame capture/restore code.
+					 */
+					ScriptMyLocal[] evalStackTemps = null;
+					int depth = ((ScriptCollector)scg.ilGen).stackDepth.Count;
+					if (depth > 0) {
+						int i;
+						evalStackTemps = new ScriptMyLocal[depth];
+						for (i = 0; i < depth; i ++) {
+							evalStackTemps[i] = scg.ilGen.DeclareLocal (((ScriptCollector)scg.ilGen).stackDepth[i], name + "_" + i);
+						}
+						while (-- i >= 0) scg.ilGen.Emit (OpCodes.Stloc, evalStackTemps[i]);
+					}
+
+					/*
+					 * Eval stack is empty so the restore code can handle it.
+					 */
 					this.index = scg.actCallLabels.Count;
 					scg.actCallLabels.AddLast (this);
 					scg.allCallLabels.AddLast (this);
-					this.callLabel = scg.ilGen.DefineLabel ("__call_" + index + "_" + scg.allCallLabels.Count);
+					this.callLabel = scg.ilGen.DefineLabel (name);
 					scg.ilGen.PushInt(this.index);
 					scg.ilGen.Emit (OpCodes.Stloc, scg.actCallNo);
 					scg.ilGen.MarkLabel (this.callLabel);
+
+					/*
+					 * Push the temp values back on the stack.
+					 */
+					for (int i = 0; i < depth; i ++) {
+						scg.ilGen.Emit (OpCodes.Ldloc, evalStackTemps[i]);
+					}
 				}
+
+				scg.openCallLabel = this;
 			}
 		};
 
@@ -1887,13 +1937,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			CompValu      arrayRVal    = GenerateFromRVal (forEachStmt.arrayRVal);
 
 			if (forEachStmt.keyLVal != null) {
-				keyLVal = GenerateFromLVal (forEachStmt.keyLVal, true);
+				keyLVal = GenerateFromLVal (forEachStmt.keyLVal);
 				if (!(keyLVal.type is TokenTypeObject)) {
 					ErrorMsg (forEachStmt.arrayRVal, "must be object");
 				}
 			}
 			if (forEachStmt.valLVal != null) {
-				valLVal = GenerateFromLVal (forEachStmt.valLVal, true);
+				valLVal = GenerateFromLVal (forEachStmt.valLVal);
 				if (!(valLVal.type is TokenTypeObject)) {
 					ErrorMsg (forEachStmt.arrayRVal, "must be object");
 				}
@@ -2040,8 +2090,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Find which block the target label is in.  Must be in this or an outer block,
 			 * no laterals allowed.  And if we exit a try/catch block, use Leave instead of Br.
 			 */
+			bool useLeave = false;
 			TokenStmtBlock stmtBlock;
-			OpCode brop = OpCodes.Br;
 			Stack<TokenStmtTry> finallyBlocksCalled = new Stack<TokenStmtTry> ();
 			for (stmtBlock = curStmtBlock; stmtBlock != stmtLabel.block; stmtBlock = stmtBlock.outerStmtBlock) {
 				if (stmtBlock == null) {
@@ -2052,7 +2102,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					ErrorMsg (jumpStmt, "cannot jump out of finally");
 					return;
 				}
-				if (stmtBlock.isTry || stmtBlock.isCatch) brop = OpCodes.Leave;
+				if (stmtBlock.isTry || stmtBlock.isCatch) useLeave = true;
 				if ((stmtBlock.tryStmt != null) && (stmtBlock.tryStmt.finallyStmt != null)) {
 					finallyBlocksCalled.Push (stmtBlock.tryStmt);
 				}
@@ -2123,10 +2173,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * calls CheckRun() and that CheckRun() captures the stack, it will have a point to 
 			 * restore to that will properly jump back into the finally block.
 			 */
-			if (brop == OpCodes.Leave) {
+			if (useLeave) {
 				new CallLabel (this);
+				ilGen.Emit (OpCodes.Leave, target);
+				openCallLabel = null;
+			} else {
+				ilGen.Emit (OpCodes.Br, target);
 			}
-			ilGen.Emit (brop, target);
 
 			/*
 			 * jump statements never fall through.
@@ -2235,13 +2288,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Use a OpCodes.Leave instruction to break out of any try { } blocks.
 			 * All Leave's inside script-defined try { } need call labels (see GenerateStmtTry()).
 			 */
+			bool brokeOutOfTry = false;
 			for (TokenStmtBlock stmtBlock = curStmtBlock; stmtBlock != null; stmtBlock = stmtBlock.outerStmtBlock) {
 				if (stmtBlock.isTry) {
-					new CallLabel (this);
+					brokeOutOfTry = true;
 					break;
 				}
 			}
+			if (brokeOutOfTry) new CallLabel (this);
 			ilGen.Emit (OpCodes.Leave, retLabel);
+			if (brokeOutOfTry) openCallLabel = null;
 
 			/*
 			 * 'return' statements never fall through.
@@ -2638,6 +2694,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			new CallLabel (this);					//   <oldcalllabel>:
 			ilGen.BeginExceptionBlock ();				//     try {
+			openCallLabel = null;
 #if DEBUG_TRYSTMT
 			ilGen.Emit (OpCodes.Ldstr, "enter try*: " + tryStmt.line + " callMode=");
 			ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
@@ -2681,6 +2738,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ilGen.MarkLabel (tryBreak.label);		//       tryBreak:
 				new CallLabel (this);				//       <tryCallLabel>:
 				ilGen.Emit (OpCodes.Leave, tryEnd);		//         leave tryEnd;
+				openCallLabel = null;
 			}
 
 			CallLabel tryThrow = new CallLabel (this);		//       tryThrow:<tryCallLabel>:
@@ -2695,6 +2753,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			catThrown.PushVal (this, tryStmt);			//         throw new ScriptRestoreCatchException (__catThrown);
 			ilGen.Emit (OpCodes.Newobj, scriptRestoreCatchExceptionConstructorInfo);
 			ilGen.Emit (OpCodes.Throw);
+			openCallLabel = null;
 
 			ilGen.MarkLabel (tryCallSw);				//       tryCallSw:
 #if DEBUG_TRYSTMT
@@ -2764,6 +2823,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 			new CallLabel (this);
 			ilGen.Emit (OpCodes.Leave, tryEnd);
+			openCallLabel = null;
 
 			ilGen.MarkLabel (catchRetro);				// not a script-visible exception, rethrow it
 			ilGen.Emit (OpCodes.Pop);
@@ -2852,6 +2912,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			new CallLabel (this);					//   <oldcalllabel>:
 			ilGen.BeginExceptionBlock ();				//     try {
 			ilGen.BeginExceptionBlock ();				//     try {
+			openCallLabel = null;
 #if DEBUG_TRYSTMT
 			ilGen.Emit (OpCodes.Ldstr, "enter try*: " + tryStmt.line + " callMode=");
 			ilGen.Emit (OpCodes.Call, consoleWriteMethodInfo);
@@ -2895,11 +2956,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 			new CallLabel (this);					//       <newCallLabel>:
 			ilGen.Emit (OpCodes.Leave, tryEnd);			//         leave tryEnd;
+			openCallLabel = null;
 
 			foreach (IntermediateLeave iLeave in tryStmt.iLeaves.Values) {
 				ilGen.MarkLabel (iLeave.jumpIntoLabel);		//       intr2_exit:
 				new CallLabel (this);				//         tryCallNo = n;
 				ilGen.Emit (OpCodes.Leave, iLeave.jumpAwayLabel);  //    __callNo_n_: leave int1_exit;
+				openCallLabel = null;
 			}
 
 			CallLabel tryThrow = new CallLabel (this);		//       tryThrow:<tryCallLabel>:
@@ -2914,6 +2977,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			catThrown.PushVal (this, tryStmt);			//         throw new ScriptRestoreCatchException (__catThrown);
 			ilGen.Emit (OpCodes.Newobj, scriptRestoreCatchExceptionConstructorInfo);
 			ilGen.Emit (OpCodes.Throw);
+			openCallLabel = null;
 
 			ilGen.MarkLabel (tryCallSw);				//       tryCallSw:
 			OutputCallNoSwitchStmt ();				//         switch (tryCallNo) ...
@@ -2987,7 +3051,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			if (!mightGetHere) return;
 
-			CompValu left = GenerateFromLVal (varIniDefStmt.var, true);
+			CompValu left = GenerateFromLVal (varIniDefStmt.var);
 			left.PopPre (this, varIniDefStmt);
 			PushDefaultValue (left.type);
 			left.PopPost (this, varIniDefStmt);
@@ -3058,21 +3122,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		/**
 		 * @brief Get the type and location of an L-value (eg, variable)
 		 * @param lVal    = L-value expression to evaluate
-		 * @param writing = true iff location will be written
 		 * @param argsig  = null: it's a field/property
 		 *                  else: select overload method that fits these arg types
 		 */
-		private CompValu GenerateFromLVal (TokenLVal lVal, bool writing)
+		private CompValu GenerateFromLVal (TokenLVal lVal)
 		{
-			return GenerateFromLVal (lVal, writing, null);
+			return GenerateFromLVal (lVal, null);
 		}
-		private CompValu GenerateFromLVal (TokenLVal lVal, bool writing, TokenType[] argsig)
+		private CompValu GenerateFromLVal (TokenLVal lVal, TokenType[] argsig)
 		{
 			if (lVal is TokenLValArEle)     return GenerateFromLValArEle     ((TokenLValArEle)lVal);
-			if (lVal is TokenLValBaseField) return GenerateFromLValBaseField ((TokenLValBaseField)lVal, writing, argsig);
-			if (lVal is TokenLValIField)    return GenerateFromLValIField    ((TokenLValIField)lVal,    writing, argsig);
-			if (lVal is TokenLValName)      return GenerateFromLValName      ((TokenLValName)lVal,      writing, argsig);
-			if (lVal is TokenLValSField)    return GenerateFromLValSField    ((TokenLValSField)lVal,    writing, argsig);
+			if (lVal is TokenLValBaseField) return GenerateFromLValBaseField ((TokenLValBaseField)lVal, argsig);
+			if (lVal is TokenLValIField)    return GenerateFromLValIField    ((TokenLValIField)lVal,    argsig);
+			if (lVal is TokenLValName)      return GenerateFromLValName      ((TokenLValName)lVal,      argsig);
+			if (lVal is TokenLValSField)    return GenerateFromLValSField    ((TokenLValSField)lVal,    argsig);
 			throw new Exception ("bad lval class");
 		}
 
@@ -3146,7 +3209,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief using 'base' within a script-defined instance method to refer to an instance field/method 
 		 *        of the class being extended.
 		 */
-		private CompValu GenerateFromLValBaseField (TokenLValBaseField baseField, bool writing, TokenType[] argsig)
+		private CompValu GenerateFromLValBaseField (TokenLValBaseField baseField, TokenType[] argsig)
 		{
 			string fieldName = baseField.fieldName.val;
 
@@ -3165,7 +3228,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				CheckAccess (declVar, baseField.fieldName);
 				TokenType baseType = declVar.sdtClass.MakeRefToken (baseField);
 				CompValu  basePtr  = new CompValuArg (baseType, 0);
-				return AccessInstanceMember (declVar, basePtr, baseField, writing, true);
+				return AccessInstanceMember (declVar, basePtr, baseField, true);
 			}
 
 			ErrorMsg (baseField, "no member " + fieldName + ArgSigString (argsig) + " rootward of " + sdtDecl.longName.val);
@@ -3176,7 +3239,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief We have an L-value token that is an instance field/method within a struct.
 		 * @returns a CompValu giving the type and location of the field/method in the struct.
 		 */
-		private CompValu GenerateFromLValIField (TokenLValIField lVal, bool writing, TokenType[] argsig)
+		private CompValu GenerateFromLValIField (TokenLValIField lVal, TokenType[] argsig)
 		{
 			CompValu baseRVal = GenerateFromRVal (lVal.baseRVal);
 			string fieldName = lVal.fieldName.val + ArgSigString (argsig);
@@ -3190,7 +3253,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				TokenDeclVar declVar = FindThisMember (sdtDecl, lVal.fieldName, argsig);
 				if (declVar != null) {
 					CheckAccess (declVar, lVal.fieldName);
-					return AccessInstanceMember (declVar, baseRVal, lVal, writing, false);
+					return AccessInstanceMember (declVar, baseRVal, lVal, false);
 				}
 				ErrorMsg (lVal.fieldName, "no member " + fieldName + " in class " + sdtDecl.longName.val);
 				return new CompValuVoid (lVal.fieldName);
@@ -3209,7 +3272,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					/*
 					 * Maybe accessing a method declared directly by that interface.
 					 */
-					if (impl == sdtDecl) return AccessInterfaceMember (declVar, baseRVal, lVal, writing);
+					if (impl == sdtDecl) return new CompValuIntfMember (declVar, baseRVal);
 
 					/*
 					 * Accessing a method of another interface that the primary interface says it implements.
@@ -3253,8 +3316,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					// save result of casting in temp
 					castBase.Pop (this, lVal);
 
-					// now set up reference to the method
-					return AccessInterfaceMember (declVar, castBase, lVal, writing);
+					// now set up reference to the member
+					return new CompValuIntfMember (declVar, castBase);
 				}
 
 				/*
@@ -3320,7 +3383,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 *                       eg, "(string,integer,list)"
 		 * @returns a CompValu giving the type and location of the function, method or variable.
 		 */
-		private CompValu GenerateFromLValName (TokenLValName lVal, bool writing, TokenType[] argsig)
+		private CompValu GenerateFromLValName (TokenLValName lVal, TokenType[] argsig)
 		{
 			/*
 			 * Look in variable stack then look for built-in constants and functions.
@@ -3363,81 +3426,36 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				}
 
 				CompValu thisCompValu = new CompValuArg (var.sdtClass.MakeRefToken (lVal), 0);
-				return AccessInstanceMember (var, thisCompValu, lVal, writing, false);
+				return AccessInstanceMember (var, thisCompValu, lVal, false);
 			}
 
 			/*
 			 * It's a local variable, static field, global, constant, etc.
 			 */
-			return var.location;  ///??? what about property ???///
+			return var.location;
 		}
 
 		/**
 		 * @brief Access a script-defined type's instance member
 		 * @param declVar = which member (field,method,property) to access
 		 * @param basePtr = points to particular object instance
-		 * @param writing = true iff about to write to member
 		 * @param ignoreVirt = true: access declVar's method directly; else: maybe use vTable
 		 * @returns where the field/method/property is located
 		 */
-		private CompValu AccessInstanceMember (TokenDeclVar declVar, CompValu basePtr, Token errorAt, bool writing, bool ignoreVirt)
+		private CompValu AccessInstanceMember (TokenDeclVar declVar, CompValu basePtr, Token errorAt, bool ignoreVirt)
 		{
 			if ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) != 0) {
 				ErrorMsg (errorAt, "non-static reference to static member " + declVar.name.val);
 				return new CompValuVoid (declVar);
 			}
-
-			/*
-			 * If reading the member is non-trivial, read it now and put result in a temporary.
-			 * This is so we don't have a non-trivial call with other values on the stack.
-			 *
-			 * Otherwise, return a direct reference to the member.
-			 */
-			CompValu member;
-			if (!writing && (declVar.getProp != null) && !declVar.getProp.IsFuncTrivial (this)) {
-				member = new CompValuInstMember (declVar.getProp, basePtr, ignoreVirt);
-				member = GenerateACall (member, zeroCompValus, errorAt);
-			} else {
-				member = new CompValuInstMember (declVar, basePtr, ignoreVirt);
-			}
-			return member;
-		}
-
-		/**
-		 * @brief Access a script-defined type's interface member
-		 * @param declVar = which member (field,method,property) to access
-		 * @param basePtr = points to particular object instance
-		 * @param writing = true iff about to write to member
-		 * @returns where the field/method/property is located
-		 */
-		private CompValu AccessInterfaceMember (TokenDeclVar declVar, CompValu basePtr, Token errorAt, bool writing)
-		{
-			if ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) != 0) {
-				ErrorMsg (errorAt, "non-static reference to static member " + declVar.name.val);
-				return new CompValuVoid (declVar);
-			}
-
-			/*
-			 * If reading the member is non-trivial, read it now and put result in a temporary.
-			 * This is so we don't have a non-trivial call with other values on the stack.
-			 *
-			 * Otherwise, return a direct reference to the member.
-			 */
-			CompValu member;
-			if (!writing && (declVar.getProp != null) && !declVar.getProp.IsFuncTrivial (this)) {
-				member = new CompValuIntfMember (declVar.getProp, basePtr);
-				member = GenerateACall (member, zeroCompValus, errorAt);
-			} else {
-				member = new CompValuIntfMember (declVar, basePtr);
-			}
-			return member;
+			return new CompValuInstMember (declVar, basePtr, ignoreVirt);
 		}
 
 		/**
 		 * @brief we have an L-value token that is a static member within a struct.
 		 * @returns a CompValu giving the type and location of the member in the struct.
 		 */
-		private CompValu GenerateFromLValSField (TokenLValSField lVal, bool writing, TokenType[] argsig)
+		private CompValu GenerateFromLValSField (TokenLValSField lVal, TokenType[] argsig)
 		{
 			TokenType stType = lVal.baseType;
 			string fieldName = lVal.fieldName.val + ArgSigString (argsig);
@@ -3454,7 +3472,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						ErrorMsg (lVal.fieldName, "static reference to non-static member " + fieldName);
 						return new CompValuVoid (lVal.fieldName);
 					}
-					return declVar.location;  ///??? what about property ???///
+					return declVar.location;
 				}
 			}
 
@@ -3509,7 +3527,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (rVal is TokenRValThis)      cVal = GenerateFromRValThis      ((TokenRValThis)rVal);
 			if (rVal is TokenRValUndef)     cVal = GenerateFromRValUndef     ((TokenRValUndef)rVal);
 			if (rVal is TokenRValVec)       cVal = GenerateFromRValVec       ((TokenRValVec)rVal);
-			if (rVal is TokenLVal)          cVal = GenerateFromLVal          ((TokenLVal)rVal, false, argsig);
+			if (rVal is TokenLVal)          cVal = GenerateFromLVal          ((TokenLVal)rVal, argsig);
 
 			if (cVal == null) throw new Exception ("bad rval class " + rVal.GetType ().ToString ());
 
@@ -3567,7 +3585,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					ErrorMsg (token, "invalid L-value for =");
 					return GenerateFromRVal (token.rValLeft);
 				}
-				left  = GenerateFromLVal ((TokenLVal)token.rValLeft, true);
+				left  = GenerateFromLVal ((TokenLVal)token.rValLeft);
 				right = GenerateFromRVal (token.rValRight, left.GetArgTypes ());
 				left.PopPre (this, token.rValLeft);
 				right.PushVal (this, token.rValRight, left.type);  // push (left.type)right
@@ -3609,7 +3627,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					if (opcodeIndex == "+") {
 						retcv = new CompValuTemp (new TokenTypeStr (token.opcode), null, this);
 					} else {
-						retcv = GenerateFromLVal ((TokenLVal)token.rValLeft, true);
+						retcv = GenerateFromLVal ((TokenLVal)token.rValLeft);
 					}
 					retcv.PopPre (this, token);
 
@@ -3663,7 +3681,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				if (declFunc != null) {
 					CheckAccess (declFunc, funcName);
 					left = GenerateFromRVal (token.rValLeft);
-					CompValu method = AccessInstanceMember (declFunc, left, token, false, false);
+					CompValu method = AccessInstanceMember (declFunc, left, token, false);
 					CompValu[] argRVals = new CompValu[] { right };
 					return GenerateACall (method, argRVals, token);
 				}
@@ -3695,7 +3713,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						ErrorMsg (token.rValLeft, "invalid L-value");
 						return GenerateFromRVal (token.rValLeft);
 					}
-					left = GenerateFromLVal ((TokenLVal)token.rValLeft, true);
+					left = GenerateFromLVal ((TokenLVal)token.rValLeft);
 					binOpStr.emitBO (this, token, left, right, left);
 					////????DebitHeapLeft (left, true, token.rValLeft);
 					return left;
@@ -3755,7 +3773,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 								ErrorMsg (token, "invalid L-value for <op>=");
 								return GenerateFromRVal (token.rValLeft);
 							}
-							left = GenerateFromLVal ((TokenLVal)token.rValLeft, true);
+							left = GenerateFromLVal ((TokenLVal)token.rValLeft);
 							binOpStr.emitBO (this, token, left, right, left);
 							////????DebitHeapLeft (left, true, token.rValLeft);
 							return left;
@@ -3866,7 +3884,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				TokenDeclVar declFunc = FindThisMember (sdtDecl, funcName, zeroArgs);
 				if (declFunc != null) {
 					CheckAccess (declFunc, funcName);
-					CompValu method = AccessInstanceMember (declFunc, inRVal, token, false, false);
+					CompValu method = AccessInstanceMember (declFunc, inRVal, token, false);
 					return GenerateACall (method, zeroCompValus, token);
 				}
 			}
@@ -3882,7 +3900,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private CompValu GenerateFromRValAsnPost (TokenRValAsnPost asnPost)
 		{
-			CompValu lVal = GenerateFromLVal (asnPost.lVal, true);
+			CompValu lVal = GenerateFromLVal (asnPost.lVal);
 
 			/*
 			 * Make up a temp to save original value in.
@@ -3938,7 +3956,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private CompValu GenerateFromRValAsnPre (TokenRValAsnPre asnPre)
 		{
-			CompValu lVal = GenerateFromLVal (asnPre.lVal, true);
+			CompValu lVal = GenerateFromLVal (asnPre.lVal);
 
 			/*
 			 * Make up a temp to put result in.
@@ -4046,34 +4064,31 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			TokenType[] argTypes;
 
 			/*
-			 * Inline functions know how to generate their own call.
-			 */
-			if (method is CompValuInline) {
-				CompValuInline inline = (CompValuInline)method;
-				result = new CompValuTemp (inline.declInline.retType, null, this);
-				inline.declInline.codeGen (this, call, result, argRVals);
-				return result;
-			}
-
-			/*
-			 * Otherwise must be some other kind of callable.
+			 * Must be some kind of callable.
 			 */
 			retType = method.GetRetType ();  // TokenTypeVoid if void; null means a variable
 			if (retType == null) {
-				ErrorMsg (call, "must be a function or method");
+				ErrorMsg (call, "must be a delegate, function or method");
 				return new CompValuVoid (call);
 			}
 
 			/*
-			 * Make sure we have a place to put return value.
+			 * Get a location for return value.
 			 */
-			result = new CompValuTemp (retType, null, this);
+			if (retType is TokenTypeVoid) {
+				result = new CompValuVoid (call);
+			} else {
+				result = new CompValuTemp (retType, null, this);
+			}
 
 			/*
-			 * Stick in a label here that stack frame restore code can jump to
-			 * in case the function being called calls CheckRun().
+			 * Inline functions know how to generate their own call.
 			 */
-			if (!method.IsCallTrivial (this)) new CallLabel (this);
+			if (method is CompValuInline) {
+				CompValuInline inline = (CompValuInline)method;
+				inline.declInline.codeGen (this, call, result, argRVals);
+				return result;
+			}
 
 			/*
 			 * Push whatever the function/method needs as a this argument, if anything.
@@ -4735,6 +4750,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			PushXMRInst ();                                 // instance
 			ilGen.PushInt (line);                           // source line number
 			ilGen.Emit (OpCodes.Call, checkRunMethodInfo);  // instance.CheckRun()
+			openCallLabel = null;
 		}
 
 		/**

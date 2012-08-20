@@ -29,14 +29,24 @@ DUMPARRAY da;
 constant c0 = 99;
 constant c1 = Klass.c2 + 12;
 
+integer _globalProperty;
+integer globalProperty { get { return _globalProperty + 42; } 
+                         set { _globalProperty = value; }
+                       }
+
 class KlassOne : Klass, Printable {
+    public integer k1Prop { get { SaySomething ("it's a sandard day"); return 2992; } 
+                            set { SaySomething ("please don't set k1Prop = " + value); }
+                          }
+
     public override Print () : Printable.Print
     {
         SaySomething ("KlassOne.Printable");
+        this.k1Prop = 2999;
     }
     public override string ToString () : Printable.ToString
     {
-        return "zhis is KlassOne";
+        return "zhis is KlassOne viss k1Prop=" + this.k1Prop;
     }
 }
 
@@ -102,6 +112,11 @@ default
         SaySomething ("c4 = " + Klass.c4);
         SaySomething ("c5 = " + Klass.c5);
         SaySomething ("c6 = " + Klass.c6);
+
+        globalProperty = 12345;
+        SaySomething ("globalProperty = " + globalProperty);
+        globalProperty ++;
+        SaySomething ("globalProperty = " + globalProperty);
 
         VERIFY ver = Verify;
         AwfulSig(ZERO_ROTATION, ZERO_VECTOR, "", 0, []);

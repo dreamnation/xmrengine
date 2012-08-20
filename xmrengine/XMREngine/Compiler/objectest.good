@@ -9,6 +9,12 @@ llOwnerSay: element=(string) abcdef
 llOwnerSay: element=(string) 1
 llOwnerSay: element=(string) 234
 llOwnerSay: element=(string) <5.000000,6.000000,7.000000>
+llOwnerSay: gblPropTrivial=987
+llOwnerSay: gblPropCheckRun: setting 789
+llOwnerSay: gblPropCheckRun: getting 789
+llOwnerSay: gblPropCheckRun: setting 790
+llOwnerSay: gblPropCheckRun: getting 790
+llOwnerSay: gblPropCheckRun=790
 llOwnerSay: s2i: two => 2
 llOwnerSay: s2i: one => 1
 llOwnerSay: s2i: three => 3

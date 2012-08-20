@@ -94,7 +94,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public int number;
 
 		public GraphNodeMarkLabel whereAmI;
-		public int stackDepth = -1;
+		public Type[] stackDepth;
 	}
 
 	/**

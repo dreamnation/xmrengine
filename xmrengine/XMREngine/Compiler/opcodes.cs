@@ -22,6 +22,7 @@ public class Opcodes {
                     public StackBehaviour StackBehaviourPush {
                 */
                 Console.WriteLine (name.PadRight (20) + 
+                        opcode.ToString ().PadRight (20) + 
                         opcode.OpCodeType.ToString ().PadRight (12) + 
                         opcode.OperandType.ToString ().PadRight (24) + 
                         opcode.FlowControl.ToString ().PadRight (15) + 

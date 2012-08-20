@@ -63,6 +63,109 @@ using System.Text;
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
 	/**
+	 * @brief This is a list that keeps track of types pushed on the evaluation stack.
+	 */
+	public class StackDepth : List<Type> {
+		public Type lastPopped;
+		public Type nextToLastPopped;
+
+		/**
+		 * @brief Pop call parameters and validate the types.
+		 */
+		public void Pop (ParameterInfo[] pis)
+		{
+			int n = pis.Length;
+			int c = this.Count;
+			if (n > c) throw new Exception ("stack going negative");
+			for (int i = n; -- i >= 0;) {
+				ExpectedVsOnStack (pis[i].ParameterType, this[--c]);
+			}
+			Pop (n);
+		}
+
+		/**
+		 * @brief Pop values and validate the types.
+		 */
+		public void Pop (Type[] ts)
+		{
+			int n = ts.Length;
+			int c = this.Count;
+			if (n > c) throw new Exception ("stack going negative");
+			for (int i = ts.Length; -- i >= 0;) {
+				ExpectedVsOnStack (ts[i], this[--c]);
+			}
+			Pop (n);
+		}
+
+		/**
+		 * @brief Pop a single value and validate the type.
+		 */
+		public void Pop (Type t)
+		{
+			int c = this.Count;
+			if (c < 1) throw new Exception ("stack going negative");
+			ExpectedVsOnStack (t, this[--c]);
+			Pop (1);
+		}
+
+		private void ExpectedVsOnStack (Type ex, Type st)
+		{
+			if (ex.IsAssignableFrom (st)) return;
+			if ((ex == typeof (char)) && (st == typeof (int))) return;
+			throw new Exception ("stack has " + st.Name + ", expect " + ex.Name);
+		}
+
+		/**
+		 * @brief Pop values without any validation.
+		 */
+		public void Pop (int n)
+		{
+			int c = this.Count;
+			if (n > c) throw new Exception ("stack going negative");
+			switch (n) {
+				case 0: break;
+				case 1: {
+					nextToLastPopped = lastPopped;
+					lastPopped       = this[c-1];
+					this.RemoveAt (c - 1);
+					break;
+				}
+				default: {
+					nextToLastPopped = this[c-1];
+					lastPopped       = this[c-2];
+					this.RemoveRange (c - n, n);
+					break;
+				}
+			}
+		}
+
+		/**
+		 * @brief Push a single value of the given type.
+		 */
+		public void Push (Type t)
+		{
+			this.Add (t);
+		}
+
+		/**
+		 * @brief See if the types at a given label exactly match those on the stack.
+		 *        We should have the stack types be the same no matter how we branched 
+		 *        or fell through to a particular label.
+		 */
+		public void Matches (Type[] ts)
+		{
+			if (ts.Length != this.Count) {
+				throw new Exception ("stack depth mismatch");
+			}
+			for (int i = this.Count; -- i >= 0;) {
+				if (ts[i] != this[i]) {
+					throw new Exception ("stack type mismatch");
+				}
+			}
+		}
+	}
+
+	/**
 	 * @brief One of these per opcode and label in the function plus other misc markers.
 	 *        They form the CIL instruction stream of the function.
 	 */
@@ -98,14 +201,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		/**
 		 * @brief Chain graph node to end of linear list.
 		 */
-		public GraphNode ChainLin ()
+		public virtual void ChainLin ()
 		{
 			coll.lastLin.nextLin = this;
 			this.prevLin  = coll.lastLin;
 			coll.lastLin  = this;
 			this.tryBlock = coll.curTryBlock;
 			this.excBlock = coll.curExcBlock;
-			return this;
+
+#if DEBUG & 1
+			StringBuilder sb = new StringBuilder ("ChainLin*: ");
+			this.DebString (sb);
+			Console.WriteLine (sb.ToString ());
+#endif
 		}
 
 		/**
@@ -312,11 +420,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public int excBlkSeqNo;                                 // debugging
 
 		public GraphNodeBeginExceptionBlock (ScriptCollector coll) : base (coll)
+		{ }
+
+		public override void ChainLin ()
 		{
+			base.ChainLin ();
+
 			// we should always start try blocks with nothing on stack
 			// ...as CLI wipes stack for various conditions
-			if (!coll.optimizing && (coll.stackDepth != 0)) {
-				throw new Exception ("stack depth " + coll.stackDepth);
+			if (coll.stackDepth.Count != 0) {
+				throw new Exception ("stack depth " + coll.stackDepth.Count);
 			}
 		}
 
@@ -337,11 +450,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	 */
 	public abstract class GraphNodeCatchFinallyBlock : GraphNodeBlock {
 		public GraphNodeCatchFinallyBlock (ScriptCollector coll) : base (coll)
+		{ }
+
+		public override void ChainLin ()
 		{
+			base.ChainLin ();
+
 			// we should always start catch/finally blocks with nothing on stack
 			// ...as CLI wipes stack for various conditions
-			if (!coll.optimizing && (coll.stackDepth != 0)) {
-				throw new Exception ("stack depth " + coll.stackDepth);
+			if (coll.stackDepth.Count != 0) {
+				throw new Exception ("stack depth " + coll.stackDepth.Count);
 			}
 		}
 	}
@@ -355,11 +473,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public GraphNodeBeginCatchBlock (ScriptCollector coll, Type excType) : base (coll)
 		{
 			this.excType = excType;
+		}
+
+		public override void ChainLin ()
+		{
+			base.ChainLin ();
 
 			// catch block always enters with one value on stack
-			if (!coll.optimizing) {
-				coll.stackDepth = 1;
+			if (coll.stackDepth.Count != 0) {
+				throw new Exception ("stack depth " + coll.stackDepth.Count);
 			}
+			coll.stackDepth.Push (excType);
 		}
 
 		public override void DebString (StringBuilder sb)
@@ -478,11 +602,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	 */
 	public class GraphNodeEndExceptionBlock : GraphNode {
 		public GraphNodeEndExceptionBlock (ScriptCollector coll) : base (coll)
+		{ }
+
+		public override void ChainLin ()
 		{
+			base.ChainLin ();
+
 			// we should always end exception blocks with nothing on stack
 			// ...as CLI wipes stack for various conditions
-			if (!coll.optimizing && (coll.stackDepth != 0)) {
-				throw new Exception ("stack depth " + coll.stackDepth);
+			if (coll.stackDepth.Count != 0) {
+				throw new Exception ("stack depth " + coll.stackDepth.Count);
 			}
 		}
 
@@ -507,57 +636,72 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public GraphNodeEmit (ScriptCollector coll, OpCode opcode) : base (coll)
 		{
 			this.opcode = opcode;
+		}
+
+		public override void ChainLin ()
+		{
+			base.ChainLin ();
 
 			// compute resultant stack depth
-			// the derivitive class' constructors handle any Varpop/Varpush amounts
-			if (!coll.optimizing) {
-				int stack = coll.stackDepth;
+			int stack = coll.stackDepth.Count;
 
-				if ((stack != 0) && ((opcode == OpCodes.Endfinally) || (opcode == OpCodes.Leave) || (opcode == OpCodes.Rethrow))) {
-					throw new Exception (opcode + " stack depth " + stack);
-				}
-				if ((stack != 1) && (opcode == OpCodes.Throw)) {
-					throw new Exception (opcode + " stack depth " + stack);
-				}
-
-				switch (opcode.StackBehaviourPop) {
-					case StackBehaviour.Pop0:                            break;
-					case StackBehaviour.Pop1:               stack --;    break;
-					case StackBehaviour.Pop1_pop1:          stack -= 2;  break;
-					case StackBehaviour.Popi:               stack --;    break;
-					case StackBehaviour.Popi_pop1:          stack -= 2;  break;
-					case StackBehaviour.Popi_popi:          stack -= 2;  break;
-					case StackBehaviour.Popi_popi_popi:     stack -= 3;  break;
-					case StackBehaviour.Popi_popi8:         stack -= 2;  break;
-					case StackBehaviour.Popi_popr4:         stack -= 2;  break;
-					case StackBehaviour.Popi_popr8:         stack -= 2;  break;
-					case StackBehaviour.Popref:             stack --;    break;
-					case StackBehaviour.Popref_pop1:        stack -= 2;  break;
-					case StackBehaviour.Popref_popi:        stack -= 2;  break;
-					case StackBehaviour.Popref_popi_pop1:   stack -= 3;  break;
-					case StackBehaviour.Popref_popi_popi:   stack -= 3;  break;
-					case StackBehaviour.Popref_popi_popi8:  stack -= 3;  break;
-					case StackBehaviour.Popref_popi_popr4:  stack -= 3;  break;
-					case StackBehaviour.Popref_popi_popr8:  stack -= 3;  break;
-					case StackBehaviour.Popref_popi_popref: stack -= 3;  break;
-					case StackBehaviour.Varpop:                          break;
-					default: throw new Exception (opcode + " unknown pop behavior " + opcode.StackBehaviourPop);
-				}
-				switch (opcode.StackBehaviourPush) {
-					case StackBehaviour.Push0:                           break;
-					case StackBehaviour.Push1:              stack ++;    break;
-					case StackBehaviour.Push1_push1:        stack += 2;  break;
-					case StackBehaviour.Pushi:              stack ++;    break;
-					case StackBehaviour.Pushi8:             stack ++;    break;
-					case StackBehaviour.Pushr4:             stack ++;    break;
-					case StackBehaviour.Pushr8:             stack ++;    break;
-					case StackBehaviour.Pushref:            stack ++;    break;
-					case StackBehaviour.Varpush:                         break;
-					default: throw new Exception (opcode + " unknown push behavior " + opcode.StackBehaviourPush);
-				}
-				if (stack < 0) throw new Exception ("stack depth negative");
-				coll.stackDepth = stack;
+			if ((stack != 0) && ((opcode == OpCodes.Endfinally) || (opcode == OpCodes.Leave) || (opcode == OpCodes.Rethrow))) {
+				throw new Exception (opcode + " stack depth " + stack);
 			}
+			if ((stack != 1) && (opcode == OpCodes.Throw)) {
+				throw new Exception (opcode + " stack depth " + stack);
+			}
+
+			int pop = 0;
+			switch (opcode.StackBehaviourPop) {
+				case StackBehaviour.Pop0:                               break;
+				case StackBehaviour.Pop1:               pop = 1;        break;
+				case StackBehaviour.Pop1_pop1:          pop = 2;        break;
+				case StackBehaviour.Popi:               pop = 1;        break;
+				case StackBehaviour.Popi_pop1:          pop = 2;        break;
+				case StackBehaviour.Popi_popi:          pop = 2;        break;
+				case StackBehaviour.Popi_popi_popi:     pop = 3;        break;
+				case StackBehaviour.Popi_popi8:         pop = 2;        break;
+				case StackBehaviour.Popi_popr4:         pop = 2;        break;
+				case StackBehaviour.Popi_popr8:         pop = 2;        break;
+				case StackBehaviour.Popref:             pop = 1;        break;
+				case StackBehaviour.Popref_pop1:        pop = 2;        break;
+				case StackBehaviour.Popref_popi:        pop = 2;        break;
+				case StackBehaviour.Popref_popi_pop1:   pop = 3;        break;
+				case StackBehaviour.Popref_popi_popi:   pop = 3;        break;
+				case StackBehaviour.Popref_popi_popi8:  pop = 3;        break;
+				case StackBehaviour.Popref_popi_popr4:  pop = 3;        break;
+				case StackBehaviour.Popref_popi_popr8:  pop = 3;        break;
+				case StackBehaviour.Popref_popi_popref: pop = 3;        break;
+				case StackBehaviour.Varpop:             this.VarPop (); break;
+				default: throw new Exception (opcode + " unknown pop behavior " + opcode.StackBehaviourPop);
+			}
+			coll.stackDepth.Pop (pop);
+
+			switch (opcode.StackBehaviourPush) {
+				case StackBehaviour.Push0:                                               break;
+				case StackBehaviour.Push1:       this.Push1 ();                          break;
+				case StackBehaviour.Push1_push1: this.Push2 ();                          break;
+				case StackBehaviour.Pushi:       this.PushI ();                          break;
+				case StackBehaviour.Pushi8:      coll.stackDepth.Push (typeof (long));   break;
+				case StackBehaviour.Pushr4:      coll.stackDepth.Push (typeof (float));  break;
+				case StackBehaviour.Pushr8:      coll.stackDepth.Push (typeof (double)); break;
+				case StackBehaviour.Pushref:     this.PushRef ();                        break;
+				case StackBehaviour.Varpush:     this.VarPush ();                        break;
+				default: throw new Exception (opcode + " unknown push behavior " + opcode.StackBehaviourPush);
+			}
+		}
+
+		protected virtual void VarPop  () { throw new Exception ("no VarPop() for "  + this.opcode); }
+
+		protected virtual void Push1   () { throw new Exception ("no Push1() for "   + this.opcode); }
+		protected virtual void Push2   () { throw new Exception ("no Push2() for "   + this.opcode); }
+		protected virtual void PushRef () { throw new Exception ("no PushRef() for " + this.opcode); }
+		protected virtual void VarPush () { throw new Exception ("no VarPush() for " + this.opcode); }
+
+		protected virtual void PushI ()
+		{
+			coll.stackDepth.Push (typeof (int));
 		}
 
 		/**
@@ -641,10 +785,74 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 	public class GraphNodeEmitNull : GraphNodeEmit {
 		public GraphNodeEmitNull (ScriptCollector coll, OpCode opcode) : base (coll, opcode)
+		{ }
+
+		protected override void VarPop ()
 		{
 			// OpCodes.Ret pops from the stack iff the return type is not void
-			if (!coll.optimizing && (opcode == OpCodes.Ret) && (this.coll.wrapped.retType != typeof (void))) {
-				coll.stackDepth --;
+			if ((opcode == OpCodes.Ret) && (this.coll.wrapped.retType != typeof (void))) {
+				coll.stackDepth.Pop (this.coll.wrapped.retType);
+			}
+		}
+
+		protected override void Push1 ()
+		{
+			Type push = coll.stackDepth.lastPopped;
+			switch (opcode.ToString ()) {
+				case "ldarg.0":    push = coll.wrapped.argTypes[0]; break;
+				case "ldarg.1":    push = coll.wrapped.argTypes[1]; break;
+				case "ldarg.2":    push = coll.wrapped.argTypes[2]; break;
+				case "ldarg.3":    push = coll.wrapped.argTypes[3]; break;
+				case "add":        break;
+				case "sub":        break;
+				case "mul":        break;
+				case "div":        break;
+				case "div.un":     break;
+				case "rem":        break;
+				case "rem.un":     break;
+				case "and":        break;
+				case "or":         break;
+				case "xor":        break;
+				case "shl":        break;
+				case "shr":        break;
+				case "shr.un":     break;
+				case "neg":        break;
+				case "not":        break;
+				case "add.ovf":    break;
+				case "add.ovf.un": break;
+				case "mul.ovf":    break;
+				case "mul.ovf.un": break;
+				case "sub.ovf":    break;
+				case "sub.ovf.un": break;
+				default: base.Push1 (); return;
+			}
+			coll.stackDepth.Push (push);
+		}
+
+		protected override void Push2 ()
+		{
+			switch (opcode.ToString ()) {
+				case "dup": {
+					coll.stackDepth.Push (coll.stackDepth.lastPopped);
+					coll.stackDepth.Push (coll.stackDepth.lastPopped);
+					break;
+				}
+				default: base.Push2 (); return;
+			}
+		}
+
+		protected override void PushRef ()
+		{
+			switch (opcode.ToString ()) {
+				case "ldnull": {
+					coll.stackDepth.Push (typeof (object));
+					break;
+				}
+				case "ldelem.ref": {
+					coll.stackDepth.Push (coll.stackDepth.lastPopped.GetElementType ());
+					break;
+				}
+				default: base.PushRef (); return;
 			}
 		}
 
@@ -748,6 +956,25 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.field = field;
 		}
 
+		protected override void Push1 ()
+		{
+			switch (opcode.ToString ()) {
+				case "ldfld":  break;
+				case "ldsfld": break;
+				default: base.Push1 (); return;
+			}
+			coll.stackDepth.Push (field.FieldType);
+		}
+		protected override void PushI ()
+		{
+			switch (opcode.ToString ()) {
+				case "ldflda":  break;
+				case "ldsflda": break;
+				default: base.PushI (); return;
+			}
+			coll.stackDepth.Push (field.FieldType.MakeByRefType ());
+		}
+
 		public override void DebString (StringBuilder sb)
 		{
 			base.DebString (sb);
@@ -766,6 +993,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public GraphNodeEmitLocal (ScriptCollector coll, OpCode opcode, ScriptMyLocal myLocal) : base (coll, opcode)
 		{
 			this.myLocal = myLocal;
+		}
+
+		protected override void Push1 ()
+		{
+			switch (opcode.ToString ()) {
+				case "ldloc": coll.stackDepth.Push (myLocal.type); break;
+				default: base.Push1 (); return;
+			}
+		}
+		protected override void PushI ()
+		{
+			switch (opcode.ToString ()) {
+				case "ldloca": coll.stackDepth.Push (myLocal.type.MakeByRefType ()); break;
+				default: base.PushI (); return;
+			}
 		}
 
 		public override void DebString (StringBuilder sb)
@@ -803,6 +1045,34 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.type = type;
 		}
 
+		protected override void Push1 ()
+		{
+			switch (opcode.ToString ()) {
+				case "ldelem":    break;
+				case "unbox.any": break;
+				default: base.Push1 (); return;
+			}
+			coll.stackDepth.Push (type);
+		}
+		protected override void PushI ()
+		{
+			switch (opcode.ToString ()) {
+				case "ldelema": coll.stackDepth.Push (type.MakeByRefType ()); break;
+				default: base.PushI (); return;
+			}
+		}
+
+		protected override void PushRef ()
+		{
+			switch (opcode.ToString ()) {
+				case "castclass": break;
+				case "box":       break;
+				case "newarr":    coll.stackDepth.Push (type.MakeArrayType ()); return;
+				default: base.PushRef (); return;
+			}
+			coll.stackDepth.Push (type);
+		}
+
 		public override void DebString (StringBuilder sb)
 		{
 			base.DebString (sb);
@@ -821,15 +1091,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public GraphNodeEmitLabel (ScriptCollector coll, OpCode opcode, ScriptMyLabel myLabel) : base (coll, opcode)
 		{
 			this.myLabel = myLabel;
+		}
+
+		public override void ChainLin ()
+		{
+			base.ChainLin ();
 
 			// if a target doesn't have a depth yet, set its depth to the depth after instruction executes
 			// otherwise, make sure it matches all other branches to that target and what fell through to it
-			if (!coll.optimizing) {
-				if (myLabel.stackDepth < 0) myLabel.stackDepth = coll.stackDepth;
-				else if (myLabel.stackDepth != coll.stackDepth) {
-					throw new Exception ("stack depth mismatch at " + myLabel.name);
-				}
-			}
+			if (myLabel.stackDepth == null) myLabel.stackDepth = coll.stackDepth.ToArray ();
+			else coll.stackDepth.Matches (myLabel.stackDepth);
 		}
 
 		public override void DebString (StringBuilder sb)
@@ -953,16 +1224,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public GraphNodeEmitLabels (ScriptCollector coll, OpCode opcode, ScriptMyLabel[] myLabels) : base (coll, opcode)
 		{
 			this.myLabels = myLabels;
+		}
+
+		public override void ChainLin ()
+		{
+			base.ChainLin ();
 
 			// if a target doesn't have a depth yet, set its depth to the depth after instruction executes
 			// otherwise, make sure it matches all other branches to that target and what fell through to it
-			if (!coll.optimizing) {
-				foreach (ScriptMyLabel myLabel in myLabels) {
-					if (myLabel.stackDepth < 0) myLabel.stackDepth = coll.stackDepth;
-					else if (myLabel.stackDepth != coll.stackDepth) {
-						throw new Exception ("stack depth mismatch at " + myLabel.name);
-					}
-				}
+			foreach (ScriptMyLabel myLabel in myLabels) {
+				if (myLabel.stackDepth == null) myLabel.stackDepth = coll.stackDepth.ToArray ();
+				else coll.stackDepth.Matches (myLabel.stackDepth);
 			}
 		}
 
@@ -1035,14 +1307,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public GraphNodeEmitIntMeth (ScriptCollector coll, OpCode opcode, ScriptObjWriter method) : base (coll, opcode)
 		{
 			this.method = method;
+		}
 
+		protected override void VarPop ()
+		{
 			// calls have Varpop so pop the number of arguments
 			// the internal methods are all static so the arg list include the 'this' stack value
+			coll.stackDepth.Pop (this.method.argTypes);
+		}
+		protected override void VarPush ()
+		{
 			// calls are also Varpush so they push a return value iff non-void
-			if (!coll.optimizing) {
-				coll.stackDepth -= this.method.argTypes.Length;
-				if (this.method.retType != typeof (void)) coll.stackDepth ++;
-			}
+			if (this.method.retType != typeof (void)) coll.stackDepth.Push (this.method.retType);
 		}
 
 		public override void DebString (StringBuilder sb)
@@ -1063,14 +1339,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public GraphNodeEmitExtMeth (ScriptCollector coll, OpCode opcode, MethodInfo method) : base (coll, opcode)
 		{
 			this.method = method;
+		}
 
+		protected override void VarPop ()
+		{
 			// calls have Varpop so pop the number of arguments
-			// calls are also Varpush so they push a return value iff non-void
-			if (!coll.optimizing) {
-				coll.stackDepth -= this.method.GetParameters ().Length;
-				if ((this.method.CallingConvention & CallingConventions.HasThis) != 0) coll.stackDepth --;
-				if (this.method.ReturnType != typeof (void)) coll.stackDepth ++;
+			coll.stackDepth.Pop (this.method.GetParameters ());
+			if ((this.method.CallingConvention & CallingConventions.HasThis) != 0) {
+				coll.stackDepth.Pop (method.DeclaringType);
 			}
+		}
+		protected override void VarPush ()
+		{
+			// calls are also Varpush so they push a return value iff non-void
+			if (this.method.ReturnType != typeof (void)) coll.stackDepth.Push (this.method.ReturnType);
 		}
 
 		public override void DebString (StringBuilder sb)
@@ -1091,11 +1373,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public GraphNodeEmitCtor (ScriptCollector coll, OpCode opcode, ConstructorInfo ctor) : base (coll, opcode)
 		{
 			this.ctor = ctor;
+		}
 
+		protected override void VarPop ()
+		{
 			// constructors have Varpop so pop the number of arguments
-			// OpCodes.Newobj is Pushref so we don't need to say it pushes anything
-			if (!coll.optimizing) {
-				coll.stackDepth -= this.ctor.GetParameters ().Length;
+			coll.stackDepth.Pop (this.ctor.GetParameters ());
+		}
+
+		protected override void PushRef ()
+		{
+			switch (opcode.ToString ()) {
+				case "newobj": {
+					coll.stackDepth.Push (ctor.DeclaringType);
+					break;
+				}
+				default: base.PushRef (); return;
 			}
 		}
 
@@ -1159,6 +1452,26 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.value = value;
 		}
 
+		protected override void Push1 ()
+		{
+			switch (opcode.ToString ()) {
+				case "ldarg":   break;
+				case "ldarg.s": break;
+				default: base.Push1 (); return;
+			}
+			coll.stackDepth.Push (coll.wrapped.argTypes[value]);
+		}
+		protected override void PushI ()
+		{
+			switch (opcode.ToString ()) {
+				case "ldarga":   break;
+				case "ldarga.s": break;
+				default: base.PushI (); return;
+			}
+			coll.stackDepth.Push (coll.wrapped.argTypes[value].MakeByRefType ());
+		}
+
+
 		public override void DebString (StringBuilder sb)
 		{
 			base.DebString (sb);
@@ -1177,6 +1490,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public GraphNodeEmitString (ScriptCollector coll, OpCode opcode, string value) : base (coll, opcode)
 		{
 			this.value = value;
+		}
+
+		protected override void PushRef ()
+		{
+			switch (opcode.ToString ()) {
+				case "ldstr": {
+					coll.stackDepth.Push (typeof (string));
+					break;
+				}
+				default: base.PushRef (); return;
+			}
 		}
 
 		public override void DebString (StringBuilder sb)
@@ -1201,12 +1525,42 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.myLabel = myLabel;
 		}
 
+		public override void ChainLin ()
+		{
+			base.ChainLin ();
+
+			// if previous instruction can fall through to this label,
+			//     if the label doesn't yet have a stack depth, mark it with current stack depth
+			//     else, the label's stack depth from forward branches and current stack depth must match
+			// else,
+			//     label must have had a forward branch to it so we can know stack depth
+			//     set the current stack depth to the label's stack depth as of that forward branch
+			if (myLabel.whereAmI.prevLin.CanFallThrough ()) {
+				if (myLabel.stackDepth == null) {
+					myLabel.stackDepth = coll.stackDepth.ToArray ();
+				} else {
+					coll.stackDepth.Matches (myLabel.stackDepth);
+				}
+			} else {
+				if (myLabel.stackDepth == null) {
+					throw new Exception ("stack depth unknown at " + myLabel.name);
+				}
+				coll.stackDepth.Clear ();
+				foreach (Type t in myLabel.stackDepth) {
+					coll.stackDepth.Push (t);
+				}
+			}
+		}
+
 		public override void DebString (StringBuilder sb)
 		{
 			sb.Append (myLabel.name);
-			sb.Append (":  [");
-			sb.Append (myLabel.stackDepth);
-			sb.Append (']');
+			sb.Append (':');
+			if (myLabel.stackDepth != null) {
+				sb.Append ("  [");
+				sb.Append (myLabel.stackDepth.Length);
+				sb.Append (']');
+			}
 		}
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
@@ -1223,8 +1577,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private bool resolvedSomething;
 		private int resolveSequence;
 		private int excBlkSeqNos;
-		public bool optimizing;
-		public int stackDepth;
+		public StackDepth stackDepth = new StackDepth ();
 
 		public GraphNodeBeginExceptionBlock curTryBlock = null;  // pushed at beginning of try
 		                                                         // popped at BEGINNING of catch/finally
@@ -1380,27 +1733,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			myLabel.whereAmI = new GraphNodeMarkLabel (this, myLabel);
 			myLabel.whereAmI.ChainLin ();
-
-			// if previous instruction can fall through to this label,
-			//     if the label doesn't yet have a stack depth, mark it with current stack depth
-			//     else, the label's stack depth from forward branches and current stack depth must match
-			// else,
-			//     label must have had a forward branch to it so we can know stack depth
-			//     set the current stack depth to the label's stack depth as of that forward branch
-			if (!this.optimizing) {
-				if (myLabel.whereAmI.prevLin.CanFallThrough ()) {
-					if (myLabel.stackDepth < 0) {
-						myLabel.stackDepth = this.stackDepth;
-					} else if (myLabel.stackDepth != this.stackDepth) {
-						throw new Exception ("stack depth mismatch at " + myLabel.name);
-					}
-				} else {
-					if (myLabel.stackDepth < 0) {
-						throw new Exception ("stack depth unknown at " + myLabel.name);
-					}
-					this.stackDepth = myLabel.stackDepth;
-				}
-			}
 		}
 
 		/**
@@ -1426,7 +1758,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public void Optimize ()
 		{
 			if (curExcBlock != null) throw new Exception ("exception block still open");
-			optimizing = true;
 
 			/*
 			 * If an instruction says it doesn't fall through, remove all instructions to
@@ -1690,7 +2021,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Dump out the results.
 			 */
-#if DEBUG
+#if DEBUG & 2
 			Console.WriteLine ("");
 			Console.WriteLine (methName);
 			Console.WriteLine ("  resolveSequence=" + this.resolveSequence);
