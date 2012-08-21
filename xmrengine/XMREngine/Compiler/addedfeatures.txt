@@ -302,6 +302,318 @@ a download.  This can be done by adding or removing whitespace from the inworld
 script file containing the xmroption include statement.
 
 
+INLINE EVENT HANDLING
+
+Sometimes using the event handler model can be inconvenient and lead to 
+distored code.  These built-in functions can lead to simpler code when dealing 
+with such situations.
+
+Call an arbitrary event handler in the current state
+
+    xmrEventCallHandler (list ev)
+        ev = event to be processed
+            ev[0] = (integer) event code (XMREVENTCODE_<eventname>, eg, 
+                    XMREVENTCODE_touch_start)
+            ev[1..n] = call parameters to the event, if any
+
+ Note:
+   1) The event handler is called immediately and when that event handler 
+      completes, xmrEventCallHandler() returns to its caller.  Contrast with 
+      xmrEventEnqueue() which places the event in the event queue for 
+      processing after the current event handler completes.
+
+Block script execution until and event is queued or a timeout is reached
+
+    list xmrEventDequeue (float timeout, integer rm1, integer rm2, 
+                                         integer bm1, integer bm2)
+
+        timeout = maximum number of seconds to wait
+        rm1,rm2 = if an event is queued that matches these mask bits, the 
+                  script is woken, that event is dequeued and returned to the 
+                  caller.  the normal event handler defined in the current 
+                  state for the event is not executed.
+        bm1,bm2 = if an event is queued that matches these mask bits, the 
+                  script is woken, that event is dequeued and its normal event 
+                  handler for the current statis is executed.  then the script 
+                  resumes waiting for what's left of the timeout or for another 
+                  event to be queued.
+
+        returns empty list: no event was queued that matched rm1,rm2 and the 
+                            timeout was reached
+                      else: list giving parameters of the event, same format as 
+                            is passed to xmrEventCallHandler()
+
+ Notes:
+   1) Scrips should use XMREVENTMASKn_<eventname> symbols for the mask 
+      arguments, where n is 1 or 2 for mask1 or mask2 arguments.  The list[0] 
+      return argument can be decoded by using XMREVENTCODE_<eventname> symbols.
+   2) If all masks are zero, the call ends up acting like llSleep.
+   3) If an event is enabled in both rm1,rm2 and bm1,bm2, the rm1,rm2 bit 
+      action takes precedence, ie, the event is returned.  This allows a simple 
+      specification -1 for both bm1,bm2 arguments to indicate that all events 
+      not enabled to be returned by the rm1,rm2 argumetns should be handled in 
+      the background.
+   4) Any events not listed in either rm1,rm2 or bm1,bm2 arguments will be 
+      queued for later processing (subject to normal queue limits).
+   5) Background event handlers execute as calls from within XMREventDequeue, 
+      they do not execute as separate threads.  Thus any background event 
+      handlers must return before the call to xmrEventDequeue will return.
+   6) If a background event handler changes state (eg, via 'state' statement), 
+      the state is immediately changed and the script-level xmrEventDequeue 
+      call does not return.
+   7) For returned events, the detect parameters are overwritten by the 
+      returned event.  For background events, the detect parameters are saved 
+      and restored.
+   8) Scripts must contain dummy event handler definitions for any event types 
+      that may be returned by XMREventDequeue(), to let the runtime know that 
+      the script is capable of processing that event type.  Otherwise, the 
+      event may not be queued to the script.
+
+    Event codes:
+
+        XMREVENTCODE_attach
+        XMREVENTCODE_state_exit
+        XMREVENTCODE_timer
+        XMREVENTCODE_touch
+        XMREVENTCODE_collision
+        XMREVENTCODE_collision_end
+        XMREVENTCODE_collision_start
+        XMREVENTCODE_control
+        XMREVENTCODE_dataserver
+        XMREVENTCODE_email
+        XMREVENTCODE_http_response
+        XMREVENTCODE_land_collision
+        XMREVENTCODE_land_collision_end
+        XMREVENTCODE_land_collision_start
+        XMREVENTCODE_at_target
+        XMREVENTCODE_listen
+        XMREVENTCODE_money
+        XMREVENTCODE_moving_end
+        XMREVENTCODE_moving_start
+        XMREVENTCODE_not_at_rot_target
+        XMREVENTCODE_not_at_target
+        XMREVENTCODE_touch_start
+        XMREVENTCODE_object_rez
+        XMREVENTCODE_remote_data
+        XMREVENTCODE_at_rot_target
+        XMREVENTCODE_run_time_permissions
+        XMREVENTCODE_touch_end
+        XMREVENTCODE_state_entry
+        XMREVENTCODE_changed
+        XMREVENTCODE_link_message
+        XMREVENTCODE_no_sensor
+        XMREVENTCODE_on_rez
+        XMREVENTCODE_sensor
+        XMREVENTCODE_http_request
+
+    Event masks:
+
+        XMREVENTMASK1_attach
+        XMREVENTMASK1_state_exit
+        XMREVENTMASK1_timer
+        XMREVENTMASK1_touch
+        XMREVENTMASK1_collision
+        XMREVENTMASK1_collision_end
+        XMREVENTMASK1_collision_start
+        XMREVENTMASK1_control
+        XMREVENTMASK1_dataserver
+        XMREVENTMASK1_email
+        XMREVENTMASK1_http_response
+        XMREVENTMASK1_land_collision
+        XMREVENTMASK1_land_collision_end
+        XMREVENTMASK1_land_collision_start
+        XMREVENTMASK1_at_target
+        XMREVENTMASK1_listen
+        XMREVENTMASK1_money
+        XMREVENTMASK1_moving_end
+        XMREVENTMASK1_moving_start
+        XMREVENTMASK1_not_at_rot_target
+        XMREVENTMASK1_not_at_target
+        XMREVENTMASK1_touch_start
+        XMREVENTMASK1_object_rez
+        XMREVENTMASK1_remote_data
+        XMREVENTMASK1_at_rot_target
+        XMREVENTMASK1_run_time_permissions
+        XMREVENTMASK1_touch_end
+        XMREVENTMASK1_state_entry
+        XMREVENTMASK2_changed
+        XMREVENTMASK2_link_message
+        XMREVENTMASK2_no_sensor
+        XMREVENTMASK2_on_rez
+        XMREVENTMASK2_sensor
+        XMREVENTMASK2_http_request
+
+    Example 1
+
+xmroption advflowctl;
+xmroption trycatch;
+default {
+    state_entry ()
+    {
+        /*
+         * Send request to a webserver.
+         */
+        key reqid = llHTTPRequest ("http://www.outerworldapps.com/index.html", 
+                                   [], "");
+
+        /*
+         * Wait here up to 30 seconds for the reply.
+         * If any other events come in meanwhile, process them as background 
+         * calls.
+         */
+        while (1) {
+            list reply = xmrEventDequeue (30.0, XMREVENTMASK1_http_response, 
+                                          0, -1, -1);
+
+            if (llGetListLength (reply) == 0) {
+                llOwnerSay ("timed out waiting for reply");
+                break;
+            }
+
+            integer eventcode = (integer)reply[0];
+            if (eventcode != XMREVENTCODE_http_response) {
+                // fatal error - should never happen
+                throw "bad event code " + eventcode;
+            }
+            key request_id = (key)reply[1];
+            if (request_id != reqid) {
+                // got reply for somthing else, ignore and look again
+                continue;
+            }
+            integer status   = (integer)reply[2];
+            list    metadata = (list)reply[3];
+            string  body     = (string)reply[4];
+            llOwnerSay ("reply body: " + body);
+            break;
+        }
+    }
+
+    /*
+     * These event handlers will get called by xmrEventDequeue if the event is 
+     * received while waiting for the reply from the webserver.
+     *
+     * They also get called normally once the start_entry() event handler 
+     * completes.
+     */
+    touch_start (integer num_detected)
+    {
+        llOwnerSay ("touched!");
+    }
+    changed (integer change)
+    {
+        llOwnerSay ("changed!");
+    }
+}
+
+    Example 2
+
+xmroption advflowctl;
+xmroption trycatch;
+default {
+    state_entry ()
+    {
+        /*
+         * Tell runtime to queue all messages on channel 0 to us.
+         */
+        llListen (0, "", NULL_KEY, "");
+
+        while (1) {
+
+            /*
+             * Tell xmrEventDequeue() to wait up to 5 seconds per call for one 
+             * of the events listed in the rm1,rm2 arguments.  Meanwhile, if 
+             * any events listed in the bm1,bm2 arguments are received, process 
+             * them via the normal event handlers.
+             */
+            list ev = xmrEventDequeue (5.0, 
+                    XMREVENTMASK1_touch_start | XMREVENTMASK1_listen, 
+                    XMREVENTMASK2_changed, 
+                    -1, -1);  // -1,-1 means everything else
+            if (llGetListLength (ev) == 0) {
+                llOwnerSay ("nothing happened in the past five seconds");
+                continue;
+            }
+            integer eventcode = (integer)ev[0];
+            switch (eventcode) {
+                case XMREVENTCODE_touch_start: {
+                    integer num_detected = (integer)ev[1];
+                    llOwnerSay ("touched " + num_detected + " time(s)");
+                    break;
+                }
+                case XMREVENTCODE_listen: {
+                    integer channel = (integer)ev[1];
+                    string  name    = (string)ev[2];
+                    key     id      = (key)ev[3];
+                    string  message = (string)ev[4];
+                    llOwnerSay ("Heard from " + name + "(" + id + ") on " + 
+                            channel + ": " + message);
+                    break;
+                }
+                case XMREVENTCODE_changed: {
+                    integer change = (integer)ev[1];
+                    llOwnerSay ("something changed: " + change);
+                    break;
+                }
+                default: {
+                    // fatal error - should never happen
+                    throw "don't know why I got event " + eventcode;
+                }
+            }
+        }
+    }
+
+    /*
+     * These dummy handlers must be present so the runtime knows the script 
+     * wants these events to be queued to the script.  But they never get 
+     * called because the xmrEventDequeue() has them listed in its rm1,rm2 
+     * mask arguments.
+     */
+    touch_start (integer num_detected)
+    {
+        throw "should never get to the regular touch_start() handler";
+    }
+    listen (integer channel, string name, key id, string message)
+    {
+        throw "should never get to the regular listen() handler";
+    }
+    changed (integer change)
+    {
+        throw "should never get to the regular changed() handler";
+    }
+
+    /*
+     * Since this event is not listed in the rm1,rm2 arguments but is listed in 
+     * the bm1,bm2 arguments, it will be called normally in the background by 
+     * xmrEventDequeue() whenever this event is received.
+     */
+    collision_start (integer num_detected)
+    {
+        llOwnerSay ("collided with " + num_detected + " thing(s)");
+    }
+}
+
+Queue an event to the calling script
+
+    xmrEventEnqueue (list ev)
+        ev = event to be enqueued, see xmrEventCallHandler()
+
+ Note:
+   1) The event is queued to execute along with any other events that might be 
+      pending, subject to event queuing limits, and executes after the current 
+      event handler completes.  Contrast with xmrEventCallHandler(), which 
+      directly calls the event handler immediately.
+
+Load current detect params from a list
+
+    xmrEventLoadDets (list dp)
+        dp = as returned by xmrEventSaveDets()
+
+Save current detect params into a list
+
+    list xmrEventSaveDets ()
+        returns list giving detect params for current event
+
+
 OBJECTS
 
 Script-defined types provide a mechanism to make programming scripts easier 
