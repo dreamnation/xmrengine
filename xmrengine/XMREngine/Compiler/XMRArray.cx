@@ -359,7 +359,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (o is LSL_Float)    return 8;
             if (o is LSL_Key)      return 16 + 2 * ((string)(LSL_Key)o).Length;
             if (o is LSL_String)   return 16 + 2 * ((string)(LSL_String)o).Length;
-            if (o is LSL_List)     return ((LSL_List)o).Size;
+            if (o is LSL_List)     return 0; ///??? broken when list contains another list 
+                                             ///??? as in xmrEventDequeue(http_response)
+                                             ///??? ((LSL_List)o).Size;
             if (o is LSL_Vector)   return 24;
             if (o is LSL_Rotation) return 32;
             if (o is object[]) {

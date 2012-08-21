@@ -487,6 +487,15 @@ default {
             break;
         }
     }
+    
+    /*
+     * This dummy event handler must be present so the runtime knows this script 
+     * can handle http_response events.
+     */
+    http_response (key request_id, integer status, list metadata, string body)
+    {
+        throw "should never get here";
+    }
 
     /*
      * These event handlers will get called by xmrEventDequeue if the event is 

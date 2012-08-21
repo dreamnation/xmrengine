@@ -5416,7 +5416,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			int newHeapUse = 0;
 
 			     if (value is XMR_Array)  newHeapUse = ((XMR_Array)value).Size;
-			else if (value is LSL_List)   newHeapUse = ((LSL_List)value).Size;
+			else if (value is LSL_List)   newHeapUse = 0; ///??? broken when list contains another list 
+			                                              ///??? as in xmrEventDequeue(http_response)
+			                                              ///??? ((LSL_List)value).Size;
 			else if (value is LSL_String) newHeapUse = ((LSL_String)value).Length * 2 + 24;
 			else if (value is string)     newHeapUse = ((string)value).Length * 2 + 24;
 
