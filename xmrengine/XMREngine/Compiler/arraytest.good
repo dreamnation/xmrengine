@@ -1,32 +1,5 @@
 Compiling...
 Running...
-llOwnerSay: c0 = 99
-llOwnerSay: c1 = 147
-llOwnerSay: c2 = 135
-llOwnerSay: c3 = 101
-llOwnerSay: c4 = 56
-llOwnerSay: c5 = 197
-llOwnerSay: c6 = 735
-llOwnerSay: globalProperty = 12387
-llOwnerSay: globalProperty = 12430
-llOwnerSay: SayIt: this.x=99
-llOwnerSay: SayIt: Klass.y=0
-llOwnerSay: SayIt: this.x=99
-llOwnerSay: SayIt: Klass.y=0
-llOwnerSay: k string zhis is Klass
-llOwnerSay: KlassOne.Printable
-llOwnerSay: please don't set k1Prop = 2999
-llOwnerSay: KlassOne.Printable
-llOwnerSay: please don't set k1Prop = 2999
-llOwnerSay: it's a sandard day
-llOwnerSay: k1 string zhis is KlassOne viss k1Prop=2992
-llOwnerSay: SayIt: this.x=99
-llOwnerSay: SayIt: Klass.y=0
-llOwnerSay: printable k string zhis is Klass
-llOwnerSay: two different Klass both with 99: 1
-llOwnerSay: k55.x = 55
-llOwnerSay: k99.x = 99
-llOwnerSay: now the values are different: 0
 llOwnerSay: existing array:
 llOwnerSay: count=0
 llOwnerSay: arraytest

@@ -96,6 +96,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public virtual void PopPre (ScriptCodeGen scg, Token errorAt) { }  // call this before pushing value to be popped
 		public abstract void PopPost (ScriptCodeGen scg, Token errorAt);   // call this after pushing value to be popped
 
+		// return true: doing a PushVal() does not involve CheckRun()
+		//       false: otherwise
+		public virtual bool IsReadTrivial (ScriptCodeGen scg)
+		{
+			return true;
+		}
+
 		/*
 		 * These additional functions are available if the type is a delegate
 		 */
@@ -186,6 +193,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			} else {
 				scg.ilGen.Emit (OpCodes.Stelem, ToSysType ());
 			}
+		}
+
+		/**
+		 * @brief With value pushed on stack, emit code to set a property by calling its setter() method.
+		 * @param scg = which script is being compiled
+		 * @param errorAt = for error messages
+		 * @param type = property type
+		 * @param setProp = setter() method
+		 */
+		protected void EmitPopPostProp (ScriptCodeGen scg, Token errorAt, TokenType type, CompValu setProp)
+		{
+			ScriptMyLocal temp = scg.ilGen.DeclareLocal (type.ToSysType (), "__spr_" + errorAt.Unique);
+			scg.ilGen.Emit   (OpCodes.Stloc, temp);
+			setProp.CallPre  (scg, errorAt);
+			scg.ilGen.Emit   (OpCodes.Ldloc, temp);
+			setProp.CallPost (scg, errorAt);
 		}
 	}
 
@@ -596,14 +619,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if ((declVar.getProp == null) && (declVar.setProp == null)) {
 				EmitFieldPopPost (scg, declVar);
 			} else if (declVar.setProp != null) {
-				ScriptMyLocal temp = scg.ilGen.DeclareLocal (declVar.type.ToSysType (), "setprop_" + errorAt.Unique);
-				scg.ilGen.Emit (OpCodes.Stloc, temp);
-				declVar.setProp.location.CallPre  (scg, errorAt);
-				scg.ilGen.Emit (OpCodes.Ldloc, temp);
-				declVar.setProp.location.CallPost (scg, errorAt);
+				EmitPopPostProp (scg, errorAt, declVar.type, declVar.setProp.location);
 			} else {
 				scg.ilGen.Emit (OpCodes.Pop);
 			}
+		}
+		public override bool IsReadTrivial (ScriptCodeGen scg)
+		{
+			return (declVar.getProp == null) || declVar.getProp.IsFuncTrivial (scg);
 		}
 	}
 
@@ -694,15 +717,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
 			if (declVar.setProp != null) {
-				ScriptMyLocal temp = scg.ilGen.DeclareLocal (declVar.type.ToSysType (), "setprop_" + errorAt.Unique);
-				scg.ilGen.Emit (OpCodes.Stloc, temp);
 				CompValu setProp = new CompValuIntfMember (declVar.setProp, baseRVal);
-				setProp.CallPre  (scg, errorAt);
-				scg.ilGen.Emit (OpCodes.Ldloc, temp);
-				setProp.CallPost (scg, errorAt);
+				EmitPopPostProp (scg, errorAt, declVar.type, setProp);
 			} else {
 				scg.ilGen.Emit (OpCodes.Pop);
 			}
+		}
+
+		/**
+		 * @brief Reading a property is non-trivial if the getter() is non-trivial.
+		 */
+		public override bool IsReadTrivial (ScriptCodeGen scg)
+		{
+			return (declVar.getProp == null) || declVar.getProp.IsFuncTrivial (scg);
 		}
 
 		/**
@@ -855,15 +882,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (declVar.vTableArray != null) {
 				EmitFieldPopPost (scg, declVar);
 			} else if (declVar.setProp != null) {
-				ScriptMyLocal temp = scg.ilGen.DeclareLocal (declVar.type.ToSysType (), "setprop_" + errorAt.Unique);
-				scg.ilGen.Emit (OpCodes.Stloc, temp);
 				CompValu setProp = new CompValuInstMember (declVar.setProp, baseRVal, ignoreVirt);
-				setProp.CallPre (scg, errorAt);
-				scg.ilGen.Emit (OpCodes.Ldloc, temp);
-				setProp.CallPost (scg, errorAt);
+				EmitPopPostProp (scg, errorAt, declVar.type, setProp);
 			} else {
 				scg.ilGen.Emit (OpCodes.Pop);
 			}
+		}
+		public override bool IsReadTrivial (ScriptCodeGen scg)
+		{
+			return (declVar.getProp == null) || declVar.getProp.IsFuncTrivial (scg);
 		}
 
 		public override void CallPre (ScriptCodeGen scg, Token errorAt)

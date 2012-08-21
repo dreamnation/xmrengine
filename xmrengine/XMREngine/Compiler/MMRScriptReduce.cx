@@ -5991,6 +5991,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			}
 
 			/*
+			 * Comma is always type of right-hand operand.
+			 */
+			if (opstr == ",") return rValRight.GetRValType (scg, argsig);
+
+			/*
 			 * Assignments are always the type of the left-hand operand, 
 			 * including stuff like "+=".
 			 */

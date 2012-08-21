@@ -1639,18 +1639,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					string name = "__call_" + index + "_" + scg.allCallLabels.Count;
 
 					/*
-					 * If there is anything on the evaluation stack, pop it all off into temps.
-					 * They will get captured/restored by the frame capture/restore code.
+					 * Make sure eval stack is empty because the frame capture/restore 
+					 * code expects such (restore switch stmt has an empty stack).
 					 */
-					ScriptMyLocal[] evalStackTemps = null;
 					int depth = ((ScriptCollector)scg.ilGen).stackDepth.Count;
 					if (depth > 0) {
-						int i;
-						evalStackTemps = new ScriptMyLocal[depth];
-						for (i = 0; i < depth; i ++) {
-							evalStackTemps[i] = scg.ilGen.DeclareLocal (((ScriptCollector)scg.ilGen).stackDepth[i], name + "_" + i);
-						}
-						while (-- i >= 0) scg.ilGen.Emit (OpCodes.Stloc, evalStackTemps[i]);
+						// maybe need to call Trivialize()
+						throw new Exception ("call label stack depth " + depth);
 					}
 
 					/*
@@ -1663,13 +1658,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					scg.ilGen.PushInt(this.index);
 					scg.ilGen.Emit (OpCodes.Stloc, scg.actCallNo);
 					scg.ilGen.MarkLabel (this.callLabel);
-
-					/*
-					 * Push the temp values back on the stack.
-					 */
-					for (int i = 0; i < depth; i ++) {
-						scg.ilGen.Emit (OpCodes.Ldloc, evalStackTemps[i]);
-					}
 				}
 
 				scg.openCallLabel = this;
@@ -3586,7 +3574,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					return GenerateFromRVal (token.rValLeft);
 				}
 				left  = GenerateFromLVal ((TokenLVal)token.rValLeft);
-				right = GenerateFromRVal (token.rValRight, left.GetArgTypes ());
+				right = Trivialize (GenerateFromRVal (token.rValRight, left.GetArgTypes ()), token.rValRight);
 				left.PopPre (this, token.rValLeft);
 				right.PushVal (this, token.rValRight, left.type);  // push (left.type)right
 				left.PopPost (this, token.rValLeft);               // pop to left
@@ -3617,6 +3605,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					CompValu[] scocvs = new CompValu[n];
 					for (i = n; -- i >= 0;) {
 						scocvs[i] = GenerateFromRVal (scorvs[i]);
+						if (i > 0) scocvs[i] = Trivialize (scocvs[i], scorvs[i]);
 					}
 
 					/*
@@ -3664,7 +3653,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Computation of some sort, compute right-hand operand value then left-hand value
 			 * because LSL is supposed to be right-to-left evaluation.
 			 */
-			right = GenerateFromRVal (token.rValRight);
+			right = Trivialize (GenerateFromRVal (token.rValRight), token.rValRight);
 
 			/*
 			 * If left is a script-defined class and there is a method with the operator's name,
@@ -4059,7 +4048,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private CompValu GenerateACall (CompValu method, CompValu[] argRVals, Token call)
 		{
 			CompValuTemp result;
-			int i, nargs;
+			int i, nArgs;
 			TokenType retType;
 			TokenType[] argTypes;
 
@@ -4082,6 +4071,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
+			 * Make sure all arguments are trivial, ie, don't involve their own call labels.
+			 */
+			nArgs = argRVals.Length;
+			for (i = 0; i < nArgs; i ++) {
+				if (!argRVals[i].IsReadTrivial (this)) {
+					argRVals[i] = Trivialize (argRVals[i], call);
+				}
+			}
+
+			/*
 			 * Inline functions know how to generate their own call.
 			 */
 			if (method is CompValuInline) {
@@ -4099,8 +4098,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Push the script-visible args, left-to-right.
 			 */
 			argTypes = method.GetArgTypes ();
-			nargs    = argRVals.Length;
-			for (i = 0; i < nargs; i ++) {
+			for (i = 0; i < nArgs; i ++) {
 				if (argTypes == null) {
 					argRVals[i].PushVal (this, call);
 				} else {
@@ -4118,6 +4116,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			result.Pop (this, call, retType);
 			return result;
+		}
+
+		/**
+		 * @brief This is needed to avoid nesting call labels around non-trivial properties.
+		 *        It should be used for the second (and later) operands.
+		 *        Note that a 'call' is considered an operator, so all arguments of a call
+		 *        should be trivialized, but the method itself does not need to be.
+		 */
+		private CompValu Trivialize (CompValu operand, Token errorAt)
+		{
+			if (operand.IsReadTrivial (this)) return operand;
+			CompValuTemp temp = new CompValuTemp (operand.type, null, this);
+			operand.PushVal (this, errorAt);
+			temp.Pop (this, errorAt);
+			return temp;
 		}
 
 		/**
