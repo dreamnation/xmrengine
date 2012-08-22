@@ -647,6 +647,7 @@ Keywords:
     public      - declares a member can be accessed anywhere
     static      - declares a script-defined class's method as being static
     this        - used to access the current script-defined class's object instance
+    typedef     - used to define convenience names for types
     virtual     - declares a script-defined class's method may be overridden by leafward classes
 
     Note:  Use 'undef' instead of 'null' to mean no object being referenced.
@@ -670,6 +671,8 @@ CLASSES
 
         <methodquals> [ <rettype> ] <methodname> [ : <intftype> [ . <intfmeth> ] ]
                 ( <arglist> ) [ ; | { <methodbody> } ]
+
+        <methodquals> <type> <propname> { [ get [ ; | { <getbody> } ] ] [ set [ ; | { <setbody> } ] ] }
     }
 
     Instance methods and instance field initializers have 'base' and 'this' 
@@ -764,13 +767,48 @@ INTERFACES
 
         [ <rettype> ] <methodname> ( <arglist> ) ;
 
+        <type> <propname> { [ get ; ] [ set ; ] }
     }
+
+TYPEDEFS
+
+    typedef <definition> <typedefname> ;
+
+        Wherever <typedefname> is found in the source, substitute in 
+        <definition>.  <definition> can contain any tokens except { } ; and 
+        cannot, either directly or indirectly, contain <typedefname>.
+
+        typedef can be used to avoid repeating long types:
+
+            Dictionary<string,integer> CreateNameDict ()
+            {
+                Dictionary<string,integer> names = 
+                        new Dictionary<string,integer> ();
+                return names;
+            }
+
+        becomes:
+
+            typedef Dictionary<string,integer> Str2IntDict;
+
+            Str2IntDict CreateNameDict ()
+            {
+                Str2IntDict names = new Str2IntDict ();
+                return names;
+            }
+
+        Note that Str2IntDict and Dictionary<string,integer> can be used 
+        interchangably throughout the source code in the example as they are 
+        considered to be exactly the same type.  Str2IntDict is simply a 
+        shorthand for Dictionary<string,integer>.
 
 Generics
 
     Class, Delegate, Interfaces definitions can have generic prototypes in 
     their names and the prototypes can be referenced in the body of the 
     definition as is common with similar oo languages.
+
+    Typedefs do not have generic parameters;
 
     Example:
 
@@ -829,9 +867,13 @@ Other Definitions
            (omitted) : one per instance of allocated object
               static : one shared by all instances of the object
 
-    <methodbody> : must use 'this' to refer to instance fields and methods
-                   can use 'base' to refer to extended class's fields and 
-                   methods
+    <methodbody> : statements composing the method
+                   can use 'this' to refer to the instance's members
+                   can use 'base' to refer to extended class's members
+
+    <getbody> : like a <methodbody> that returns the value of the property
+    <setbody> : like a <methodbody> that has a single parameter named 'value' 
+                that contains the value being written to the property
 
 Built-in functions:
 

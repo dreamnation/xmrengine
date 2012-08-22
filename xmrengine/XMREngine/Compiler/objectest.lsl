@@ -70,13 +70,17 @@ default {
         gblPropCheckRun ++;
         SaySomething ("gblPropCheckRun=" + gblPropCheckRun);
 
-        Kunta.Dictionary<string,integer> s2i = new Kunta.Dictionary<string,integer> (23);
+        typedef Kunta.Dictionary<string,integer> MyDict;
+        typedef Kunta.KeyValuePair KVP;
+        typedef Kunta.ICountable<KVP<string,integer>> MyCountable;
+
+        MyDict s2i = new MyDict (23);
         s2i.Add ("one", 1);
         s2i.Add ("two", 2);
         s2i.Add ("three", 3);
-        Kunta.ICountable<Kunta.KeyValuePair<string,integer>> s2iCountable = (Kunta.ICountable<Kunta.KeyValuePair<string,integer>>) s2i;
-        for (Kunta.IEnumerator<Kunta.KeyValuePair<string,integer>> kvpenum = s2iCountable.GetEnumerator (); kvpenum.MoveNext ();) {
-            Kunta.KeyValuePair<string,integer> kvp = kvpenum.GetCurrent ();
+        MyCountable s2iCountable = (MyCountable) s2i;
+        for (Kunta.IEnumerator<KVP<string,integer>> kvpenum = s2iCountable.GetEnumerator (); kvpenum.MoveNext ();) {
+            KVP<string,integer> kvp = kvpenum.GetCurrent ();
             llOwnerSay ("s2i: " + kvp.kee + " => " + kvp.value);
         }
         for (Kunta.IEnumerator<string> keyenum = s2i.Keys.GetEnumerator (); keyenum.MoveNext ();) {

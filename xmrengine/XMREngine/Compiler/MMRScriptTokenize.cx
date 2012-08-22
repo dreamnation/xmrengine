@@ -44,6 +44,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
         public Token nextToken;
         public Token prevToken;
+        public int macroLevel;
 
         // used for error message printing
         public TokenErrorMessage emsg;
@@ -948,6 +949,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             kws.Add ("set",         GetTokenCtor (typeof (TokenKwSet)));
             kws.Add ("static",      GetTokenCtor (typeof (TokenKwStatic)));
             kws.Add ("this",        GetTokenCtor (typeof (TokenKwThis)));
+            kws.Add ("typedef",     GetTokenCtor (typeof (TokenKwTypedef)));
             kws.Add ("virtual",     GetTokenCtor (typeof (TokenKwVirtual)));
 
             return kws;
@@ -1320,6 +1322,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
     DEFTOKENKW(This       , "this",        Null, Null, false)
     DEFTOKENKW(Throw      , "throw",       Null, Null, false)
     DEFTOKENKW(Try        , "try",         Null, Null, false)
+    DEFTOKENKW(Typedef    , "typedef",     Null, Null, false)
     DEFTOKENKW(Undef      , "undef",       Null, Null, false)
     DEFTOKENKW(Virtual    , "virtual",     Null, Null, false)
     DEFTOKENKW(While      , "while",       Null, Null, false)
