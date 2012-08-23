@@ -70,9 +70,17 @@ default {
         gblPropCheckRun ++;
         SaySomething ("gblPropCheckRun=" + gblPropCheckRun);
 
-        typedef Kunta.Dictionary<string,integer> MyDict;
-        typedef Kunta.KeyValuePair KVP;
-        typedef Kunta.ICountable<KVP<string,integer>> MyCountable;
+        typedef TheLoop<SS,I,N> do {{
+            for (integer i = I;; i < N;; i ++) {{
+                llOwnerSay (Concat (SS) + i + " of " + N);;
+            }}
+        }} while (0);
+        TheLoop <((string)"A:count "), 1, 3>;
+        TheLoop <((string)"B:count", (string)" "), -1, 2>;
+
+        typedef MyDict      Kunta.Dictionary<string,integer>;
+        typedef MyCountable Kunta.ICountable<KVP<string,integer>>;
+        typedef KVP<K,V>    Kunta.KeyValuePair<K,V>;
 
         MyDict s2i = new MyDict (23);
         s2i.Add ("one", 1);
@@ -224,6 +232,14 @@ default {
         llOwnerSay (xmrTypeName (vaseoveriface2) + "+" + vaseoveriface2.IFace2A (11, 45));                   // VaseOver=VaseOver.IFace2A: 1145
         llOwnerSay (xmrTypeName (vaseoveriface2) + "+" + vaseoveriface2.IFace2B ("eleven-", "forty-five"));  // VaseOver=VaseOver.IFace2B: eleven-forty-five
     }
+}
+string Concat (string a)
+{
+    return a;
+}
+string Concat (string a, string b)
+{
+    return a + b;
 }
 
 interface IFace1 {

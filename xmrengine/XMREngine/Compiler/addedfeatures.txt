@@ -772,11 +772,20 @@ INTERFACES
 
 TYPEDEFS
 
-    typedef <definition> <typedefname> ;
+    typedef <typedefname> <definition> ;
 
         Wherever <typedefname> is found in the source, substitute in 
-        <definition>.  <definition> can contain any tokens except { } ; and 
-        cannot, either directly or indirectly, contain <typedefname>.
+        <definition>.  <definition> can contain any tokens except:
+
+             { } ; class delegate interface typedef
+
+        and cannot, either directly or indirectly, contain <typedefname>.
+        { } ; can be specified within <definition> by using {{ }} ;; 
+        respectively.
+
+        Note that the order of the elements of the typedef statement are 
+        reversed compared to C or C++.  The type name being declared comes 
+        first followed by the definition.
 
         typedef can be used to avoid repeating long types:
 
@@ -789,7 +798,7 @@ TYPEDEFS
 
         becomes:
 
-            typedef Dictionary<string,integer> Str2IntDict;
+            typedef Str2IntDict Dictionary<string,integer>;
 
             Str2IntDict CreateNameDict ()
             {
@@ -804,11 +813,17 @@ TYPEDEFS
 
 Generics
 
-    Class, Delegate, Interfaces definitions can have generic prototypes in 
-    their names and the prototypes can be referenced in the body of the 
-    definition as is common with similar oo languages.
+    Class, Delegate, Interfaces, Typedef definitions can have generic 
+    prototypes in their names and the prototypes can be referenced in the body 
+    of the definition as is common with similar oo languages.
 
-    Typedefs do not have generic parameters;
+    For class, delegate and interface, the arguments passed must be valid 
+    types.
+
+    For typedef, the arguments passed can be arbitrary tokens, except cannot 
+    normally include > or ,.  If it is desired to pass > or ,, enclose the 
+    argument in ( ) which are stripped from the argument when substituted in 
+    the body of the definition      
 
     Example:
 

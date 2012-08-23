@@ -541,33 +541,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				 */
 				if (t is TokenKwTypedef) {
 					Token kw = t;
+					t = t.nextToken;
 
-					/*
-					 * Skip forward to the terminating ';'.
-					 */
-					while (!((t = t.nextToken) is TokenKwSemi)) {
-						if ((t is TokenEnd) || (t is TokenKwBrcOpen) || (t is TokenKwBrcClose)) {
-							ErrorMsg (kw, "typedef missing ;");
-							break;
-						}
-					}
-					if (!(t is TokenKwSemi)) {
-						t = t.prevToken;
+					if (!(t is TokenName)) {
+						ErrorMsg (t, "expecting typedef name");
+						t = SkipPastSemi (t).prevToken;
 						continue;
 					}
-
-					/*
-					 * It must be preceded by the name being defined.
-					 */
-					if (!(t.prevToken is TokenName)) {
-						ErrorMsg (t, "typedef ; must be preceded by name");
-						continue;
-					}
-					TokenName tdName = (TokenName)t.prevToken;
-					if (tdName.prevToken == kw) {
-						ErrorMsg (tdName, "typedef missing definition");
-						continue;
-					}
+					TokenName tdName = (TokenName)t;
+					t = t.nextToken;
 
 					/*
 					 * Malloc the script-defined type object.
@@ -576,23 +558,43 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					decl.outerSDType = outerLevels.Peek ();
 
 					/*
+					 * Check for generic parameter list.
+					 */
+					if (!ParseGenProtoParamList (ref t, decl)) continue;
+
+					/*
 					 * Enter it in name lists so it can be seen by others.
 					 */
 					CatalogSDTypeDecl (decl);
 					numTypedefs ++;
 
 					/*
-					 * The body starts just after the 'typedef' (inclusive).
-					 * The body ends at the name (exclusive).
+					 * The body starts right after the name [ '<' generics '>' ].
+					 * It ends at the next ';'.
 					 */
-					decl.nextToken = kw.nextToken;
-					decl.endToken = tdName;
+					Token u;
+					for (u = t; !(u is TokenEnd); u = u.nextToken) {
+						if ((u is TokenKwSemi) || (u is TokenKwBrcOpen) || (u is TokenKwBrcClose)) {
+							if (u.GetType () != u.nextToken.GetType ()) break;
+							u = u.nextToken;
+						}
+						decl.tdBody.Add (u);
+					}
+					if (!(u is TokenKwSemi)) {
+						ErrorMsg (t, "typedef missing ;");
+						continue;
+					}
+					decl.endToken = u;
 
 					/*
-					 * Splice the whole thing, from 'typedef' to ';' inclusive, out of the source.
+					 * Splice out the whole thing from the 'typedef' to the ';' inclusive.
 					 */
-					kw.prevToken.nextToken = t.nextToken;
-					t.nextToken.prevToken = kw.prevToken;
+					kw.prevToken.nextToken = u.nextToken;
+					u.nextToken.prevToken = kw.prevToken;
+
+					/*
+					 * Resume parsing just after the ';'.
+					 */
 					t = kw.prevToken;
 					continue;
 				}
@@ -773,23 +775,48 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * in for the name token.
 			 */
 			if (decl is TokenDeclSDTypeTypedef) {
+				TokenDeclSDTypeTypedef tdDecl = (TokenDeclSDTypeTypedef)decl;
+
+				/*
+				 * We can't do any recursion.  So if we reach the number of levels = number of total 
+				 * defined typedefs, we must be recursing somewhere.
+				 */
 				if (start.macroLevel >= numTypedefs) {
 					ErrorMsg (start, "typedef recursion");
 					return t;
 				}
-				Token first = null;
-				for (Token td = decl.nextToken; td != decl.endToken; td = td.nextToken) {
-					Token copy = td.CopyToken (start);
-					if (first == null) first = copy;
-					copy.macroLevel = start.macroLevel + 1;
-					copy.prevToken  = start.prevToken;
-					copy.nextToken  = start;
-					copy.prevToken.nextToken = copy;
-					start.prevToken = copy;
-				}
-				start.prevToken.nextToken = start.nextToken;
-				start.nextToken.prevToken = start.prevToken;
-				return (first is TokenName) ? TrySpliceTypeRef (first, outerSDType, ref repeat) : first;
+
+				/*
+				 * If typedef was declared with generic parameters, we must have that exact same number 
+				 * of generic arguments (though some or all can be empty).
+				 */
+				List<Token>[] tdGenArgs = GetTypedefGenArgs (tdDecl, ref t);
+				if (tdGenArgs == null) return t;
+
+				/*
+				 * Remeber the point just before where we insert the expansion, then 
+				 * insert the expansion just before the token that invoked the typedef.
+				 */
+				Token before = start.prevToken;
+				ExpandTypedef (tdDecl.genParams, tdGenArgs, start, tdDecl.tdBody);
+
+				/*
+				 * Splice out all the tokens that invoked the typedef, including the 
+				 * typedef name and all the generic arguments if any, including the 
+				 * terminating '>'.
+				 *
+				 *   before = points to whatever was before the typedef name in the original stream
+				 *   start  = points to the typedef name in the original stream
+				 *   t      = same as start if not generic or the terminating '>' if generic
+				 */
+				start.prevToken.nextToken = t.nextToken;
+				t.nextToken.prevToken = start.prevToken;
+
+				/*
+				 * Return token just before any that were inserted.
+				 * This will cause the macro expansion to be scanned for script-defined type references.
+				 */
+				return before;
 			}
 
 			/*
@@ -893,6 +920,134 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			repeat |= REPEAT_SUBST;
 
 			return refer;
+		}
+
+		/**
+		 * @brief Get array of typedef generic arguments
+		 * @param tdDecl = typedef being instantiated
+		 * @param t = points to typedef name being instantiated
+		 * @returns null: parse error
+		 *          else: array of typedef generic arguments
+		 *                each element is a list of tokens to insert for the generic argument
+		 *                t = points to name if no arguments or terminating '>'
+		 */
+		private static readonly List<Token>[] zeroTypedefGenArgs = new List<Token>[0];
+		private List<Token>[] GetTypedefGenArgs (TokenDeclSDTypeTypedef tdDecl, ref Token t)
+		{
+			if (tdDecl.genParams == null) return zeroTypedefGenArgs;
+
+			t = t.nextToken;
+			if (!(t is TokenKwCmpLT)) {
+				ErrorMsg (t, "expecting < for generic argument list");
+				return null;
+			}
+			int nArgs = tdDecl.genParams.Count;
+			List<Token>[] genArgs = new List<Token>[nArgs];
+			for (int i = 0; i < nArgs;) {
+				genArgs[i] = GetTypedefGenArg (ref t);
+				if (++ i < nArgs) {
+					if (!(t is TokenKwComma)) {
+						ErrorMsg (t, "expecting , for more generic arguments");
+						return null;
+					}
+				}
+			}
+			if (t is TokenKwRSh) {  // idiot >>
+				Token u = new TokenKwCmpGT (t);
+				Token v = new TokenKwCmpGT (t);
+				v.posn ++;
+				u.prevToken = t.prevToken;
+				u.nextToken = v;
+				v.nextToken = t.nextToken;
+				v.prevToken = u;
+				u.prevToken.nextToken = u;
+				v.nextToken.prevToken = v;
+				t = u;
+			}
+			if (!(t is TokenKwCmpGT)) {
+				ErrorMsg (t, "expecting > at end of generic argument list");
+				return null;
+			}
+			return genArgs;
+		}
+
+		/**
+		 * @brief Get single typedef generic argument
+		 * @param t = points just before first token of argument
+		 * @returns list of tokens comprising generic argument
+		 *          t = points to terminating token (eg, ',' or '>')
+		 */
+		private List<Token> GetTypedefGenArg (ref Token t)
+		{
+			List<Token> genArg = new List<Token> ();
+
+			/*
+			 * Point to first token of argument.
+			 */
+			t = t.nextToken;
+			if (t is TokenKwParOpen) {
+
+				/*
+				 * Starts with '(', get all tokens after the '(' and up to but not including matching ')'.
+				 */
+				int parenCount = 1;
+				t = t.nextToken;
+				while (!(t is TokenEnd)) {
+					if (t is TokenKwParOpen) parenCount ++;
+					if ((t is TokenKwParClose) && (-- parenCount == 0)) {
+						t = t.nextToken;  // point to supposed ',' or '>' after matching ')'
+						break;
+					}
+					genArg.Add (t);
+					t = t.nextToken;
+				}
+			} else {
+
+				/*
+				 * No '(', just get everthing until next ',', '>' or '>>'.
+				 */
+				while (!(t is TokenKwComma) && !(t is TokenKwCmpGT) && !(t is TokenKwRSh) && !(t is TokenEnd)) {
+					genArg.Add (t);
+					t = t.nextToken;
+				}
+			}
+			return genArg;
+		}
+
+		/**
+		 * @brief Expand a typedef macro.
+		 *        Inserts a copy of the body tokens in source just before the start token.
+		 *        If any of the body tokens are the name of a generic parameter, 
+		 *        substitute in the corresponding generic argument.
+		 * @param tdGenParams = macro generic parameter names (or null if none)
+		 * @param tdGenArgs   = macro arguments (ignored if tdGenParams is null)
+		 * @param start       = insert expansion just before this token
+		 * @param body        = tokens to be substituted in
+		 */
+		private void ExpandTypedef (Dictionary<string, int> tdGenParams, List<Token>[] tdGenArgs, Token start, List<Token> body)
+		{
+			/*
+			 * Insert all the body tokens in order just before the 'start' token.
+			 */
+			foreach (Token td in body) {
+				int gaIndex;
+				if ((td is TokenName) && (tdGenParams != null) && tdGenParams.TryGetValue (((TokenName)td).val, out gaIndex)) {
+					// substitute a generic argument token list for a generic parameter name token
+					// pass null for tdGenParams to next level so it can't do any recursive substitution, eg,
+					//    typedef Double<Y> Y + Y;
+					//    Double<Y*Y>   =>   Y*Y + Y*Y   because these Y's are defined outside the X<Y> expansion
+					//                                   no attempt should be made to re-expand to Y + Y*Y + Y + Y + Y*Y + Y etc
+					ExpandTypedef (null, null, start, tdGenArgs[gaIndex]);
+				} else {
+					// not a generic parameter, just copy the token as is
+					Token copy = td.CopyToken (start);
+					copy.macroLevel = start.macroLevel + 1;
+					copy.prevToken  = start.prevToken;
+					copy.nextToken  = start;
+					copy.prevToken.nextToken = copy;
+					start.prevToken = copy;
+				}
+			}
 		}
 
 		/**
@@ -4736,6 +4891,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 	// typedefs are just macros that get spliced in wherever their name is seen
 	public class TokenDeclSDTypeTypedef : TokenDeclSDType {
+		public List<Token> tdBody = new List<Token> ();
+
 		public TokenDeclSDTypeTypedef (TokenName shortName) : base (shortName)
 		{
 			this.shortName = shortName;
