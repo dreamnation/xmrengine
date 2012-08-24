@@ -148,6 +148,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
      */
     public class TokenBegin : Token {
 
+        public int expiryDays;          // has seen 'XMROption expiryDays;'
+
+        private class Options {
+            public bool arrays;         // has seen 'XMROption arrays;'
+            public bool advFlowCtl;     // has seen 'XMROption advFlowCtl;'
+            public bool tryCatch;       // has seen 'XMROption tryCatch;'
+            public bool objects;        // has seen 'XMROption objects;'
+            public bool chars;          // has seen 'XMROption chars;'
+        }
+
         private bool youveAnError;      // there was some error tokenizing
         private int bolIdx;             // index in 'source' at begining of current line
         private int lineNo;             // current line in source file, starting at 0
@@ -156,12 +166,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         private Token lastToken;        // last token created so far
         private string cameFrom;        // where the source came from
         private TextWriter saveSource;  // save copy of source here (or null)
-        private bool optionArrays;      // has seen 'XMROption arrays;'
-        private bool optionAdvFlowCtl;  // has seen 'XMROption advFlowCtl;'
-        private bool optionTryCatch;    // has seen 'XMROption tryCatch;'
-        private bool optionObjects;     // has seen 'XMROption objects;'
-        private bool optionChars;       // has seen 'XMROption chars;'
-        public int expiryDays;          // has seen 'XMROption expiryDays;'
+        private Options options = new Options ();
 
         /**
          * @brief convert a source file in the form of a string
@@ -435,7 +440,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                         if (c >= 'a' && c <= 'z') continue;
                         if (c >= 'A' && c <= 'Z') continue;
                         if (c >= '0' && c <= '9') continue;
-                        if (c == '$') continue;
                         if (c != '_') break;
                     }
                     if (j - i > MAX_NAME_LEN) {
@@ -445,19 +449,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                         if (keywords.ContainsKey (name)) {
                             Object[] args = new Object[] { emsg, filNam, lineNo, i - bolIdx };
                             AppendToken ((Token)keywords[name].Invoke (args));
-                        } else if (optionArrays && arrayKeywords.ContainsKey (name)) {
+                        } else if (options.arrays && arrayKeywords.ContainsKey (name)) {
                             Object[] args = new Object[] { emsg, filNam, lineNo, i - bolIdx };
                             AppendToken ((Token)arrayKeywords[name].Invoke (args));
-                        } else if (optionAdvFlowCtl && advFlowCtlKeywords.ContainsKey (name)) {
+                        } else if (options.advFlowCtl && advFlowCtlKeywords.ContainsKey (name)) {
                             Object[] args = new Object[] { emsg, filNam, lineNo, i - bolIdx };
                             AppendToken ((Token)advFlowCtlKeywords[name].Invoke (args));
-                        } else if (optionTryCatch && tryCatchKeywords.ContainsKey (name)) {
+                        } else if (options.tryCatch && tryCatchKeywords.ContainsKey (name)) {
                             Object[] args = new Object[] { emsg, filNam, lineNo, i - bolIdx };
                             AppendToken ((Token)tryCatchKeywords[name].Invoke (args));
-                        } else if (optionObjects && objectsKeywords.ContainsKey (name)) {
+                        } else if (options.objects && objectsKeywords.ContainsKey (name)) {
                             Object[] args = new Object[] { emsg, filNam, lineNo, i - bolIdx };
                             AppendToken ((Token)objectsKeywords[name].Invoke (args));
-                        } else if (optionChars && charsKeywords.ContainsKey (name)) {
+                        } else if (options.chars && charsKeywords.ContainsKey (name)) {
                             Object[] args = new Object[] { emsg, filNam, lineNo, i - bolIdx };
                             AppendToken ((Token)charsKeywords[name].Invoke (args));
                         } else {
@@ -476,15 +480,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                     (strcasecmp(((TokenName)lastToken.prevToken).val, "xmroption") == 0)) {
                     string opt = ((TokenName)lastToken).val;
                     if (strcasecmp (opt, "arrays") == 0) {
-                        optionArrays = true;
+                        options.arrays = true;
                     } else if (strcasecmp (opt, "advflowctl") == 0) {
-                        optionAdvFlowCtl = true;
+                        options.advFlowCtl = true;
                     } else if (strcasecmp (opt, "trycatch") == 0) {
-                        optionTryCatch = true;
+                        options.tryCatch = true;
                     } else if (strcasecmp (opt, "objects") == 0) {
-                        optionObjects = true;
+                        options.objects = true;
                     } else if (strcasecmp (opt, "chars") == 0) {
-                        optionChars = true;
+                        options.chars = true;
                     } else {
                         lastToken.ErrorMsg ("unknown XMROption");
                     }
@@ -544,15 +548,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                         string saveCameFrom = this.cameFrom;
                         int saveBolIdx      = this.bolIdx;
                         int saveLineNo      = this.lineNo;
+                        Options saveOptions = this.options;
                         this.source   = newSource;
                         this.filNam   = newURL;
                         this.cameFrom = newCameFrom;
+                        this.options  = new Options ();
                         this.Tokenize ();
                         this.source   = saveSourc;
                         this.filNam   = saveFilNam;
                         this.cameFrom = saveCameFrom;
                         this.bolIdx   = saveBolIdx;
                         this.lineNo   = saveLineNo;
+                        this.options  = saveOptions;
                     }
                     continue;
                 }

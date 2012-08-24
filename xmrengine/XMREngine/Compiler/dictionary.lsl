@@ -4,6 +4,7 @@
 xmroption advflowctl;
 xmroption arrays;
 xmroption objects;
+xmroption trycatch;
 
 class Kunta {
 

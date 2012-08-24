@@ -283,6 +283,10 @@ current source file is from "http://mywebserver.com/myxmrlibrary/tanks.lsl", an
 xmroption include "wheels.lsl"; would open URL 
 "http://mywebserver.com/myxmrlibrary/wheels.lsl".
 
+Each included source file must have its own xmroption enable statements requied 
+by the code in that file, they are not inherited from any caller.  Also, any 
+xmroptions enabled in a file are not passed back to any caller.
+
 Each included source file is considered to have a signature that uniquely 
 identifies it.  This signature is the first line of text of the included source 
 file.  If an attempt is made to include a source file with the same signature 
