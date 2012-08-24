@@ -15,11 +15,6 @@ llOwnerSay: gblPropCheckRun: getting 789
 llOwnerSay: gblPropCheckRun: setting 790
 llOwnerSay: gblPropCheckRun: getting 790
 llOwnerSay: gblPropCheckRun=790
-llOwnerSay: A:count 1 of 3
-llOwnerSay: A:count 2 of 3
-llOwnerSay: B:count -1 of 2
-llOwnerSay: B:count 0 of 2
-llOwnerSay: B:count 1 of 2
 llOwnerSay: s2i: two => 2
 llOwnerSay: s2i: one => 1
 llOwnerSay: s2i: three => 3

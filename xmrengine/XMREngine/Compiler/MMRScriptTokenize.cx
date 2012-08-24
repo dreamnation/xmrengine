@@ -51,6 +51,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public string file = "";
         public int line;
         public int posn;
+        public Token copiedFrom;
 
         /**
          * @brief construct a token coming directly from a source file
@@ -106,7 +107,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
          */
         public string SrcLoc
         {
-            get { return file + "(" + line + "," + posn + ")"; }
+            get {
+                string loc = file + "(" + line + "," + posn + ")";
+                if (copiedFrom == null) return loc;
+                string fromLoc = copiedFrom.SrcLoc;
+                if (fromLoc.StartsWith (loc)) return fromLoc;
+                return loc + ":" + fromLoc;
+            }
         }
 
         /*
@@ -114,12 +121,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
          * Only valid for parsing tokens, not reduction tokens 
          * because it is a shallow copy.
          */
-        public virtual Token CopyToken (Token src)
+        public Token CopyToken (Token src)
         {
             Token t = (Token)this.MemberwiseClone ();
             t.file  = src.file;
             t.line  = src.line;
             t.posn  = src.posn;
+            t.copiedFrom = this;
             return t;
         }
 
@@ -1231,6 +1239,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public TokenKw##name (Token original) : base (original) {                                                         \
             binOpConst = TokenRValConstOps.binopconst;                                                                    \
             unOpConst  = TokenRValConstOps.unopconst;                                                                     \
+            sdtClassOp = sdtcop;                                                                                          \
         }                                                                                                                 \
         public override string ToString () {                                                                              \
             return str;                                                                                                   \

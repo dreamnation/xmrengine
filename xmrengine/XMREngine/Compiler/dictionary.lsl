@@ -21,10 +21,11 @@ class Kunta {
         Reset ();
     }
 
-    public class Dictionary<K,V> : ICountable<KeyValuePair<K,V>> {
+    public class Dictionary<K,V> : ICountable<KVP> {
+        typedef KVP KeyValuePair<K,V>;
         private integer count;
         private integer hashSize;
-        private List<KeyValuePair<K,V>>[] kvpss;
+        private List<KVP>[] kvpss;
         private KeyList   keyList   = new KeyList   (this);
         private ValueList valueList = new ValueList (this);
 
@@ -42,40 +43,40 @@ class Kunta {
 
         private InitKVPSS ()
         {
-            this.kvpss = new List<KeyValuePair<K,V>>[] (hashSize);
+            this.kvpss = new List<KVP>[] (hashSize);
         }
 
-        public KeyValuePair<K,V> Add (K kee, V val)
+        public KVP Add (K kee, V val)
         {
             if (this.GetByKey (kee) != undef) throw "duplicate key";
             integer index = xmrHashCode (kee) % hashSize;
             if (index < 0) index += hashSize;
-            KeyValuePair<K,V> kvp = new KeyValuePair<K,V> ();
+            KVP kvp = new KVP ();
             kvp.kee = kee;
             kvp.value = val;
-            List<KeyValuePair<K,V>> kvps = this.kvpss[index];
+            List<KVP> kvps = this.kvpss[index];
             if (kvps == undef) {
-                this.kvpss[index] = kvps = new List<KeyValuePair<K,V>> ();
+                this.kvpss[index] = kvps = new List<KVP> ();
             }
             kvps.Enqueue (kvp);
             count ++;
             return kvp;
         }
 
-        public KeyValuePair<K,V> GetByKey (K kee)
+        public KVP GetByKey (K kee)
         {
             integer index = xmrHashCode (kee) % hashSize;
             if (index < 0) index += hashSize;
-            List<KeyValuePair<K,V>> kvps = this.kvpss[index];
+            List<KVP> kvps = this.kvpss[index];
             if (kvps == undef) return undef;
-            for (IEnumerator<KeyValuePair<K,V>> kvpenum = kvps.GetEnumerator (); kvpenum.MoveNext ();) {
-                KeyValuePair<K,V> kvp = kvpenum.GetCurrent ();
+            for (IEnumerator<KVP> kvpenum = kvps.GetEnumerator (); kvpenum.MoveNext ();) {
+                KVP kvp = kvpenum.GetCurrent ();
                 if (kvp.kee == kee) return kvp;
             }
             return undef;
         }
 
-        public integer Count : ICountable<KeyValuePair<K,V>>
+        public integer Count : ICountable<KVP>
         { get {
             return count;
         } }
@@ -90,14 +91,14 @@ class Kunta {
         } }
 
         // iterate through list of key-value pairs
-        public IEnumerator<KeyValuePair<K,V>> GetEnumerator () : IEnumerable<KeyValuePair<K,V>>
+        public IEnumerator<KVP> GetEnumerator () : IEnumerable<KVP>
         {
             return new Enumerator (this);
         }
 
-        private class Enumerator : IEnumerator<KeyValuePair<K,V>> {
+        private class Enumerator : IEnumerator<KVP> {
             private Dictionary<K,V> thedict;
-            private IEnumerator<KeyValuePair<K,V>> listenum;
+            private IEnumerator<KVP> listenum;
             private integer index;
 
             public constructor (Dictionary<K,V> thedict)
@@ -107,16 +108,16 @@ class Kunta {
             }
 
             // get element currently pointed to
-            public KeyValuePair<K,V> GetCurrent () : IEnumerator<KeyValuePair<K,V>>
+            public KVP GetCurrent () : IEnumerator<KVP>
             {
                 if (this.listenum == undef) throw "at end of list";
                 return this.listenum.GetCurrent ();
             }
 
             // move to next element in list
-            public integer MoveNext () : IEnumerator<KeyValuePair<K,V>>
+            public integer MoveNext () : IEnumerator<KVP>
             {
-                List<KeyValuePair<K,V>> kvps;
+                List<KVP> kvps;
                 while (1) {
                     if (this.listenum == undef) jump done;
                     if (this.listenum.MoveNext ()) break;
@@ -131,7 +132,7 @@ class Kunta {
             }
 
             // reset back to just before beginning of list
-            public Reset () : IEnumerator<KeyValuePair<K,V>>
+            public Reset () : IEnumerator<KVP>
             {
                 this.index    = 0;
                 this.listenum = undef;
@@ -155,7 +156,7 @@ class Kunta {
             }
 
             private class Enumerator : IEnumerator<K> {
-                public IEnumerator<KeyValuePair<K,V>> listenum;
+                public IEnumerator<KVP> listenum;
 
                 public constructor (Dictionary<K,V> thedict)
                 {
@@ -199,7 +200,7 @@ class Kunta {
             }
 
             private class Enumerator : IEnumerator<V> {
-                public IEnumerator<KeyValuePair<K,V>> listenum;
+                public IEnumerator<KVP> listenum;
 
                 public constructor (Dictionary<K,V> thedict)
                 {

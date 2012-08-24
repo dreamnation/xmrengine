@@ -154,6 +154,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * type tokens for those names in the source.  This is
 			 * done as a separate scan so they can cross-reference
 			 * each other.  Also does likewise for fixed array types.
+			 *
+			 * Also, all 'typedef's are processed here.  Their definitions 
+			 * remain in the source token stream after this, but they can 
+			 * be skipped over, because their bodies have been substituted 
+			 * in the source for any references.
  			 */
 			ParseSDTypePreScanPassOne (tokenBegin);  // catalog definitions
 			ParseSDTypePreScanPassTwo (tokenBegin);  // substitute references
@@ -165,6 +170,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				if (token is TokenKwParClose) braces -= 2;
 				if (token is TokenKwBrcClose) braces -= 4;
 				StringBuilder sb = new StringBuilder ("ScriptReduce*: ");
+				sb.Append (token.GetHashCode ().ToString ("X8"));
+				sb.Append (" ");
 				sb.Append (token.line.ToString ().PadLeft (3));
 				sb.Append (".");
 				sb.Append (token.posn.ToString ().PadLeft (3));
@@ -358,43 +365,39 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		}
 
 		/**
-		 * @brief Pre-scan the source for class, delegate and interface type definition keywords.
-		 *        Clump the keywords and name being defined together.
+		 * @brief Pre-scan the source for class, delegate, interface, typedef definition keywords.
+		 *        Clump the keywords and name being defined together, but leave the body intact.
 		 *        In the case of a delegate with an explicit return type, it reverses the name and return type.
-		 *        After this completes there shouldn't be any TokenKw{Class,Delegate,Interface} keywords in 
-		 *        the source, they are all replaced by TokenDeclSDType{Class,Delegate,Interface} tokens which 
-		 *        also encapsulate the name of the type being defined and any generic parameter names.
+		 *        After this completes there shouldn't be any TokenKw{Class,Delegate,Interface,Typedef} 
+		 *        keywords in the source, they are all replaced by TokenDeclSDType{Class,Delegate,Interface,
+		 *        Typedef} tokens which also encapsulate the name of the type being defined and any generic 
+		 *        parameter names.  The body remains intact in the source token stream following the 
+		 *        TokenDeclSDType* token.
 		 */
 		private void ParseSDTypePreScanPassOne (Token tokenBegin)
 		{
 			Stack<int> braceLevels = new Stack<int> ();
 			Stack<TokenDeclSDType> outerLevels = new Stack<TokenDeclSDType> ();
-			braceLevels.Push (-2);
+			int openBraceLevel = 0;
+			braceLevels.Push (-1);
 			outerLevels.Push (null);
 
-			int braces = 0;
 			for (Token t = tokenBegin; !((t = t.nextToken) is TokenEnd);) {
 
 				/*
 				 * Keep track of nested definitions so we can link them up.
+				 * We also need to detect the end of class and interface definitions.
 				 */
 				if (t is TokenKwBrcOpen) {
-					braces ++;
+					openBraceLevel ++;
 					continue;
 				}
 				if (t is TokenKwBrcClose) {
-					if (-- braces < 0) {
+					if (-- openBraceLevel < 0) {
 						ErrorMsg (t, "{ } mismatch");
 						return;
 					}
-					if (braceLevels.Peek () == braces) {
-						braceLevels.Pop ();
-						outerLevels.Pop ().endToken = t;
-					}
-					continue;
-				}
-				if (t is TokenKwSemi) {
-					if (braceLevels.Peek () == -1) {
+					if (braceLevels.Peek () == openBraceLevel) {
 						braceLevels.Pop ();
 						outerLevels.Pop ().endToken = t;
 					}
@@ -404,6 +407,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				/*
 				 * Check for 'class' or 'interface'.
 				 * They always define a new class or interface.
+				 * They can contain nested script-defined type definitions.
 				 */
 				if ((t is TokenKwClass) || (t is TokenKwInterface)) {
 					Token kw = t;
@@ -435,7 +439,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					CatalogSDTypeDecl (decl);
 
 					/*
-					 * Splice in a TokenDeclSDType token that replaces the keyword and the name tokens.
+					 * Splice in a TokenDeclSDType token that replaces the keyword and the name tokens 
+					 * and any generic parameters including the '<', ','s and '>'.
 					 *   kw = points to 'class' or 'interface' keyword.
 					 *    t = points to just past last part of class name parsed, hopefully a ':' or '{'.
 					 */
@@ -448,7 +453,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					/*
 					 * Start inner type definitions.
 					 */
-					braceLevels.Push (braces);
+					braceLevels.Push (openBraceLevel);
 					outerLevels.Push (decl);
 					continue;
 				}
@@ -456,6 +461,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				/*
 				 * Check for 'delegate'.
 				 * It always defines a new delegate.
+				 * Delegates never define nested types.
 				 */
 				if (t is TokenKwDelegate) {
 					Token kw = t;
@@ -525,19 +531,32 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						retType.nextToken = t;
 						t.prevToken = retType;
 					}
-					t = decl;  // must be before ';'
 
 					/*
-					 * Start inner type definitions.
+					 * Scan for terminating ';'.
+					 * There cannot be an intervening class, delegate, interfate, typedef, { or }.
 					 */
-					braceLevels.Push (-1);
-					outerLevels.Push (decl);
+					for (t = decl; !(t is TokenKwSemi); t = u) {
+						u = t.nextToken;
+						if ((u is TokenEnd) || 
+						    (u is TokenKwClass) ||
+						    (u is TokenKwDelegate) ||
+						    (u is TokenKwInterface) ||
+						    (u is TokenKwTypedef) ||
+						    (u is TokenKwBrcOpen) || 
+						    (u is TokenKwBrcClose)) {
+							ErrorMsg (t, "delegate missing terminating ;");
+							break;
+						}
+					}
+					decl.endToken = t;
 					continue;
 				}
 
 				/*
 				 * Check for 'typedef'.
-				 * It always defines a new type.
+				 * It always defines a new macro.
+				 * Typedefs never define nested types.
 				 */
 				if (t is TokenKwTypedef) {
 					Token kw = t;
@@ -569,33 +588,33 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					numTypedefs ++;
 
 					/*
-					 * The body starts right after the name [ '<' generics '>' ].
-					 * It ends at the next ';'.
+					 * Splice in the token that replaces the 'typedef' keyword and the whole name 
+					 * (including the '<' name ... '>' parts).
+					 */
+					decl.prevToken = kw.prevToken;
+					kw.prevToken.nextToken = decl;
+					decl.nextToken = t;
+					t.prevToken = decl;
+
+					/*
+					 * Scan for terminating ';'.
+					 * There cannot be an intervening class, delegate, interfate, typedef, { or }.
 					 */
 					Token u;
-					for (u = t; !(u is TokenEnd); u = u.nextToken) {
-						if ((u is TokenKwSemi) || (u is TokenKwBrcOpen) || (u is TokenKwBrcClose)) {
-							if (u.GetType () != u.nextToken.GetType ()) break;
-							u = u.nextToken;
+					for (t = decl; !(t is TokenKwSemi); t = u) {
+						u = t.nextToken;
+						if ((u is TokenEnd) || 
+						    (u is TokenKwClass) ||
+						    (u is TokenKwDelegate) ||
+						    (u is TokenKwInterface) ||
+						    (u is TokenKwTypedef) ||
+						    (u is TokenKwBrcOpen) || 
+						    (u is TokenKwBrcClose)) {
+							ErrorMsg (t, "typedef missing terminating ;");
+							break;
 						}
-						decl.tdBody.Add (u);
 					}
-					if (!(u is TokenKwSemi)) {
-						ErrorMsg (t, "typedef missing ;");
-						continue;
-					}
-					decl.endToken = u;
-
-					/*
-					 * Splice out the whole thing from the 'typedef' to the ';' inclusive.
-					 */
-					kw.prevToken.nextToken = u.nextToken;
-					u.nextToken.prevToken = kw.prevToken;
-
-					/*
-					 * Resume parsing just after the ';'.
-					 */
-					t = kw.prevToken;
+					decl.endToken = t;
 					continue;
 				}
 			}
@@ -678,23 +697,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		private void ParseSDTypePreScanPassTwo (Token tokenBegin)
 		{
+			List<Token> noTypes = new List<Token> ();
 			TokenDeclSDType outerSDType;
 			uint repeat;
 
 			do {
 				repeat = 0;
 				outerSDType = null;
+				noTypes.Clear ();
 
 				for (Token t = tokenBegin; !((t = t.nextToken) is TokenEnd);) {
-
-					/*
-					 * Skip completely over any generic prototypes.
-					 * We only need to process their instantiations.
-					 */
-					if ((t is TokenDeclSDType) && (((TokenDeclSDType)t).genParams != null)) {
-						t = ((TokenDeclSDType)t).endToken;
-						continue;
-					}
 
 					/*
 					 * Maybe it's time to pop out of an outer class definition.
@@ -705,9 +717,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					}
 
 					/*
-					 * Check for beginning of script-defined type definitions.
-					 * They can have nested definitions and generic parameters in their innerSDTypes[] 
-					 * so add them to the stack.
+					 * Skip completely over any script-defined generic prototypes.
+					 * We only need to process their instantiations which are non-
+					 * generic versions of the generics.
+					 */
+					if ((t is TokenDeclSDType) && (((TokenDeclSDType)t).genParams != null)) {
+						t = ((TokenDeclSDType)t).endToken;
+						continue;
+					}
+
+					/*
+					 * Check for beginning of non-generic script-defined type definitions.
+					 * They can have nested definitions in their innerSDTypes[] that match 
+					 * name tokens, so add them to the stack.
 					 */
 					if (t is TokenDeclSDType) {
 						outerSDType = (TokenDeclSDType)t;
@@ -716,10 +738,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 					/*
 					 * For names not preceded by a '.', scan the script-defined type definition 
-					 * stack for that name.  If found, substitute in a type token for the name token.
+					 * stack for that name.  Splice the name out and replace with equivalent token.
 					 */
 					if ((t is TokenName) && !(t.prevToken is TokenKwDot)) {
-						t = TrySpliceTypeRef (t, outerSDType, ref repeat);
+						t = TrySpliceTypeRef (t, outerSDType, ref repeat, noTypes);
 					}
 
 					/*
@@ -740,12 +762,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				 */
 			} while (((repeat & REPEAT_INSTGEN) != 0) || 
 			         ((repeat & (REPEAT_NOTYPE | REPEAT_SUBST)) == (REPEAT_NOTYPE | REPEAT_SUBST)));
+
+			/*
+			 * These are places where we required a type be present, 
+			 * eg, a generic type argument or the body of a typedef.
+			 */
+			foreach (Token t in noTypes) {
+				ErrorMsg (t, "looking for type");
+			}
 		}
 
 		/**
 		 * @brief Try to convert the source token string to a type reference
 		 *        and splice the type reference into the source token string
-		 *        replacing the original tokens.
+		 *        replacing the original token(s).
 		 * @param t = points to the initial TokenName token
 		 * @param outerSDType = null: this is a top-level code reference
 		 *                      else: this code is within outerSDType
@@ -753,7 +783,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 *          possibly with spliced-in type token
 		 *          repeat = possibly set true if need to do another pass
 		 */
-		private Token TrySpliceTypeRef (Token t, TokenDeclSDType outerSDType, ref uint repeat)
+		private Token TrySpliceTypeRef (Token t, TokenDeclSDType outerSDType, ref uint repeat, List<Token> noTypes)
 		{
 			Token start = t;
 			string tnamestr = ((TokenName)t).val;
@@ -770,58 +800,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			}
 			if ((outerSDType == null) && !tokenScript.sdSrcTypesTryGetValue (tnamestr, out decl)) return t;
 
-			/*
-			 * Typedef's are essentially macros that simply splice a copy of their definition tokens 
-			 * in for the name token.
-			 */
-			if (decl is TokenDeclSDTypeTypedef) {
-				TokenDeclSDTypeTypedef tdDecl = (TokenDeclSDTypeTypedef)decl;
-
-				/*
-				 * We can't do any recursion.  So if we reach the number of levels = number of total 
-				 * defined typedefs, we must be recursing somewhere.
-				 */
-				if (start.macroLevel >= numTypedefs) {
-					ErrorMsg (start, "typedef recursion");
-					return t;
-				}
-
-				/*
-				 * If typedef was declared with generic parameters, we must have that exact same number 
-				 * of generic arguments (though some or all can be empty).
-				 */
-				List<Token>[] tdGenArgs = GetTypedefGenArgs (tdDecl, ref t);
-				if (tdGenArgs == null) return t;
-
-				/*
-				 * Remeber the point just before where we insert the expansion, then 
-				 * insert the expansion just before the token that invoked the typedef.
-				 */
-				Token before = start.prevToken;
-				ExpandTypedef (tdDecl.genParams, tdGenArgs, start, tdDecl.tdBody);
-
-				/*
-				 * Splice out all the tokens that invoked the typedef, including the 
-				 * typedef name and all the generic arguments if any, including the 
-				 * terminating '>'.
-				 *
-				 *   before = points to whatever was before the typedef name in the original stream
-				 *   start  = points to the typedef name in the original stream
-				 *   t      = same as start if not generic or the terminating '>' if generic
-				 */
-				start.prevToken.nextToken = t.nextToken;
-				t.nextToken.prevToken = start.prevToken;
-
-				/*
-				 * Return token just before any that were inserted.
-				 * This will cause the macro expansion to be scanned for script-defined type references.
-				 */
-				return before;
-			}
-
-			/*
-			 * Not a typedef...
-			 */
 			TokenDeclSDType instdecl;
 			while (true) {
 
@@ -842,6 +820,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						t = t.nextToken;
 						if (!(t is TokenType)) {
 							repeat |= REPEAT_NOTYPE;
+							noTypes.Add (t);
 							return t.prevToken;  // make sure name gets processed
 							                     // so substitution can occur on it
 						}
@@ -912,7 +891,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * 'Dictionary' '<' 'string' ',' 'integer' '>' '.' 'ValueList'
 			 * with 'Dictionary<string,integer>.ValueList'.
 			 */
-			TokenTypeSDType refer = instdecl.MakeRefToken (start);
+			TokenType refer = instdecl.MakeRefToken (start);
+			if (refer == null) {
+				// typedef body is not yet a type
+				noTypes.Add (start);
+				repeat |= REPEAT_NOTYPE;
+				return start;
+			}
 			refer.prevToken = start.prevToken;  // start points right at the first TokenName
 			refer.nextToken = t.nextToken;      // t points at the last TokenName or TokenKwCmpGT
 			refer.prevToken.nextToken = refer;
@@ -920,134 +905,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			repeat |= REPEAT_SUBST;
 
 			return refer;
-		}
-
-		/**
-		 * @brief Get array of typedef generic arguments
-		 * @param tdDecl = typedef being instantiated
-		 * @param t = points to typedef name being instantiated
-		 * @returns null: parse error
-		 *          else: array of typedef generic arguments
-		 *                each element is a list of tokens to insert for the generic argument
-		 *                t = points to name if no arguments or terminating '>'
-		 */
-		private static readonly List<Token>[] zeroTypedefGenArgs = new List<Token>[0];
-		private List<Token>[] GetTypedefGenArgs (TokenDeclSDTypeTypedef tdDecl, ref Token t)
-		{
-			if (tdDecl.genParams == null) return zeroTypedefGenArgs;
-
-			t = t.nextToken;
-			if (!(t is TokenKwCmpLT)) {
-				ErrorMsg (t, "expecting < for generic argument list");
-				return null;
-			}
-			int nArgs = tdDecl.genParams.Count;
-			List<Token>[] genArgs = new List<Token>[nArgs];
-			for (int i = 0; i < nArgs;) {
-				genArgs[i] = GetTypedefGenArg (ref t);
-				if (++ i < nArgs) {
-					if (!(t is TokenKwComma)) {
-						ErrorMsg (t, "expecting , for more generic arguments");
-						return null;
-					}
-				}
-			}
-			if (t is TokenKwRSh) {  // idiot >>
-				Token u = new TokenKwCmpGT (t);
-				Token v = new TokenKwCmpGT (t);
-				v.posn ++;
-				u.prevToken = t.prevToken;
-				u.nextToken = v;
-				v.nextToken = t.nextToken;
-				v.prevToken = u;
-				u.prevToken.nextToken = u;
-				v.nextToken.prevToken = v;
-				t = u;
-			}
-			if (!(t is TokenKwCmpGT)) {
-				ErrorMsg (t, "expecting > at end of generic argument list");
-				return null;
-			}
-			return genArgs;
-		}
-
-		/**
-		 * @brief Get single typedef generic argument
-		 * @param t = points just before first token of argument
-		 * @returns list of tokens comprising generic argument
-		 *          t = points to terminating token (eg, ',' or '>')
-		 */
-		private List<Token> GetTypedefGenArg (ref Token t)
-		{
-			List<Token> genArg = new List<Token> ();
-
-			/*
-			 * Point to first token of argument.
-			 */
-			t = t.nextToken;
-			if (t is TokenKwParOpen) {
-
-				/*
-				 * Starts with '(', get all tokens after the '(' and up to but not including matching ')'.
-				 */
-				int parenCount = 1;
-				t = t.nextToken;
-				while (!(t is TokenEnd)) {
-					if (t is TokenKwParOpen) parenCount ++;
-					if ((t is TokenKwParClose) && (-- parenCount == 0)) {
-						t = t.nextToken;  // point to supposed ',' or '>' after matching ')'
-						break;
-					}
-					genArg.Add (t);
-					t = t.nextToken;
-				}
-			} else {
-
-				/*
-				 * No '(', just get everthing until next ',', '>' or '>>'.
-				 */
-				while (!(t is TokenKwComma) && !(t is TokenKwCmpGT) && !(t is TokenKwRSh) && !(t is TokenEnd)) {
-					genArg.Add (t);
-					t = t.nextToken;
-				}
-			}
-			return genArg;
-		}
-
-		/**
-		 * @brief Expand a typedef macro.
-		 *        Inserts a copy of the body tokens in source just before the start token.
-		 *        If any of the body tokens are the name of a generic parameter, 
-		 *        substitute in the corresponding generic argument.
-		 * @param tdGenParams = macro generic parameter names (or null if none)
-		 * @param tdGenArgs   = macro arguments (ignored if tdGenParams is null)
-		 * @param start       = insert expansion just before this token
-		 * @param body        = tokens to be substituted in
-		 */
-		private void ExpandTypedef (Dictionary<string, int> tdGenParams, List<Token>[] tdGenArgs, Token start, List<Token> body)
-		{
-			/*
-			 * Insert all the body tokens in order just before the 'start' token.
-			 */
-			foreach (Token td in body) {
-				int gaIndex;
-				if ((td is TokenName) && (tdGenParams != null) && tdGenParams.TryGetValue (((TokenName)td).val, out gaIndex)) {
-					// substitute a generic argument token list for a generic parameter name token
-					// pass null for tdGenParams to next level so it can't do any recursive substitution, eg,
-					//    typedef Double<Y> Y + Y;
-					//    Double<Y*Y>   =>   Y*Y + Y*Y   because these Y's are defined outside the X<Y> expansion
-					//                                   no attempt should be made to re-expand to Y + Y*Y + Y + Y + Y*Y + Y etc
-					ExpandTypedef (null, null, start, tdGenArgs[gaIndex]);
-				} else {
-					// not a generic parameter, just copy the token as is
-					Token copy = td.CopyToken (start);
-					copy.macroLevel = start.macroLevel + 1;
-					copy.prevToken  = start.prevToken;
-					copy.nextToken  = start;
-					copy.prevToken.nextToken = copy;
-					start.prevToken = copy;
-				}
-			}
 		}
 
 		/**
@@ -1472,9 +1329,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 			/*
 			 * If declaration of generic type, skip it.
-			 * The instantiations get parsed (ie, when we know the concrete types).
+			 * The instantiations get parsed (ie, when we know the concrete types)
+			 * below because they appear as non-generic types.
 			 */
 			if (decl.genParams != null) {
+				token = decl.endToken.nextToken;
+				return true;
+			}
+
+			/*
+			 * Also skip over any typedefs.  They were all processed in 
+			 * ParseSDTypePreScanPassTwo().
+			 */
+			if (decl is TokenDeclSDTypeTypedef) {
 				token = decl.endToken.nextToken;
 				return true;
 			}
@@ -1601,8 +1468,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 				/*
 				 * Check for all qualifiers.
+				 * typedef has an implied 'public' qualifier.
 				 */
-				flags = ParseQualifierFlags (ref token);
+				flags = SDT_PUBLIC;
+				if (!(token is TokenDeclSDTypeTypedef)) {
+					flags = ParseQualifierFlags (ref token);
+				}
 
 				/*
 				 * Parse nested script-defined type definitions.
@@ -4056,7 +3927,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public TokenDeclSDType (Token t) : base (t) { }
 		protected abstract TokenDeclSDType MakeBlank (TokenName shortName);
-		public abstract TokenTypeSDType MakeRefToken (Token t);
+		public abstract TokenType MakeRefToken (Token t);
 		public abstract Type GetSysType ();
 		public abstract void WriteToFile (BinaryWriter objFileWriter);
 		public abstract void ReadFromFile (BinaryReader objFileReader, TextWriter asmFileWriter);
@@ -4349,7 +4220,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			return new TokenDeclSDTypeClass (shortName);
 		}
 
-		public override TokenTypeSDType MakeRefToken (Token t)
+		public override TokenType MakeRefToken (Token t)
 		{
 			return new TokenTypeSDTypeClass (t, this);
 		}
@@ -4580,7 +4451,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			return new TokenDeclSDTypeDelegate (shortName);
 		}
 
-		public override TokenTypeSDType MakeRefToken (Token t)
+		public override TokenType MakeRefToken (Token t)
 		{
 			return new TokenTypeSDTypeDelegate (t, this);
 		}
@@ -4815,7 +4686,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			return new TokenDeclSDTypeInterface (shortName);
 		}
 
-		public override TokenTypeSDType MakeRefToken (Token t)
+		public override TokenType MakeRefToken (Token t)
 		{
 			return new TokenTypeSDTypeInterface (t, this);
 		}
@@ -4889,9 +4760,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		}
 	}
 
-	// typedefs are just macros that get spliced in wherever their name is seen
 	public class TokenDeclSDTypeTypedef : TokenDeclSDType {
-		public List<Token> tdBody = new List<Token> ();
 
 		public TokenDeclSDTypeTypedef (TokenName shortName) : base (shortName)
 		{
@@ -4900,14 +4769,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		protected override TokenDeclSDType MakeBlank (TokenName shortName)
 		{
-			// we are just a macro so should never be asked to make a blank
-			throw new Exception ("not implemented");
+			return new TokenDeclSDTypeTypedef (shortName);
 		}
 
-		public override TokenTypeSDType MakeRefToken (Token t)
+		public override TokenType MakeRefToken (Token t)
 		{
-			// we are just a macro so should never be asked to make a reference
-			throw new Exception ("not implemented");
+			// if our body is a single type token, that is what we return
+			// otherwise return null saying maybe our body needs some substitutions
+			if (!(this.nextToken is TokenType)) return null;
+			if (this.nextToken.nextToken != this.endToken) {
+				this.nextToken.nextToken.ErrorMsg ("extra tokens for typedef");
+				return null;
+			}
+			return (TokenType)this.nextToken.CopyToken (t);
 		}
 
 		public override Type GetSysType ()
@@ -4934,6 +4808,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	/**
 	 * @brief Script-defined type references.
 	 *        These occur in the source code wherever it specifies (eg, variable declaration) a script-defined type.
+	 *        These must be copyable via CopyToken().
 	 */
 	public abstract class TokenTypeSDType : TokenType {
 		public TokenTypeSDType (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
@@ -4946,6 +4821,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		private static readonly FieldInfo iarSDTClObjsFieldInfo = typeof (XMRInstArrays).GetField ("iarSDTClObjs");
 
 		public TokenDeclSDTypeClass decl;
+
 		public TokenTypeSDTypeClass (Token t, TokenDeclSDTypeClass decl) : base (t)
 		{
 			this.decl = decl;
@@ -5113,6 +4989,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		private static readonly FieldInfo iarSDTIntfObjsFieldInfo = typeof (XMRInstArrays).GetField ("iarSDTIntfObjs");
 
 		public TokenDeclSDTypeInterface decl;
+
 		public TokenTypeSDTypeInterface (Token t, TokenDeclSDTypeInterface decl) : base (t)
 		{
 			this.decl = decl;
