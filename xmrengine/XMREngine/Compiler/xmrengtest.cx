@@ -146,8 +146,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Console.WriteLine ("Running...");
             TestInstance inst = new TestInstance (scriptObjCode);
             inst.testCheckRun = doCheckRun;
-            inst.glblVars.AllocVarArrays (ref scriptObjCode.glblSizes);
-            inst.ehArgs = new object[0];
+            inst.heapTotal    = inst.glblVars.AllocVarArrays (ref scriptObjCode.glblSizes);
+            inst.ehArgs       = new object[0];
             MemoryStream serializeStream = null;
             if (serialize) {
                 serializeStream = new MemoryStream ();
@@ -208,11 +208,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     public class StackCaptureException : Exception, IXMRUncatchable { }
 
     public class TestInstance : XMRInstAbstract {
+        private const int HEAPLIMIT = 50000;
         public bool testCheckRun;
 
         public TestInstance (ScriptObjCode soc)
         {
             m_ObjCode = soc;
+            heapLimit = HEAPLIMIT;
         }
 
         /*********************\

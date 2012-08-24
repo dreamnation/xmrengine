@@ -36,6 +36,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static TokenTypeInt   tokenTypeInt    = new TokenTypeInt (null);
 		private static TokenTypeStr   tokenTypeString = new TokenTypeStr (null);
 
+		private static readonly FieldInfo heapLimitFieldInfo = typeof (XMRInstAbstract).GetField ("heapLimit");
+		private static readonly FieldInfo heapTotalFieldInfo = typeof (XMRInstAbstract).GetField ("heapTotal");
+
 ///		private static MethodInfo consoleWrite = ScriptCodeGen.GetStaticMethod (typeof (XMRInstAbstract), "ConsoleWrite",
 ///				new Type[] { typeof (XMRInstAbstract), typeof (string) });
 		private static MethodInfo roundMethInfo = ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Round", 
@@ -410,7 +413,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void CodeGenXMRHeapLeft (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
 		{
 			scg.PushXMRInst ();
-			scg.ilGen.Emit (OpCodes.Ldfld, ScriptCodeGen.heapLeftFieldInfo);
+			scg.ilGen.Emit (OpCodes.Ldfld, heapLimitFieldInfo);
+			scg.PushXMRInst ();
+			scg.ilGen.Emit (OpCodes.Ldfld, heapTotalFieldInfo);
+			scg.ilGen.Emit (OpCodes.Sub);
 			result.Pop (scg, errorAt, retType);
 		}
 

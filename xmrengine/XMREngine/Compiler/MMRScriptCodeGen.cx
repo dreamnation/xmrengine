@@ -68,8 +68,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static FieldInfo callModeFieldInfo       = typeof (XMRInstAbstract).GetField ("callMode");
 		private static FieldInfo doGblInitFieldInfo      = typeof (XMRInstAbstract).GetField ("doGblInit");
 		private static FieldInfo ehArgsFieldInfo         = typeof (XMRInstAbstract).GetField ("ehArgs");
-		public  static FieldInfo heapLeftFieldInfo       = typeof (XMRInstAbstract).GetField ("heapLeft");
-		private static FieldInfo heapLimitFieldInfo      = typeof (XMRInstAbstract).GetField ("heapLimit");
 		private static FieldInfo rotationXFieldInfo      = typeof (LSL_Rotation).GetField ("x");
 		private static FieldInfo rotationYFieldInfo      = typeof (LSL_Rotation).GetField ("y");
 		private static FieldInfo rotationZFieldInfo      = typeof (LSL_Rotation).GetField ("z");
@@ -100,13 +98,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static MethodInfo stringConcat3MethodInfo     = GetStaticMethod (typeof (String), "Concat", new Type[] { typeof (string), typeof (string), typeof (string) });
 		private static MethodInfo stringConcat4MethodInfo     = GetStaticMethod (typeof (String), "Concat", new Type[] { typeof (string), typeof (string), typeof (string), typeof (string) });
 		private static MethodInfo interlockedAddMethodInfo    = GetStaticMethod (typeof (Interlocked), "Add", new Type[] { typeof (int).MakeByRefType (), typeof (int) });
-		private static MethodInfo updateHeapLeftMethodInfo = GetStaticMethod (typeof (ScriptCodeGen), 
-		                                                                      "UpdateHeapLeft", 
-		                                                                      new Type[] { typeof (XMRInstAbstract),
-		                                                                                   typeof (object),
-		                                                                                   typeof (int),
-		                                                                                   typeof (int),
-		                                                                                   typeof (int) });
 		private static MethodInfo lslVectorNegateMethodInfo = GetStaticMethod (typeof (ScriptCodeGen), 
 		                                                                       "LSLVectorNegate", 
 		                                                                       new Type[] { typeof (LSL_Vector) });
@@ -300,20 +291,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				 * Create entry in the value array for the variable or property.
 				 */
 				declVar.location = new CompValuGlobalVar (declVar, scriptObjCode);
-
-				/*
-				 * If it references heap, add it to list of global vars that reference heap.  We use 
-				 * this list to maintain instance.heapLeft to keep track of how much heap script is 
-				 * allowed to use.  Do not include arrays as they do their own heap tracking.
-				 */
-				if ((declVar.type is TokenTypeList) ||
-				    (declVar.type is TokenTypeStr)) {
-					TokenDeclVar htDeclVar = new TokenDeclVar (declVar, null, tokenScript);
-					htDeclVar.type = new TokenTypeInt (declVar);
-					htDeclVar.name = new TokenName (declVar, "__htg_" + declVar.name.val);
-					htDeclVar.location = new CompValuGlobalVar (htDeclVar, scriptObjCode);
-					declVar.heapTracker = htDeclVar;
-				}
 			}
 
 			/*
@@ -347,20 +324,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 * Create entry in the value array for the static field or static property.
 					 */
 					declVar.location = new CompValuGlobalVar (declVar, scriptObjCode);
-
-					/*
-					 * If it references heap, add it to list of global vars that reference heap.  We use 
-					 * this list to maintain instance.heapLeft to keep track of how much heap script is 
-					 * allowed to use.  Do not include arrays as they do their own heap tracking.
-					 */
-					if ((declVar.type is TokenTypeList) ||
-					    (declVar.type is TokenTypeStr)) {
-						TokenDeclVar htDeclVar = new TokenDeclVar (declVar, null, tokenScript);
-						htDeclVar.type = new TokenTypeInt (declVar);
-						htDeclVar.name = new TokenName (declVar, "__hts_" + declVar.name.val);
-						htDeclVar.location = new CompValuGlobalVar (htDeclVar, scriptObjCode);
-						declVar.heapTracker = htDeclVar;
-					}
 				}
 			}
 
@@ -426,14 +389,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						if ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) != 0) continue;
 						if ((declVar.getProp == null) && (declVar.setProp == null)) {
 							declVar.type.AssignVarSlot (declVar, ref sdtClass.instSizes);
-						}
-						if ((declVar.type is TokenTypeList) ||
-						    (declVar.type is TokenTypeStr)) {
-							TokenDeclVar htDeclVar = new TokenDeclVar (declVar, null, tokenScript);
-							htDeclVar.type = new TokenTypeInt (declVar);
-							htDeclVar.name = new TokenName (declVar, "__hti_" + declVar.name.val);
-							htDeclVar.type.AssignVarSlot (htDeclVar, ref sdtClass.instSizes);
-							declVar.heapTracker = htDeclVar;
 						}
 					}
 
@@ -849,13 +804,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				objFileWriter.Write (pfx + declVar.name.val);    // string
 				objFileWriter.Write (declVar.vTableArray.Name);  // string
 				objFileWriter.Write (declVar.vTableIndex);       // int
-				TokenDeclVar htDeclVar = declVar.heapTracker;
-				if (htDeclVar != null) {
-					CompValu htGblVar = (CompValuGlobalVar)htDeclVar.location;
-					objFileWriter.Write (pfx + htDeclVar.name.val);
-					objFileWriter.Write (htDeclVar.vTableArray.Name);
-					objFileWriter.Write (htDeclVar.vTableIndex);
-				}
 			}
 		}
 
@@ -937,11 +885,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				TokenType argTokType = argVar.type;
 				CompValuTemp local = new CompValuTemp (argTokType, argVar.name.val, this);
 				argVar.location = local;
-
-				/*
-				 * Account for any heap usage by this local variable from now on to end of function.
-				 */
-				NewLocalVariable (argVar);
 
 				/*
 				 * Copy from the ehArgs[i] element to the temp var.
@@ -1042,15 +985,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Define location of all script-level arguments so script body can access them.
-			 * The argument indices need to have +1 added to them because XMRInstance or XMRSDTypeClObj 
-			 * is spliced in at arg 0.  Account for their heap usage just like they were local variables.
+			 * The argument indices need to have +1 added to them because XMRInstance or 
+			 * XMRSDTypeClObj is spliced in at arg 0.
 			 */
 			TokenArgDecl argDecl = declFunc.argDecl;
 			int nArgs = argDecl.vars.Length;
 			for (int i = 0; i < nArgs; i ++) {
 				TokenDeclVar argVar = argDecl.vars[i];
 				argVar.location = new CompValuArg (argVar.type, i + 1);
-				NewLocalVariable (argVar);
 			}
 
 			/*
@@ -1204,6 +1146,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Output:
 			 *    int __mainCallNo = -1;
 			 *    if (instance.callMode != CALLMODE_NORMAL) goto __cmRestore;
+			 *    try {
 			 */
 			actCallNo = null;
 			ScriptMyLabel cmRestore = null;
@@ -1216,12 +1159,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ilGen.Emit (OpCodes.Ldfld, ScriptCodeGen.callModeFieldInfo);
 				ilGen.PushInt (XMRInstAbstract.CALLMODE_NORMAL);
 				ilGen.Emit (OpCodes.Bne_Un, cmRestore);
+				ilGen.BeginExceptionBlock ();
 			}
-
-			/*
-			 * Catch exceptions thrown by script body and any initialization code.
-			 */
-			ilGen.BeginExceptionBlock ();
 
 			/*
 			 * Splice in the code optimizer for the body of the function.
@@ -1243,12 +1182,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				PushXMRInst ();                                  // instance
 				ilGen.Emit (OpCodes.Ldfld, doGblInitFieldInfo);  // instance.doGblInit
 				ilGen.Emit (OpCodes.Brfalse, skipGblInitLabel);
-
-				// heapLeft = heapLimit;
-				PushXMRInst ();                                  // instance
-				ilGen.Emit (OpCodes.Dup);
-				ilGen.Emit (OpCodes.Ldfld, heapLimitFieldInfo);  // instance.heapLimit
-				ilGen.Emit (OpCodes.Stfld, heapLeftFieldInfo);   // instance.heapLeft
 
 				// $globalvarinit();
 				TokenDeclVar gviFunc = tokenScript.globalVarInit;
@@ -1296,7 +1229,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Alloc stack space for local vars.
-			 * Also allocates corresponding heap-tracker vars.
 			 */
 			AllocLocalVarStackSpace ();
 
@@ -1335,39 +1267,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			collector = null;
 
 			/*
-			 * Output epilog that subtracts heap usage by local vars.
-			 * It also saves stack frame state if CALLMODE_SAVE.
+			 * Output epilog that saves stack frame state if CALLMODE_SAVE.
 			 *
 			 *   finally {
-			 *      if (instance.callMode != CALLMODE_NORMAL) goto __cmSave;
-			 *      CreditAllLocalsHeapLeft();
-			 *      goto __endFin;
-			 *   __cmSave:
+			 *      if (instance.callMode == CALLMODE_NORMAL) goto __endFin;
 			 *      GenerateFrameCaptureCode();
 			 *   __endFin:
 			 *   }
 			 */
-			ilGen.BeginFinallyBlock ();
-			ScriptMyLabel cmSave = null;
+			List<ScriptMyLocal> activeTemps = null;
 			ScriptMyLabel endFin = null;
 			if (!isTrivial) {
-				cmSave = ilGen.DefineLabel ("__cmSave");
+				ilGen.BeginFinallyBlock ();
 				endFin = ilGen.DefineLabel ("__endFin");
 				PushXMRInst ();
 				ilGen.Emit (OpCodes.Ldfld, callModeFieldInfo);
 				ilGen.PushInt (XMRInstAbstract.CALLMODE_NORMAL);
-				ilGen.Emit (OpCodes.Bne_Un, cmSave);
-			}
-			CreditAllLocalsHeapLeft ();
-			List<ScriptMyLocal> activeTemps = null;
-			if (!isTrivial) {
-				ilGen.Emit (OpCodes.Br, endFin);
-				ilGen.MarkLabel (cmSave);
+				ilGen.Emit (OpCodes.Beq, endFin);
 				activeTemps = GenerateFrameCaptureCode ();
 				ilGen.MarkLabel (endFin);
+				ilGen.Emit (OpCodes.Endfinally);
+				ilGen.EndExceptionBlock ();
 			}
-			ilGen.Emit (OpCodes.Endfinally);
-			ilGen.EndExceptionBlock ();
 
 			/*
 			 * Output the 'real' return opcode.
@@ -1403,9 +1324,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		/**
-		 * @brief Allocate stack space and heap tracker for all local variables, regardless of
-		 *        which { } statement block they are actually defined in.  This will allow the
-		 *        heap trackers to keep track of any heap use within deeply nested blocks.
+		 * @brief Allocate stack space for all local variables, regardless of
+		 *        which { } statement block they are actually defined in.
 		 */
 		private void AllocLocalVarStackSpace ()
 		{
@@ -1423,18 +1343,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				localVar.location = localLoc;
 				PushVarDefaultValue (localVar);
 				localLoc.Pop (this, localVar.name);
-
-				/*
-				 * Set up heap-tracker variable and fill in with corresponding value for 
-				 * the variable's default value.
-				 */
-				NewLocalVariable (localVar);
 			}
 		}
 
 		/**
 		 * @brief Generate code to write all arguments and locals to the capture stack frame.
-		 *        This includes heap-tracker and temp variables.
+		 *        This includes temp variables.
 		 *        We only need to save what is active at the point of callLabels through because 
 		 *        those are the only points we will jump to on restore.  This saves us from saving 
 		 *        all the little temp vars we create.
@@ -1500,7 +1414,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		/**
 		 * @brief Generate code to restore all arguments and locals from the restore stack frame.
-		 *        This includes heap-tracker and temp variables.
+		 *        This includes temp variables.
 		 */
 		private void GenerateFrameRestoreCode (List<ScriptMyLocal> activeTemps)
 		{
@@ -3093,7 +3007,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			/*
 			 * Script gave us an initialization value, so just store init value in var like an assignment statement.
-			 * Also debit any heap used by the initialization value, just like an assignment statement.
 			 * If no init given, the var was set to its default value when stack space was allocated at the beginning
 			 * of the function.
 			 */
@@ -3103,7 +3016,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				local.PopPre  (this, declVar);
 				rVal.PushVal  (this, declVar.init, declVar.type);
 				local.PopPost (this, declVar);
-				DebitHeapLeft (declVar, true, declVar.init);
 			}
 		}
 
@@ -3578,7 +3490,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				left.PopPre (this, token.rValLeft);
 				right.PushVal (this, token.rValRight, left.type);  // push (left.type)right
 				left.PopPost (this, token.rValLeft);               // pop to left
-				////????DebitHeapLeft (left, true, token.rValLeft);
 				return left;
 			}
 
@@ -3704,7 +3615,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					}
 					left = GenerateFromLVal ((TokenLVal)token.rValLeft);
 					binOpStr.emitBO (this, token, left, right, left);
-					////????DebitHeapLeft (left, true, token.rValLeft);
 					return left;
 				}
 
@@ -3764,7 +3674,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 							}
 							left = GenerateFromLVal ((TokenLVal)token.rValLeft);
 							binOpStr.emitBO (this, token, left, right, left);
-							////????DebitHeapLeft (left, true, token.rValLeft);
 							return left;
 						}
 					}
@@ -4767,92 +4676,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		/**
-		 * @brief Maintain list of current function's local variables so we can keep track
-		 *        of heap usage.  We don't have to keep track of stack usage as that is done
-		 *        entirely within CheckRun().  Do not include arrays as they do their own heap tracking.
-		 */
-		private void NewLocalVariable (TokenDeclVar var)
-		{
-			if ((var.type is TokenTypeList) ||
-			    (var.type is TokenTypeStr)) {
-				TokenDeclVar htVar = new TokenDeclVar (var, null, tokenScript);
-				htVar.type         = new TokenTypeInt (var);
-				htVar.name         = new TokenName (var, "__htl_" + var.name.val);
-				htVar.location     = new CompValuTemp (htVar.type, htVar.name.val, this);
-				var.heapTracker    = htVar;
-				DebitHeapLeft (var, false, var);
-			}
-		}
-
-		/**
-		 * @brief A variable was just assigned a value.  If the variable references heap,
-		 *        debit the instance.heapLeft to make sure the script doesn't hog memory.
-		 * @param var = instance, local or global variable
-		 * @param stValid = false: heapTracker contains garbage, so don't bother adding it back first
-		 *                   true: heapTracker contains previous debit quantity, so add it back first
-		 * @param where = token giving location in source code of assignment for tracing/debug
-		 */
-		private void DebitHeapLeft (TokenDeclVar var, bool stValid, Token where)
-		{
-			/*
-			 * See if the variable is heap tracked
-			 * and if so, output call to check heap usage.
-			 */
-			TokenDeclVar htVar = var.heapTracker;
-			if (htVar != null) {
-				CompValu heapTracker = htVar.location;
-				heapTracker.PopPre (this, where);
-				
-				PushXMRInst ();                                       // instance
-
-				var.location.PushVal (this, where);                   // object we care about
-
-				if (stValid) {
-					heapTracker.PushVal (this, where);            // previously debited amount or ...
-				} else {
-					ilGen.PushInt (0);                            // 0 because nothing debited before
-				}
-
-				ilGen.PushInt (where.line);
-				ilGen.PushInt (where.posn);
-
-				ilGen.Emit (OpCodes.Call, updateHeapLeftMethodInfo);  // update instance.heapLeft
-				                                                      // throws exception if not enuf left
-
-				heapTracker.PopPost (this, where);                    // new debited amount
-			}
-		}
-
-		/**
-		 * @brief A function is about to return, so credit any debits on heapLeft by its local variables.
-		 */
-		private void CreditAllLocalsHeapLeft ()
-		{
-			bool first = true;
-
-			foreach (TokenDeclVar localVar in curDeclFunc.localVars) {
-				TokenDeclVar htLocalVar = localVar.heapTracker;
-				if (htLocalVar == null) continue;
-
-				CompValu heapTracker = htLocalVar.location;
-				if (!((CompValuTemp)heapTracker).localBuilder.isReferenced) continue;
-				if (first) {
-					PushXMRInst ();                                  // instance
-					ilGen.Emit (OpCodes.Ldflda, heapLeftFieldInfo);  // &instance.heapLeft
-					heapTracker.PushVal (this, localVar);            // numberOfBytes subtracted from heapLeft
-					first = false;
-				} else {
-					heapTracker.PushVal (this, localVar);            // numberOfBytes subtracted from heapLeft
-					ilGen.Emit (OpCodes.Add);                        // add them back to heapLeft
-				}
-			}
-			if (!first) {
-				ilGen.Emit (OpCodes.Call, interlockedAddMethodInfo);     // ...atomically
-				ilGen.Emit (OpCodes.Pop);                                // we don't need return value
-			}
-		}
-
-		/**
 		 * @brief handle a unary operator, such as -x.
 		 */
 		private CompValu UnOpGenerate (CompValu inRVal, Token opcode)
@@ -5399,47 +5222,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		public static LSL_Vector LSLVectorNegate (LSL_Vector v) { return -v; }
-
-		/**
-		 * @brief An heap referencing variable was just set to a new object so we need to
-		 *        update instance.heapLeft to reflect the new amount of heap available
-		 *        to the script.
-		 * @param instance = script instance who's heap usage is being updated
-		 * @param value = object pointer value that was just written
-		 * @param oldHeapUse = what was previously debited by the variable that was just written
-		 * @returns amount being debited by the new assignment
-		 *          instance.heapLeft = adjusted to reflect new heap avaialbe to script
-		 * Throws exception if the new value exceeds available amount.
-		 */
-		public static int UpdateHeapLeft (XMRInstAbstract instance, object value, int oldHeapUse, int srcLine, int srcPosn)
-		{
-			int newHeapUse = 0;
-
-			     if (value is XMR_Array)  newHeapUse = ((XMR_Array)value).Size;
-			else if (value is LSL_List)   newHeapUse = 0; ///??? broken when list contains another list 
-			                                              ///??? as in xmrEventDequeue(http_response)
-			                                              ///??? ((LSL_List)value).Size;
-			else if (value is LSL_String) newHeapUse = ((LSL_String)value).Length * 2 + 24;
-			else if (value is string)     newHeapUse = ((string)value).Length * 2 + 24;
-
-			int heapNeeded  = newHeapUse - oldHeapUse;
-			int newHeapLeft = Interlocked.Add (ref instance.heapLeft, -heapNeeded);
-			int oldHeapLeft = newHeapLeft + heapNeeded;
-			if (newHeapLeft < 0) {
-				GC.Collect ();
-				GC.WaitForPendingFinalizers ();  // in case XMR_Array can give anything back
-				if (instance.heapLeft < 0) {
-					///???throw new OutOfHeapException (heapNeeded, oldHeapLeft, srcLine, srcPosn);
-				}
-			}
-
-			if (instance.traceHeapUse != null) {
-				Console.WriteLine("traceHeapUse: {0} {1}.{2}: old={3} new={4} left={5}", 
-					instance.traceHeapUse, srcLine, srcPosn, oldHeapUse, newHeapUse, instance.heapLeft);
-			}
-
-			return newHeapUse;
-		}
 
 		/**
 		 * @brief Defines an internal label that is used as a target for 'break' and 'continue' statements.
