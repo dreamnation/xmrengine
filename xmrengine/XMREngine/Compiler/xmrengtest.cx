@@ -134,7 +134,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
             ScriptObjCode scriptObjCode;
             try {
-                scriptObjCode = ScriptCodeGen.PerformGeneration ("", objFileReader, asmFileWriter);
+                scriptObjCode = ScriptCodeGen.PerformGeneration (objFileReader, asmFileWriter);
             } finally {
                 objFileReader.Close ();
                 if (asmFileWriter != null) asmFileWriter.Close ();

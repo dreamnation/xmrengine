@@ -5237,9 +5237,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 *   'scriptObjCode' is an in-memory object with methods filled in from the CIL code
 		 * Throws an exception if there is any error (theoretically).
 		 */
-		public static ScriptObjCode PerformGeneration (string descName,
-		                                               BinaryReader objFileReader, 
-		                                               TextWriter asmFileWriter)
+		public static ScriptObjCode PerformGeneration (BinaryReader objFileReader, TextWriter asmFileWriter)
 		{
 			/*
 			 * Check version number to make sure we know how to process file contents.
@@ -5310,9 +5308,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			EndMethodWrapper endMethodWrapper     = new EndMethodWrapper ();
 			endMethodWrapper.scriptObjCode        = scriptObjCode;
-			endMethodWrapper.descName             = descName;
 			scriptObjCode.scriptEventHandlerTable = new ScriptEventHandler[nStates,(int)ScriptEventCode.Size];
 			scriptObjCode.dynamicMethods          = new Dictionary<string, DynamicMethod> ();
+			scriptObjCode.scriptSrcLocss          = new Dictionary<string, KeyValuePair<int, ScriptSrcLoc>[]> ();
 			ScriptObjWriter.CreateObjCode (scriptObjCode.sdObjTypesName, objFileReader, endMethodWrapper.EndMethod, asmFileWriter);
 
 			/*
@@ -5348,13 +5346,35 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief Called once for every method found in objFileReader file.
 		 *        It enters the method in the ScriptObjCode object table so it can be called.
 		 */
-		private class EndMethodWrapper {
+		private class EndMethodWrapper : System.Collections.IComparer {
 			public ScriptObjCode scriptObjCode;
-			public string descName;
-
-			public void EndMethod (DynamicMethod method)
+			public void EndMethod (DynamicMethod method, Dictionary<int, ScriptSrcLoc> srcLocs)
 			{
+				/*
+				 * Save method object code pointer.
+				 */
 				scriptObjCode.dynamicMethods.Add (method.Name, method);
+
+				/*
+				 * Build and sort iloffset -> source code location array.
+				 */
+				int n = srcLocs.Count;
+				KeyValuePair<int, ScriptSrcLoc>[] srcLocArray = new KeyValuePair<int, ScriptSrcLoc>[n];
+				n = 0;
+				foreach (KeyValuePair<int, ScriptSrcLoc> kvp in srcLocs) srcLocArray[n++] = kvp;
+				Array.Sort (srcLocArray, this);
+
+				/*
+				 * Save sorted array.
+				 */
+				scriptObjCode.scriptSrcLocss.Add (method.Name, srcLocArray);
+			}
+
+			public int Compare (object x, object y)
+			{
+				KeyValuePair<int, ScriptSrcLoc> kvpx = (KeyValuePair<int, ScriptSrcLoc>)x;
+				KeyValuePair<int, ScriptSrcLoc> kvpy = (KeyValuePair<int, ScriptSrcLoc>)y;
+				return kvpx.Key - kvpy.Key;
 			}
 		}
 	}

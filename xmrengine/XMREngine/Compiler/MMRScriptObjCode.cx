@@ -45,7 +45,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                                           // all script-defined delegates (including anonymous)
 
         public Dictionary<string, DynamicMethod> dynamicMethods;
-                                          // all dyanmic methods that could be encountered by checkpointing
+                                          // all dyanmic methods
+
+        public Dictionary<string, KeyValuePair<int, ScriptSrcLoc>[]> scriptSrcLocss;
+                                          // method,iloffset -> source file,line,posn
 
         public DateTime fileDateUtc;
         public int expiryDays = Int32.MaxValue;

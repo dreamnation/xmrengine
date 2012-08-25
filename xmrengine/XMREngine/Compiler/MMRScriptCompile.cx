@@ -178,7 +178,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 BinaryReader objFileReader = new BinaryReader (objFileStream);
                 TextWriter asmFileWriter = (asmFileName != "-") ? File.CreateText (asmFileName) : Console.Out;
                 try {
-                    ScriptCodeGen.PerformGeneration ("", objFileReader, asmFileWriter);
+                    ScriptCodeGen.PerformGeneration (objFileReader, asmFileWriter);
                 } finally {
                     objFileReader.Close ();
                     asmFileWriter.Flush ();
@@ -246,7 +246,7 @@ version:
              */
             BinaryReader objFileReader = new BinaryReader (decodeFileStream);
             try {
-                ScriptCodeGen.PerformGeneration ("__assetID__", objFileReader, asmFileWriter);
+                ScriptCodeGen.PerformGeneration (objFileReader, asmFileWriter);
             } finally {
                 objFileReader.Close ();
                 if (asmFileWriter != null) {
@@ -473,7 +473,7 @@ version:
             BinaryReader objFileReader = new BinaryReader (objFileStream);
             ScriptObjCode scriptObjCode = null;
             try {
-                scriptObjCode = ScriptCodeGen.PerformGeneration (assetID, objFileReader, asmFileWriter);
+                scriptObjCode = ScriptCodeGen.PerformGeneration (objFileReader, asmFileWriter);
                 if (scriptObjCode != null) {
                     scriptObjCode.fileDateUtc = File.GetLastWriteTimeUtc (objFileName);
                 }

@@ -29,7 +29,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		BegExcBlk, BegCatBlk, BegFinBlk, EndExcBlk
 	}
 
-	public delegate void ScriptObjWriterEndMethod (DynamicMethod method);
+	public delegate void ScriptObjWriterEndMethod (DynamicMethod method, Dictionary<int, ScriptSrcLoc> srcLocs);
 
 	public class ScriptObjWriter : ScriptMyILGen
 	{
@@ -44,6 +44,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						new Type[] { typeof (ILGenerator) }, null);
 
 		private BinaryWriter objFileWriter;
+		private string lastErrorAtFile = "";
+		private int    lastErrorAtLine = 0;
+		private int    lastErrorAtPosn = 0;
 
 		private Dictionary<Type, string> sdTypesRev = new Dictionary<Type, string> ();
 		public int labelNumber = 0;
@@ -200,13 +203,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public override void Emit (Token errorAt, OpCode opcode)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitNull);
-			WriteOpCode (opcode);
+			WriteOpCode (errorAt, opcode);
 		}
 
 		public override void Emit (Token errorAt, OpCode opcode, FieldInfo field)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitField);
-			WriteOpCode (opcode);
+			WriteOpCode (errorAt, opcode);
 			objFileWriter.Write (GetStrFromType (field.ReflectedType));
 			objFileWriter.Write (field.Name);
 		}
@@ -214,28 +217,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public override void Emit (Token errorAt, OpCode opcode, ScriptMyLocal myLocal)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitLocal);
-			WriteOpCode (opcode);
+			WriteOpCode (errorAt, opcode);
 			objFileWriter.Write (myLocal.number);
 		}
 
 		public override void Emit (Token errorAt, OpCode opcode, Type type)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitType);
-			WriteOpCode (opcode);
+			WriteOpCode (errorAt, opcode);
 			objFileWriter.Write (GetStrFromType (type));
 		}
 
 		public override void Emit (Token errorAt, OpCode opcode, ScriptMyLabel myLabel)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitLabel);
-			WriteOpCode (opcode);
+			WriteOpCode (errorAt, opcode);
 			objFileWriter.Write (myLabel.number);
 		}
 
 		public override void Emit (Token errorAt, OpCode opcode, ScriptMyLabel[] myLabels)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitLabels);
-			WriteOpCode (opcode);
+			WriteOpCode (errorAt, opcode);
 			int nLabels = myLabels.Length;
 			objFileWriter.Write (nLabels);
 			for (int i = 0; i < nLabels; i ++) {
@@ -247,14 +250,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			if (method == null) throw new ArgumentNullException ("method");
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitMethodInt);
-			WriteOpCode (opcode);
+			WriteOpCode (errorAt, opcode);
 			objFileWriter.Write (method.methName);
 		}
 
 		public override void Emit (Token errorAt, OpCode opcode, MethodInfo method)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitMethodExt);
-			WriteOpCode (opcode);
+			WriteOpCode (errorAt, opcode);
 			objFileWriter.Write (method.Name);
 			objFileWriter.Write (GetStrFromType (method.ReflectedType));
 			ParameterInfo[] parms = method.GetParameters ();
@@ -268,7 +271,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public override void Emit (Token errorAt, OpCode opcode, ConstructorInfo ctor)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitCtor);
-			WriteOpCode (opcode);
+			WriteOpCode (errorAt, opcode);
 			objFileWriter.Write (GetStrFromType (ctor.ReflectedType));
 			ParameterInfo[] parms = ctor.GetParameters ();
 			int nArgs = parms.Length;
@@ -284,7 +287,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				throw new Exception ("bad opcode " + opcode.ToString ());
 			}
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitDouble);
-			WriteOpCode (opcode);
+			WriteOpCode (errorAt, opcode);
 			objFileWriter.Write (value);
 		}
 
@@ -294,21 +297,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				throw new Exception ("bad opcode " + opcode.ToString ());
 			}
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitFloat);
-			WriteOpCode (opcode);
+			WriteOpCode (errorAt, opcode);
 			objFileWriter.Write (value);
 		}
 
 		public override void Emit (Token errorAt, OpCode opcode, int value)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitInteger);
-			WriteOpCode (opcode);
+			WriteOpCode (errorAt, opcode);
 			objFileWriter.Write (value);
 		}
 
 		public override void Emit (Token errorAt, OpCode opcode, string value)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitString);
-			WriteOpCode (opcode);
+			WriteOpCode (errorAt, opcode);
 			objFileWriter.Write (value);
 		}
 
@@ -348,6 +351,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			StringBuilder dbg = new StringBuilder ();
 			object[] ilGenArg = new object[1];
 			int offset = 0;
+			Dictionary<int, ScriptSrcLoc> srcLocs = null;
+			string srcFile = "";
+			int    srcLine = 0;
+			int    srcPosn = 0;
 
 			while (true) {
 
@@ -395,6 +402,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						labelNames.Clear ();
 						localNames.Clear ();
 
+						srcLocs = new Dictionary<int, ScriptSrcLoc> ();
+
 						dbg.Append (methName);
 						dbg.Append (" {");
 						break;
@@ -408,7 +417,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					case ScriptObjWriterCode.EndMethod: {
 						ilGen = null;
 						ilGenArg[0] = null;
-						endMethod (method);
+						endMethod (method, srcLocs);
+						srcLocs = null;
 						dbg.Append ("}");
 						break;
 					}
@@ -523,8 +533,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 * Emit an opcode with no operand.
 					 */
 					case ScriptObjWriterCode.EmitNull: {
-						OpCode opCode = ReadOpCode (objReader);
+						OpCode opCode = ReadOpCode (objReader, ref srcFile, ref srcLine, ref srcPosn);
 
+						SaveSrcLoc (srcLocs, offset, srcFile, srcLine, srcPosn);
 						ilGen.Emit (opCode);
 
 						LinePrefix (offset, dbg, ilGenArg, opCode);
@@ -535,11 +546,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 * Emit an opcode with a FieldInfo operand.
 					 */
 					case ScriptObjWriterCode.EmitField: {
-						OpCode opCode      = ReadOpCode (objReader);
+						OpCode opCode      = ReadOpCode (objReader, ref srcFile, ref srcLine, ref srcPosn);
 						Type reflectedType = GetTypeFromStr (sdTypes, objReader.ReadString ());
 						string fieldName   = objReader.ReadString ();
 
 						FieldInfo field    = reflectedType.GetField (fieldName);
+						SaveSrcLoc (srcLocs, offset, srcFile, srcLine, srcPosn);
 						ilGen.Emit (opCode, field);
 						LinePrefix (offset, dbg, ilGenArg, opCode);
 
@@ -556,8 +568,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 * Emit an opcode with a LocalBuilder operand.
 					 */
 					case ScriptObjWriterCode.EmitLocal: {
-						OpCode opCode = ReadOpCode (objReader);
+						OpCode opCode = ReadOpCode (objReader, ref srcFile, ref srcLine, ref srcPosn);
 						int number    = objReader.ReadInt32 ();
+						SaveSrcLoc (srcLocs, offset, srcFile, srcLine, srcPosn);
 						ilGen.Emit (opCode, locals[number]);
 
 						LinePrefix (offset, dbg, ilGenArg, opCode);
@@ -570,10 +583,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 * Emit an opcode with a Type operand.
 					 */
 					case ScriptObjWriterCode.EmitType: {
-						OpCode opCode = ReadOpCode (objReader);
+						OpCode opCode = ReadOpCode (objReader, ref srcFile, ref srcLine, ref srcPosn);
 						string name   = objReader.ReadString ();
 						Type type     = GetTypeFromStr (sdTypes, name);
 
+						SaveSrcLoc (srcLocs, offset, srcFile, srcLine, srcPosn);
 						ilGen.Emit (opCode, type);
 
 						LinePrefix (offset, dbg, ilGenArg, opCode);
@@ -586,9 +600,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 * Emit an opcode with a Label operand.
 					 */
 					case ScriptObjWriterCode.EmitLabel: {
-						OpCode opCode = ReadOpCode (objReader);
+						OpCode opCode = ReadOpCode (objReader, ref srcFile, ref srcLine, ref srcPosn);
 						int number    = objReader.ReadInt32 ();
 
+						SaveSrcLoc (srcLocs, offset, srcFile, srcLine, srcPosn);
 						ilGen.Emit (opCode, labels[number]);
 
 						LinePrefix (offset, dbg, ilGenArg, opCode);
@@ -601,7 +616,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 * Emit an opcode with a Label array operand.
 					 */
 					case ScriptObjWriterCode.EmitLabels: {
-						OpCode opCode = ReadOpCode (objReader);
+						OpCode opCode = ReadOpCode (objReader, ref srcFile, ref srcLine, ref srcPosn);
 						int nLabels   = objReader.ReadInt32 ();
 						Label[] lbls  = new Label[nLabels];
 						int[] nums    = new int[nLabels];
@@ -610,6 +625,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 							lbls[i] = labels[nums[i]];
 						}
 
+						SaveSrcLoc (srcLocs, offset, srcFile, srcLine, srcPosn);
 						ilGen.Emit (opCode, lbls);
 
 						LinePrefix (offset, dbg, ilGenArg, opCode);
@@ -628,7 +644,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 * Emit an opcode with a MethodInfo operand (such as a call) of an external function.
 					 */
 					case ScriptObjWriterCode.EmitMethodExt: {
-						OpCode opCode   = ReadOpCode (objReader);
+						OpCode opCode   = ReadOpCode (objReader, ref srcFile, ref srcLine, ref srcPosn);
 						string methName = objReader.ReadString ();
 						Type methType   = GetTypeFromStr (sdTypes, objReader.ReadString ());
 						int nArgs       = objReader.ReadInt32 ();
@@ -638,6 +654,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 							argTypes[i] = GetTypeFromStr (sdTypes, objReader.ReadString ());
 						}
 						MethodInfo methInfo = methType.GetMethod (methName, argTypes);
+						SaveSrcLoc (srcLocs, offset, srcFile, srcLine, srcPosn);
 						ilGen.Emit (opCode, methInfo);
 
 						LinePrefix (offset, dbg, ilGenArg, opCode);
@@ -659,10 +676,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 * (previously declared via DclMethod).
 					 */
 					case ScriptObjWriterCode.EmitMethodInt: {
-						OpCode opCode   = ReadOpCode (objReader);
+						OpCode opCode   = ReadOpCode (objReader, ref srcFile, ref srcLine, ref srcPosn);
 						string methName = objReader.ReadString ();
 
 						MethodInfo methInfo = methods[methName];
+						SaveSrcLoc (srcLocs, offset, srcFile, srcLine, srcPosn);
 						ilGen.Emit (opCode, methInfo);
 
 						ParameterInfo[] parms = methInfo.GetParameters ();
@@ -683,7 +701,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 * Emit an opcode with a ConstructorInfo operand.
 					 */
 					case ScriptObjWriterCode.EmitCtor: {
-						OpCode opCode   = ReadOpCode (objReader);
+						OpCode opCode   = ReadOpCode (objReader, ref srcFile, ref srcLine, ref srcPosn);
 						Type ctorType   = GetTypeFromStr (sdTypes, objReader.ReadString ());
 						int nArgs       = objReader.ReadInt32 ();
 						Type[] argTypes = new Type[nArgs];
@@ -692,6 +710,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						}
 
 						ConstructorInfo ctorInfo = ctorType.GetConstructor (argTypes);
+						SaveSrcLoc (srcLocs, offset, srcFile, srcLine, srcPosn);
 						ilGen.Emit (opCode, ctorInfo);
 
 						LinePrefix (offset, dbg, ilGenArg, opCode);
@@ -709,12 +728,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 * Emit an opcode with a constant operand of various types.
 					 */
 					case ScriptObjWriterCode.EmitDouble: {
-						OpCode opCode = ReadOpCode (objReader);
+						OpCode opCode = ReadOpCode (objReader, ref srcFile, ref srcLine, ref srcPosn);
 						double value  = objReader.ReadDouble ();
 
 						if (opCode != OpCodes.Ldc_R8) {
 							throw new Exception ("bad opcode " + opCode.ToString ());
 						}
+						SaveSrcLoc (srcLocs, offset, srcFile, srcLine, srcPosn);
 						ilGen.Emit (opCode, value);
 
 						LinePrefix (offset, dbg, ilGenArg, opCode);
@@ -724,12 +744,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					}
 
 					case ScriptObjWriterCode.EmitFloat: {
-						OpCode opCode = ReadOpCode (objReader);
+						OpCode opCode = ReadOpCode (objReader, ref srcFile, ref srcLine, ref srcPosn);
 						float value   = objReader.ReadSingle ();
 
 						if (opCode != OpCodes.Ldc_R4) {
 							throw new Exception ("bad opcode " + opCode.ToString ());
 						}
+						SaveSrcLoc (srcLocs, offset, srcFile, srcLine, srcPosn);
 						ilGen.Emit (opCode, value);
 
 						LinePrefix (offset, dbg, ilGenArg, opCode);
@@ -739,9 +760,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					}
 
 					case ScriptObjWriterCode.EmitInteger: {
-						OpCode opCode = ReadOpCode (objReader);
+						OpCode opCode = ReadOpCode (objReader, ref srcFile, ref srcLine, ref srcPosn);
 						int value     = objReader.ReadInt32 ();
 
+						SaveSrcLoc (srcLocs, offset, srcFile, srcLine, srcPosn);
 						ilGen.Emit (opCode, value);
 
 						LinePrefix (offset, dbg, ilGenArg, opCode);
@@ -751,9 +773,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					}
 
 					case ScriptObjWriterCode.EmitString: {
-						OpCode opCode = ReadOpCode (objReader);
+						OpCode opCode = ReadOpCode (objReader, ref srcFile, ref srcLine, ref srcPosn);
 						string value  = objReader.ReadString ();
 
+						SaveSrcLoc (srcLocs, offset, srcFile, srcLine, srcPosn);
 						ilGen.Emit (opCode, value);
 
 						LinePrefix (offset, dbg, ilGenArg, opCode);
@@ -800,11 +823,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			Dictionary<short, OpCode> opCodeDict = new Dictionary<short, OpCode> ();
 			FieldInfo[] fields = typeof (OpCodes).GetFields ();
-			short highest = 0;
 			for (int i = 0; i < fields.Length; i ++) {
 				OpCode opcode = (OpCode)fields[i].GetValue (null);
 				opCodeDict.Add (opcode.Value, opcode);
-				if (highest < opcode.Value) highest = opcode.Value;
 			}
 			return opCodeDict;
 		}
@@ -812,18 +833,55 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		/**
 		 * @brief Write opcode out to file.
 		 */
-		private void WriteOpCode (OpCode opcode)
+		private void WriteOpCode (Token errorAt, OpCode opcode)
 		{
+			if (errorAt == null) {
+				objFileWriter.Write ("");
+				objFileWriter.Write (lastErrorAtLine);
+				objFileWriter.Write (lastErrorAtPosn);
+			} else {
+				if (errorAt.file != lastErrorAtFile) {
+					objFileWriter.Write (errorAt.file);
+					lastErrorAtFile = errorAt.file;
+				} else {
+					objFileWriter.Write ("");
+				}
+				objFileWriter.Write (errorAt.line);
+				objFileWriter.Write (errorAt.posn);
+				lastErrorAtLine = errorAt.line;
+				lastErrorAtPosn = errorAt.posn;
+			}
 			objFileWriter.Write (opcode.Value);
 		}
 
 		/**
 		 * @brief Read opcode in from file.
 		 */
-		private static OpCode ReadOpCode (BinaryReader objReader)
+		private static OpCode ReadOpCode (BinaryReader objReader, ref string srcFile, ref int srcLine, ref int srcPosn)
 		{
+			string f = objReader.ReadString ();
+			if (f != "") srcFile = f;
+			srcLine = objReader.ReadInt32 ();
+			srcPosn = objReader.ReadInt32 ();
+
 			short value = objReader.ReadInt16 ();
 			return opCodes[value];
+		}
+
+		/**
+		 * @brief Save an IL_offset -> source location translation entry
+		 * @param srcLocs = saved entries for the current function
+		 * @param offset = offset in IL object code for next instruction
+		 * @param src{File,Line,Posn} = location in source file corresponding to opcode
+		 * @returns with entry added to srcLocs
+		 */
+		private static void SaveSrcLoc (Dictionary<int, ScriptSrcLoc> srcLocs, int offset, string srcFile, int srcLine, int srcPosn)
+		{
+			ScriptSrcLoc srcLoc = new ScriptSrcLoc ();
+			srcLoc.file = srcFile;
+			srcLoc.line = srcLine;
+			srcLoc.posn = srcPosn;
+			srcLocs[offset] = srcLoc;
 		}
 
 		/**
@@ -921,5 +979,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			// last resort
 			return Type.GetType (s, true);
 		}
+	}
+
+	public class ScriptSrcLoc {
+		public string file;
+		public int line;
+		public int posn;
 	}
 }
