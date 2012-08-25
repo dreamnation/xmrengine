@@ -307,10 +307,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ScriptMyLabel itsPosLabel = scg.ilGen.DefineLabel ("llAbstemp");
 
 			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Dup);
-			scg.ilGen.Emit (OpCodes.Ldc_I4_0);
-			scg.ilGen.Emit (OpCodes.Bge_S, itsPosLabel);
-			scg.ilGen.Emit (OpCodes.Neg);
+			scg.ilGen.Emit (errorAt, OpCodes.Dup);
+			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_0);
+			scg.ilGen.Emit (errorAt, OpCodes.Bge_S, itsPosLabel);
+			scg.ilGen.Emit (errorAt, OpCodes.Neg);
 			scg.ilGen.MarkLabel (itsPosLabel);
 			result.Pop (scg, errorAt, retType);
 		}
@@ -322,15 +322,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			for (int i = 0; i < args.Length; i ++) {
 				args[i].PushVal (scg, errorAt, TokenType.FromSysType (errorAt, paramsInfo[i].ParameterType));
 			}
-			scg.ilGen.Emit (OpCodes.Call, methInfo);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, methInfo);
 			result.Pop (scg, errorAt, retType);
 		}
 
 		private void CodeGenLLRound (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
 		{
 			args[0].PushVal (scg, errorAt, tokenTypeFloat);
-			scg.ilGen.Emit (OpCodes.Ldc_I4, (int)System.MidpointRounding.AwayFromZero);
-			scg.ilGen.Emit (OpCodes.Call, roundMethInfo);
+			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4, (int)System.MidpointRounding.AwayFromZero);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, roundMethInfo);
 			result.Pop (scg, errorAt, tokenTypeFloat);
 		}
 
@@ -342,7 +342,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 ///		{
 ///			scg.PushXMRInst ();
 ///			args[0].PushVal (scg, errorAt, tokenTypeString);
-///			scg.ilGen.Emit (OpCodes.Call, consoleWrite);
+///			scg.ilGen.Emit (errorAt, OpCodes.Call, consoleWrite);
 ///		}
 
 		/**
@@ -353,7 +353,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			scg.PushXMRInst ();
 			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Call, xmrEventCallHandler);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, xmrEventCallHandler);
 		}
 
 		/**
@@ -369,7 +369,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			args[3].PushVal (scg, errorAt, tokenTypeInt);
 			args[4].PushVal (scg, errorAt, tokenTypeInt);
 			scg.ilGen.PushInt (errorAt.line);
-			scg.ilGen.Emit (OpCodes.Call, xmrEventDequeue);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, xmrEventDequeue);
 			result.Pop (scg, errorAt, retType);
 		}
 
@@ -381,7 +381,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			scg.PushXMRInst ();
 			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Call, xmrEventEnqueue);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, xmrEventEnqueue);
 		}
 
 		/**
@@ -392,7 +392,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			scg.PushXMRInst ();
 			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Call, xmrEventLoadDets);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, xmrEventLoadDets);
 		}
 
 		/**
@@ -402,7 +402,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void CodeGenXMREventSaveDets (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
 		{
 			scg.PushXMRInst ();
-			scg.ilGen.Emit (OpCodes.Call, xmrEventSaveDets);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, xmrEventSaveDets);
 			result.Pop (scg, errorAt, retType);
 		}
 
@@ -413,10 +413,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void CodeGenXMRHeapLeft (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
 		{
 			scg.PushXMRInst ();
-			scg.ilGen.Emit (OpCodes.Ldfld, heapLimitFieldInfo);
+			scg.ilGen.Emit (errorAt, OpCodes.Ldfld, heapLimitFieldInfo);
 			scg.PushXMRInst ();
-			scg.ilGen.Emit (OpCodes.Ldfld, heapTotalFieldInfo);
-			scg.ilGen.Emit (OpCodes.Sub);
+			scg.ilGen.Emit (errorAt, OpCodes.Ldfld, heapTotalFieldInfo);
+			scg.ilGen.Emit (errorAt, OpCodes.Sub);
 			result.Pop (scg, errorAt, retType);
 		}
 
@@ -428,7 +428,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void CodeGenXMRStackLeft (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
 		{
 			scg.PushXMRInst ();
-			scg.ilGen.Emit (OpCodes.Call, stackLeftMethodInfo);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, stackLeftMethodInfo);
 			result.Pop (scg, errorAt, retType);
 		}
 
@@ -441,7 +441,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			scg.PushXMRInst ();
 			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Call, typeNameMethodInfo);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, typeNameMethodInfo);
 			result.Pop (scg, errorAt, retType);
 		}
 
@@ -463,10 +463,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				} catch {
 					ScriptMyLocal temp = scg.ilGen.DeclareLocal (typeof (SCRIPTFLOAT), "hashcodefloat");
 					args[0].PushVal (scg, errorAt);
-					scg.ilGen.Emit (OpCodes.Stloc, temp);
-					scg.ilGen.Emit (OpCodes.Ldloca, temp);
+					scg.ilGen.Emit (errorAt, OpCodes.Stloc, temp);
+					scg.ilGen.Emit (errorAt, OpCodes.Ldloca, temp);
 				}
-				scg.ilGen.Emit (OpCodes.Call, hashCodeFloatMethodInfo);
+				scg.ilGen.Emit (errorAt, OpCodes.Call, hashCodeFloatMethodInfo);
 			}
 			result.Pop (scg, errorAt, retType);
 		}
@@ -478,7 +478,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void CodeGenXMRHashCodeObject (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
 		{
 			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Callvirt, hashCodeObjectMethodInfo);
+			scg.ilGen.Emit (errorAt, OpCodes.Callvirt, hashCodeObjectMethodInfo);
 			result.Pop (scg, errorAt, retType);
 		}
 
@@ -489,7 +489,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void CodeGenXMRFixedArrayAllocC (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
 		{
 			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Newarr, typeof (char));
+			scg.ilGen.Emit (errorAt, OpCodes.Newarr, typeof (char));
 			result.Pop (scg, errorAt);
 		}
 
@@ -497,9 +497,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void CodeGenXMRFixedArrayGetC (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
 		{
 			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Castclass, typeof (char[]));
+			scg.ilGen.Emit (errorAt, OpCodes.Castclass, typeof (char[]));
 			args[1].PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Ldelem_I2);
+			scg.ilGen.Emit (errorAt, OpCodes.Ldelem_I2);
 			result.Pop (scg, errorAt);
 		}
 
@@ -507,17 +507,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void CodeGenXMRFixedArraySetC (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
 		{
 			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Castclass, typeof (char[]));
+			scg.ilGen.Emit (errorAt, OpCodes.Castclass, typeof (char[]));
 			args[1].PushVal (scg, errorAt);
 			args[2].PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Stelem_I2);
+			scg.ilGen.Emit (errorAt, OpCodes.Stelem_I2);
 		}
 
 		// object xmrFixedAllocF(integer)
 		private void CodeGenXMRFixedArrayAllocF (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
 		{
 			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Newarr, typeof (SCRIPTFLOAT));
+			scg.ilGen.Emit (errorAt, OpCodes.Newarr, typeof (SCRIPTFLOAT));
 			result.Pop (scg, errorAt);
 		}
 
@@ -525,11 +525,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void CodeGenXMRFixedArrayGetF (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
 		{
 			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Castclass, typeof (SCRIPTFLOAT[]));
+			scg.ilGen.Emit (errorAt, OpCodes.Castclass, typeof (SCRIPTFLOAT[]));
 			args[1].PushVal (scg, errorAt);
 #define float Ldelem_R4
 #define double Ldelem_R8
-			scg.ilGen.Emit (OpCodes.SCRIPTFLOAT);
+			scg.ilGen.Emit (errorAt, OpCodes.SCRIPTFLOAT);
 #undef float
 #undef double
 			result.Pop (scg, errorAt);
@@ -539,12 +539,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void CodeGenXMRFixedArraySetF (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
 		{
 			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Castclass, typeof (SCRIPTFLOAT[]));
+			scg.ilGen.Emit (errorAt, OpCodes.Castclass, typeof (SCRIPTFLOAT[]));
 			args[1].PushVal (scg, errorAt);
 			args[2].PushVal (scg, errorAt);
 #define float Stelem_R4
 #define double Stelem_R8
-			scg.ilGen.Emit (OpCodes.SCRIPTFLOAT);
+			scg.ilGen.Emit (errorAt, OpCodes.SCRIPTFLOAT);
 #undef float
 #undef double
 		}
@@ -553,7 +553,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void CodeGenXMRFixedArrayAllocI (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
 		{
 			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Newarr, typeof (int));
+			scg.ilGen.Emit (errorAt, OpCodes.Newarr, typeof (int));
 			result.Pop (scg, errorAt);
 		}
 
@@ -561,9 +561,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void CodeGenXMRFixedArrayGetI (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
 		{
 			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Castclass, typeof (int[]));
+			scg.ilGen.Emit (errorAt, OpCodes.Castclass, typeof (int[]));
 			args[1].PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Ldelem_I4);
+			scg.ilGen.Emit (errorAt, OpCodes.Ldelem_I4);
 			result.Pop (scg, errorAt);
 		}
 
@@ -571,17 +571,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void CodeGenXMRFixedArraySetI (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
 		{
 			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Castclass, typeof (int[]));
+			scg.ilGen.Emit (errorAt, OpCodes.Castclass, typeof (int[]));
 			args[1].PushVal (scg, errorAt);
 			args[2].PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Stelem_I4);
+			scg.ilGen.Emit (errorAt, OpCodes.Stelem_I4);
 		}
 
 		// object xmrFixedAllocO(integer)
 		private void CodeGenXMRFixedArrayAllocO (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
 		{
 			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Newarr, typeof (object));
+			scg.ilGen.Emit (errorAt, OpCodes.Newarr, typeof (object));
 			result.Pop (scg, errorAt);
 		}
 
@@ -589,9 +589,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void CodeGenXMRFixedArrayGetO (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
 		{
 			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Castclass, typeof (object[]));
+			scg.ilGen.Emit (errorAt, OpCodes.Castclass, typeof (object[]));
 			args[1].PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Ldelem, typeof (object));
+			scg.ilGen.Emit (errorAt, OpCodes.Ldelem, typeof (object));
 			result.Pop (scg, errorAt);
 		}
 
@@ -599,10 +599,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void CodeGenXMRFixedArraySetO (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
 		{
 			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Castclass, typeof (object[]));
+			scg.ilGen.Emit (errorAt, OpCodes.Castclass, typeof (object[]));
 			args[1].PushVal (scg, errorAt);
 			args[2].PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Stelem, typeof (object));
+			scg.ilGen.Emit (errorAt, OpCodes.Stelem, typeof (object));
 		}
 
 		/**
@@ -617,7 +617,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			args[2].PushVal (scg, errorAt);
 			args[3].PushVal (scg, errorAt);
 			args[4].PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Call, arrayCopyMethodInfo);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, arrayCopyMethodInfo);
 		}
 
 		/**
@@ -629,7 +629,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			args[0].PushVal (scg, errorAt);
 			args[1].PushVal (scg, errorAt);
 			args[2].PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Call, array2ListMethodInfo);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, array2ListMethodInfo);
 			result.Pop (scg, errorAt);
 		}
 
@@ -641,7 +641,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			args[2].PushVal (scg, errorAt);
 			args[3].PushVal (scg, errorAt);
 			args[4].PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Call, list2ArrayMethodInfo);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, list2ArrayMethodInfo);
 		}
 
 		/**
@@ -653,7 +653,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			args[0].PushVal (scg, errorAt);
 			args[1].PushVal (scg, errorAt);
 			args[2].PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Call, chars2StringMethodInfo);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, chars2StringMethodInfo);
 			result.Pop (scg, errorAt);
 		}
 
@@ -665,7 +665,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			args[2].PushVal (scg, errorAt);
 			args[3].PushVal (scg, errorAt);
 			args[4].PushVal (scg, errorAt);
-			scg.ilGen.Emit (OpCodes.Call, string2CharsMethodInfo);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, string2CharsMethodInfo);
 		}
 
 		/**
@@ -676,7 +676,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			scg.PushXMRInst ();
 			args[0].PushVal (scg, errorAt, tokenTypeString);
-			scg.ilGen.Emit (OpCodes.Call, xmrOSParseJSON);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, xmrOSParseJSON);
 			result.Pop (scg, errorAt, retType);
 		}
 
@@ -692,10 +692,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			for (int i = 0; i < args.Length; i ++) {          // push arguments
 				args[i].PushVal (scg, errorAt, argDecl.types[i]);  // .. boxing/unboxing as needed
 			}
-			scg.ilGen.Emit (OpCodes.Call, methInfo);          // call API function
+			scg.ilGen.Emit (errorAt, OpCodes.Call, methInfo); // call API function
 			result.Pop (scg, errorAt, retType);               // pop result, boxing/unboxing as needed
 			if (doCheckRun) {
-				scg.EmitCallCheckRun (errorAt.line);      // maybe call CheckRun()
+				scg.EmitCallCheckRun (errorAt);           // maybe call CheckRun()
 			}
 		}
 	}

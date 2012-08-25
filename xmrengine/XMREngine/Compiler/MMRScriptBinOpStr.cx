@@ -377,7 +377,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeBool);
 			right.PushVal (scg, errorAt, tokenTypeBool);
-			scg.ilGen.Emit (OpCodes.And);
+			scg.ilGen.Emit (errorAt, OpCodes.And);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -386,7 +386,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeBool);
 			right.PushVal (scg, errorAt, tokenTypeBool);
-			scg.ilGen.Emit (OpCodes.Or);
+			scg.ilGen.Emit (errorAt, OpCodes.Or);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -395,7 +395,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeBool);
 			right.PushVal (scg, errorAt, tokenTypeBool);
-			scg.ilGen.Emit (OpCodes.Or);
+			scg.ilGen.Emit (errorAt, OpCodes.Or);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -404,7 +404,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeBool);
 			right.PushVal (scg, errorAt, tokenTypeBool);
-			scg.ilGen.Emit (OpCodes.Xor);
+			scg.ilGen.Emit (errorAt, OpCodes.Xor);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -413,7 +413,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeBool);
 			right.PushVal (scg, errorAt, tokenTypeBool);
-			scg.ilGen.Emit (OpCodes.And);
+			scg.ilGen.Emit (errorAt, OpCodes.And);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -422,7 +422,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeBool);
 			right.PushVal (scg, errorAt, tokenTypeBool);
-			scg.ilGen.Emit (OpCodes.Ceq);
+			scg.ilGen.Emit (errorAt, OpCodes.Ceq);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -431,7 +431,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeBool);
 			right.PushVal (scg, errorAt, tokenTypeBool);
-			scg.ilGen.Emit (OpCodes.Xor);
+			scg.ilGen.Emit (errorAt, OpCodes.Xor);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -440,7 +440,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeFloat);
 			right.PushVal (scg, errorAt, tokenTypeFloat);
-			scg.ilGen.Emit (OpCodes.Ceq);
+			scg.ilGen.Emit (errorAt, OpCodes.Ceq);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -449,9 +449,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeFloat);
 			right.PushVal (scg, errorAt, tokenTypeFloat);
-			scg.ilGen.Emit (OpCodes.Ceq);
-			scg.ilGen.Emit (OpCodes.Ldc_I4_1);
-			scg.ilGen.Emit (OpCodes.Xor);
+			scg.ilGen.Emit (errorAt, OpCodes.Ceq);
+			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_1);
+			scg.ilGen.Emit (errorAt, OpCodes.Xor);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -460,7 +460,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeFloat);
 			right.PushVal (scg, errorAt, tokenTypeFloat);
-			scg.ilGen.Emit (OpCodes.Clt);
+			scg.ilGen.Emit (errorAt, OpCodes.Clt);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -469,9 +469,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeFloat);
 			right.PushVal (scg, errorAt, tokenTypeFloat);
-			scg.ilGen.Emit (OpCodes.Cgt);
-			scg.ilGen.Emit (OpCodes.Ldc_I4_1);
-			scg.ilGen.Emit (OpCodes.Xor);
+			scg.ilGen.Emit (errorAt, OpCodes.Cgt);
+			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_1);
+			scg.ilGen.Emit (errorAt, OpCodes.Xor);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -480,7 +480,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeFloat);
 			right.PushVal (scg, errorAt, tokenTypeFloat);
-			scg.ilGen.Emit (OpCodes.Cgt);
+			scg.ilGen.Emit (errorAt, OpCodes.Cgt);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -489,9 +489,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeFloat);
 			right.PushVal (scg, errorAt, tokenTypeFloat);
-			scg.ilGen.Emit (OpCodes.Clt);
-			scg.ilGen.Emit (OpCodes.Ldc_I4_1);
-			scg.ilGen.Emit (OpCodes.Xor);
+			scg.ilGen.Emit (errorAt, OpCodes.Clt);
+			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_1);
+			scg.ilGen.Emit (errorAt, OpCodes.Xor);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -500,7 +500,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeFloat);
 			right.PushVal (scg, errorAt, tokenTypeFloat);
-			scg.ilGen.Emit (OpCodes.Add);
+			scg.ilGen.Emit (errorAt, OpCodes.Add);
 			result.PopPost (scg, errorAt, tokenTypeFloat);
 		}
 
@@ -509,7 +509,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeFloat);
 			right.PushVal (scg, errorAt, tokenTypeFloat);
-			scg.ilGen.Emit (OpCodes.Sub);
+			scg.ilGen.Emit (errorAt, OpCodes.Sub);
 			result.PopPost (scg, errorAt, tokenTypeFloat);
 		}
 
@@ -518,7 +518,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeFloat);
 			right.PushVal (scg, errorAt, tokenTypeFloat);
-			scg.ilGen.Emit (OpCodes.Mul);
+			scg.ilGen.Emit (errorAt, OpCodes.Mul);
 			result.PopPost (scg, errorAt, tokenTypeFloat);
 		}
 
@@ -527,7 +527,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeFloat);
 			right.PushVal (scg, errorAt, tokenTypeFloat);
-			scg.ilGen.Emit (OpCodes.Div);
+			scg.ilGen.Emit (errorAt, OpCodes.Div);
 			result.PopPost (scg, errorAt, tokenTypeFloat);
 		}
 
@@ -536,7 +536,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeFloat);
 			right.PushVal (scg, errorAt, tokenTypeFloat);
-			scg.ilGen.Emit (OpCodes.Rem);
+			scg.ilGen.Emit (errorAt, OpCodes.Rem);
 			result.PopPost (scg, errorAt, tokenTypeFloat);
 		}
 
@@ -545,7 +545,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeFloat);
 			right.PushVal (scg, errorAt, tokenTypeFloat);
-			scg.ilGen.Emit (OpCodes.Ceq);
+			scg.ilGen.Emit (errorAt, OpCodes.Ceq);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -554,9 +554,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeFloat);
 			right.PushVal (scg, errorAt, tokenTypeFloat);
-			scg.ilGen.Emit (OpCodes.Ceq);
-			scg.ilGen.Emit (OpCodes.Ldc_I4_1);
-			scg.ilGen.Emit (OpCodes.Xor);
+			scg.ilGen.Emit (errorAt, OpCodes.Ceq);
+			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_1);
+			scg.ilGen.Emit (errorAt, OpCodes.Xor);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -565,7 +565,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeFloat);
 			right.PushVal (scg, errorAt, tokenTypeFloat);
-			scg.ilGen.Emit (OpCodes.Clt);
+			scg.ilGen.Emit (errorAt, OpCodes.Clt);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -574,9 +574,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeFloat);
 			right.PushVal (scg, errorAt, tokenTypeFloat);
-			scg.ilGen.Emit (OpCodes.Cgt);
-			scg.ilGen.Emit (OpCodes.Ldc_I4_1);
-			scg.ilGen.Emit (OpCodes.Xor);
+			scg.ilGen.Emit (errorAt, OpCodes.Cgt);
+			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_1);
+			scg.ilGen.Emit (errorAt, OpCodes.Xor);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -585,7 +585,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeFloat);
 			right.PushVal (scg, errorAt, tokenTypeFloat);
-			scg.ilGen.Emit (OpCodes.Cgt);
+			scg.ilGen.Emit (errorAt, OpCodes.Cgt);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -594,9 +594,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeFloat);
 			right.PushVal (scg, errorAt, tokenTypeFloat);
-			scg.ilGen.Emit (OpCodes.Clt);
-			scg.ilGen.Emit (OpCodes.Ldc_I4_1);
-			scg.ilGen.Emit (OpCodes.Xor);
+			scg.ilGen.Emit (errorAt, OpCodes.Clt);
+			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_1);
+			scg.ilGen.Emit (errorAt, OpCodes.Xor);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -605,7 +605,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeFloat);
 			right.PushVal (scg, errorAt, tokenTypeFloat);
-			scg.ilGen.Emit (OpCodes.Add);
+			scg.ilGen.Emit (errorAt, OpCodes.Add);
 			result.PopPost (scg, errorAt, tokenTypeFloat);
 		}
 
@@ -614,7 +614,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeFloat);
 			right.PushVal (scg, errorAt, tokenTypeFloat);
-			scg.ilGen.Emit (OpCodes.Sub);
+			scg.ilGen.Emit (errorAt, OpCodes.Sub);
 			result.PopPost (scg, errorAt, tokenTypeFloat);
 		}
 
@@ -623,7 +623,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeFloat);
 			right.PushVal (scg, errorAt, tokenTypeFloat);
-			scg.ilGen.Emit (OpCodes.Mul);
+			scg.ilGen.Emit (errorAt, OpCodes.Mul);
 			result.PopPost (scg, errorAt, tokenTypeFloat);
 		}
 
@@ -632,7 +632,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeFloat);
 			right.PushVal (scg, errorAt, tokenTypeFloat);
-			scg.ilGen.Emit (OpCodes.Div);
+			scg.ilGen.Emit (errorAt, OpCodes.Div);
 			result.PopPost (scg, errorAt, tokenTypeFloat);
 		}
 
@@ -641,7 +641,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeFloat);
 			right.PushVal (scg, errorAt, tokenTypeFloat);
-			scg.ilGen.Emit (OpCodes.Rem);
+			scg.ilGen.Emit (errorAt, OpCodes.Rem);
 			result.PopPost (scg, errorAt, tokenTypeFloat);
 		}
 
@@ -650,7 +650,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeChar);
 			right.PushVal (scg, errorAt, tokenTypeChar);
-			scg.ilGen.Emit (OpCodes.Ceq);
+			scg.ilGen.Emit (errorAt, OpCodes.Ceq);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -659,9 +659,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeChar);
 			right.PushVal (scg, errorAt, tokenTypeChar);
-			scg.ilGen.Emit (OpCodes.Ceq);
-			scg.ilGen.Emit (OpCodes.Ldc_I4_1);
-			scg.ilGen.Emit (OpCodes.Xor);
+			scg.ilGen.Emit (errorAt, OpCodes.Ceq);
+			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_1);
+			scg.ilGen.Emit (errorAt, OpCodes.Xor);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -670,7 +670,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeChar);
 			right.PushVal (scg, errorAt, tokenTypeChar);
-			scg.ilGen.Emit (OpCodes.Clt);
+			scg.ilGen.Emit (errorAt, OpCodes.Clt);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -679,9 +679,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeChar);
 			right.PushVal (scg, errorAt, tokenTypeChar);
-			scg.ilGen.Emit (OpCodes.Cgt);
-			scg.ilGen.Emit (OpCodes.Ldc_I4_1);
-			scg.ilGen.Emit (OpCodes.Xor);
+			scg.ilGen.Emit (errorAt, OpCodes.Cgt);
+			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_1);
+			scg.ilGen.Emit (errorAt, OpCodes.Xor);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -690,7 +690,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeChar);
 			right.PushVal (scg, errorAt, tokenTypeChar);
-			scg.ilGen.Emit (OpCodes.Cgt);
+			scg.ilGen.Emit (errorAt, OpCodes.Cgt);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -699,9 +699,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeChar);
 			right.PushVal (scg, errorAt, tokenTypeChar);
-			scg.ilGen.Emit (OpCodes.Clt);
-			scg.ilGen.Emit (OpCodes.Ldc_I4_1);
-			scg.ilGen.Emit (OpCodes.Xor);
+			scg.ilGen.Emit (errorAt, OpCodes.Clt);
+			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_1);
+			scg.ilGen.Emit (errorAt, OpCodes.Xor);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -710,7 +710,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeChar);
 			right.PushVal (scg, errorAt, tokenTypeInt);
-			scg.ilGen.Emit (OpCodes.Add);
+			scg.ilGen.Emit (errorAt, OpCodes.Add);
 			result.PopPost (scg, errorAt, tokenTypeChar);
 		}
 
@@ -719,7 +719,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeChar);
 			right.PushVal (scg, errorAt, tokenTypeInt);
-			scg.ilGen.Emit (OpCodes.Sub);
+			scg.ilGen.Emit (errorAt, OpCodes.Sub);
 			result.PopPost (scg, errorAt, tokenTypeChar);
 		}
 
@@ -728,7 +728,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeInt);
 			right.PushVal (scg, errorAt, tokenTypeInt);
-			scg.ilGen.Emit (OpCodes.Ceq);
+			scg.ilGen.Emit (errorAt, OpCodes.Ceq);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -737,9 +737,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeInt);
 			right.PushVal (scg, errorAt, tokenTypeInt);
-			scg.ilGen.Emit (OpCodes.Ceq);
-			scg.ilGen.Emit (OpCodes.Ldc_I4_1);
-			scg.ilGen.Emit (OpCodes.Xor);
+			scg.ilGen.Emit (errorAt, OpCodes.Ceq);
+			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_1);
+			scg.ilGen.Emit (errorAt, OpCodes.Xor);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -748,7 +748,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeInt);
 			right.PushVal (scg, errorAt, tokenTypeInt);
-			scg.ilGen.Emit (OpCodes.Clt);
+			scg.ilGen.Emit (errorAt, OpCodes.Clt);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -757,9 +757,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeInt);
 			right.PushVal (scg, errorAt, tokenTypeInt);
-			scg.ilGen.Emit (OpCodes.Cgt);
-			scg.ilGen.Emit (OpCodes.Ldc_I4_1);
-			scg.ilGen.Emit (OpCodes.Xor);
+			scg.ilGen.Emit (errorAt, OpCodes.Cgt);
+			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_1);
+			scg.ilGen.Emit (errorAt, OpCodes.Xor);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -768,7 +768,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeInt);
 			right.PushVal (scg, errorAt, tokenTypeInt);
-			scg.ilGen.Emit (OpCodes.Cgt);
+			scg.ilGen.Emit (errorAt, OpCodes.Cgt);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -777,9 +777,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeInt);
 			right.PushVal (scg, errorAt, tokenTypeInt);
-			scg.ilGen.Emit (OpCodes.Clt);
-			scg.ilGen.Emit (OpCodes.Ldc_I4_1);
-			scg.ilGen.Emit (OpCodes.Xor);
+			scg.ilGen.Emit (errorAt, OpCodes.Clt);
+			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_1);
+			scg.ilGen.Emit (errorAt, OpCodes.Xor);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -788,7 +788,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeInt);
 			right.PushVal (scg, errorAt, tokenTypeInt);
-			scg.ilGen.Emit (OpCodes.Or);
+			scg.ilGen.Emit (errorAt, OpCodes.Or);
 			result.PopPost (scg, errorAt, tokenTypeInt);
 		}
 
@@ -797,7 +797,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeInt);
 			right.PushVal (scg, errorAt, tokenTypeInt);
-			scg.ilGen.Emit (OpCodes.Xor);
+			scg.ilGen.Emit (errorAt, OpCodes.Xor);
 			result.PopPost (scg, errorAt, tokenTypeInt);
 		}
 
@@ -806,7 +806,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeInt);
 			right.PushVal (scg, errorAt, tokenTypeInt);
-			scg.ilGen.Emit (OpCodes.And);
+			scg.ilGen.Emit (errorAt, OpCodes.And);
 			result.PopPost (scg, errorAt, tokenTypeInt);
 		}
 
@@ -815,7 +815,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeInt);
 			right.PushVal (scg, errorAt, tokenTypeInt);
-			scg.ilGen.Emit (OpCodes.Add);
+			scg.ilGen.Emit (errorAt, OpCodes.Add);
 			result.PopPost (scg, errorAt, tokenTypeInt);
 		}
 
@@ -824,7 +824,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeInt);
 			right.PushVal (scg, errorAt, tokenTypeInt);
-			scg.ilGen.Emit (OpCodes.Sub);
+			scg.ilGen.Emit (errorAt, OpCodes.Sub);
 			result.PopPost (scg, errorAt, tokenTypeInt);
 		}
 
@@ -833,7 +833,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeInt);
 			right.PushVal (scg, errorAt, tokenTypeInt);
-			scg.ilGen.Emit (OpCodes.Mul);
+			scg.ilGen.Emit (errorAt, OpCodes.Mul);
 			result.PopPost (scg, errorAt, tokenTypeInt);
 		}
 
@@ -842,7 +842,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeInt);
 			right.PushVal (scg, errorAt, tokenTypeInt);
-			scg.ilGen.Emit (OpCodes.Div);
+			scg.ilGen.Emit (errorAt, OpCodes.Div);
 			result.PopPost (scg, errorAt, tokenTypeInt);
 		}
 
@@ -851,7 +851,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeInt);
 			right.PushVal (scg, errorAt, tokenTypeInt);
-			scg.ilGen.Emit (OpCodes.Rem);
+			scg.ilGen.Emit (errorAt, OpCodes.Rem);
 			result.PopPost (scg, errorAt, tokenTypeInt);
 		}
 
@@ -860,7 +860,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeInt);
 			right.PushVal (scg, errorAt, tokenTypeInt);
-			scg.ilGen.Emit (OpCodes.Shl);
+			scg.ilGen.Emit (errorAt, OpCodes.Shl);
 			result.PopPost (scg, errorAt, tokenTypeInt);
 		}
 
@@ -869,7 +869,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeInt);
 			right.PushVal (scg, errorAt, tokenTypeInt);
-			scg.ilGen.Emit (OpCodes.Shr);
+			scg.ilGen.Emit (errorAt, OpCodes.Shr);
 			result.PopPost (scg, errorAt, tokenTypeInt);
 		}
 
@@ -878,8 +878,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeStr);
 			right.PushVal (scg, errorAt, tokenTypeStr);
-			scg.ilGen.Emit (OpCodes.Call, stringCmpStringMethInfo);
-			scg.ilGen.Emit (OpCodes.Ldc_I4_0);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, stringCmpStringMethInfo);
+			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_0);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -888,10 +888,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeStr);
 			right.PushVal (scg, errorAt, tokenTypeStr);
-			scg.ilGen.Emit (OpCodes.Call, stringCmpStringMethInfo);
-			scg.ilGen.Emit (OpCodes.Ceq);
-			scg.ilGen.Emit (OpCodes.Ldc_I4_1);
-			scg.ilGen.Emit (OpCodes.Xor);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, stringCmpStringMethInfo);
+			scg.ilGen.Emit (errorAt, OpCodes.Ceq);
+			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_1);
+			scg.ilGen.Emit (errorAt, OpCodes.Xor);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -900,7 +900,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeList);
 			right.PushVal (scg, errorAt, tokenTypeFloat);
-			scg.ilGen.Emit (OpCodes.Call, infoMethListAddFloat);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethListAddFloat);
 			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
@@ -909,7 +909,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeList);
 			right.PushVal (scg, errorAt, tokenTypeInt);
-			scg.ilGen.Emit (OpCodes.Call, infoMethListAddInt);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethListAddInt);
 			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
@@ -918,7 +918,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeList);
 			right.PushVal (scg, errorAt, tokenTypeStr);
-			scg.ilGen.Emit (OpCodes.Call, infoMethListAddKey);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethListAddKey);
 			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
@@ -927,7 +927,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeList);
 			right.PushVal (scg, errorAt, tokenTypeList);
-			scg.ilGen.Emit (OpCodes.Call, infoMethListAddList);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethListAddList);
 			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
@@ -936,7 +936,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeList);
 			right.PushVal (scg, errorAt, tokenTypeRot);
-			scg.ilGen.Emit (OpCodes.Call, infoMethListAddRot);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethListAddRot);
 			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
@@ -945,7 +945,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeList);
 			right.PushVal (scg, errorAt, tokenTypeStr);
-			scg.ilGen.Emit (OpCodes.Call, infoMethListAddStr);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethListAddStr);
 			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
@@ -954,7 +954,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeList);
 			right.PushVal (scg, errorAt, tokenTypeVec);
-			scg.ilGen.Emit (OpCodes.Call, infoMethListAddVec);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethListAddVec);
 			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
@@ -963,7 +963,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeFloat);
 			right.PushVal (scg, errorAt, tokenTypeList);
-			scg.ilGen.Emit (OpCodes.Call, infoMethFloatAddList);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethFloatAddList);
 			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
@@ -972,7 +972,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeInt);
 			right.PushVal (scg, errorAt, tokenTypeList);
-			scg.ilGen.Emit (OpCodes.Call, infoMethIntAddList);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethIntAddList);
 			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
@@ -981,7 +981,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeStr);
 			right.PushVal (scg, errorAt, tokenTypeList);
-			scg.ilGen.Emit (OpCodes.Call, infoMethKeyAddList);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethKeyAddList);
 			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
@@ -990,7 +990,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeRot);
 			right.PushVal (scg, errorAt, tokenTypeList);
-			scg.ilGen.Emit (OpCodes.Call, infoMethRotAddList);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethRotAddList);
 			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
@@ -999,7 +999,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeStr);
 			right.PushVal (scg, errorAt, tokenTypeList);
-			scg.ilGen.Emit (OpCodes.Call, infoMethStrAddList);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethStrAddList);
 			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
@@ -1008,7 +1008,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeVec);
 			right.PushVal (scg, errorAt, tokenTypeList);
-			scg.ilGen.Emit (OpCodes.Call, infoMethVecAddList);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethVecAddList);
 			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
@@ -1017,7 +1017,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeList);
 			right.PushVal (scg, errorAt, tokenTypeList);
-			scg.ilGen.Emit (OpCodes.Call, infoMethListEqList);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethListEqList);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -1026,7 +1026,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeList);
 			right.PushVal (scg, errorAt, tokenTypeList);
-			scg.ilGen.Emit (OpCodes.Call, infoMethListNeList);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethListNeList);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -1035,7 +1035,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeRot);
 			right.PushVal (scg, errorAt, tokenTypeRot);
-			scg.ilGen.Emit (OpCodes.Call, infoMethRotEqRot);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethRotEqRot);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -1044,7 +1044,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeRot);
 			right.PushVal (scg, errorAt, tokenTypeRot);
-			scg.ilGen.Emit (OpCodes.Call, infoMethRotNeRot);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethRotNeRot);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -1053,7 +1053,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeRot);
 			right.PushVal (scg, errorAt, tokenTypeRot);
-			scg.ilGen.Emit (OpCodes.Call, infoMethRotAddRot);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethRotAddRot);
 			result.PopPost (scg, errorAt, tokenTypeRot);
 		}
 
@@ -1062,7 +1062,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeRot);
 			right.PushVal (scg, errorAt, tokenTypeRot);
-			scg.ilGen.Emit (OpCodes.Call, infoMethRotSubRot);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethRotSubRot);
 			result.PopPost (scg, errorAt, tokenTypeRot);
 		}
 
@@ -1071,7 +1071,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeRot);
 			right.PushVal (scg, errorAt, tokenTypeRot);
-			scg.ilGen.Emit (OpCodes.Call, infoMethRotMulRot);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethRotMulRot);
 			result.PopPost (scg, errorAt, tokenTypeRot);
 		}
 
@@ -1080,7 +1080,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeRot);
 			right.PushVal (scg, errorAt, tokenTypeRot);
-			scg.ilGen.Emit (OpCodes.Call, infoMethRotDivRot);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethRotDivRot);
 			result.PopPost (scg, errorAt, tokenTypeRot);
 		}
 
@@ -1089,9 +1089,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeStr);
 			right.PushVal (scg, errorAt, tokenTypeStr);
-			scg.ilGen.Emit (OpCodes.Call, stringCmpStringMethInfo);
-			scg.ilGen.Emit (OpCodes.Ldc_I4_0);
-			scg.ilGen.Emit (OpCodes.Ceq);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, stringCmpStringMethInfo);
+			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_0);
+			scg.ilGen.Emit (errorAt, OpCodes.Ceq);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -1100,11 +1100,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeStr);
 			right.PushVal (scg, errorAt, tokenTypeStr);
-			scg.ilGen.Emit (OpCodes.Call, stringCmpStringMethInfo);
-			scg.ilGen.Emit (OpCodes.Ldc_I4_0);
-			scg.ilGen.Emit (OpCodes.Ceq);
-			scg.ilGen.Emit (OpCodes.Ldc_I4_1);
-			scg.ilGen.Emit (OpCodes.Xor);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, stringCmpStringMethInfo);
+			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_0);
+			scg.ilGen.Emit (errorAt, OpCodes.Ceq);
+			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_1);
+			scg.ilGen.Emit (errorAt, OpCodes.Xor);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -1113,9 +1113,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeStr);
 			right.PushVal (scg, errorAt, tokenTypeStr);
-			scg.ilGen.Emit (OpCodes.Call, stringCmpStringMethInfo);
-			scg.ilGen.Emit (OpCodes.Ldc_I4_0);
-			scg.ilGen.Emit (OpCodes.Clt);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, stringCmpStringMethInfo);
+			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_0);
+			scg.ilGen.Emit (errorAt, OpCodes.Clt);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -1124,9 +1124,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeStr);
 			right.PushVal (scg, errorAt, tokenTypeStr);
-			scg.ilGen.Emit (OpCodes.Call, stringCmpStringMethInfo);
-			scg.ilGen.Emit (OpCodes.Ldc_I4_1);
-			scg.ilGen.Emit (OpCodes.Clt);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, stringCmpStringMethInfo);
+			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_1);
+			scg.ilGen.Emit (errorAt, OpCodes.Clt);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -1135,9 +1135,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeStr);
 			right.PushVal (scg, errorAt, tokenTypeStr);
-			scg.ilGen.Emit (OpCodes.Call, stringCmpStringMethInfo);
-			scg.ilGen.Emit (OpCodes.Ldc_I4_0);
-			scg.ilGen.Emit (OpCodes.Cgt);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, stringCmpStringMethInfo);
+			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_0);
+			scg.ilGen.Emit (errorAt, OpCodes.Cgt);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -1146,9 +1146,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeStr);
 			right.PushVal (scg, errorAt, tokenTypeStr);
-			scg.ilGen.Emit (OpCodes.Call, stringCmpStringMethInfo);
-			scg.ilGen.Emit (OpCodes.Ldc_I4_M1);
-			scg.ilGen.Emit (OpCodes.Cgt);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, stringCmpStringMethInfo);
+			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_M1);
+			scg.ilGen.Emit (errorAt, OpCodes.Cgt);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -1158,7 +1158,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeStr);
 			right.PushVal (scg, errorAt, tokenTypeStr);
-			scg.ilGen.Emit (OpCodes.Call, stringAddStringMethInfo);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, stringAddStringMethInfo);
 			result.PopPost (scg, errorAt, tokenTypeStr);
 		}
 
@@ -1167,7 +1167,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeVec);
 			right.PushVal (scg, errorAt, tokenTypeVec);
-			scg.ilGen.Emit (OpCodes.Call, infoMethVecEqVec);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethVecEqVec);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -1176,7 +1176,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeVec);
 			right.PushVal (scg, errorAt, tokenTypeVec);
-			scg.ilGen.Emit (OpCodes.Call, infoMethVecNeVec);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethVecNeVec);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -1185,7 +1185,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeVec);
 			right.PushVal (scg, errorAt, tokenTypeVec);
-			scg.ilGen.Emit (OpCodes.Call, infoMethVecAddVec);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethVecAddVec);
 			result.PopPost (scg, errorAt, tokenTypeVec);
 		}
 
@@ -1194,7 +1194,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeVec);
 			right.PushVal (scg, errorAt, tokenTypeVec);
-			scg.ilGen.Emit (OpCodes.Call, infoMethVecSubVec);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethVecSubVec);
 			result.PopPost (scg, errorAt, tokenTypeVec);
 		}
 
@@ -1203,7 +1203,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeVec);
 			right.PushVal (scg, errorAt, tokenTypeVec);
-			scg.ilGen.Emit (OpCodes.Call, infoMethVecMulVec);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethVecMulVec);
 			result.PopPost (scg, errorAt, tokenTypeFloat);
 		}
 
@@ -1212,7 +1212,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeVec);
 			right.PushVal (scg, errorAt, tokenTypeVec);
-			scg.ilGen.Emit (OpCodes.Call, infoMethVecModVec);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethVecModVec);
 			result.PopPost (scg, errorAt, tokenTypeVec);
 		}
 
@@ -1221,7 +1221,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeVec);
 			right.PushVal (scg, errorAt, tokenTypeFloat);
-			scg.ilGen.Emit (OpCodes.Call, infoMethVecMulFloat);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethVecMulFloat);
 			result.PopPost (scg, errorAt, tokenTypeVec);
 		}
 
@@ -1230,7 +1230,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeFloat);
 			right.PushVal (scg, errorAt, tokenTypeVec);
-			scg.ilGen.Emit (OpCodes.Call, infoMethFloatMulVec);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethFloatMulVec);
 			result.PopPost (scg, errorAt, tokenTypeVec);
 		}
 
@@ -1239,7 +1239,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeVec);
 			right.PushVal (scg, errorAt, tokenTypeFloat);
-			scg.ilGen.Emit (OpCodes.Call, infoMethVecDivFloat);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethVecDivFloat);
 			result.PopPost (scg, errorAt, tokenTypeVec);
 		}
 
@@ -1248,7 +1248,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeVec);
 			right.PushVal (scg, errorAt, tokenTypeInt);
-			scg.ilGen.Emit (OpCodes.Call, infoMethVecMulInt);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethVecMulInt);
 			result.PopPost (scg, errorAt, tokenTypeVec);
 		}
 
@@ -1257,7 +1257,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeInt);
 			right.PushVal (scg, errorAt, tokenTypeVec);
-			scg.ilGen.Emit (OpCodes.Call, infoMethIntMulVec);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethIntMulVec);
 			result.PopPost (scg, errorAt, tokenTypeVec);
 		}
 
@@ -1266,7 +1266,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeVec);
 			right.PushVal (scg, errorAt, tokenTypeInt);
-			scg.ilGen.Emit (OpCodes.Call, infoMethVecDivInt);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethVecDivInt);
 			result.PopPost (scg, errorAt, tokenTypeVec);
 		}
 
@@ -1275,7 +1275,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeVec);
 			right.PushVal (scg, errorAt, tokenTypeRot);
-			scg.ilGen.Emit (OpCodes.Call, infoMethVecMulRot);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethVecMulRot);
 			result.PopPost (scg, errorAt, tokenTypeVec);
 		}
 
@@ -1284,7 +1284,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeVec);
 			right.PushVal (scg, errorAt, tokenTypeRot);
-			scg.ilGen.Emit (OpCodes.Call, infoMethVecDivRot);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethVecDivRot);
 			result.PopPost (scg, errorAt, tokenTypeVec);
 		}
 

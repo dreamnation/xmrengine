@@ -197,13 +197,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EndExcBlk);
 		}
 
-		public override void Emit (OpCode opcode)
+		public override void Emit (Token errorAt, OpCode opcode)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitNull);
 			WriteOpCode (opcode);
 		}
 
-		public override void Emit (OpCode opcode, FieldInfo field)
+		public override void Emit (Token errorAt, OpCode opcode, FieldInfo field)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitField);
 			WriteOpCode (opcode);
@@ -211,28 +211,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			objFileWriter.Write (field.Name);
 		}
 
-		public override void Emit (OpCode opcode, ScriptMyLocal myLocal)
+		public override void Emit (Token errorAt, OpCode opcode, ScriptMyLocal myLocal)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitLocal);
 			WriteOpCode (opcode);
 			objFileWriter.Write (myLocal.number);
 		}
 
-		public override void Emit (OpCode opcode, Type type)
+		public override void Emit (Token errorAt, OpCode opcode, Type type)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitType);
 			WriteOpCode (opcode);
 			objFileWriter.Write (GetStrFromType (type));
 		}
 
-		public override void Emit (OpCode opcode, ScriptMyLabel myLabel)
+		public override void Emit (Token errorAt, OpCode opcode, ScriptMyLabel myLabel)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitLabel);
 			WriteOpCode (opcode);
 			objFileWriter.Write (myLabel.number);
 		}
 
-		public override void Emit (OpCode opcode, ScriptMyLabel[] myLabels)
+		public override void Emit (Token errorAt, OpCode opcode, ScriptMyLabel[] myLabels)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitLabels);
 			WriteOpCode (opcode);
@@ -243,7 +243,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 		}
 
-		public override void Emit (OpCode opcode, ScriptObjWriter method)
+		public override void Emit (Token errorAt, OpCode opcode, ScriptObjWriter method)
 		{
 			if (method == null) throw new ArgumentNullException ("method");
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitMethodInt);
@@ -251,7 +251,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			objFileWriter.Write (method.methName);
 		}
 
-		public override void Emit (OpCode opcode, MethodInfo method)
+		public override void Emit (Token errorAt, OpCode opcode, MethodInfo method)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitMethodExt);
 			WriteOpCode (opcode);
@@ -265,7 +265,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 		}
 
-		public override void Emit (OpCode opcode, ConstructorInfo ctor)
+		public override void Emit (Token errorAt, OpCode opcode, ConstructorInfo ctor)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitCtor);
 			WriteOpCode (opcode);
@@ -278,7 +278,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 		}
 
-		public override void Emit (OpCode opcode, double value)
+		public override void Emit (Token errorAt, OpCode opcode, double value)
 		{
 			if (opcode != OpCodes.Ldc_R8) {
 				throw new Exception ("bad opcode " + opcode.ToString ());
@@ -288,7 +288,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			objFileWriter.Write (value);
 		}
 
-		public override void Emit (OpCode opcode, float value)
+		public override void Emit (Token errorAt, OpCode opcode, float value)
 		{
 			if (opcode != OpCodes.Ldc_R4) {
 				throw new Exception ("bad opcode " + opcode.ToString ());
@@ -298,14 +298,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			objFileWriter.Write (value);
 		}
 
-		public override void Emit (OpCode opcode, int value)
+		public override void Emit (Token errorAt, OpCode opcode, int value)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitInteger);
 			WriteOpCode (opcode);
 			objFileWriter.Write (value);
 		}
 
-		public override void Emit (OpCode opcode, string value)
+		public override void Emit (Token errorAt, OpCode opcode, string value)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitString);
 			WriteOpCode (opcode);

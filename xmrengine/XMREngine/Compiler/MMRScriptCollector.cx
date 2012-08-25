@@ -632,10 +632,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	 */
 	public abstract class GraphNodeEmit : GraphNode {
 		public OpCode opcode;
+		public Token errorAt;
 
-		public GraphNodeEmit (ScriptCollector coll, OpCode opcode) : base (coll)
+		public GraphNodeEmit (ScriptCollector coll, Token errorAt, OpCode opcode) : base (coll)
 		{
-			this.opcode = opcode;
+			this.opcode  = opcode;
+			this.errorAt = errorAt;
 		}
 
 		public override void ChainLin ()
@@ -784,7 +786,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	}
 
 	public class GraphNodeEmitNull : GraphNodeEmit {
-		public GraphNodeEmitNull (ScriptCollector coll, OpCode opcode) : base (coll, opcode)
+		public GraphNodeEmitNull (ScriptCollector coll, Token errorAt, OpCode opcode) : base (coll, errorAt, opcode)
 		{ }
 
 		protected override void VarPop ()
@@ -858,12 +860,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
 		{
-			ilGen.Emit (opcode);
+			ilGen.Emit (errorAt, opcode);
 		}
 	}
 
 	public class GraphNodeEmitNullEndfinally : GraphNodeEmitNull {
-		public GraphNodeEmitNullEndfinally (ScriptCollector coll) : base (coll, OpCodes.Endfinally)
+		public GraphNodeEmitNullEndfinally (ScriptCollector coll, Token errorAt) : base (coll, errorAt, OpCodes.Endfinally)
 		{ }
 
 		/**
@@ -951,7 +953,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	public class GraphNodeEmitField : GraphNodeEmit {
 		public FieldInfo field;
 
-		public GraphNodeEmitField (ScriptCollector coll, OpCode opcode, FieldInfo field) : base (coll, opcode)
+		public GraphNodeEmitField (ScriptCollector coll, Token errorAt, OpCode opcode, FieldInfo field) : base (coll, errorAt, opcode)
 		{
 			this.field = field;
 		}
@@ -983,14 +985,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
 		{
-			ilGen.Emit (opcode, field);
+			ilGen.Emit (errorAt, opcode, field);
 		}
 	}
 
 	public class GraphNodeEmitLocal : GraphNodeEmit {
 		public ScriptMyLocal myLocal;
 
-		public GraphNodeEmitLocal (ScriptCollector coll, OpCode opcode, ScriptMyLocal myLocal) : base (coll, opcode)
+		public GraphNodeEmitLocal (ScriptCollector coll, Token errorAt, OpCode opcode, ScriptMyLocal myLocal) : base (coll, errorAt, opcode)
 		{
 			this.myLocal = myLocal;
 		}
@@ -1033,14 +1035,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
 		{
-			ilGen.Emit (opcode, myLocal);
+			ilGen.Emit (errorAt, opcode, myLocal);
 		}
 	}
 
 	public class GraphNodeEmitType : GraphNodeEmit {
 		public Type type;
 
-		public GraphNodeEmitType (ScriptCollector coll, OpCode opcode, Type type) : base (coll, opcode)
+		public GraphNodeEmitType (ScriptCollector coll, Token errorAt, OpCode opcode, Type type) : base (coll, errorAt, opcode)
 		{
 			this.type = type;
 		}
@@ -1081,14 +1083,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
 		{
-			ilGen.Emit (opcode, type);
+			ilGen.Emit (errorAt, opcode, type);
 		}
 	}
 
 	public class GraphNodeEmitLabel : GraphNodeEmit {
 		public ScriptMyLabel myLabel;
 
-		public GraphNodeEmitLabel (ScriptCollector coll, OpCode opcode, ScriptMyLabel myLabel) : base (coll, opcode)
+		public GraphNodeEmitLabel (ScriptCollector coll, Token errorAt, OpCode opcode, ScriptMyLabel myLabel) : base (coll, errorAt, opcode)
 		{
 			this.myLabel = myLabel;
 		}
@@ -1111,7 +1113,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
 		{
-			ilGen.Emit (opcode, myLabel);
+			ilGen.Emit (errorAt, opcode, myLabel);
 		}
 
 		/**
@@ -1182,7 +1184,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		                                 //         else, same as myTarget.whereAmI
 		                                 // null if unwinding completely out of scope, eg, __retlbl
 
-		public GraphNodeEmitLabelLeave (ScriptCollector coll, ScriptMyLabel myLabel) : base (coll, OpCodes.Leave, myLabel)
+		public GraphNodeEmitLabelLeave (ScriptCollector coll, Token errorAt, ScriptMyLabel myLabel) : base (coll, errorAt, OpCodes.Leave, myLabel)
 		{ }
 
 		/**
@@ -1221,7 +1223,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	public class GraphNodeEmitLabels : GraphNodeEmit {
 		public ScriptMyLabel[] myLabels;
 
-		public GraphNodeEmitLabels (ScriptCollector coll, OpCode opcode, ScriptMyLabel[] myLabels) : base (coll, opcode)
+		public GraphNodeEmitLabels (ScriptCollector coll, Token errorAt, OpCode opcode, ScriptMyLabel[] myLabels) : base (coll, errorAt, opcode)
 		{
 			this.myLabels = myLabels;
 		}
@@ -1251,7 +1253,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
 		{
-			ilGen.Emit (opcode, myLabels);
+			ilGen.Emit (errorAt, opcode, myLabels);
 		}
 
 		/**
@@ -1304,7 +1306,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	public class GraphNodeEmitIntMeth : GraphNodeEmit {
 		public ScriptObjWriter method;
 
-		public GraphNodeEmitIntMeth (ScriptCollector coll, OpCode opcode, ScriptObjWriter method) : base (coll, opcode)
+		public GraphNodeEmitIntMeth (ScriptCollector coll, Token errorAt, OpCode opcode, ScriptObjWriter method) : base (coll, errorAt, opcode)
 		{
 			this.method = method;
 		}
@@ -1329,14 +1331,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
 		{
-			ilGen.Emit (opcode, method);
+			ilGen.Emit (errorAt, opcode, method);
 		}
 	}
 
 	public class GraphNodeEmitExtMeth : GraphNodeEmit {
 		public MethodInfo method;
 
-		public GraphNodeEmitExtMeth (ScriptCollector coll, OpCode opcode, MethodInfo method) : base (coll, opcode)
+		public GraphNodeEmitExtMeth (ScriptCollector coll, Token errorAt, OpCode opcode, MethodInfo method) : base (coll, errorAt, opcode)
 		{
 			this.method = method;
 		}
@@ -1363,14 +1365,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
 		{
-			ilGen.Emit (opcode, method);
+			ilGen.Emit (errorAt, opcode, method);
 		}
 	}
 
 	public class GraphNodeEmitCtor : GraphNodeEmit {
 		public ConstructorInfo ctor;
 
-		public GraphNodeEmitCtor (ScriptCollector coll, OpCode opcode, ConstructorInfo ctor) : base (coll, opcode)
+		public GraphNodeEmitCtor (ScriptCollector coll, Token errorAt, OpCode opcode, ConstructorInfo ctor) : base (coll, errorAt, opcode)
 		{
 			this.ctor = ctor;
 		}
@@ -1400,14 +1402,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
 		{
-			ilGen.Emit (opcode, ctor);
+			ilGen.Emit (errorAt, opcode, ctor);
 		}
 	}
 
 	public class GraphNodeEmitDouble : GraphNodeEmit {
 		public double value;
 
-		public GraphNodeEmitDouble (ScriptCollector coll, OpCode opcode, double value) : base (coll, opcode)
+		public GraphNodeEmitDouble (ScriptCollector coll, Token errorAt, OpCode opcode, double value) : base (coll, errorAt, opcode)
 		{
 			this.value = value;
 		}
@@ -1420,14 +1422,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
 		{
-			ilGen.Emit (opcode, value);
+			ilGen.Emit (errorAt, opcode, value);
 		}
 	}
 
 	public class GraphNodeEmitFloat : GraphNodeEmit {
 		public float value;
 
-		public GraphNodeEmitFloat (ScriptCollector coll, OpCode opcode, float value) : base (coll, opcode)
+		public GraphNodeEmitFloat (ScriptCollector coll, Token errorAt, OpCode opcode, float value) : base (coll, errorAt, opcode)
 		{
 			this.value = value;
 		}
@@ -1440,14 +1442,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
 		{
-			ilGen.Emit (opcode, value);
+			ilGen.Emit (errorAt, opcode, value);
 		}
 	}
 
 	public class GraphNodeEmitInt : GraphNodeEmit {
 		public int value;
 
-		public GraphNodeEmitInt (ScriptCollector coll, OpCode opcode, int value) : base (coll, opcode)
+		public GraphNodeEmitInt (ScriptCollector coll, Token errorAt, OpCode opcode, int value) : base (coll, errorAt, opcode)
 		{
 			this.value = value;
 		}
@@ -1480,14 +1482,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
 		{
-			ilGen.Emit (opcode, value);
+			ilGen.Emit (errorAt, opcode, value);
 		}
 	}
 
 	public class GraphNodeEmitString : GraphNodeEmit {
 		public string value;
 
-		public GraphNodeEmitString (ScriptCollector coll, OpCode opcode, string value) : base (coll, opcode)
+		public GraphNodeEmitString (ScriptCollector coll, Token errorAt, OpCode opcode, string value) : base (coll, errorAt, opcode)
 		{
 			this.value = value;
 		}
@@ -1513,7 +1515,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		public override void WriteOutOne (ScriptMyILGen ilGen)
 		{
-			ilGen.Emit (opcode, value);
+			ilGen.Emit (errorAt, opcode, value);
 		}
 	}
 
@@ -1656,81 +1658,81 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			curExcBlock = curExcBlock.excBlock;
 		}
 
-		public override void Emit (OpCode opcode)
+		public override void Emit (Token errorAt, OpCode opcode)
 		{
 			if (opcode == OpCodes.Endfinally) {
-				new GraphNodeEmitNullEndfinally (this).ChainLin ();
+				new GraphNodeEmitNullEndfinally (this, errorAt).ChainLin ();
 			} else {
-				new GraphNodeEmitNull (this, opcode).ChainLin ();
+				new GraphNodeEmitNull (this, errorAt, opcode).ChainLin ();
 			}
 		}
 
-		public override void Emit (OpCode opcode, FieldInfo field)
+		public override void Emit (Token errorAt, OpCode opcode, FieldInfo field)
 		{
 			if (field == null) throw new ArgumentNullException ("field");
-			new GraphNodeEmitField (this, opcode, field).ChainLin ();
+			new GraphNodeEmitField (this, errorAt, opcode, field).ChainLin ();
 		}
 
-		public override void Emit (OpCode opcode, ScriptMyLocal myLocal)
+		public override void Emit (Token errorAt, OpCode opcode, ScriptMyLocal myLocal)
 		{
-			new GraphNodeEmitLocal (this, opcode, myLocal).ChainLin ();
+			new GraphNodeEmitLocal (this, errorAt, opcode, myLocal).ChainLin ();
 		}
 
-		public override void Emit (OpCode opcode, Type type)
+		public override void Emit (Token errorAt, OpCode opcode, Type type)
 		{
-			new GraphNodeEmitType (this, opcode, type).ChainLin ();
+			new GraphNodeEmitType (this, errorAt, opcode, type).ChainLin ();
 		}
 
-		public override void Emit (OpCode opcode, ScriptMyLabel myLabel)
+		public override void Emit (Token errorAt, OpCode opcode, ScriptMyLabel myLabel)
 		{
 			if (opcode == OpCodes.Leave) {
-				new GraphNodeEmitLabelLeave (this, myLabel).ChainLin ();
+				new GraphNodeEmitLabelLeave (this, errorAt, myLabel).ChainLin ();
 			} else {
-				new GraphNodeEmitLabel (this, opcode, myLabel).ChainLin ();
+				new GraphNodeEmitLabel (this, errorAt, opcode, myLabel).ChainLin ();
 			}
 		}
 
-		public override void Emit (OpCode opcode, ScriptMyLabel[] myLabels)
+		public override void Emit (Token errorAt, OpCode opcode, ScriptMyLabel[] myLabels)
 		{
-			new GraphNodeEmitLabels (this, opcode, myLabels).ChainLin ();
+			new GraphNodeEmitLabels (this, errorAt, opcode, myLabels).ChainLin ();
 		}
 
-		public override void Emit (OpCode opcode, ScriptObjWriter method)
-		{
-			if (method == null) throw new ArgumentNullException ("method");
-			new GraphNodeEmitIntMeth (this, opcode, method).ChainLin ();
-		}
-
-		public override void Emit (OpCode opcode, MethodInfo method)
+		public override void Emit (Token errorAt, OpCode opcode, ScriptObjWriter method)
 		{
 			if (method == null) throw new ArgumentNullException ("method");
-			new GraphNodeEmitExtMeth (this, opcode, method).ChainLin ();
+			new GraphNodeEmitIntMeth (this, errorAt, opcode, method).ChainLin ();
 		}
 
-		public override void Emit (OpCode opcode, ConstructorInfo ctor)
+		public override void Emit (Token errorAt, OpCode opcode, MethodInfo method)
+		{
+			if (method == null) throw new ArgumentNullException ("method");
+			new GraphNodeEmitExtMeth (this, errorAt, opcode, method).ChainLin ();
+		}
+
+		public override void Emit (Token errorAt, OpCode opcode, ConstructorInfo ctor)
 		{
 			if (ctor == null) throw new ArgumentNullException ("ctor");
-			new GraphNodeEmitCtor (this, opcode, ctor).ChainLin ();
+			new GraphNodeEmitCtor (this, errorAt, opcode, ctor).ChainLin ();
 		}
 
-		public override void Emit (OpCode opcode, double value)
+		public override void Emit (Token errorAt, OpCode opcode, double value)
 		{
-			new GraphNodeEmitDouble (this, opcode, value).ChainLin ();
+			new GraphNodeEmitDouble (this, errorAt, opcode, value).ChainLin ();
 		}
 
-		public override void Emit (OpCode opcode, float value)
+		public override void Emit (Token errorAt, OpCode opcode, float value)
 		{
-			new GraphNodeEmitFloat (this, opcode, value).ChainLin ();
+			new GraphNodeEmitFloat (this, errorAt, opcode, value).ChainLin ();
 		}
 
-		public override void Emit (OpCode opcode, int value)
+		public override void Emit (Token errorAt, OpCode opcode, int value)
 		{
-			new GraphNodeEmitInt (this, opcode, value).ChainLin ();
+			new GraphNodeEmitInt (this, errorAt, opcode, value).ChainLin ();
 		}
 
-		public override void Emit (OpCode opcode, string value)
+		public override void Emit (Token errorAt, OpCode opcode, string value)
 		{
-			new GraphNodeEmitString (this, opcode, value).ChainLin ();
+			new GraphNodeEmitString (this, errorAt, opcode, value).ChainLin ();
 		}
 
 		public override void MarkLabel (ScriptMyLabel myLabel)
@@ -1962,7 +1964,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						    (ldloc.opcode  == OpCodes.Ldloc) && 
 						    (stloc.myLocal == ldloc.myLocal)) {
 							if (IsLocalNeededAfterThis (ldloc, ldloc.myLocal)) {
-								GraphNodeEmitNull dup = new GraphNodeEmitNull (this, OpCodes.Dup);
+								GraphNodeEmitNull dup = new GraphNodeEmitNull (this, stloc.errorAt, OpCodes.Dup);
 								dup.nextLin   = stloc;
 								dup.prevLin   = stloc.prevLin;
 								stloc.nextLin = ldloc.nextLin;
@@ -1994,7 +1996,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						if (!(gn is GraphNodeEmitLocal) || (((GraphNodeEmitLocal)gn).opcode != OpCodes.Stloc)) {
 							throw new Exception ("expecting stloc");
 						}
-						GraphNodeEmitNull pop = new GraphNodeEmitNull (this, OpCodes.Pop);
+						GraphNodeEmitNull pop = new GraphNodeEmitNull (this, ((GraphNodeEmit)gn).errorAt, OpCodes.Pop);
 						pop.nextLin = gn.nextLin;
 						pop.prevLin = gn.prevLin;
 						gn.nextLin.prevLin = pop;
