@@ -3560,7 +3560,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			if (token is TokenKwThis) {
 				if ((currentDeclSDType == null) || !(currentDeclSDType is TokenDeclSDTypeClass)) {
 					ErrorMsg (token, "using 'this' outside class definition");
-					throw new Exception ("BARFING OUT");
 					token = SkipPastSemi (token);
 					return null;
 				}

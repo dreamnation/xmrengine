@@ -36,10 +36,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public static TokenTypeSDTypeDelegate indexDelegate = new TokenTypeSDTypeDelegate (new TokenTypeObject (null), new TokenType[] { new TokenTypeInt (null) });
         public static TokenTypeSDTypeDelegate valueDelegate = new TokenTypeSDTypeDelegate (new TokenTypeObject (null), new TokenType[] { new TokenTypeInt (null) });
 
-        public XMR_Array (XMRInstAbstract inst, int line, int posn)
+        public XMR_Array (XMRInstAbstract inst)
         {
             this.inst = inst;
-            heapUse = inst.UpdateHeapLeft (EMPTYHEAP, heapUse, line, posn, this);
+            heapUse = inst.UpdateHeapLeft (EMPTYHEAP, heapUse, this);
         }
 
         ~XMR_Array ()
@@ -50,7 +50,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public void Dispose ()
         {
             if (inst != null) {
-                heapUse = inst.UpdateHeapLeft (0, heapUse, 0, 0, this);
+                heapUse = inst.UpdateHeapLeft (0, heapUse, this);
                 dnary   = null;
                 array   = null;
                 inst    = null;
@@ -81,11 +81,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void SetByKey(object key, object value)
         {
-            SetByKey (key, value, 0, 0);
-        }
-
-        public void SetByKey(object key, object value, int line, int posn)
-        {
             key = FixKey (key);
 
             /*
@@ -101,7 +96,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     newHeapUse += ENTRYHEAP;
                 }
                 if (newHeapUse != heapUse) {
-                    heapUse = inst.UpdateHeapLeft (newHeapUse, heapUse, line, posn, this);
+                    heapUse = inst.UpdateHeapLeft (newHeapUse, heapUse, this);
                 }
             }
 
@@ -163,7 +158,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public void __pub_clear ()
         {
-            heapUse = inst.UpdateHeapLeft (EMPTYHEAP, heapUse, 0, 0, this);
+            heapUse = inst.UpdateHeapLeft (EMPTYHEAP, heapUse, this);
             dnary.Clear ();
             enumrValid = false;
             arrayValid = 0;
@@ -334,7 +329,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 dnary.Add (key, val);
                 newHeapUse += ENTRYHEAP;
             }
-            heapUse = inst.UpdateHeapLeft (newHeapUse, heapUse, 0, 0, this);
+            heapUse = inst.UpdateHeapLeft (newHeapUse, heapUse, this);
         }
 
         /**

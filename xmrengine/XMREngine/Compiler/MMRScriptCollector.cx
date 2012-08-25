@@ -1667,6 +1667,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		public override void Emit (OpCode opcode, FieldInfo field)
 		{
+			if (field == null) throw new ArgumentNullException ("field");
 			new GraphNodeEmitField (this, opcode, field).ChainLin ();
 		}
 
@@ -1696,16 +1697,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		public override void Emit (OpCode opcode, ScriptObjWriter method)
 		{
+			if (method == null) throw new ArgumentNullException ("method");
 			new GraphNodeEmitIntMeth (this, opcode, method).ChainLin ();
 		}
 
 		public override void Emit (OpCode opcode, MethodInfo method)
 		{
+			if (method == null) throw new ArgumentNullException ("method");
 			new GraphNodeEmitExtMeth (this, opcode, method).ChainLin ();
 		}
 
 		public override void Emit (OpCode opcode, ConstructorInfo ctor)
 		{
+			if (ctor == null) throw new ArgumentNullException ("ctor");
 			new GraphNodeEmitCtor (this, opcode, ctor).ChainLin ();
 		}
 

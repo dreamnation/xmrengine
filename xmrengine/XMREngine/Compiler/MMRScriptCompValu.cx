@@ -222,9 +222,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		                                                                                      new Type[] { typeof (object) });
 		private static readonly MethodInfo setByKeyMethodInfo = typeof (XMR_Array).GetMethod ("SetByKey", 
 		                                                                                      new Type[] { typeof (object),
-		                                                                                                   typeof (object), 
-		                                                                                                   typeof (int), 
-		                                                                                                   typeof (int) });
+		                                                                                                   typeof (object) });
 
 		// type = TokenTypeObject always, as our array elements are always of type 'object'
 		// arr  = where the array object itself is stored
@@ -248,13 +246,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		public override void PopPre (ScriptCodeGen scg, Token errorAt)
 		{
-			arr.PushVal (scg, errorAt);   // array
+			arr.PushVal (scg, errorAt);            // array
 			idx.PushVal (scg, errorAt, this.tto);  // key
 		}
 		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
-			scg.ilGen.PushInt (type.line);
-			scg.ilGen.PushInt (type.posn);
 			scg.ilGen.Emit (OpCodes.Call, setByKeyMethodInfo);
 		}
 	}

@@ -10,6 +10,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection.Emit;
+using System.Runtime.Serialization;
 using System.Text;
 
 namespace OpenSim.Region.ScriptEngine.XMREngine
@@ -387,7 +388,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private static LSL_List nullList = new LSL_List (new object[0]);
         public XMR_Array XMRosParseJSON (string json)
         {
-            XMR_Array dict = new XMR_Array (this, 0, 0);
+            XMR_Array dict = new XMR_Array (this);
             int idx = ParseJSON (dict, nullList, json, 0);
             while (idx < json.Length) {
                 if (json[idx] > ' ') throw new Exception ("left-over json " + json);
@@ -599,11 +600,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          *        to the script.
          * @param newHeapUse = what is now to be debited by the struct
          * @param oldHeapUse = what was previously debited by the struct
+         * @param value = object (for debugging)
          * @returns newHeapUse for convenience
          *          instance.heapTotal = adjusted to reflect new heap avaialbe to script
          * Throws exception if the new value exceeds available amount.
          */
-        public int UpdateHeapLeft (int newHeapUse, int oldHeapUse, int srcLine, int srcPosn, object value)
+        public int UpdateHeapLeft (int newHeapUse, int oldHeapUse, object value)
         {
             int heapNeeded  = newHeapUse - oldHeapUse;
             if (heapNeeded != 0) {
@@ -615,13 +617,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     GC.WaitForPendingFinalizers ();
                     if (this.heapTotal > this.heapLimit) {
                         System.Threading.Interlocked.Add (ref this.heapTotal, -heapNeeded);
-                        ///???throw new OutOfHeapException (heapNeeded, this.heapLimit - oldHeapTotal, srcLine, srcPosn);
+                        throw new OutOfHeapException (heapNeeded, this.heapLimit - oldHeapTotal);
                     }
-                }
-
-                if (this.traceHeapUse != null) {
-                    Console.WriteLine("traceHeapUse: {0} {1}.{2}: old={3} new={4} total={5}", 
-                        this.traceHeapUse, srcLine, srcPosn, oldHeapUse, newHeapUse, this.heapTotal);
                 }
             }
 
@@ -1017,7 +1014,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     return s;
                 }
                 case Ser.XMRARRAY: {
-                    XMR_Array array = new XMR_Array (this, 0, 0);
+                    XMR_Array array = new XMR_Array (this);
                     this.migrateInObjects.Add (ident, array);
                     array.RecvArrayObj (this.RecvObjValue);
                     return array;
@@ -1057,5 +1054,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 default: throw new Exception ("bad stream code " + code.ToString ());
             }
         }
+    }
+
+    [SerializableAttribute]
+    public class OutOfHeapException : Exception, ISerializable {
+        public OutOfHeapException(int heapNeeded, int heapLeft)
+            : base ("need " + heapNeeded + " additional, have only " + heapLeft)
+        { }
+        protected OutOfHeapException (SerializationInfo info, StreamingContext context) : base (info, context)
+        { }
     }
 }

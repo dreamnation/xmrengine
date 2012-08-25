@@ -64,7 +64,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static ConstructorInfo scriptRestoreCatchExceptionConstructorInfo = typeof (ScriptRestoreCatchException).GetConstructor (new Type[] { typeof (object) });
 		private static ConstructorInfo scriptUndefinedStateExceptionConstructorInfo = typeof (ScriptUndefinedStateException).GetConstructor (new Type[] { typeof (string) });
 		private static ConstructorInfo sdtClassConstructorInfo = typeof (XMRSDTypeClObj).GetConstructor (new Type[] { typeof (XMRInstAbstract), typeof (int) });
-		private static ConstructorInfo xmrArrayConstructorInfo = typeof (XMR_Array).GetConstructor (new Type[] { typeof (XMRInstAbstract), typeof (int), typeof (int) });
+		private static ConstructorInfo xmrArrayConstructorInfo = typeof (XMR_Array).GetConstructor (new Type[] { typeof (XMRInstAbstract) });
 		private static FieldInfo callModeFieldInfo       = typeof (XMRInstAbstract).GetField ("callMode");
 		private static FieldInfo doGblInitFieldInfo      = typeof (XMRInstAbstract).GetField ("doGblInit");
 		private static FieldInfo ehArgsFieldInfo         = typeof (XMRInstAbstract).GetField ("ehArgs");
@@ -82,7 +82,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static MethodInfo arrayIndexMethodInfo   = typeof (XMR_Array).GetMethod ("__pub_index", new Type[] { typeof (int) });
 		private static MethodInfo arrayValueMethodInfo   = typeof (XMR_Array).GetMethod ("__pub_value", new Type[] { typeof (int) });
 		private static MethodInfo checkRunMethodInfo     = typeof (XMRInstAbstract).GetMethod ("CheckRun", new Type[] { typeof (int) });
-		private static MethodInfo consoleWriteMethodInfo = GetStaticMethod (typeof (Console),  "Write",               new Type[] { typeof (object) });
 		private static MethodInfo ehArgUnwrapFloat       = GetStaticMethod (typeof (TypeCast), "EHArgUnwrapFloat",    new Type[] { typeof (object) });
 		private static MethodInfo ehArgUnwrapInteger     = GetStaticMethod (typeof (TypeCast), "EHArgUnwrapInteger",  new Type[] { typeof (object) });
 		private static MethodInfo ehArgUnwrapRotation    = GetStaticMethod (typeof (TypeCast), "EHArgUnwrapRotation", new Type[] { typeof (object) });
@@ -97,7 +96,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static MethodInfo stringConcat2MethodInfo     = GetStaticMethod (typeof (String), "Concat", new Type[] { typeof (string), typeof (string) });
 		private static MethodInfo stringConcat3MethodInfo     = GetStaticMethod (typeof (String), "Concat", new Type[] { typeof (string), typeof (string), typeof (string) });
 		private static MethodInfo stringConcat4MethodInfo     = GetStaticMethod (typeof (String), "Concat", new Type[] { typeof (string), typeof (string), typeof (string), typeof (string) });
-		private static MethodInfo interlockedAddMethodInfo    = GetStaticMethod (typeof (Interlocked), "Add", new Type[] { typeof (int).MakeByRefType (), typeof (int) });
 		private static MethodInfo lslVectorNegateMethodInfo = GetStaticMethod (typeof (ScriptCodeGen), 
 		                                                                       "LSLVectorNegate", 
 		                                                                       new Type[] { typeof (LSL_Vector) });
@@ -800,7 +798,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void WriteOutGblAssignment (string pfx, TokenDeclVar declVar)
 		{
 			if (!declVar.constant && (declVar.retType == null) && (declVar.getProp == null) && (declVar.setProp == null)) {
-				CompValuGlobalVar gblVar = (CompValuGlobalVar)declVar.location;
 				objFileWriter.Write (pfx + declVar.name.val);    // string
 				objFileWriter.Write (declVar.vTableArray.Name);  // string
 				objFileWriter.Write (declVar.vTableIndex);       // int
@@ -4499,8 +4496,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			if (type is TokenTypeArray) {
 				PushXMRInst ();                // instance
-				ilGen.PushInt (type.line);     // source line in file
-				ilGen.PushInt (type.posn);     // source posn in line
 				ilGen.Emit (OpCodes.Newobj, xmrArrayConstructorInfo);
 				return;
 			}
@@ -5418,16 +5413,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (o is ScriptRestoreCatchException) return ((ScriptRestoreCatchException)o).e;
 			return o;
 		}
-	}
-
-	[SerializableAttribute]
-	public class OutOfHeapException : Exception, ISerializable {
-		public OutOfHeapException(int heapNeeded, int heapLeft, int srcLine, int srcPosn)
-			: base ("need " + heapNeeded + ", have only " + heapLeft + 
-				" heap bytes left at " + srcLine + ":" + srcPosn)
-		{ }
-		protected OutOfHeapException (SerializationInfo info, StreamingContext context) : base (info, context)
-		{ }
 	}
 
 	[SerializableAttribute]

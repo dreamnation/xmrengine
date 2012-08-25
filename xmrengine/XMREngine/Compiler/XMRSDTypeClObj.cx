@@ -50,7 +50,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             int newHeapUse = Construct (inst, classindex);
             newHeapUse    += instVars.AllocVarArrays (ref sdtcClass.instSizes);
-            heapUse = xmrInst.UpdateHeapLeft (newHeapUse, heapUse, 0, 0, this);
+            heapUse = xmrInst.UpdateHeapLeft (newHeapUse, heapUse, this);
         }
 
         /**
@@ -63,7 +63,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void Dispose ()
         {
-            heapUse = xmrInst.UpdateHeapLeft (0, heapUse, 0, 0, this);
+            heapUse = xmrInst.UpdateHeapLeft (0, heapUse, this);
         }
 
         /**
@@ -458,7 +458,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             int classindex = (int)recvValue ();
             int newHeapUse = Construct (inst, classindex);
             newHeapUse    += this.instVars.RecvArrays (recvValue);
-            heapUse = xmrInst.UpdateHeapLeft (newHeapUse, heapUse, 0, 0, this);
+            heapUse = xmrInst.UpdateHeapLeft (newHeapUse, heapUse, this);
         }
     }
 }
