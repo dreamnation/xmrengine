@@ -61,7 +61,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		/**
 		 * @brief Begin function declaration
 		 * @param sdTypes    = script-defined types
-		 * @param methName   = name of the method being declared, eg, "__fun_Verify(array,list,string)"
+		 * @param methName   = name of the method being declared, eg, "Verify(array,list,string)"
 		 * @param retType    = its return value type
 		 * @param argTypes[] = its argument types
 		 * @param objFileWriter  = file to write its object code to
@@ -900,6 +900,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			s2t.Add ("delegate", typeof (Delegate));
 			s2t.Add ("delarr[]", typeof (Delegate[]));
 			s2t.Add ("double",   typeof (double));
+			s2t.Add ("exceptn",  typeof (Exception));
 			s2t.Add ("float",    typeof (float));
 			s2t.Add ("inlfunc",  typeof (CompValuInline));
 			s2t.Add ("int",      typeof (int));

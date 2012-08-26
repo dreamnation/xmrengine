@@ -34,17 +34,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static FieldInfo  lslIntegerValueFieldInfo   = typeof (LSL_Integer).GetField ("value");
 		private static FieldInfo  lslStringValueFieldInfo    = typeof (LSL_String).GetField ("m_string");
 		private static FieldInfo  sdtcITableFieldInfo        = typeof (XMRSDTypeClObj).GetField ("sdtcITable");
-		private static MethodInfo boolToStringMethodInfo     = typeof (TypeCast).GetMethod ("BoolToString",       new Type[] { typeof (bool) });
-		private static MethodInfo charToStringMethodInfo     = typeof (TypeCast).GetMethod ("CharToString",       new Type[] { typeof (char) });
-		private static MethodInfo floatToStringMethodInfo    = typeof (TypeCast).GetMethod ("FloatToString",      new Type[] { typeof (SCRIPTFLOAT) });
-		private static MethodInfo intToStringMethodInfo      = typeof (TypeCast).GetMethod ("IntegerToString",    new Type[] { typeof (int) });
-		private static MethodInfo listToStringMethodInfo     = typeof (TypeCast).GetMethod ("ListToString",       new Type[] { typeof (LSL_List) });
-		private static MethodInfo objectToStringMethodInfo   = typeof (TypeCast).GetMethod ("ObjectToString",     new Type[] { typeof (object) });
-		private static MethodInfo rotationToBoolMethodInfo   = typeof (TypeCast).GetMethod ("RotationToBool",     new Type[] { typeof (LSL_Rotation) });
-		private static MethodInfo rotationToStringMethodInfo = typeof (TypeCast).GetMethod ("RotationToString",   new Type[] { typeof (LSL_Rotation) });
-		private static MethodInfo vectorToBoolMethodInfo     = typeof (TypeCast).GetMethod ("VectorToBool",       new Type[] { typeof (LSL_Vector) });
-		private static MethodInfo vectorToStringMethodInfo   = typeof (TypeCast).GetMethod ("VectorToString",     new Type[] { typeof (LSL_Vector) });
-		private static MethodInfo listOfOneObjMethodInfo     = typeof (TypeCast).GetMethod ("ListOfOneObj",       new Type[] { typeof (object) });
+		private static MethodInfo boolToStringMethodInfo     = typeof (TypeCast).GetMethod ("BoolToString",      new Type[] { typeof (bool) });
+		private static MethodInfo charToStringMethodInfo     = typeof (TypeCast).GetMethod ("CharToString",      new Type[] { typeof (char) });
+		private static MethodInfo excToStringMethodInfo      = typeof (TypeCast).GetMethod ("ExceptionToString", new Type[] { typeof (Exception), typeof (XMRInstAbstract) });
+		private static MethodInfo floatToStringMethodInfo    = typeof (TypeCast).GetMethod ("FloatToString",     new Type[] { typeof (SCRIPTFLOAT) });
+		private static MethodInfo intToStringMethodInfo      = typeof (TypeCast).GetMethod ("IntegerToString",   new Type[] { typeof (int) });
+		private static MethodInfo listToStringMethodInfo     = typeof (TypeCast).GetMethod ("ListToString",      new Type[] { typeof (LSL_List) });
+		private static MethodInfo objectToStringMethodInfo   = typeof (TypeCast).GetMethod ("ObjectToString",    new Type[] { typeof (object) });
+		private static MethodInfo rotationToBoolMethodInfo   = typeof (TypeCast).GetMethod ("RotationToBool",    new Type[] { typeof (LSL_Rotation) });
+		private static MethodInfo rotationToStringMethodInfo = typeof (TypeCast).GetMethod ("RotationToString",  new Type[] { typeof (LSL_Rotation) });
+		private static MethodInfo vectorToBoolMethodInfo     = typeof (TypeCast).GetMethod ("VectorToBool",      new Type[] { typeof (LSL_Vector) });
+		private static MethodInfo vectorToStringMethodInfo   = typeof (TypeCast).GetMethod ("VectorToString",    new Type[] { typeof (LSL_Vector) });
+		private static MethodInfo listOfOneObjMethodInfo     = typeof (TypeCast).GetMethod ("ListOfOneObj",      new Type[] { typeof (object) });
 		private static MethodInfo sdTypeClassCastClass2ClassMethodInfo = typeof (XMRSDTypeClObj).GetMethod ("CastClass2Class", new Type[] { typeof (object),     typeof (int) });
 		private static MethodInfo sdTypeClassCastIFace2ClassMethodInfo = typeof (XMRSDTypeClObj).GetMethod ("CastIFace2Class", new Type[] { typeof (Delegate[]), typeof (int) });
 		private static MethodInfo sdTypeClassCastObj2IFaceMethodInfo   = typeof (XMRSDTypeClObj).GetMethod ("CastObj2IFace",   new Type[] { typeof (object),     typeof (string) });
@@ -67,51 +68,55 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			// IMPLICIT type casts (a space is in middle of the key)
 			// EXPLICIT type casts (an * is in middle of the key)
-			ltc.Add ("array object",    TypeCastArray2Object);
-			ltc.Add ("bool float",      TypeCastBool2Float);
-			ltc.Add ("bool integer",    TypeCastBool2Integer);
-			ltc.Add ("bool object",     TypeCastBool2Object);
-			ltc.Add ("bool string",     TypeCastBool2String);
-			ltc.Add ("char integer",    TypeCastChar2Integer);
-			ltc.Add ("char object",     TypeCastChar2Object);
-			ltc.Add ("char string",     TypeCastChar2String);
-			ltc.Add ("float bool",      TypeCastFloat2Bool);
-			ltc.Add ("float integer",   TypeCastFloat2Integer);
-			ltc.Add ("float*list",      TypeCastFloat2List);
-			ltc.Add ("float object",    TypeCastFloat2Object);
-			ltc.Add ("float string",    TypeCastFloat2String);
-			ltc.Add ("integer bool",    TypeCastInteger2Bool);
-			ltc.Add ("integer char",    TypeCastInteger2Char);
-			ltc.Add ("integer float",   TypeCastInteger2Float);
-			ltc.Add ("integer*list",    TypeCastInteger2List);
-			ltc.Add ("integer object",  TypeCastInteger2Object);
-			ltc.Add ("integer string",  TypeCastInteger2String);
-			ltc.Add ("list object",     TypeCastList2Object);
-			ltc.Add ("list*string",     TypeCastList2String);
-			ltc.Add ("object array",    TypeCastObject2Array);
-			ltc.Add ("object bool",     TypeCastObject2Bool);
-			ltc.Add ("object char",     TypeCastObject2Char);
-			ltc.Add ("object float",    TypeCastObject2Float);
-			ltc.Add ("object integer",  TypeCastObject2Integer);
-			ltc.Add ("object list",     TypeCastObject2List);
-			ltc.Add ("object rotation", TypeCastObject2Rotation);
-			ltc.Add ("object string",   TypeCastObject2String);
-			ltc.Add ("object vector",   TypeCastObject2Vector);
-			ltc.Add ("rotation bool",   TypeCastRotation2Bool);
-			ltc.Add ("rotation list",   TypeCastRotation2List);
-			ltc.Add ("rotation object", TypeCastRotation2Object);
-			ltc.Add ("rotation string", TypeCastRotation2String);
-			ltc.Add ("string bool",     TypeCastString2Bool);
-			ltc.Add ("string float",    TypeCastString2Float);
-			ltc.Add ("string integer",  TypeCastString2Integer);
-			ltc.Add ("string list",     TypeCastString2List);
-			ltc.Add ("string object",   TypeCastString2Object);
-			ltc.Add ("string rotation", TypeCastString2Rotation);
-			ltc.Add ("string vector",   TypeCastString2Vector);
-			ltc.Add ("vector bool",     TypeCastVector2Bool);
-			ltc.Add ("vector list",     TypeCastVector2List);
-			ltc.Add ("vector object",   TypeCastVector2Object);
-			ltc.Add ("vector string",   TypeCastVector2String);
+			// In general, only mark explicit if it might throw an exception
+			ltc.Add ("array object",     TypeCastArray2Object);
+			ltc.Add ("bool float",       TypeCastBool2Float);
+			ltc.Add ("bool integer",     TypeCastBool2Integer);
+			ltc.Add ("bool object",      TypeCastBool2Object);
+			ltc.Add ("bool string",      TypeCastBool2String);
+			ltc.Add ("char integer",     TypeCastChar2Integer);
+			ltc.Add ("char object",      TypeCastChar2Object);
+			ltc.Add ("char string",      TypeCastChar2String);
+			ltc.Add ("exception object", TypeCastExc2Object);
+			ltc.Add ("exception string", TypeCastExc2String);
+			ltc.Add ("float bool",       TypeCastFloat2Bool);
+			ltc.Add ("float integer",    TypeCastFloat2Integer);
+			ltc.Add ("float list",       TypeCastFloat2List);
+			ltc.Add ("float object",     TypeCastFloat2Object);
+			ltc.Add ("float string",     TypeCastFloat2String);
+			ltc.Add ("integer bool",     TypeCastInteger2Bool);
+			ltc.Add ("integer char",     TypeCastInteger2Char);
+			ltc.Add ("integer float",    TypeCastInteger2Float);
+			ltc.Add ("integer list",     TypeCastInteger2List);
+			ltc.Add ("integer object",   TypeCastInteger2Object);
+			ltc.Add ("integer string",   TypeCastInteger2String);
+			ltc.Add ("list object",      TypeCastList2Object);
+			ltc.Add ("list string",      TypeCastList2String);
+			ltc.Add ("object*array",     TypeCastObject2Array);
+			ltc.Add ("object*bool",      TypeCastObject2Bool);
+			ltc.Add ("object*char",      TypeCastObject2Char);
+			ltc.Add ("object*exception", TypeCastObject2Exc);
+			ltc.Add ("object*float",     TypeCastObject2Float);
+			ltc.Add ("object*integer",   TypeCastObject2Integer);
+			ltc.Add ("object*list",      TypeCastObject2List);
+			ltc.Add ("object*rotation",  TypeCastObject2Rotation);
+			ltc.Add ("object string",    TypeCastObject2String);
+			ltc.Add ("object*vector",    TypeCastObject2Vector);
+			ltc.Add ("rotation bool",    TypeCastRotation2Bool);
+			ltc.Add ("rotation list",    TypeCastRotation2List);
+			ltc.Add ("rotation object",  TypeCastRotation2Object);
+			ltc.Add ("rotation string",  TypeCastRotation2String);
+			ltc.Add ("string bool",      TypeCastString2Bool);
+			ltc.Add ("string float",     TypeCastString2Float);
+			ltc.Add ("string integer",   TypeCastString2Integer);
+			ltc.Add ("string list",      TypeCastString2List);
+			ltc.Add ("string object",    TypeCastString2Object);
+			ltc.Add ("string rotation",  TypeCastString2Rotation);
+			ltc.Add ("string vector",    TypeCastString2Vector);
+			ltc.Add ("vector bool",      TypeCastVector2Bool);
+			ltc.Add ("vector list",      TypeCastVector2List);
+			ltc.Add ("vector object",    TypeCastVector2Object);
+			ltc.Add ("vector string",    TypeCastVector2String);
 
 			return ltc;
 		}
@@ -377,6 +382,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Call, charToStringMethodInfo);
 		}
+		private static void TypeCastExc2Object (ScriptCodeGen scg, Token errorAt)
+		{
+		}
+		private static void TypeCastExc2String (ScriptCodeGen scg, Token errorAt)
+		{
+			scg.PushXMRInst ();
+			scg.ilGen.Emit (errorAt, OpCodes.Call, excToStringMethodInfo);
+		}
 		private static void TypeCastFloat2Bool (ScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Ldc_R4, 0.0f);
@@ -430,6 +443,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static void TypeCastObject2Char (ScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Unbox_Any, typeof (char));
+		}
+		private static void TypeCastObject2Exc (ScriptCodeGen scg, Token errorAt)
+		{
+			scg.ilGen.Emit (errorAt, OpCodes.Castclass, typeof (Exception));
 		}
 		private static void TypeCastObject2Float (ScriptCodeGen scg, Token errorAt)
 		{
@@ -558,17 +575,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		/*
 		 * Because the calls are funky, let the compiler handle them.
 		 */
-		public static bool     RotationToBool   (LSL_Rotation x) { return !x.Equals (SCRIPTBASECLASS.ZERO_ROTATION); }
-		public static bool     VectorToBool     (LSL_Vector x)   { return !x.Equals (SCRIPTBASECLASS.ZERO_VECTOR); }
-		public static string   BoolToString     (bool x)         { return x ? "1" : "0"; }
-		public static string   CharToString     (char x)         { return x.ToString (); }
-		public static string   FloatToString    (SCRIPTFLOAT x)  { return x.ToString ("0.000000"); }
-		public static string   IntegerToString  (int x)          { return x.ToString (); }
-		public static string   ListToString     (LSL_List x)     { return x.ToString (); }
-		public static string   ObjectToString   (object x)       { return (x == null) ? null : x.ToString (); }
-		public static string   RotationToString (LSL_Rotation x) { return x.ToString (); }
-		public static string   VectorToString   (LSL_Vector x)   { return x.ToString (); }
-		public static LSL_List ListOfOneObj     (object x)       { return new LSL_List (new object[1] { x }); }
+		public static bool     RotationToBool    (LSL_Rotation x) { return !x.Equals (SCRIPTBASECLASS.ZERO_ROTATION); }
+		public static bool     VectorToBool      (LSL_Vector x)   { return !x.Equals (SCRIPTBASECLASS.ZERO_VECTOR); }
+		public static string   BoolToString      (bool x)         { return x ? "1" : "0"; }
+		public static string   CharToString      (char x)         { return x.ToString (); }
+		public static string   ExceptionToString (Exception x, XMRInstAbstract inst) { return inst.XMRExceptionFixString (x.ToString (), true); }
+		public static string   FloatToString     (SCRIPTFLOAT x)  { return x.ToString ("0.000000"); }
+		public static string   IntegerToString   (int x)          { return x.ToString (); }
+		public static string   ListToString      (LSL_List x)     { return x.ToString (); }
+		public static string   ObjectToString    (object x)       { return (x == null) ? null : x.ToString (); }
+		public static string   RotationToString  (LSL_Rotation x) { return x.ToString (); }
+		public static string   VectorToString    (LSL_Vector x)   { return x.ToString (); }
+		public static LSL_List ListOfOneObj      (object x)       { return new LSL_List (new object[1] { x }); }
 
 		/*
 		 * These are used by event handler entrypoints to remove any LSL wrapping

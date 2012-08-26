@@ -524,7 +524,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (dtn.StartsWith ("delegate ")) dtn = dtn.Substring (9);
 
 			// delegateinstance = (signature)scriptinstance.GetScriptMethodDelegate (methName, signature, arg0);
-			//   where methName = __fun_[<sdtclass>.]<methname>(<argtypes>)
+			//   where methName = [<sdtclass>.]<methname>(<argtypes>)
 			//        signature = <rettype>(<argtypes>)
 			//             arg0 = scriptinstance (XMRInstance)
 			scg.PushXMRInst ();                                     // [0] scriptinstance
@@ -921,7 +921,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				string dtn = type.ToString ();
 
 				// delegateinstance = (signature)scriptinstance.GetScriptMethodDelegate (methName, signature, arg0);
-				//   where methName = __fun_<sdtclass>.<methname>(<argtypes>)
+				//   where methName = <sdtclass>.<methname>(<argtypes>)
 				//        signature = <rettype>(<argtypes>)
 				//             arg0 = sdt istance (XMRSDTypeClObj) 'this' value
 				scg.PushXMRInst ();                                     // [0] scriptinstance

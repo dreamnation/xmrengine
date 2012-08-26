@@ -2,6 +2,18 @@ xmroption arrays;
 xmroption objects;
 xmroption trycatch;
 
+CallSomethingThatCallsSomethingThatThrows (string msg)
+{
+    llOwnerSay ("CallSomethingThatCallsSomethingThatThrows or we get optimized out");
+    CallSomethingThatThrows (msg);
+}
+
+CallSomethingThatThrows (string msg)
+{
+    llOwnerSay ("CallSomethingThatThrows or we get optimized out");
+    throw msg;
+}
+
 default {
     state_entry ()
     {
@@ -12,7 +24,7 @@ default {
             llOwnerSay ("just set x = 1");
             llOwnerSay ("after CheckRun() in try block");
             throw "get out of here";
-        } catch (string s) {
+        } catch (exception s) {
             llOwnerSay ("catch x=" + x);
             llOwnerSay ("after CheckRun() in catch block");
         }
@@ -31,13 +43,13 @@ default {
         try {
             llOwnerSay ("inside try { }");
             throw "something";
-        } catch (string s) {
-            llOwnerSay ("inside first catch { } with " + TrimException (s));
+        } catch (exception s) {
+            llOwnerSay ("inside first catch { } with " + xmrExceptionMessage (s));
             throw;
         } finally {
             llOwnerSay ("inside first finally { }");
-        } catch (string s) {
-            llOwnerSay ("inside second catch { } with " + TrimException (s));
+        } catch (exception s) {
+            llOwnerSay ("inside second catch { } with " + xmrExceptionMessage (s));
         } finally {
             llOwnerSay ("inside second finally { }");
         }
@@ -50,8 +62,8 @@ default {
             llOwnerSay ("generate second call to checkrun inside try");
             llOwnerSay ("throwing up");
             throw "some exception";
-        } catch (string ex) {
-            llOwnerSay ("caught " + TrimException (ex));
+        } catch (exception ex) {
+            llOwnerSay ("caught " + xmrExceptionMessage (ex));
         }
 
         llOwnerSay ("multiple finallies via jump test");
@@ -84,8 +96,9 @@ default {
                     llOwnerSay ("multiple throw finallies 1a");
                     llOwnerSay ("multiple throw finallies 1b");
                     CallSomethingThatCallsSomethingThatThrows ("get me out!");
-                } catch (string ex) {
-                    llOwnerSay ("inner catch " + TrimException (ex));
+                } catch (exception ex) {
+                    llOwnerSay ("inner catch: " + xmrExceptionMessage (ex));
+                    llOwnerSay ("stack trace: " + xmrExceptionStackTrace (ex));
                     throw;
                 } finally {
                     llOwnerSay ("multiple throw finallies 2a");
@@ -97,7 +110,7 @@ default {
                 llOwnerSay ("multiple throw finallies 3b");
             }
             llOwnerSay ("dont see this");
-        } catch (string imout) {
+        } catch (exception imout) {
             llOwnerSay ("multiple throw finallies 4a");
             llOwnerSay ("multiple throw finallies 4b");
         }
@@ -105,10 +118,13 @@ default {
         // ScriptRestoreCatchException test
         llOwnerSay ("check stack trace capture/restore");
         try {
-            CallSomethingThatCallsSomethingThatThrows ("can you see me now?");
-        } catch (string s) {
-            llOwnerSay ("first look:  " + TrimILFromException (s));
-            llOwnerSay ("second look: " + TrimILFromException (s));
+            throw "can you see me now?";
+        } catch (exception ex) {
+            llOwnerSay ("    argtype: " + xmrTypeName (ex));
+            llOwnerSay ("     extype: " + xmrExceptionTypeName (ex));
+            llOwnerSay ("whole thing: " + (string)ex);
+            llOwnerSay ("    message: " + xmrExceptionMessage (ex));
+            llOwnerSay ("stack trace: " + xmrExceptionStackTrace (ex));
         }
 
         // Filter the type
@@ -117,32 +133,44 @@ default {
         for (integer i = 0; i < 5; i ++) {
             try {
                 throw values[i];
-            } catch (integer i) {
-                llOwnerSay ("caught integer " + i);
-            } catch (string s) {
-                llOwnerSay ("caught string " + s);
-            } catch (float f) {
-                llOwnerSay ("caught float " + f);
-            } catch (vector v) {
-                llOwnerSay ("caught vector " + (string)v);
-            } catch (object o) {
-                llOwnerSay ("caught unknown " + xmrTypeName (o) + " " + (string)o);
+            } catch (exception ex) {
+                if (!(xmrExceptionThrownValue (ex) is integer)) throw;
+                llOwnerSay ("caught integer " + (integer)xmrExceptionThrownValue (ex));
+            } catch (exception ex) {
+                if (!(xmrExceptionThrownValue (ex) is string)) throw;
+                llOwnerSay ("caught string " + (string)xmrExceptionThrownValue (ex));
+            } catch (exception ex) {
+                if (!(xmrExceptionThrownValue (ex) is float)) throw;
+                llOwnerSay ("caught float " + (float)xmrExceptionThrownValue (ex));
+            } catch (exception ex) {
+                if (!(xmrExceptionThrownValue (ex) is vector)) throw;
+                llOwnerSay ("caught vector " + (vector)xmrExceptionThrownValue (ex));
+            } catch (exception ex) {
+                llOwnerSay ("caught unknown " + xmrTypeName (xmrExceptionThrownValue (ex)) + " " + xmrExceptionThrownValue (ex));
             }
         }
 
         Vase vase = new VaseOne ();
         try {
             throw vase;
-        } catch (Vase v) {
+        } catch (exception ex) {
+            if (!(xmrExceptionThrownValue (ex) is Vase)) throw;
+            Vase v = (Vase)xmrExceptionThrownValue (ex);
             llOwnerSay ("* caught vase " + v.ToString ());
-        } catch (VaseOne v1) {
+        } catch (exception ex) {
+            if (!(xmrExceptionThrownValue (ex) is VaseOne)) throw;
+            VaseOne v1 = (VaseOne)xmrExceptionThrownValue (ex);
             llOwnerSay ("  caught vaseone " + v1.ToString ());
         }
         try {
             throw vase;
-        } catch (VaseOne v1) {
+        } catch (exception ex) {
+            if (!(xmrExceptionThrownValue (ex) is VaseOne)) throw;
+            VaseOne v1 = (VaseOne)xmrExceptionThrownValue (ex);
             llOwnerSay ("* caught vaseone " + v1.ToString ());
-        } catch (Vase v) {
+        } catch (exception ex) {
+            if (!(xmrExceptionThrownValue (ex) is Vase)) throw;
+            Vase v = (Vase)xmrExceptionThrownValue (ex);
             llOwnerSay ("  caught vase " + v.ToString ());
         }
 
@@ -161,32 +189,4 @@ class VaseOne : Vase {
     {
         return "this is a VaseOne";
     }
-}
-
-string TrimException (string ex)
-{
-    integer i = llSubStringIndex (ex, "\n");
-    if (i > 0) ex = llGetSubString (ex, 0, i - 1);
-    return ex;
-}
-
-string TrimILFromException (string ex)
-{
-    integer i;
-    integer j;
-    while ((i = llSubStringIndex (ex, "<IL 0x")) > 0) {
-        for (j = i; ex[j] != '>'; j ++) { }
-        ex = llGetSubString (ex, 0, i + 3) + "..." + llGetSubString (ex, j, -1);
-    }
-    return ex;
-}
-
-CallSomethingThatCallsSomethingThatThrows (string msg)
-{
-    CallSomethingThatThrows (msg);
-}
-
-CallSomethingThatThrows (string msg)
-{
-    throw msg;
 }

@@ -934,43 +934,98 @@ Keywords:
     executed as needed.  try/catch/finally can be nested in any combination.
 
     The expression of a throw statement within a try clause can be of any type, 
-    eg, integer, string, script-defined object type.  It will match a the first 
-    catch clause whose parameter type is assignable from the value of thrown 
-    expression.  Any finally clauses between the throw and the corresponding 
-    catch are executed before the catch.  Then the single catch is executed.  
-    If the catch rethrows the execption, then the search for a compatible catch 
-    clause resumes, executing finally clauses until a match is found.  If a 
-    catch does not rethrow the execption, all finally clauses outside the catch 
-    are executed and all catch clauses outside the catch are ignored.
+    eg, integer, string, script-defined object type.  Any finally clauses 
+    between the throw and the corresponding catch are executed before the 
+    catch.  Then the single catch is executed.  If the catch rethrows the 
+    execption, then the search for a catch clause resumes, executing finally 
+    clauses until a match is found.  If a catch does not rethrow the execption, 
+    all finally clauses outside the catch are executed and all catch clauses 
+    outside the catch are ignored.
 
-    If an exception is thrown and no compatible catch clause is found, all 
-    finally clauses are executed in order and the script is terminated and an 
-    error message is printed.  This also applies to an exception thrown outside 
-    any try clause trivially as there can't be any catch clauses for it to 
-    match and there won't be any finally clauses to execute either, the script 
-    is simply terminated and an error message is printed.
+    If an exception is thrown and no catch clause is found, all finally clauses 
+    are executed in order and the script is terminated and an error message is 
+    printed.  This also applies to an exception thrown outside any try clause 
+    trivially as there can't be any catch clauses for it and there won't be any 
+    finally clauses to execute either, the script is simply terminated and an 
+    error message is printed.
 
-xmroption arrays;    // for type 'object'
+    Related builtin functions:
+
+        string xmrExceptionMessage(exception)
+
+            get an human readable error message associated with the exception.
+
+        string xmrExceptionStackTrace(exception)
+
+            gets a string indicating where in the script the exception occurred.
+
+        object xmrExceptionThrownValue(exception)
+
+            given the value from the catch clause, return the object from the 
+            throw statement that threw the exception.  If the exception was not 
+            from a throw statement (ie, some internal exception), this call 
+            throws an "InvalidCastException".
+
+        string xmrExceptionTypeName(exception)
+
+            given the value from the catch clause, return a string giving the 
+            type of the exception, eg, "ScriptThrownException" for a throw 
+            statement.  Other types can be "NullReferenceException", etc.
+
+xmroption arrays;
 xmroption trycatch;
+
 default {
     state_entry ()
     {
-        llOwnerSay ("catch filtering...");
-        list values = [ 1, "two", 3.0, <4,4,4>, <5,5,5,5> ];
-        for (integer i = 0; i < 5; i ++) {
-            try {
-                throw values[i];
-            } catch (integer i) {
-                llOwnerSay ("caught integer " + i);
-            } catch (string s) {
-                llOwnerSay ("caught string " + s);
-            } catch (float f) {
-                llOwnerSay ("caught float " + f);
-            } catch (vector v) {
-                llOwnerSay ("caught vector " + (string)v);
-            } catch (object o) {
-                llOwnerSay ("caught other " + xmrTypeName (o) + " " + (string)o);
-            }
+        try {
+            CallSomethingThatThrows ("try to catch this!");
+        } finally {
+            llOwnerSay ("finished one way or another");
+        } catch (exception ex) {
+            PrintOutException (ex);
+        }
+
+        try {
+            llOwnerSay (((array)(object)undef).count);
+        } catch (exception ex) {
+            PrintOutException (ex);
         }
     }
 }
+
+CallSomethingThatThrows (string s)
+{
+    llOwnerSay ("say something so we don't get inlined");
+    throw s;
+}
+
+PrintOutException (exception ex)
+{
+    llOwnerSay ("   typename: " + xmrExceptionTypeName (ex));
+    llOwnerSay ("    message: " + xmrExceptionMessage (ex));
+    try {
+        object tv = xmrExceptionThrownValue (ex);
+        llOwnerSay ("thrownvalue: " + tv);
+    } catch (exception ex2) {
+        if (xmrExceptionTypeName (ex2) != "InvalidCastException") throw;
+    }
+    llOwnerSay (" stacktrace:\n" + xmrExceptionStackTrace (ex));
+}
+
+...generates this output:
+
+say something so we don't get inlined
+finished one way or another
+   typename: ScriptThrownException
+    message: try to catch this!
+thrownvalue: try to catch this!
+ stacktrace:
+at CallSomethingThatThrows(string) <trycatchexample.lsl(27,4)>
+at default state_entry <trycatchexample.lsl(9,36)>
+
+   typename: NullReferenceException
+    message: Object reference not set to an instance of an object
+ stacktrace:
+at default state_entry <trycatchexample.lsl(17,23)>
+

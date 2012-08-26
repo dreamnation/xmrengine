@@ -101,6 +101,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		                                                                       new Type[] { typeof (LSL_Vector) });
 		private static MethodInfo scriptRestoreCatchExceptionUnwrap = GetStaticMethod (typeof (ScriptRestoreCatchException), "Unwrap", new Type[] { typeof (object) });
 		private static MethodInfo catchTryCastToSDTypeMethodInfo = GetStaticMethod (typeof (XMRInstAbstract), "XMRSDTypeCatchTryCastToSDType", new Type[] { typeof (object), typeof (XMRInstAbstract), typeof (int) });
+		private static MethodInfo thrownExceptionWrapMethodInfo  = GetStaticMethod (typeof (ScriptThrownException), "Wrap", new Type[] { typeof (object) });
 
 		public static bool CodeGen (TokenScript tokenScript, BinaryWriter objFileWriter, string sourceHash)
 		{
@@ -755,7 +756,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Output default state event handler functions.
-			 * Each event handler is a private static method named __seh_default_<eventname>.
+			 * Each event handler is a private static method named 'default <eventname>'.
 			 * Splice in a default state_entry() handler if none defined so we can init global vars.
 			 */
 			TokenDeclVar defaultStateEntry = null;
@@ -779,7 +780,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Output script-defined state event handler methods.
-			 * Each event handler is a private static method named __seh_<statename>_<eventname>
+			 * Each event handler is a private static method named <statename> <eventname>
 			 */
 			foreach (KeyValuePair<string, TokenDeclState> kvp in tokenScript.states) {
 				TokenDeclState declState = kvp.Value;
@@ -807,14 +808,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		/**
 		 * @brief generate event handler code
 		 * Writes out a function definition for each state handler
-		 * named __seh_<statename>_<eventname>
+		 * named <statename> <eventname>
 		 *
 		 * However, each has just 'XMRInstance __sw' as its single argument
 		 * and each of its user-visible argments is extracted from __sw.ehArgs[].
 		 *
 		 * So we end up generating something like this:
 		 *
-		 *   private static void __seh_<statecode>_<eventcode>_<statename>_<eventname>(XMRInstance __sw)
+		 *   private static void <statename> <eventname>(XMRInstance __sw)
 		 *   {
 		 *      <typeArg0> <nameArg0> = (<typeArg0>)__sw.ehArgs[0];
 		 *      <typeArg1> <nameArg1> = (<typeArg1>)__sw.ehArgs[1];
@@ -857,10 +858,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Output function header.
 			 * They just have the XMRInstance pointer as the one argument.
 			 */
-			int statecode = stateIndices[statename];
-			int eventcode = (int)Enum.Parse (typeof (ScriptEventCode), eventname);
-			string functionName = "__seh_" + statecode.ToString() + "_" + eventcode.ToString () + "_" + 
-			                                 statename + "_" + eventname;
+			string functionName = statename + " " + eventname;
 			ilGen = new ScriptObjWriter (tokenScript, 
 			                             functionName,
 			                             typeof (void),
@@ -1172,7 +1170,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * define one.
 			 */
 			string methname = ilGen.methName;
-			if (methname.StartsWith ("__seh_") && methname.EndsWith ("_default_state_entry")) {
+			if (methname == "default state_entry") {
 
 				// if (!doGblInit) goto skipGblInit;
 				ScriptMyLabel skipGblInitLabel = ilGen.DefineLabel ("__skipGblInit");
@@ -2478,23 +2476,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			if (!mightGetHere) return;
 
+			/*
+			 * 'throw' statements never fall through.
+			 */
+			mightGetHere = false;
+
+			/*
+			 * Output code for either a throw or a rethrow.
+			 */
 			if (throwStmt.rVal == null) {
-				if (!curStmtBlock.isCatch) {
-					ErrorMsg (throwStmt, "rethrow allowed only in catch clause");
+				for (TokenStmtBlock blk = curStmtBlock; blk != null; blk = blk.outerStmtBlock) {
+					if (curStmtBlock.isCatch) {
+						ilGen.Emit (throwStmt, OpCodes.Rethrow);
+						return;
+					}
 				}
-				ilGen.Emit (throwStmt, OpCodes.Rethrow);
+				ErrorMsg (throwStmt, "rethrow allowed only in catch clause");
 			} else {
 				CompValu rVal = GenerateFromRVal (throwStmt.rVal);
 				rVal.PushVal (this, throwStmt.rVal, tokenTypeObj);
 				Type sysType = rVal.type.ToSysType ();
 				if (sysType.IsValueType) ilGen.Emit (throwStmt, OpCodes.Box, sysType);
+				ilGen.Emit (throwStmt, OpCodes.Call, thrownExceptionWrapMethodInfo);
 				ilGen.Emit (throwStmt, OpCodes.Throw);
 			}
-
-			/*
-			 * 'throw' statements never fall through.
-			 */
-			mightGetHere = false;
 		}
 
 		/**
@@ -4543,7 +4548,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Default for 'object' type is 'undef'.
 			 * Likewise for script-defined classes and interfaces.
 			 */
-			if ((type is TokenTypeObject) || (type is TokenTypeSDTypeClass) || (type is TokenTypeSDTypeInterface)) {
+			if ((type is TokenTypeObject) || (type is TokenTypeSDTypeClass) || (type is TokenTypeSDTypeInterface) || (type is TokenTypeExc)) {
 				ilGen.Emit (type, OpCodes.Ldnull);
 				return;
 			}
@@ -5315,18 +5320,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * We enter all script event handler methods in the ScriptEventHandler table.
-			 * They are named:  __seh_<statenumber>_<eventnumber>_<bunchofstuffwedontcareabout>
+			 * They are named:  <statename> <eventname>
 			 */
 			foreach (KeyValuePair<string, DynamicMethod> kvp in scriptObjCode.dynamicMethods) {
 				string methName = kvp.Key;
-				if (methName.StartsWith ("__seh_")) {
-					int j = methName.IndexOf ('_', 6);      // terminates <statenumber>
-					int k = methName.IndexOf ('_', j + 1);  // terminates <eventnumber>
-					int stateCode = Int32.Parse (methName.Substring (6, j - 6));
-					int eventCode = Int32.Parse (methName.Substring (j + 1, k - j - 1));
-					scriptObjCode.scriptEventHandlerTable[stateCode,eventCode] = 
-							(ScriptEventHandler)kvp.Value.CreateDelegate (typeof (ScriptEventHandler));
+				int i = methName.IndexOf (' ');
+				if (i < 0) continue;
+				string stateName = methName.Substring (0, i);
+				string eventName = methName.Substring (++ i);
+				int stateCode;
+				for (stateCode = scriptObjCode.stateNames.Length; -- stateCode >= 0;) {
+					if (scriptObjCode.stateNames[stateCode] == stateName) break;
 				}
+				int eventCode = (int)Enum.Parse (typeof (ScriptEventCode), eventName);
+				scriptObjCode.scriptEventHandlerTable[stateCode,eventCode] = 
+							(ScriptEventHandler)kvp.Value.CreateDelegate (typeof (ScriptEventHandler));
 			}
 
 			/*
@@ -5396,6 +5404,34 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.stateName = stateName;
 		}
 		protected ScriptUndefinedStateException (SerializationInfo info, StreamingContext context) : base (info, context)
+		{ }
+	}
+
+	/**
+	 * @brief Created by a throw statement.
+	 */
+	[SerializableAttribute]
+	public class ScriptThrownException : Exception, ISerializable {
+		public object thrown;
+
+		/**
+		 * @brief Called by a throw statement to wrap the object in a unique
+		 *        tag that capable of capturing a stack trace.  Script can 
+		 *        unwrap it by calling xmrExceptionThrownValue().
+		 */
+		public static Exception Wrap (object thrown)
+		{
+			return new ScriptThrownException (thrown);
+		}
+		private ScriptThrownException (object thrown) : base (thrown.ToString ())
+		{
+			this.thrown = thrown;
+		}
+
+		/**
+		 * @brief Used by serialization/deserialization.
+		 */
+		protected ScriptThrownException (SerializationInfo info, StreamingContext context) : base (info, context)
 		{ }
 	}
 

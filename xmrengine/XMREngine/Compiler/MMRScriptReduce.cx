@@ -2872,6 +2872,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					tag.name = (TokenName)token;
 					token    = token.nextToken.nextToken;  // skip over <varname> ')'
 
+					if (!(tag.type is TokenTypeExc)) {
+						ErrorMsg (tag.type, "must be type 'exception'");
+					}
+
 					tokenStmtTry = new TokenStmtTry (tryKw);
 					tokenStmtTry.tryStmt           = WrapTryCatFinInBlock (body);
 					tokenStmtTry.catchVar          = tag;
@@ -5270,13 +5274,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		/**
 		 * @brief The function name as it appears in the object code,
-		 *        ie, including "__fun_", script-defined type name if any,
+		 *        ie, script-defined type name if any,
 		 *        bare function name and argument signature, 
-		 *        eg, "__fun_MyClass.PrintStuff(string)"
+		 *        eg, "MyClass.PrintStuff(string)"
 		 */
 		public string GetObjCodeName ()
 		{
-                        string objCodeName  = "__fun_";
+                        string objCodeName = "";
                         if (sdtClass != null) {
                                 objCodeName += sdtClass.longName.val + ".";
                         }

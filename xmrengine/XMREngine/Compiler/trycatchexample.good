@@ -1,0 +1,16 @@
+Compiling...
+Running...
+llOwnerSay: say something so we don't get inlined
+llOwnerSay: finished one way or another
+llOwnerSay:    typename: ScriptThrownException
+llOwnerSay:     message: try to catch this!
+llOwnerSay: thrownvalue: 
+llOwnerSay:  stacktrace:
+at CallSomethingThatThrows(string) <trycatchexample.lsl(27,4)>
+at default state_entry <trycatchexample.lsl(9,36)>
+
+llOwnerSay:    typename: NullReferenceException
+llOwnerSay:     message: Object reference not set to an instance of an object
+llOwnerSay:  stacktrace:
+at default state_entry <trycatchexample.lsl(17,23)>
+

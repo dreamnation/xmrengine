@@ -12,6 +12,8 @@ mono --debug xmrengtest.exe -serialize -asm objectest.xmrasm    objectest.lsl   
 diff objectest.out objectest.good
 mono --debug xmrengtest.exe -serialize -asm chartest.xmrasm     chartest.lsl     2>&1 | tee chartest.out
 diff chartest.out chartest.good
+mono --debug xmrengtest.exe -serialize -asm trycatchexample.xmrasm trycatchexample.lsl 2>&1 | tee trycatchexample.out
+diff trycatchexample.out trycatchexample.good
 mono --debug xmrengtest.exe -serialize -asm trycatchtest.xmrasm trycatchtest.lsl 2>&1 | tee trycatchtest.out
 diff trycatchtest.out trycatchtest.good
 mono --debug xmrengtest.exe -serialize -asm proptest.xmrasm     proptest.lsl     2>&1 | tee proptest.out

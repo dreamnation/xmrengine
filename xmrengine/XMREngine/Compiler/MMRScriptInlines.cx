@@ -32,9 +32,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static Type[] oneDoub  = new Type[] { typeof (double) };
 		private static Type[] twoDoubs = new Type[] { typeof (double), typeof (double) };
 
-		private static TokenTypeFloat tokenTypeFloat  = new TokenTypeFloat (null);
-		private static TokenTypeInt   tokenTypeInt    = new TokenTypeInt (null);
-		private static TokenTypeStr   tokenTypeString = new TokenTypeStr (null);
+		private static TokenTypeExc    tokenTypeExc    = new TokenTypeExc (null);
+		private static TokenTypeFloat  tokenTypeFloat  = new TokenTypeFloat (null);
+		private static TokenTypeInt    tokenTypeInt    = new TokenTypeInt (null);
+		private static TokenTypeStr    tokenTypeString = new TokenTypeStr (null);
 
 		private static readonly FieldInfo heapLimitFieldInfo = typeof (XMRInstAbstract).GetField ("heapLimit");
 		private static readonly FieldInfo heapTotalFieldInfo = typeof (XMRInstAbstract).GetField ("heapTotal");
@@ -56,6 +57,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				new Type[] { });
 		private static MethodInfo xmrOSParseJSON = typeof (XMRInstAbstract).GetMethod ("XMRosParseJSON", 
 				new Type[] { typeof (string) });
+
+		private static MethodInfo xmrExceptionMessage     = typeof (XMRInstAbstract).GetMethod ("XMRExceptionMessage",     new Type[] { typeof (Exception) });
+		private static MethodInfo xmrExceptionStackTrace  = typeof (XMRInstAbstract).GetMethod ("XMRExceptionStackTrace",  new Type[] { typeof (Exception) });
+		private static MethodInfo xmrExceptionThrownValue = typeof (XMRInstAbstract).GetMethod ("XMRExceptionThrownValue", new Type[] { typeof (Exception) });
+		private static MethodInfo xmrExceptionTypeName    = typeof (XMRInstAbstract).GetMethod ("XMRExceptionTypeName",    new Type[] { typeof (Exception) });
 
 		/*
 		 * For those listed in noCheckRun, we just generate the call (simple computations).
@@ -146,6 +152,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			inf = new TokenDeclInline (ifd, false, "xmrList2Array(list,integer,object,integer,integer)",      typeof (void),        null); inf.codeGen = inf.CodeGenXMRList2Array;
 			inf = new TokenDeclInline (ifd, false, "xmrChars2String(object,integer,integer)",                 typeof (string),      null); inf.codeGen = inf.CodeGenXMRChars2String;
 			inf = new TokenDeclInline (ifd, false, "xmrString2Chars(string,integer,object,integer,integer)",  typeof (void),        null); inf.codeGen = inf.CodeGenXMRString2Chars;
+			inf = new TokenDeclInline (ifd, false, "xmrExceptionMessage(exception)",                          typeof (string),      null); inf.codeGen = inf.CodeGenXMRExceptionMessage;
+			inf = new TokenDeclInline (ifd, false, "xmrExceptionStackTrace(exception)",                       typeof (string),      null); inf.codeGen = inf.CodeGenXMRExceptionStackTrace;
+			inf = new TokenDeclInline (ifd, false, "xmrExceptionThrownValue(exception)",                      typeof (object),      null); inf.codeGen = inf.CodeGenXMRExceptionThrownValue;
+			inf = new TokenDeclInline (ifd, false, "xmrExceptionTypeName(exception)",                         typeof (string),      null); inf.codeGen = inf.CodeGenXMRExceptionTypeName;
 
 			inf = new TokenDeclInline (ifd, false, "xmrFixedArrayAllocC(integer)",                            typeof (object),      null); inf.codeGen = inf.CodeGenXMRFixedArrayAllocC;
 			inf = new TokenDeclInline (ifd, false, "xmrFixedArrayGetC(object,integer)",                       typeof (char),        null); inf.codeGen = inf.CodeGenXMRFixedArrayGetC;
@@ -677,6 +687,41 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			scg.PushXMRInst ();
 			args[0].PushVal (scg, errorAt, tokenTypeString);
 			scg.ilGen.Emit (errorAt, OpCodes.Call, xmrOSParseJSON);
+			result.Pop (scg, errorAt, retType);
+		}
+
+		/**
+		 * @brief Generate code to for exception-related calls.
+		 */
+		private void CodeGenXMRExceptionMessage (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
+		{
+			scg.PushXMRInst ();
+			args[0].PushVal (scg, errorAt, tokenTypeExc);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, xmrExceptionMessage);
+			result.Pop (scg, errorAt, retType);
+		}
+
+		private void CodeGenXMRExceptionStackTrace (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
+		{
+			scg.PushXMRInst ();
+			args[0].PushVal (scg, errorAt, tokenTypeExc);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, xmrExceptionStackTrace);
+			result.Pop (scg, errorAt, retType);
+		}
+
+		private void CodeGenXMRExceptionThrownValue (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
+		{
+			scg.PushXMRInst ();
+			args[0].PushVal (scg, errorAt, tokenTypeExc);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, xmrExceptionThrownValue);
+			result.Pop (scg, errorAt, retType);
+		}
+
+		private void CodeGenXMRExceptionTypeName (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
+		{
+			scg.PushXMRInst ();
+			args[0].PushVal (scg, errorAt, tokenTypeExc);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, xmrExceptionTypeName);
 			result.Pop (scg, errorAt, retType);
 		}
 

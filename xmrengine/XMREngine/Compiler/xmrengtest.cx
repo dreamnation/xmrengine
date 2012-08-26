@@ -190,6 +190,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      * Tell code to restore from inst.stackFrames when it is called back.
                      */
                     inst.callMode = XMRInstAbstract.CALLMODE_RESTORE;
+                } catch (Exception e) {
+                    Console.WriteLine ("Uncaught exception in script: " + inst.XMRExceptionFixString (e.ToString (), true));
+                    break;
                 }
             }
             return;

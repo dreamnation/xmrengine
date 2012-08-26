@@ -272,6 +272,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (o is XMR_Array)    return "array";
             if (o is bool)         return "bool";
             if (o is char)         return "char";
+            if (o is Exception)    return "exception";
             if (o is double)       return "float";
             if (o is float)        return "float";
             if (o is LSL_Float)    return "float";
@@ -592,6 +593,84 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 dval *= Math.Pow (10, expon - decpt);
                 return dval;
             }
+        }
+
+        /**
+         * @brief Exception-related runtime calls.
+         */
+        // Return exception message (no type information just the message)
+        public string XMRExceptionMessage (Exception ex)
+        {
+            return ex.Message;
+        }
+
+        // Return stack trace (no type or message, just stack trace lines: at ... \n)
+        public string XMRExceptionStackTrace (Exception ex)
+        {
+            return XMRExceptionFixString (ex.StackTrace, false);
+        }
+
+        // Return value thrown by a throw statement
+        public object XMRExceptionThrownValue (Exception ex)
+        {
+            return ((ScriptThrownException)ex).thrown;
+        }
+
+        // Return exception's short type name, eg, NullReferenceException, ScriptThrownException, etc.
+        public string XMRExceptionTypeName (Exception ex)
+        {
+            return ex.GetType ().Name;
+        }
+
+        // internal use only: converts any IL addresses in script-defined methods to source location equivalent
+        // at (wrapper dynamic-method) object.__seh_0_30_default_state_entry (OpenSim.Region.ScriptEngine.XMREngine.XMRInstAbstract) <IL 0x00d65, 0x03a53>
+        public string XMRExceptionFixString (string st, bool sys)
+        {
+            StringBuilder sb = new StringBuilder ();
+            int wrapDynMethObj = 0;
+            int leftOffAt = 0;
+            while ((wrapDynMethObj = st.IndexOf ("(wrapper dynamic-method) object.", ++ wrapDynMethObj)) >= 0) {
+                try {
+                    int begFuncName  = wrapDynMethObj + 32;
+                    int endFuncName  = st.IndexOf (" (", begFuncName);
+                    string funcName  = st.Substring (begFuncName, endFuncName - begFuncName);
+                    KeyValuePair<int, ScriptSrcLoc>[] srcLocs = m_ObjCode.scriptSrcLocss[funcName];
+
+                    int il0xPrefix   = st.IndexOf (" <IL 0x", endFuncName);
+                    int begILHex     = il0xPrefix + 7;
+                    int endILHex     = st.IndexOf (',', begILHex);
+                    string ilHex     = st.Substring (begILHex, endILHex - begILHex);
+                    int offset       = Int32.Parse (ilHex, System.Globalization.NumberStyles.HexNumber);
+                    int closeAngle   = st.IndexOf ('>', endILHex);
+                    if (closeAngle  <= endILHex) continue;
+
+                    int srcLocIdx;
+                    int srcLocLen    = srcLocs.Length;
+                    for (srcLocIdx = 0; ++ srcLocIdx < srcLocLen;) {
+                        if (offset < srcLocs[srcLocIdx].Key) break;
+                    }
+                    ScriptSrcLoc srcLoc = srcLocs[--srcLocIdx].Value;
+
+                    sb.Append (st.Substring (leftOffAt, wrapDynMethObj - leftOffAt));
+                    if (sys) {
+                        sb.Append (st.Substring (begFuncName, il0xPrefix - begFuncName));
+                    } else {
+                        sb.Append (st.Substring (begFuncName, endFuncName - begFuncName));
+                    }
+                    sb.Append (" <");
+                    sb.Append (srcLoc.file);
+                    sb.Append ('(');
+                    sb.Append (srcLoc.line);
+                    sb.Append (',');
+                    sb.Append (srcLoc.posn);
+                    sb.Append (')');
+
+                    leftOffAt = closeAngle;
+                } catch {
+                }
+            }
+            sb.Append (st.Substring (leftOffAt));
+            return sb.ToString ();
         }
 
         /**
