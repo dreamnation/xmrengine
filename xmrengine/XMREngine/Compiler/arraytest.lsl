@@ -60,6 +60,11 @@ default
         SaySomething ("xmrHashCode(2992)  = " + xmrHashCode (2992));
         SaySomething ("xmrHashCode(29.92) = " + xmrHashCode (29.92) + " = " + xmrHashCode (TwoNinerNinerTwo ()));
         SaySomething ("xmrHashCode(Hello World) = " + xmrHashCode ("Hello World"));
+
+        SaySomething ("test JSON parse:");
+        JSONTest ("1234");
+        JSONTest ("12.34e-5");
+        JSONTest ("{ \"one\": \"first element\", \"two\": \"second element\", \"three\": [ 9, 8, 7 ]}");
     }
 }
 
@@ -83,7 +88,20 @@ Verify(array a, list s, string expect)
     }
 }
 
+JSONTest (string json)
+{
+    array ar;
+    object k;
+    object v;
+    
+    SaySomething (json + ":");
+    ar = osParseJSON (json);
+    foreach (k,v in ar) {
+        SaySomething ("  " + (string)k + " = " + (string)v);
+    }
+}
+
 SaySomething(string msg)
 {
-    llOwnerSay(msg);
+    llOwnerSay (msg);
 }

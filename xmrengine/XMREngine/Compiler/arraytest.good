@@ -46,3 +46,14 @@ llOwnerSay: success!
 llOwnerSay: xmrHashCode(2992)  = 2992
 llOwnerSay: xmrHashCode(29.92) = 1585822313 = 1585822313
 llOwnerSay: xmrHashCode(Hello World) = -862545276
+llOwnerSay: test JSON parse:
+llOwnerSay: 1234:
+llOwnerSay:    = 1234
+llOwnerSay: 12.34e-5:
+llOwnerSay:    = 0.0001234
+llOwnerSay: { "one": "first element", "two": "second element", "three": [ 9, 8, 7 ]}:
+llOwnerSay:   one = first element
+llOwnerSay:   two = second element
+llOwnerSay:   three0 = 9
+llOwnerSay:   three1 = 8
+llOwnerSay:   three2 = 7
