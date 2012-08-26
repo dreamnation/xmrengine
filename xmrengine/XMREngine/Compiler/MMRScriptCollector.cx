@@ -108,10 +108,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			Pop (1);
 		}
 
+		// ex = what is expected to be on stack
+		// st = what is actually on stack
 		private void ExpectedVsOnStack (Type ex, Type st)
 		{
+			// simple case of expecting an object
+			// ...so the stack can have object,string, etc
 			if (ex.IsAssignableFrom (st)) return;
+
+			// case of expecting an enum on the stack
+			// but all the CIL code knows about are ints etc
+			// so convert the Enum type to integer or whatever
+			// and that should be assignable from what's on stack
+			if (ex.IsEnum && typeof (int).IsAssignableFrom (st)) return;
+
+			// if expecting a char, it's ok if stack has an int on it
 			if ((ex == typeof (char)) && (st == typeof (int))) return;
+
+			// otherwise, it is disallowed
 			throw new Exception ("stack has " + st.Name + ", expect " + ex.Name);
 		}
 

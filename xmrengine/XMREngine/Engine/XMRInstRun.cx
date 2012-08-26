@@ -552,23 +552,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             msg.Append("[XMREngine]: Exception while running script event handler.\n");
 
             /*
-             * Display full exception message in log.
-             */
-            m_log.Debug(msg.ToString() + e.ToString());
-
-            /*
              * Tell script owner what to do.
              */
             msg.Append("Part: <");
             msg.Append(m_Part.Name);
             msg.Append(">, Item: <");
             msg.Append(m_Item.Name);
-            msg.Append(">\nYou must Reset script to re-enable.\n");
+            msg.Append(">\nScript must be Reset to re-enable.\n");
+
+            /*
+             * Display full exception message in log.
+             */
+            m_log.Debug(msg.ToString() + XMRExceptionFixString (e.ToString(), true));
 
             /*
              * Give script owner the stack dump.
              */
-            msg.Append(e.ToString());
+            msg.Append(XMRExceptionFixString (e.ToString(), false));
 
             /*
              * Send error message to owner.

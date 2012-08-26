@@ -148,7 +148,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
      */
     public class TokenBegin : Token {
 
-        public int expiryDays;          // has seen 'XMROption expiryDays;'
+        public int expiryDays = Int32.MaxValue;  // has seen 'XMROption expiryDays;'
 
         private class Options {
             public bool arrays;         // has seen 'XMROption arrays;'
@@ -189,7 +189,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             tokenBegin.saveSource = saveSource;
             tokenBegin.lastToken  = tokenBegin;
             tokenBegin.source     = source;
-            tokenBegin.filNam     = "";
+            tokenBegin.filNam     = cameFrom;
             if (saveSource != null) saveSource.WriteLine (source);
             tokenBegin.Tokenize ();
             if (tokenBegin.youveAnError) return null;
