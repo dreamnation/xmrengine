@@ -254,24 +254,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
         }
 
-        public override int  StackLeft ()
+        public override int xmrStackLeft ()
         {
             return 1000000;
         }
-        public override LSL_List XMREventDequeue (SCRIPTFLOAT timeout, int returnMask1, int returnMask2,
-                                                  int backgroundMask1, int backgroundMask2, int line)
+        public override LSL_List xmrEventDequeue (SCRIPTFLOAT timeout, int returnMask1, int returnMask2,
+                                                  int backgroundMask1, int backgroundMask2)
         {
             return new LSL_List (new object[0]);
         }
-        public override void XMREventEnqueue (LSL_List ev)
+        public override void xmrEventEnqueue (LSL_List ev)
         { }
-        public override void XMREventCallHandler (LSL_List ev)
+        public override void xmrEventCallHandler (LSL_List ev)
         { }
-        public override LSL_List XMREventSaveDets ()
+        public override LSL_List xmrEventSaveDets ()
         {
             return new LSL_List (new object[0]);
         }
-        public override void XMREventLoadDets (LSL_List dpList)
+        public override void xmrEventLoadDets (LSL_List dpList)
         { }
     }
 

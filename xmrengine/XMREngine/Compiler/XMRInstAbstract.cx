@@ -209,13 +209,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         \****************************************************************/
 
         public abstract void CheckRun (int line);
-        public abstract int  StackLeft ();
-        public abstract LSL_List XMREventDequeue (SCRIPTFLOAT timeout, int returnMask1, int returnMask2,
-                                                  int backgroundMask1, int backgroundMask2, int line);
-        public abstract void XMREventEnqueue (LSL_List ev);
-        public abstract void XMREventCallHandler (LSL_List ev);
-        public abstract LSL_List XMREventSaveDets ();
-        public abstract void XMREventLoadDets (LSL_List dpList);
+        public abstract int  xmrStackLeft ();
+        [xmrMethodIsComplexAttribute] // xmrEventDequeue() calls CheckRun()
+        public abstract LSL_List xmrEventDequeue (SCRIPTFLOAT timeout, int returnMask1, int returnMask2,
+                                                  int backgroundMask1, int backgroundMask2);
+        public abstract void xmrEventEnqueue (LSL_List ev);
+        public abstract void xmrEventCallHandler (LSL_List ev);
+        public abstract LSL_List xmrEventSaveDets ();
+        public abstract void xmrEventLoadDets (LSL_List dpList);
 
         /**************************************************\
          *  Functions what don't require runtime support  *
@@ -259,12 +260,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return sf.objArray;
         }
 
-        public void ConsoleWrite (string s)
+        public static void xmrConsoleWriteLine (string s)
         {
-            Console.WriteLine ("XMRInstance.ConsoleWrite: " + s);
+            Console.WriteLine (s);
         }
 
-        public string XMRTypeName (object o)
+        public static int xmrHashCode (int i)
+        {
+            return i.GetHashCode ();
+        }
+        public static int xmrHashCode (SCRIPTFLOAT f)
+        {
+            return f.GetHashCode ();
+        }
+        public static int xmrHashCode (object o)
+        {
+            return o.GetHashCode ();
+        }
+
+        public int xmrHeapLeft ()
+        {
+            return heapLimit - heapTotal;
+        }
+
+        public string xmrTypeName (object o)
         {
             /*
              * Basic types return constant strings of the script-visible type name.
@@ -382,12 +401,241 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         /**
-         * @brief Wrap osParseJSON() so we return an array to the script.
+         * @brief Allocate and access fixed-dimension arrays.
+         */
+#define FIXEDARRAYS(suffix,eletype) \
+        public static object xmrFixedArrayAlloc##suffix (int len)                          \
+        {                                                                                  \
+            return new eletype[len];                                                       \
+        }                                                                                  \
+        public static eletype xmrFixedArrayGet##suffix (object arr, int idx)               \
+        {                                                                                  \
+            return ((eletype[])arr)[idx];                                                  \
+        }                                                                                  \
+        public static void xmrFixedArraySet##suffix (object arr, int idx, eletype val)     \
+        {                                                                                  \
+            ((eletype[])arr)[idx] = val;                                                   \
+        }
+
+        FIXEDARRAYS(C,char)
+        FIXEDARRAYS(F,SCRIPTFLOAT)
+        FIXEDARRAYS(I,int)
+        FIXEDARRAYS(O,object)
+
+        /**
+         * @brief Copy from one script-defined array to another.
+         * @param srcobj = source script-defined array class object pointer
+         * @param srcstart = offset in source array to start copying from
+         * @param dstobj = destination script-defined array class object pointer
+         * @param dststart = offset in destination arry to start copying to
+         * @param count = number of elements to copy
+         */
+        public static void xmrArrayCopy (object srcobj, int srcstart, object dstobj, int dststart, int count)
+        {
+            /*
+             * The script writer should only pass us script-defined class objects.
+             * Throw exception otherwise.
+             */
+            XMRSDTypeClObj srcsdt = (XMRSDTypeClObj)srcobj;
+            XMRSDTypeClObj dstsdt = (XMRSDTypeClObj)dstobj;
+
+            /*
+             * Get the script-visible type name of the arrays, brackets and all.
+             */
+            string srctypename = srcsdt.sdtcClass.longName.val;
+            string dsttypename = dstsdt.sdtcClass.longName.val;
+
+            /*
+             * The part before the first '[' of each should match exactly,
+             * meaning the basic data type (eg, float, List<string>) is the same.
+             * And there must be a '[' in each meaning that it is a script-defined array type.
+             */
+            int i = srctypename.IndexOf ('[');
+            int j = dsttypename.IndexOf ('[');
+            if ((i < 0) || (j < 0)) throw new InvalidCastException ("non-array passed: " + srctypename + " and/or " + dsttypename);
+            if ((i != j) || !srctypename.StartsWith (dsttypename.Substring (0, j))) {
+                throw new ArrayTypeMismatchException (srctypename + " vs " + dsttypename);
+            }
+
+            /*
+             * The number of brackets must match exactly.
+             * This permits copying from something like a float[,][] to something like a float[][].
+             * But you cannot copy from a float[][] to a float[] or wisa wersa.
+             * Counting either '[' or ']' would work equally well.
+             */
+            int srclen  = srctypename.Length;
+            int dstlen  = dsttypename.Length;
+            int srcjags = 0;
+            int dstjags = 0;
+            while (++ i < srclen) if (srctypename[i] == ']') srcjags ++;
+            while (++ j < dstlen) if (dsttypename[j] == ']') dstjags ++;
+            if (dstjags != srcjags) {
+                throw new ArrayTypeMismatchException (srctypename + " vs " + dsttypename);
+            }
+
+            /*
+             * Perform the copy.
+             */
+            Array srcarray = (Array)srcsdt.instVars.iarObjects[0];
+            Array dstarray = (Array)dstsdt.instVars.iarObjects[0];
+            Array.Copy (srcarray, srcstart, dstarray, dststart, count);
+        }
+
+        /**
+         * @brief Copy from an array to a list.
+         * @param srcar = the array to copy from
+         * @param start = where to start in the array
+         * @param count = number of elements
+         * @returns the list
+         */
+        public static LSL_List xmrArray2List (object srcar, int start, int count)
+        {
+            /*
+             * Get the script-visible type of the array.
+             * We only do arrays.
+             */
+            XMRSDTypeClObj array = (XMRSDTypeClObj)srcar;
+            TokenDeclSDTypeClass sdtClass = array.sdtcClass;
+            if (sdtClass.arrayOfRank == 0) {
+                throw new InvalidCastException ("only do arrays not " + sdtClass.longName.val);
+            }
+
+            /*
+             * Validate objects they want to put in the list.
+             * We can't allow anything funky that OpenSim runtime doesn't expect.
+             */
+            Array srcarray = (Array)array.instVars.iarObjects[0];
+            object[] output = new object[count];
+            for (int i = 0; i < count; i ++) {
+                object src = srcarray.GetValue (i + start);
+                if (src == null) throw new NullReferenceException ("null element " + i);
+                if (src is SCRIPTFLOAT) {
+                    output[i] = new LSL_Float ((SCRIPTFLOAT)src);
+                    continue;
+                }
+                if (src is int) {
+                    output[i] = new LSL_Integer ((int)src);
+                    continue;
+                }
+                if (src is LSL_Rotation) {
+                    output[i] = src;
+                    continue;
+                }
+                if (src is LSL_Vector) {
+                    output[i] = src;
+                    continue;
+                }
+                if (src is string) {
+                    output[i] = new LSL_String ((string)src);
+                    continue;
+                }
+                throw new InvalidCastException ("invalid element " + i + " type " + src.GetType ().Name);
+            }
+
+            /*
+             * Make a list out of that now immutable array.
+             */
+            return new LSL_List (output);
+        }
+
+        /**
+         * @brief Copy from a list to an array.
+         * @param srclist  = list to copy from
+         * @param srcstart = where to start in the list
+         * @param dstobj   = array to copy to
+         * @param dststart = where to start in the array
+         * @param count    = number of elements
+         */
+        public static void xmrList2Array (LSL_List srclist, int srcstart, object dstobj, int dststart, int count)
+        {
+            /*
+             * Get the script-visible type of the destination.
+             * We only do arrays.
+             */
+            XMRSDTypeClObj dstarray = (XMRSDTypeClObj)dstobj;
+            TokenDeclSDTypeClass sdtClass = dstarray.sdtcClass;
+            if (sdtClass.arrayOfType == null) {
+                throw new InvalidCastException ("only do arrays not " + sdtClass.longName.val);
+            }
+
+            /*
+             * Copy from the immutable array to the mutable array.
+             * Strip off any LSL wrappers as the script code doesn't expect any.
+             */
+            object[] srcarr = srclist.Data;
+            Array dstarr    = (Array)dstarray.instVars.iarObjects[0];
+
+            for (int i = 0; i < count; i ++) {
+                object obj = srcarr[i+srcstart];
+                if (obj is LSL_Float)   obj = ((LSL_Float)obj).value;
+                if (obj is LSL_Integer) obj = ((LSL_Integer)obj).value;
+                if (obj is LSL_String)  obj = ((LSL_String)obj).m_string;
+                dstarr.SetValue (obj, i + dststart);
+            }
+        }
+
+        /**
+         * @brief Copy from an array of characters to a string.
+         * @param srcar = the array to copy from
+         * @param start = where to start in the array
+         * @param count = number of elements
+         * @returns the string
+         */
+        public static string xmrChars2String (object srcar, int start, int count)
+        {
+            /*
+             * Make sure they gave us a script-defined array object.
+             */
+            XMRSDTypeClObj array = (XMRSDTypeClObj)srcar;
+            TokenDeclSDTypeClass sdtClass = array.sdtcClass;
+            if (sdtClass.arrayOfRank == 0) {
+                throw new InvalidCastException ("only do arrays not " + sdtClass.longName.val);
+            }
+
+            /*
+             * We get a type cast error from mono if they didn't give us a character array.
+             * But if it is ok, create a string from the requested characters.
+             */
+            char[] srcarray = (char[])array.instVars.iarObjects[0];
+            return new string (srcarray, start, count);
+        }
+
+        /**
+         * @brief Copy from a string to a character array.
+         * @param srcstr   = string to copy from
+         * @param srcstart = where to start in the string
+         * @param dstobj   = array to copy to
+         * @param dststart = where to start in the array
+         * @param count    = number of elements
+         */
+        public static void xmrString2Chars (string srcstr, int srcstart, object dstobj, int dststart, int count)
+        {
+            /*
+             * Make sure they gave us a script-defined array object.
+             */
+            XMRSDTypeClObj dstarray = (XMRSDTypeClObj)dstobj;
+            TokenDeclSDTypeClass sdtClass = dstarray.sdtcClass;
+            if (sdtClass.arrayOfType == null) {
+                throw new InvalidCastException ("only do arrays not " + sdtClass.longName.val);
+            }
+
+            /*
+             * We get a type cast error from mono if they didn't give us a character array.
+             * But if it is ok, copy from the string to the character array.
+             */
+            char[] dstarr = (char[])dstarray.instVars.iarObjects[0];
+            for (int i = 0; i < count; i ++) {
+                dstarr[i+dststart] = srcstr[i+srcstart];
+            }
+        }
+
+        /**
+         * @brief Implement osParseJSON() so we return an array to the script.
          *        No coherent example of its use in scripts on web found.
          * see http://www.json.org/ for more details on JSON
          */
         private static LSL_List nullList = new LSL_List (new object[0]);
-        public XMR_Array XMRosParseJSON (string json)
+        public XMR_Array osParseJSON (string json)
         {
             XMR_Array dict = new XMR_Array (this);
             int idx = ParseJSON (dict, nullList, json, 0);
@@ -599,25 +847,25 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * @brief Exception-related runtime calls.
          */
         // Return exception message (no type information just the message)
-        public string XMRExceptionMessage (Exception ex)
+        public static string xmrExceptionMessage (Exception ex)
         {
             return ex.Message;
         }
 
         // Return stack trace (no type or message, just stack trace lines: at ... \n)
-        public string XMRExceptionStackTrace (Exception ex)
+        public string xmrExceptionStackTrace (Exception ex)
         {
             return XMRExceptionFixString (ex.StackTrace, false);
         }
 
         // Return value thrown by a throw statement
-        public object XMRExceptionThrownValue (Exception ex)
+        public static object xmrExceptionThrownValue (Exception ex)
         {
             return ((ScriptThrownException)ex).thrown;
         }
 
         // Return exception's short type name, eg, NullReferenceException, ScriptThrownException, etc.
-        public string XMRExceptionTypeName (Exception ex)
+        public static string xmrExceptionTypeName (Exception ex)
         {
             return ex.GetType ().Name;
         }
@@ -1156,6 +1404,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
         }
     }
+
+    // Any xmr...() methods that call CheckRun() must be tagged with this attribute
+    // so the ScriptCodeGen will know the method is non-trivial.
+    public class xmrMethodIsComplexAttribute : Attribute { }
 
     [SerializableAttribute]
     public class OutOfHeapException : Exception, ISerializable {

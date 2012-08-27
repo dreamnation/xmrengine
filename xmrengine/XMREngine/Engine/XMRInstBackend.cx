@@ -154,7 +154,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          *                         execute their event handlers.  When any such event
          *                         handler exits, continue waiting for events or the
          *                         timeout.
-         * @param line = linenumber in script of the call
          * @returns empty list: no event was queued that matched returnMask and the timeout was reached
          *                      or a background event handler changed state (eg, via 'state' statement)
          *                else: list giving parameters of the event:
@@ -171,7 +170,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          *      the returnMask argumetns should be handled in the background.
          *   4) Any events not listed in either returnMask or backgroundMask arguments will be
          *      queued for later processing (subject to normal queue limits).
-         *   5) Background event handlers execute as calls from within XMREventDequeue, they do
+         *   5) Background event handlers execute as calls from within xmrEventDequeue, they do
          *      not execute as separate threads.  Thus any background event handlers must return
          *      before the call to xmrEventDequeue will return.
          *   6) If a background event handler changes state (eg, via 'state' statement), the state
@@ -179,13 +178,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          *   7) For returned events, the detect parameters are overwritten by the returned event.
          *      For background events, the detect parameters are saved and restored.
          *   8) Scripts must contain dummy event handler definitions for any event types that may 
-         *      be returned by XMREventDequeue, to let the runtime know that the script is capable 
+         *      be returned by xmrEventDequeue, to let the runtime know that the script is capable 
          *      of processing that event type.  Otherwise, the event may not be queued to the script.
          */
         private static LSL_List emptyList = new LSL_List (new object[0]);
 
-        public override LSL_List XMREventDequeue (SCRIPTFLOAT timeout, int returnMask1, int returnMask2, 
-                                                  int backgroundMask1, int backgroundMask2, int line)
+        public override LSL_List xmrEventDequeue (SCRIPTFLOAT timeout, int returnMask1, int returnMask2, 
+                                                  int backgroundMask1, int backgroundMask2)
         {
             DateTime sleepUntil = DateTime.UtcNow + TimeSpan.FromMilliseconds (timeout * 1000.0);
             EventParams evt = null;
@@ -197,13 +196,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             ScriptEventCode evc;
 
             if (callMode == CALLMODE_NORMAL) goto findevent;
-            sv          = RestoreStackFrame ("XMREventDequeue", out callNo);
+            sv          = RestoreStackFrame ("xmrEventDequeue", out callNo);
             sleepUntil  = DateTime.Parse ((string)sv[0]);
             returnMask1 = (int)sv[1];
             returnMask2 = (int)sv[2];
             mask1       = (int)sv[3];
             mask2       = (int)sv[4];
-            line        = (int)sv[5];
             goto __call0;
 
             /*
@@ -230,16 +228,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             suspendOnCheckRunTemp = true;
         __call0:
             try {
-                CheckRun (line);
+                CheckRun (0);
             } finally {
                 if (callMode != CALLMODE_NORMAL) {
-                    sv    = CaptureStackFrame ("XMREventDequeue", 0, 6);
+                    sv    = CaptureStackFrame ("xmrEventDequeue", 0, 5);
                     sv[0] = sleepUntil.ToString ();
                     sv[1] = returnMask1;
                     sv[2] = returnMask2;
                     sv[3] = mask1;
                     sv[4] = mask2;
-                    sv[5] = line;
                 }
             }
             goto checktmo;
@@ -313,12 +310,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         /**
          * @brief Enqueue an event
-         * @param ev = as returned by XMREventDequeue saying which event type to queue
+         * @param ev = as returned by xmrEventDequeue saying which event type to queue
          *             and what argument list to pass to it.  The llDetect...() parameters
          *             are as currently set for the script (use xmrEventLoadDets to set how
          *             you want them to be different).
          */
-        public override void XMREventEnqueue (LSL_List ev)
+        public override void xmrEventEnqueue (LSL_List ev)
         {
             object[] data = ev.Data;
             ScriptEventCode evc = (ScriptEventCode)ListInt (data[0]);
@@ -332,12 +329,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         /**
          * @brief Call the current state's event handler.
-         * @param ev = as returned by XMREventDequeue saying which event handler to call
+         * @param ev = as returned by xmrEventDequeue saying which event handler to call
          *             and what argument list to pass to it.  The llDetect...() parameters
          *             are as currently set for the script (use xmrEventLoadDets to set how
          *             you want them to be different).
          */
-        public override void XMREventCallHandler (LSL_List ev)
+        public override void xmrEventCallHandler (LSL_List ev)
         {
             object[] data = ev.Data;
             int evc = ListInt (data[0]);
@@ -366,7 +363,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         private const int saveDPVer = 1;
 
-        public override LSL_List XMREventSaveDets ()
+        public override LSL_List xmrEventSaveDets ()
         {
             int len = m_DetectParams.Length;
             object[] dps = new object[len*16+1];
@@ -396,9 +393,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         /**
          * @brief Load current detect params from a list
-         * @param dpList = as returned by XMREventSaveDets()
+         * @param dpList = as returned by xmrEventSaveDets()
          */
-        public override void XMREventLoadDets (LSL_List dpList)
+        public override void xmrEventLoadDets (LSL_List dpList)
         {
             object[] objs = dpList.Data;
             int j = 0;
@@ -472,7 +469,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /**
          * @brief Script is calling xmrStackLeft().
          */
-        public override int StackLeft()
+        public override int xmrStackLeft()
         {
             return (int)MMRUThread.StackLeft();
         }

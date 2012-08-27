@@ -1,5 +1,5 @@
 /***************************************************\
- *  COPYRIGHT 2009, Mike Rieker, Beverly, MA, USA  *
+ *  COPYRIGHT 2012, Mike Rieker, Beverly, MA, USA  *
  *  All rights reserved.                           *
 \***************************************************/
 
@@ -32,42 +32,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static Type[] oneDoub  = new Type[] { typeof (double) };
 		private static Type[] twoDoubs = new Type[] { typeof (double), typeof (double) };
 
-		private static TokenTypeExc    tokenTypeExc    = new TokenTypeExc (null);
-		private static TokenTypeFloat  tokenTypeFloat  = new TokenTypeFloat (null);
-		private static TokenTypeInt    tokenTypeInt    = new TokenTypeInt (null);
-		private static TokenTypeStr    tokenTypeString = new TokenTypeStr (null);
+		private static TokenTypeFloat tokenTypeFloat  = new TokenTypeFloat (null);
 
-		private static readonly FieldInfo heapLimitFieldInfo = typeof (XMRInstAbstract).GetField ("heapLimit");
-		private static readonly FieldInfo heapTotalFieldInfo = typeof (XMRInstAbstract).GetField ("heapTotal");
-
-///		private static MethodInfo consoleWrite = ScriptCodeGen.GetStaticMethod (typeof (XMRInstAbstract), "ConsoleWrite",
-///				new Type[] { typeof (XMRInstAbstract), typeof (string) });
 		private static MethodInfo roundMethInfo = ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Round", 
 				new Type[] { typeof (double), typeof (MidpointRounding) });
 
-		private static MethodInfo xmrEventCallHandler = typeof (XMRInstAbstract).GetMethod ("XMREventCallHandler",
-				new Type[] { typeof (LSL_List) });
-		private static MethodInfo xmrEventDequeue  = typeof (XMRInstAbstract).GetMethod ("XMREventDequeue",
-				new Type[] { typeof (SCRIPTFLOAT), typeof (int), typeof (int), typeof (int), typeof (int), typeof (int) });
-		private static MethodInfo xmrEventEnqueue = typeof (XMRInstAbstract).GetMethod ("XMREventEnqueue",
-				new Type[] { typeof (LSL_List) });
-		private static MethodInfo xmrEventLoadDets = typeof (XMRInstAbstract).GetMethod ("XMREventLoadDets",
-				new Type[] { typeof (LSL_List) });
-		private static MethodInfo xmrEventSaveDets = typeof (XMRInstAbstract).GetMethod ("XMREventSaveDets",
-				new Type[] { });
-		private static MethodInfo xmrOSParseJSON = typeof (XMRInstAbstract).GetMethod ("XMRosParseJSON", 
-				new Type[] { typeof (string) });
-
-		private static MethodInfo xmrExceptionMessage     = typeof (XMRInstAbstract).GetMethod ("XMRExceptionMessage",     new Type[] { typeof (Exception) });
-		private static MethodInfo xmrExceptionStackTrace  = typeof (XMRInstAbstract).GetMethod ("XMRExceptionStackTrace",  new Type[] { typeof (Exception) });
-		private static MethodInfo xmrExceptionThrownValue = typeof (XMRInstAbstract).GetMethod ("XMRExceptionThrownValue", new Type[] { typeof (Exception) });
-		private static MethodInfo xmrExceptionTypeName    = typeof (XMRInstAbstract).GetMethod ("XMRExceptionTypeName",    new Type[] { typeof (Exception) });
-
 		/*
 		 * For those listed in noCheckRun, we just generate the call (simple computations).
-		 * For all others, we generate the call then a call to wrapper.continuation.CheckRun().
+		 * For all others, we generate the call then a call to CheckRun().
 		 */
-		private static string[] noCheckRun = new string[] {
+		private static string[] noCheckRuns = new string[] {
 			"llBase64ToString",
 			"llCSV2List",
 			"llDeleteSubList",
@@ -133,58 +107,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			inf = new TokenDeclInline (ifd, false, "llTan(float)",         typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Tan",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
 
 			/*
-			 * Our internally defined functions.
-			 */
-		///	inf = new TokenDeclInline (ifd, false, "consoleWrite(string)",                                    typeof (void),        null); inf.codeGen = inf.CodeGenConsoleWrite;
-			inf = new TokenDeclInline (ifd, false, "xmrEventCallHandler(list)",                               typeof (void),        null); inf.codeGen = inf.CodeGenXMREventCallHandler;
-			inf = new TokenDeclInline (ifd, true,  "xmrEventDequeue(float,integer,integer,integer,integer)",  typeof (LSL_List),    null); inf.codeGen = inf.CodeGenXMREventDequeue;
-			inf = new TokenDeclInline (ifd, false, "xmrEventEnqueue(list)",                                   typeof (void),        null); inf.codeGen = inf.CodeGenXMREventEnqueue;
-			inf = new TokenDeclInline (ifd, false, "xmrEventLoadDets(list)",                                  typeof (void),        null); inf.codeGen = inf.CodeGenXMREventLoadDets;
-			inf = new TokenDeclInline (ifd, false, "xmrEventSaveDets()",                                      typeof (LSL_List),    null); inf.codeGen = inf.CodeGenXMREventSaveDets;
-			inf = new TokenDeclInline (ifd, false, "xmrHeapLeft()",                                           typeof (int),         null); inf.codeGen = inf.CodeGenXMRHeapLeft;
-			inf = new TokenDeclInline (ifd, false, "xmrStackLeft()",                                          typeof (int),         null); inf.codeGen = inf.CodeGenXMRStackLeft;
-			inf = new TokenDeclInline (ifd, false, "xmrTypeName(object)",                                     typeof (string),      null); inf.codeGen = inf.CodeGenXMRTypeName;
-			inf = new TokenDeclInline (ifd, false, "xmrHashCode(float)",                                      typeof (int),         null); inf.codeGen = inf.CodeGenXMRHashCodeFloat;
-			inf = new TokenDeclInline (ifd, false, "xmrHashCode(integer)",                                    typeof (int),         null); inf.codeGen = inf.CodeGenXMRHashCodeInteger;
-			inf = new TokenDeclInline (ifd, false, "xmrHashCode(object)",                                     typeof (int),         null); inf.codeGen = inf.CodeGenXMRHashCodeObject;
-			inf = new TokenDeclInline (ifd, false, "xmrArrayCopy(object,integer,object,integer,integer)",     typeof (int),         null); inf.codeGen = inf.CodeGenXMRArrayCopy;
-			inf = new TokenDeclInline (ifd, false, "xmrArray2List(object,integer,integer)",                   typeof (LSL_List),    null); inf.codeGen = inf.CodeGenXMRArray2List;
-			inf = new TokenDeclInline (ifd, false, "xmrList2Array(list,integer,object,integer,integer)",      typeof (void),        null); inf.codeGen = inf.CodeGenXMRList2Array;
-			inf = new TokenDeclInline (ifd, false, "xmrChars2String(object,integer,integer)",                 typeof (string),      null); inf.codeGen = inf.CodeGenXMRChars2String;
-			inf = new TokenDeclInline (ifd, false, "xmrString2Chars(string,integer,object,integer,integer)",  typeof (void),        null); inf.codeGen = inf.CodeGenXMRString2Chars;
-			inf = new TokenDeclInline (ifd, false, "xmrExceptionMessage(exception)",                          typeof (string),      null); inf.codeGen = inf.CodeGenXMRExceptionMessage;
-			inf = new TokenDeclInline (ifd, false, "xmrExceptionStackTrace(exception)",                       typeof (string),      null); inf.codeGen = inf.CodeGenXMRExceptionStackTrace;
-			inf = new TokenDeclInline (ifd, false, "xmrExceptionThrownValue(exception)",                      typeof (object),      null); inf.codeGen = inf.CodeGenXMRExceptionThrownValue;
-			inf = new TokenDeclInline (ifd, false, "xmrExceptionTypeName(exception)",                         typeof (string),      null); inf.codeGen = inf.CodeGenXMRExceptionTypeName;
-
-			inf = new TokenDeclInline (ifd, false, "xmrFixedArrayAllocC(integer)",                            typeof (object),      null); inf.codeGen = inf.CodeGenXMRFixedArrayAllocC;
-			inf = new TokenDeclInline (ifd, false, "xmrFixedArrayGetC(object,integer)",                       typeof (char),        null); inf.codeGen = inf.CodeGenXMRFixedArrayGetC;
-			inf = new TokenDeclInline (ifd, false, "xmrFixedArraySetC(object,integer,char)",                  typeof (void),        null); inf.codeGen = inf.CodeGenXMRFixedArraySetC;
-			inf = new TokenDeclInline (ifd, false, "xmrFixedArrayAllocF(integer)",                            typeof (object),      null); inf.codeGen = inf.CodeGenXMRFixedArrayAllocF;
-			inf = new TokenDeclInline (ifd, false, "xmrFixedArrayGetF(object,integer)",                       typeof (SCRIPTFLOAT), null); inf.codeGen = inf.CodeGenXMRFixedArrayGetF;
-			inf = new TokenDeclInline (ifd, false, "xmrFixedArraySetF(object,integer,float)",                 typeof (void),        null); inf.codeGen = inf.CodeGenXMRFixedArraySetF;
-			inf = new TokenDeclInline (ifd, false, "xmrFixedArrayAllocI(integer)",                            typeof (object),      null); inf.codeGen = inf.CodeGenXMRFixedArrayAllocI;
-			inf = new TokenDeclInline (ifd, false, "xmrFixedArrayGetI(object,integer)",                       typeof (int),         null); inf.codeGen = inf.CodeGenXMRFixedArrayGetI;
-			inf = new TokenDeclInline (ifd, false, "xmrFixedArraySetI(object,integer,integer)",               typeof (void),        null); inf.codeGen = inf.CodeGenXMRFixedArraySetI;
-			inf = new TokenDeclInline (ifd, false, "xmrFixedArrayAllocO(integer)",                            typeof (object),      null); inf.codeGen = inf.CodeGenXMRFixedArrayAllocO;
-			inf = new TokenDeclInline (ifd, false, "xmrFixedArrayGetO(object,integer)",                       typeof (object),      null); inf.codeGen = inf.CodeGenXMRFixedArrayGetO;
-			inf = new TokenDeclInline (ifd, false, "xmrFixedArraySetO(object,integer,object)",                typeof (void),        null); inf.codeGen = inf.CodeGenXMRFixedArraySetO;
-
-			/*
-			 * Jack-assed os...() functions that use screwy types.
-			 */
-			inf = new TokenDeclInline (ifd, false, "osParseJSON(string)",                                    typeof (XMR_Array), null); inf.codeGen = inf.CodeGenOSParseJSON;
-
-			/*
 			 * Finally for any API functions defined by SCRIPTBASECLASS that are not overridden 
 			 * by anything already defined above, create an inline definition to call it.
 			 */
+			AddInterfaceMethods (ifd, typeof (XMRInstAbstract));
 			AddInterfaceMethods (ifd, typeof (SCRIPTBASECLASS));
 			AddInterfaceMethods (ifd, typeof (IOSSL_Api));
 
 			return ifd;
 		}
 
+		/**
+		 * @brief Add API functions from the given interface to list of built-in functions.
+		 *        Only functions beginning with a lower-case letter are entered, all others ignored.
+		 * @param ifd = internal function dictionary to add them to
+		 * @param ifaceType = interface to scan for functions
+		 */
 		private static void AddInterfaceMethods (VarDict ifd, Type ifaceType)
 		{
 			MethodInfo[] ifaceMethods = ifaceType.GetMethods ();
@@ -201,11 +139,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					/*
 					 * See if we will generate a call to CheckRun() right 
 					 * after we generate a call to the function.
+					 * If function begins with xmr, assume we will not call CheckRun()
+					 * Otherwise, assume we will call CheckRun()
 					 */
-					bool doCheckRun = true;
-					for (int i = noCheckRun.Length; -- i >= 0;) {
-						if (noCheckRun[i] == ifaceMethod.Name) {
-							doCheckRun = false;
+					bool dcr = !key.StartsWith ("xmr");
+					for (int i = noCheckRuns.Length; -- i >= 0;) {
+						if (noCheckRuns[i] == key) {
+							dcr = false;
 							break;
 						}
 					}
@@ -225,7 +165,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 * Add function to dictionary.
 					 */
 					TokenType retType      = TokenType.FromSysType (null, ifaceMethod.ReturnType);
-					TokenDeclInline inlfun = new TokenDeclInline (ifd, doCheckRun, key, retType, argDecl, ifaceMethod);
+					TokenDeclInline inlfun = new TokenDeclInline (ifd, dcr, key, retType, argDecl, ifaceMethod);
 					inlfun.codeGen         = inlfun.CodeGenBEApi;
 				} catch {
 
@@ -258,7 +198,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.retType     = TokenType.FromSysType (null, retType);
 			this.methInfo    = methInfo;
 			this.doCheckRun  = doCheckRun;
-			this.triviality  = doCheckRun ? Triviality.complex : Triviality.trivial;
+			this.triviality  = (doCheckRun || IsTaggedComplex (methInfo)) ? Triviality.complex : Triviality.trivial;
 
 			int j = nameArgSig.IndexOf ('(');
 			this.name = new TokenName (null, nameArgSig.Substring (0, j ++));
@@ -300,9 +240,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.methInfo    = methInfo;
 			this.argDecl     = argDecl;
 			this.doCheckRun  = doCheckRun;
-			this.triviality  = doCheckRun ? Triviality.complex : Triviality.trivial;
+			this.triviality  = (doCheckRun || IsTaggedComplex (methInfo)) ? Triviality.complex : Triviality.trivial;
 			this.location    = new CompValuInline (this);
 			ifd.AddEntry (this);
+		}
+
+		/**
+		 * @brief The above code assumes all methods beginning with 'xmr' are trivial, ie, 
+		 *        they do not call CheckRun() and also we do not generate a CheckRun() 
+		 *        call after they return.  So if an 'xmr' method does call CheckRun(), it 
+		 *        must be tagged with attribute 'xmrMethodIsComplexAttribute' so we know 
+		 *        the method is not trivial.  But in neither case do we emit our own call 
+		 *        to CheckRun(), the 'xmr' method must do its own.
+		 */
+		private static bool IsTaggedComplex (MethodInfo methInfo)
+		{
+			if (methInfo != null) {
+				foreach (Attribute attr in Attribute.GetCustomAttributes (methInfo)) {
+					if (attr is xmrMethodIsComplexAttribute) return true;
+				}
+			}
+			return false;
 		}
 
 		/**
@@ -345,399 +303,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		/**
-		 * @brief Generate code to print a debug string on stdout.
-		 *        Script-level prototype:  void consoleWrite(string)
-		 */
-///		private void CodeGenConsoleWrite (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-///		{
-///			scg.PushXMRInst ();
-///			args[0].PushVal (scg, errorAt, tokenTypeString);
-///			scg.ilGen.Emit (errorAt, OpCodes.Call, consoleWrite);
-///		}
-
-		/**
-		 * @brief Generate code to call an event handler
-		 *        Script-level prototype:  xmrEventCallHandler(list)
-		 */
-		private void CodeGenXMREventCallHandler (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			scg.PushXMRInst ();
-			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (errorAt, OpCodes.Call, xmrEventCallHandler);
-		}
-
-		/**
-		 * @brief Generate code to dequeue an event
-		 *        Script-level prototype:  list xmrEventDequeue(float,integer,integer,integer,integer)
-		 */
-		private void CodeGenXMREventDequeue (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			scg.PushXMRInst ();
-			args[0].PushVal (scg, errorAt, tokenTypeFloat);
-			args[1].PushVal (scg, errorAt, tokenTypeInt);
-			args[2].PushVal (scg, errorAt, tokenTypeInt);
-			args[3].PushVal (scg, errorAt, tokenTypeInt);
-			args[4].PushVal (scg, errorAt, tokenTypeInt);
-			scg.ilGen.PushInt (errorAt.line);
-			scg.ilGen.Emit (errorAt, OpCodes.Call, xmrEventDequeue);
-			result.Pop (scg, errorAt, retType);
-		}
-
-		/**
-		 * @brief Generate code to enqueue an event
-		 *        Script-level prototype:  xmrEventEnqueue(list)
-		 */
-		private void CodeGenXMREventEnqueue (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			scg.PushXMRInst ();
-			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (errorAt, OpCodes.Call, xmrEventEnqueue);
-		}
-
-		/**
-		 * @brief Generate code to load event detect parameters
-		 *        Script-level prototype:  xmrEventLoadDets(list)
-		 */
-		private void CodeGenXMREventLoadDets (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			scg.PushXMRInst ();
-			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (errorAt, OpCodes.Call, xmrEventLoadDets);
-		}
-
-		/**
-		 * @brief Generate code to save event detect parameters
-		 *        Script-level prototype:  list xmrEventSaveDets()
-		 */
-		private void CodeGenXMREventSaveDets (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			scg.PushXMRInst ();
-			scg.ilGen.Emit (errorAt, OpCodes.Call, xmrEventSaveDets);
-			result.Pop (scg, errorAt, retType);
-		}
-
-		/**
-		 * @brief Generate code to return number of bytes of heap they have left.
-		 *        Script-level prototype:  integer xmrHeapLeft()
-		 */
-		private void CodeGenXMRHeapLeft (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			scg.PushXMRInst ();
-			scg.ilGen.Emit (errorAt, OpCodes.Ldfld, heapLimitFieldInfo);
-			scg.PushXMRInst ();
-			scg.ilGen.Emit (errorAt, OpCodes.Ldfld, heapTotalFieldInfo);
-			scg.ilGen.Emit (errorAt, OpCodes.Sub);
-			result.Pop (scg, errorAt, retType);
-		}
-
-		/**
-		 * @brief Generate code to return number of bytes of stack they have left.
-		 *        Script-level prototype:  integer xmrStackLeft()
-		 */
-		private static MethodInfo stackLeftMethodInfo = typeof (XMRInstAbstract).GetMethod ("StackLeft", new Type[0]);
-		private void CodeGenXMRStackLeft (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			scg.PushXMRInst ();
-			scg.ilGen.Emit (errorAt, OpCodes.Call, stackLeftMethodInfo);
-			result.Pop (scg, errorAt, retType);
-		}
-
-		/**
-		 * @brief Generate code to return type name of the argument
-		 *        Script-level prototype:  string xmrTypeName(object)
-		 */
-		private static MethodInfo typeNameMethodInfo = typeof (XMRInstAbstract).GetMethod ("XMRTypeName", new Type[] { typeof (object) });
-		private void CodeGenXMRTypeName (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			scg.PushXMRInst ();
-			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (errorAt, OpCodes.Call, typeNameMethodInfo);
-			result.Pop (scg, errorAt, retType);
-		}
-
-		/**
-		 * @brief Generate code to return hash code of the argument
-		 *        Script-level prototypes:  int xmrHashCode(float)
-		 *                                  int xmrHashCode(integer)
-		 *                                  int xmrHashCode(object)
-		 */
-		private static MethodInfo hashCodeFloatMethodInfo  = typeof (SCRIPTFLOAT).GetMethod ("GetHashCode", new Type[] { });
-		private static MethodInfo hashCodeObjectMethodInfo = typeof (object).GetMethod ("GetHashCode", new Type[] { });
-		private void CodeGenXMRHashCodeFloat (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			if (args[0] is CompValuFloat) {
-				scg.ilGen.PushInt (((CompValuFloat)args[0]).x.GetHashCode ());
-			} else {
-				try {
-					args[0].PushRef (scg, errorAt);
-				} catch {
-					ScriptMyLocal temp = scg.ilGen.DeclareLocal (typeof (SCRIPTFLOAT), "hashcodefloat");
-					args[0].PushVal (scg, errorAt);
-					scg.ilGen.Emit (errorAt, OpCodes.Stloc, temp);
-					scg.ilGen.Emit (errorAt, OpCodes.Ldloca, temp);
-				}
-				scg.ilGen.Emit (errorAt, OpCodes.Call, hashCodeFloatMethodInfo);
-			}
-			result.Pop (scg, errorAt, retType);
-		}
-		private void CodeGenXMRHashCodeInteger (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			args[0].PushVal (scg, errorAt);
-			result.Pop (scg, errorAt, retType);
-		}
-		private void CodeGenXMRHashCodeObject (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (errorAt, OpCodes.Callvirt, hashCodeObjectMethodInfo);
-			result.Pop (scg, errorAt, retType);
-		}
-
-		/**
-		 * @brief Generate code to access fixed-dimension arrays
-		 */
-		// object xmrFixedAllocC(integer)
-		private void CodeGenXMRFixedArrayAllocC (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (errorAt, OpCodes.Newarr, typeof (char));
-			result.Pop (scg, errorAt);
-		}
-
-		// integer xmrFixedGetC(object,integer)
-		private void CodeGenXMRFixedArrayGetC (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (errorAt, OpCodes.Castclass, typeof (char[]));
-			args[1].PushVal (scg, errorAt);
-			scg.ilGen.Emit (errorAt, OpCodes.Ldelem_I2);
-			result.Pop (scg, errorAt);
-		}
-
-		// xmrFixedSetC(object,integer,integer)
-		private void CodeGenXMRFixedArraySetC (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (errorAt, OpCodes.Castclass, typeof (char[]));
-			args[1].PushVal (scg, errorAt);
-			args[2].PushVal (scg, errorAt);
-			scg.ilGen.Emit (errorAt, OpCodes.Stelem_I2);
-		}
-
-		// object xmrFixedAllocF(integer)
-		private void CodeGenXMRFixedArrayAllocF (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (errorAt, OpCodes.Newarr, typeof (SCRIPTFLOAT));
-			result.Pop (scg, errorAt);
-		}
-
-		// float xmrFixedGetF(object,integer)
-		private void CodeGenXMRFixedArrayGetF (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (errorAt, OpCodes.Castclass, typeof (SCRIPTFLOAT[]));
-			args[1].PushVal (scg, errorAt);
-#define float Ldelem_R4
-#define double Ldelem_R8
-			scg.ilGen.Emit (errorAt, OpCodes.SCRIPTFLOAT);
-#undef float
-#undef double
-			result.Pop (scg, errorAt);
-		}
-
-		// xmrFixedSetF(object,integer,float)
-		private void CodeGenXMRFixedArraySetF (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (errorAt, OpCodes.Castclass, typeof (SCRIPTFLOAT[]));
-			args[1].PushVal (scg, errorAt);
-			args[2].PushVal (scg, errorAt);
-#define float Stelem_R4
-#define double Stelem_R8
-			scg.ilGen.Emit (errorAt, OpCodes.SCRIPTFLOAT);
-#undef float
-#undef double
-		}
-
-		// object xmrFixedAllocI(integer)
-		private void CodeGenXMRFixedArrayAllocI (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (errorAt, OpCodes.Newarr, typeof (int));
-			result.Pop (scg, errorAt);
-		}
-
-		// integer xmrFixedGetI(object,integer)
-		private void CodeGenXMRFixedArrayGetI (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (errorAt, OpCodes.Castclass, typeof (int[]));
-			args[1].PushVal (scg, errorAt);
-			scg.ilGen.Emit (errorAt, OpCodes.Ldelem_I4);
-			result.Pop (scg, errorAt);
-		}
-
-		// xmrFixedSetI(object,integer,integer)
-		private void CodeGenXMRFixedArraySetI (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (errorAt, OpCodes.Castclass, typeof (int[]));
-			args[1].PushVal (scg, errorAt);
-			args[2].PushVal (scg, errorAt);
-			scg.ilGen.Emit (errorAt, OpCodes.Stelem_I4);
-		}
-
-		// object xmrFixedAllocO(integer)
-		private void CodeGenXMRFixedArrayAllocO (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (errorAt, OpCodes.Newarr, typeof (object));
-			result.Pop (scg, errorAt);
-		}
-
-		// object xmrFixedGetO(object,integer)
-		private void CodeGenXMRFixedArrayGetO (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (errorAt, OpCodes.Castclass, typeof (object[]));
-			args[1].PushVal (scg, errorAt);
-			scg.ilGen.Emit (errorAt, OpCodes.Ldelem, typeof (object));
-			result.Pop (scg, errorAt);
-		}
-
-		// xmrFixedSetO(object,integer,object)
-		private void CodeGenXMRFixedArraySetO (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			args[0].PushVal (scg, errorAt);
-			scg.ilGen.Emit (errorAt, OpCodes.Castclass, typeof (object[]));
-			args[1].PushVal (scg, errorAt);
-			args[2].PushVal (scg, errorAt);
-			scg.ilGen.Emit (errorAt, OpCodes.Stelem, typeof (object));
-		}
-
-		/**
-		 * @brief Generate code to return type name of the argument
-		 *        Script-level prototype:  xmrArrayCppy(object,integer,object,integer,integer)
-		 */
-		private static MethodInfo arrayCopyMethodInfo = typeof (XMRSDTypeClObj).GetMethod ("XMRArrayCopy", new Type[] { typeof (object), typeof (int), typeof (object), typeof (int), typeof (int) });
-		private void CodeGenXMRArrayCopy (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			args[0].PushVal (scg, errorAt);
-			args[1].PushVal (scg, errorAt);
-			args[2].PushVal (scg, errorAt);
-			args[3].PushVal (scg, errorAt);
-			args[4].PushVal (scg, errorAt);
-			scg.ilGen.Emit (errorAt, OpCodes.Call, arrayCopyMethodInfo);
-		}
-
-		/**
-		 * @brief List <-> Array conversion
-		 */
-		private static MethodInfo array2ListMethodInfo = typeof (XMRSDTypeClObj).GetMethod ("XMRArray2List", new Type[] { typeof (object), typeof (int), typeof (int) });
-		private void CodeGenXMRArray2List (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			args[0].PushVal (scg, errorAt);
-			args[1].PushVal (scg, errorAt);
-			args[2].PushVal (scg, errorAt);
-			scg.ilGen.Emit (errorAt, OpCodes.Call, array2ListMethodInfo);
-			result.Pop (scg, errorAt);
-		}
-
-		private static MethodInfo list2ArrayMethodInfo = typeof (XMRSDTypeClObj).GetMethod ("XMRList2Array", new Type[] { typeof (LSL_List), typeof (int), typeof (object), typeof (int), typeof (int) });
-		private void CodeGenXMRList2Array (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			args[0].PushVal (scg, errorAt);
-			args[1].PushVal (scg, errorAt);
-			args[2].PushVal (scg, errorAt);
-			args[3].PushVal (scg, errorAt);
-			args[4].PushVal (scg, errorAt);
-			scg.ilGen.Emit (errorAt, OpCodes.Call, list2ArrayMethodInfo);
-		}
-
-		/**
-		 * @brief String <-> Char Array conversion
-		 */
-		private static MethodInfo chars2StringMethodInfo = typeof (XMRSDTypeClObj).GetMethod ("XMRChars2String", new Type[] { typeof (object), typeof (int), typeof (int) });
-		private void CodeGenXMRChars2String (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			args[0].PushVal (scg, errorAt);
-			args[1].PushVal (scg, errorAt);
-			args[2].PushVal (scg, errorAt);
-			scg.ilGen.Emit (errorAt, OpCodes.Call, chars2StringMethodInfo);
-			result.Pop (scg, errorAt);
-		}
-
-		private static MethodInfo string2CharsMethodInfo = typeof (XMRSDTypeClObj).GetMethod ("XMRString2Chars", new Type[] { typeof (string), typeof (int), typeof (object), typeof (int), typeof (int) });
-		private void CodeGenXMRString2Chars (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			args[0].PushVal (scg, errorAt);
-			args[1].PushVal (scg, errorAt);
-			args[2].PushVal (scg, errorAt);
-			args[3].PushVal (scg, errorAt);
-			args[4].PushVal (scg, errorAt);
-			scg.ilGen.Emit (errorAt, OpCodes.Call, string2CharsMethodInfo);
-		}
-
-		/**
-		 * @brief Generate code to parse a JSON string
-		 *        Script-level prototype:  array osParseJSON(string)
-		 */
-		private void CodeGenOSParseJSON (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			scg.PushXMRInst ();
-			args[0].PushVal (scg, errorAt, tokenTypeString);
-			scg.ilGen.Emit (errorAt, OpCodes.Call, xmrOSParseJSON);
-			result.Pop (scg, errorAt, retType);
-		}
-
-		/**
-		 * @brief Generate code to for exception-related calls.
-		 */
-		private void CodeGenXMRExceptionMessage (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			scg.PushXMRInst ();
-			args[0].PushVal (scg, errorAt, tokenTypeExc);
-			scg.ilGen.Emit (errorAt, OpCodes.Call, xmrExceptionMessage);
-			result.Pop (scg, errorAt, retType);
-		}
-
-		private void CodeGenXMRExceptionStackTrace (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			scg.PushXMRInst ();
-			args[0].PushVal (scg, errorAt, tokenTypeExc);
-			scg.ilGen.Emit (errorAt, OpCodes.Call, xmrExceptionStackTrace);
-			result.Pop (scg, errorAt, retType);
-		}
-
-		private void CodeGenXMRExceptionThrownValue (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			scg.PushXMRInst ();
-			args[0].PushVal (scg, errorAt, tokenTypeExc);
-			scg.ilGen.Emit (errorAt, OpCodes.Call, xmrExceptionThrownValue);
-			result.Pop (scg, errorAt, retType);
-		}
-
-		private void CodeGenXMRExceptionTypeName (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
-		{
-			scg.PushXMRInst ();
-			args[0].PushVal (scg, errorAt, tokenTypeExc);
-			scg.ilGen.Emit (errorAt, OpCodes.Call, xmrExceptionTypeName);
-			result.Pop (scg, errorAt, retType);
-		}
-
-		/**
-		 * @brief Generate call to backend API function (eg llSay()) followed by a call to CheckRun().
-		 * @param scg = script being compiled
+		 * @brief Generate call to backend API function (eg llSay()) maybe followed by a call to CheckRun().
+		 * @param scg    = script being compiled
 		 * @param result = where to place result (might be void)
-		 * @param args = arguments to pass to API function
+		 * @param args   = script-visible arguments to pass to API function
 		 */
 		private void CodeGenBEApi (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
 		{
-			scg.PushXMRInst ();                               // xmrinstance = 'this' for the API function
-			for (int i = 0; i < args.Length; i ++) {          // push arguments
-				args[i].PushVal (scg, errorAt, argDecl.types[i]);  // .. boxing/unboxing as needed
+			if (!methInfo.IsStatic) {
+				scg.PushXMRInst ();                       // xmrinstance = 'this' for the API function
 			}
-			scg.ilGen.Emit (errorAt, OpCodes.Call, methInfo); // call API function
+			for (int i = 0; i < args.Length; i ++) {          // push arguments, boxing/unboxing as needed
+				args[i].PushVal (scg, errorAt, argDecl.types[i]);
+			}
+			if (methInfo.IsVirtual) {                         // call API function
+				scg.ilGen.Emit (errorAt, OpCodes.Callvirt, methInfo);
+			} else {
+				scg.ilGen.Emit (errorAt, OpCodes.Call, methInfo);
+			}
 			result.Pop (scg, errorAt, retType);               // pop result, boxing/unboxing as needed
 			if (doCheckRun) {
 				scg.EmitCallCheckRun (errorAt);           // maybe call CheckRun()
