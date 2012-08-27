@@ -729,7 +729,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             DELEGATE,
             SDTCLOBJ,
             SYSCHAR,
-            SYSERIAL
+            SYSERIAL,
+            THROWNEX
         }
 
         /**
@@ -919,6 +920,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             } else if (graph is XMRSDTypeClObj) {
                 mow.Write ((byte)Ser.SDTCLOBJ);
                 ((XMRSDTypeClObj)graph).Capture (this.SendObjValue);
+            } else if (graph is ScriptThrownException) {
+                MemoryStream memoryStream = new MemoryStream ();
+                System.Runtime.Serialization.Formatters.Binary.BinaryFormatter bformatter = 
+                        new System.Runtime.Serialization.Formatters.Binary.BinaryFormatter ();
+                bformatter.Serialize (memoryStream, graph);
+                byte[] rawBytes = memoryStream.ToArray ();
+                mow.Write ((byte)Ser.THROWNEX);
+                mow.Write ((int)rawBytes.Length);
+                mow.Write (rawBytes);
+                SendObjValue (((ScriptThrownException)graph).thrown);
             } else {
                 MemoryStream memoryStream = new MemoryStream ();
                 System.Runtime.Serialization.Formatters.Binary.BinaryFormatter bformatter = 
@@ -1128,6 +1139,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                             new System.Runtime.Serialization.Formatters.Binary.BinaryFormatter ();
                     object graph = bformatter.Deserialize (memoryStream);
                     this.migrateInObjects.Add (ident, graph);
+                    return graph;
+                }
+                case Ser.THROWNEX: {
+                    int rawLength   = mir.ReadInt32 ();
+                    byte[] rawBytes = mir.ReadBytes (rawLength);
+                    MemoryStream memoryStream = new MemoryStream (rawBytes);
+                    System.Runtime.Serialization.Formatters.Binary.BinaryFormatter bformatter = 
+                            new System.Runtime.Serialization.Formatters.Binary.BinaryFormatter ();
+                    object graph = bformatter.Deserialize (memoryStream);
+                    this.migrateInObjects.Add (ident, graph);
+                    ((ScriptThrownException)graph).thrown = RecvObjValue ();
                     return graph;
                 }
                 default: throw new Exception ("bad stream code " + code.ToString ());
