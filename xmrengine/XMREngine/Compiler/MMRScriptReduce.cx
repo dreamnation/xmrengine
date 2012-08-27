@@ -2599,6 +2599,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		private TokenStmt ParseStmtForEach (ref Token token)
 		{
+			currentDeclFunc.triviality = Triviality.complex;
+
 			/*
 			 * Create encapsulating token and skip past 'foreach ('
 			 */
@@ -5318,7 +5320,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		public bool IsFuncTrivial (ScriptCodeGen scg)
 		{
-			if (retType == null) throw new Exception ("can't call a non-function");
+			/*
+			 * If not really a function, assume it's a delegate.
+			 * And since we don't really know what functions it can point to, 
+			 * assume it can point to a non-trivial one.
+			 */
+			if (retType == null) return false;
 
 			/*
 			 * All virtual functions are non-trivial because although a particular 
