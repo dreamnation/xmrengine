@@ -14,7 +14,7 @@ default {
         }
 
         try {
-            llOwnerSay (((array)(object)undef).count);
+            llOwnerSay ((integer)(object)undef);
         } catch (exception ex) {
             PrintOutException (ex);
         }

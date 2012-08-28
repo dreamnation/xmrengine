@@ -18,14 +18,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     /**
      * @brief Array objects.
      */
-    public class XMR_Array : IDisposable {
+    public class XMR_Array : IComparer<object>, IDisposable {
         private const int EMPTYHEAP = 64;
         private const int ENTRYHEAP = 24;
 
         private bool enumrValid;                              // true: enumr set to return array[arrayValid]
                                                               // false: array[0..arrayValid-1] is all there is
-        private Dictionary<object, object> dnary = new Dictionary<object, object> ();
-        private Dictionary<object, object>.Enumerator enumr;  // enumerator used to fill 'array' past arrayValid to end of dictionary
+        private SortedDictionary<object, object> dnary;
+        private SortedDictionary<object, object>.Enumerator enumr;
+                                                              // enumerator used to fill 'array' past arrayValid to end of dictionary
         private int arrayValid;                               // number of elements in 'array' that have been filled in
         private int heapUse = 0;                              // approx number of bytes of heap used by the array
         private KeyValuePair<object, object>[] array;         // list of kvp's that have been returned by ForEach() since last modification
@@ -40,6 +41,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             this.inst = inst;
             heapUse = inst.UpdateHeapLeft (EMPTYHEAP, heapUse, this);
+            dnary = new SortedDictionary<object, object> (this);  // IComparer<object>
         }
 
         ~XMR_Array ()
@@ -186,7 +188,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return key;
         }
 
-
         /**
          * @brief Retrieve value of an arbitrary element.
          * @param number = number of the element (0 based)
@@ -259,27 +260,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public delegate void SendArrayObjDelegate (object graph);
         public void SendArrayObj (SendArrayObjDelegate sendObj)
         {
-            int index = arrayValid;
-            object key = null;
-            object val = null;
-
-            /*
-             * Completely fill the array from where it is already filled to the end.
-             * Any elements before arrayValid remain as the current enumerator has
-             * seen them, and any after arrayValid will be filled by that same
-             * enumerator.  The array will then be used on the receiving end to iterate
-             * in the same exact order, because a new enumerator on the receiving end
-             * probably wouldn't see them in the same order.
-             */
-            while (ForEach (index ++, ref key, ref val)) { }
-
             /*
              * Set the count then the elements themselves.
+             * UnfixKey() because sendObj doesn't handle XMRArrayListKeys.
              */
-            sendObj ((object)arrayValid);
-            for (index = 0; index < arrayValid; index ++) {
-                sendObj (UnfixKey (array[index].Key));
-                sendObj (array[index].Value);
+            sendObj (dnary.Count);
+            foreach (KeyValuePair<object, object> kvp in dnary) {
+                sendObj (UnfixKey (kvp.Key));
+                sendObj (kvp.Value);
             }
         }
 
@@ -292,40 +280,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public delegate object RecvArrayObjDelegate ();
         public void RecvArrayObj (RecvArrayObjDelegate recvObj)
         {
-            int index;
             int newHeapUse = EMPTYHEAP;
 
             /*
-             * Empty the dictionary.
+             * Cause any enumeration to refill the array from the sorted dictionary.
+             * Since it is a sorted dictionary, any enumerations will be in the same 
+             * order as on the sending side.
              */
-            dnary.Clear ();
-
-            /*
-             * Any enumerator in progress is now invalid, and all elements
-             * for enumeration must come from the array, so they will be in
-             * the same order they were in on the sending side.
-             */
+            arrayValid = 0;
             enumrValid = false;
 
             /*
-             * Get number of elements we will receive and set up an
-             * array to receive them into.  The array will be used
-             * for any enumerations in progress, and will have elements
-             * in order as given by previous calls to those enumerations.
+             * Fill dictionary.
              */
-            arrayValid = (int)recvObj ();
-            array = new KeyValuePair<object, object>[arrayValid];
-
-            /*
-             * Fill the array and dictionary.
-             * Any enumerations will use the array so they will be in the
-             * same order as on the sending side (until the dictionary is
-             * modified).
-             */
-            for (index = 0; index < arrayValid; index ++) {
+            dnary.Clear ();
+            int count = (int)recvObj ();
+            while (-- count >= 0) {
                 object key = FixKey (recvObj ());
                 object val = recvObj ();
-                array[index] = new KeyValuePair<object, object> (key, val);
                 dnary.Add (key, val);
                 newHeapUse += ENTRYHEAP;
             }
@@ -337,13 +309,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * So strip off any LSL-ness from the types.
          * We also deep-strip any given lists used as keys (multi-dimensional arrays).
          */
-        private static object FixKey (object key)
+        private object FixKey (object key)
         {
             if (key is LSL_Integer) return (int)(LSL_Integer)key;
             if (key is LSL_Float)   return (SCRIPTFLOAT)(LSL_Float)key;
             if (key is LSL_Key)     return (string)(LSL_Key)key;
             if (key is LSL_String)  return (string)(LSL_String)key;
-            if (key is LSL_List)    return new XMRArrayListKey ((LSL_List)key);
+            if (key is LSL_List)    return new XMRArrayListKey ((LSL_List)key, this);
             return key;  // int, SCRIPTFLOAT, string, LSL_Vector, LSL_Rotation, etc are ok as is
         }
 
@@ -359,6 +331,86 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         /**
+         * @brief Compare two keys
+         */
+        public int Compare (object x, object y)  // IComparer<object>
+        {
+            string xtn = x.GetType ().Name;
+            string ytn = y.GetType ().Name;
+            int ctn = String.Compare (xtn, ytn);
+            if (ctn != 0) return ctn;
+
+            ComparerDelegate cd;
+            if (!comparers.TryGetValue (xtn, out cd)) {
+                throw new Exception ("unsupported key type " + xtn);
+            }
+            return cd (x, y);
+        }
+
+        private delegate int ComparerDelegate (object a, object b);
+        private static Dictionary<string, ComparerDelegate> comparers = BuildComparers ();
+
+        private static Dictionary<string, ComparerDelegate> BuildComparers ()
+        {
+            Dictionary<string, ComparerDelegate> cmps = new Dictionary<string, ComparerDelegate> ();
+            cmps.Add (typeof (SCRIPTFLOAT).Name,     MyFloatComparer);
+            cmps.Add (typeof (int).Name,             MyIntComparer);
+            cmps.Add (typeof (XMRArrayListKey).Name, MyListKeyComparer);
+            cmps.Add (typeof (LSL_Rotation).Name,    MyRotationComparer);
+            cmps.Add (typeof (string).Name,          MyStringComparer);
+            cmps.Add (typeof (LSL_Vector).Name,      MyVectorComparer);
+            return cmps;
+        }
+
+        private static int MyFloatComparer (object a, object b)
+        {
+            SCRIPTFLOAT af = (SCRIPTFLOAT)a;
+            SCRIPTFLOAT bf = (SCRIPTFLOAT)b;
+            if (af < bf) return -1;
+            if (af > bf) return  1;
+            return 0;
+        }
+        private static int MyIntComparer (object a, object b)
+        {
+            return (int)a - (int)b;
+        }
+        private static int MyListKeyComparer (object a, object b)
+        {
+            XMRArrayListKey alk = (XMRArrayListKey)a;
+            return alk.Compare (alk, (XMRArrayListKey)b);
+        }
+        private static int MyRotationComparer (object a, object b)
+        {
+            LSL_Rotation ar = (LSL_Rotation)a;
+            LSL_Rotation br = (LSL_Rotation)b;
+            if (ar.x < br.x) return -1;
+            if (ar.x > br.x) return  1;
+            if (ar.y < br.y) return -1;
+            if (ar.y > br.y) return  1;
+            if (ar.z < br.z) return -1;
+            if (ar.z > br.z) return  1;
+            if (ar.s < br.s) return -1;
+            if (ar.s > br.s) return  1;
+            return 0;
+        }
+        private static int MyStringComparer (object a, object b)
+        {
+            return String.Compare ((string)a, (string)b);
+        }
+        private static int MyVectorComparer (object a, object b)
+        {
+            LSL_Vector av = (LSL_Vector)a;
+            LSL_Vector bv = (LSL_Vector)b;
+            if (av.x < bv.x) return -1;
+            if (av.x > bv.x) return  1;
+            if (av.y < bv.y) return -1;
+            if (av.y > bv.y) return  1;
+            if (av.z < bv.z) return -1;
+            if (av.z > bv.z) return  1;
+            return 0;
+        }
+
+        /**
          * @brief Lists used as keys must be sanitized first.
          *        List gets converted to an object[] and each element is converted from LSL_ types to system types where possible.
          *        And we also need an equality operator that compares the values of all elements of the list, not just the lengths.
@@ -366,6 +418,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          *        the dictionary as they don't ever change.
          */
         private class XMRArrayListKey {
+            private XMR_Array array;
             private LSL_List original;
             private object[] cleaned;
             private int length;
@@ -375,8 +428,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * @brief Construct a sanitized object[] from a list.
              *        Also save the original list in case we need it later.
              */
-            public XMRArrayListKey (LSL_List key)
+            public XMRArrayListKey (LSL_List key, XMR_Array array)
             {
+                this.array = array;
                 original = key;
                 object[] given = key.Data;
                 int len  = given.Length;
@@ -384,7 +438,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 cleaned  = new object[len];
                 int hc   = len;
                 for (int i = 0; i < len; i ++) {
-                    object v   = FixKey (given[i]);
+                    object v   = array.FixKey (given[i]);
                     hc        += hc + ((hc < 0) ? 1 : 0);
                     hc        ^= v.GetHashCode ();
                     cleaned[i] = v;
@@ -417,11 +471,39 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             /**
+             * @brief Compare for key sorting.
+             */
+            public int Compare (XMRArrayListKey x, XMRArrayListKey y)
+            {
+                int j = x.length - y.length;
+                if (j == 0) {
+                    for (int i = 0; i < x.length; i ++) {
+                        j = array.Compare (x.cleaned[i], y.cleaned[i]);
+                        if (j != 0) break;
+                    }
+                }
+                return j;
+            }
+
+            /**
              * @brief Get the original LSL_List we were built from.
              */
             public LSL_List GetOriginal ()
             {
                 return original;
+            }
+
+            /**
+             * @brief Debugging
+             */
+            public override string ToString ()
+            {
+                StringBuilder sb = new StringBuilder ();
+                for (int i = 0; i < length; i ++) {
+                    if (i > 0) sb.Append (',');
+                    sb.Append (cleaned[i].ToString ());
+                }
+                return sb.ToString ();
             }
         }
     }
