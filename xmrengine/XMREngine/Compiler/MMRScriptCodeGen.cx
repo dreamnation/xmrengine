@@ -4569,7 +4569,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				return;
 			}
 
-			throw new Exception ("unknown type " + type.ToString ());
+			throw new Exception ("unknown type " + type.GetType ().ToString ());
 		}
 
 		/**

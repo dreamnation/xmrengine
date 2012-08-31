@@ -66,8 +66,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	 * @brief This is a list that keeps track of types pushed on the evaluation stack.
 	 */
 	public class StackDepth : List<Type> {
-		public Type lastPopped;
-		public Type nextToLastPopped;
+		public List<bool> isBoxeds = new List<bool> ();
 
 		/**
 		 * @brief Pop call parameters and validate the types.
@@ -78,7 +77,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			int c = this.Count;
 			if (n > c) throw new Exception ("stack going negative");
 			for (int i = n; -- i >= 0;) {
-				ExpectedVsOnStack (pis[i].ParameterType, this[--c]);
+				-- c;
+				ExpectedVsOnStack (pis[i].ParameterType, this[c], isBoxeds[c]);
 			}
 			Pop (n);
 		}
@@ -92,7 +92,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			int c = this.Count;
 			if (n > c) throw new Exception ("stack going negative");
 			for (int i = ts.Length; -- i >= 0;) {
-				ExpectedVsOnStack (ts[i], this[--c]);
+				-- c;
+				ExpectedVsOnStack (ts[i], this[c], isBoxeds[c]);
 			}
 			Pop (n);
 		}
@@ -104,17 +105,80 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			int c = this.Count;
 			if (c < 1) throw new Exception ("stack going negative");
-			ExpectedVsOnStack (t, this[--c]);
+			ExpectedVsOnStack (t, this[c-1], isBoxeds[c-1]);
 			Pop (1);
 		}
 
-		// ex = what is expected to be on stack
-		// st = what is actually on stack
-		private void ExpectedVsOnStack (Type ex, Type st)
+		/**
+		 * @brief Pop a single value and validate that it is a numeric type.
+		 */
+		public Type PopNumVal ()
 		{
+			int c = this.Count;
+			if (c < 1) throw new Exception ("stack going negative");
+			Type st = this[--c];
+			if (st == null) {
+				throw new Exception ("stack has null, expecting a numeric");
+			}
+			if (isBoxeds[c]) {
+				throw new Exception ("stack is boxed " + st.Name + ", expecting a numeric");
+			}
+			if ((st != typeof (bool)) && (st != typeof (char))  && (st != typeof (int)) && 
+			    (st != typeof (long)) && (st != typeof (float)) && (st != typeof (double))) {
+				throw new Exception ("stack has " + st.Name + ", expecting a numeric");
+			}
+			return Pop (1);
+		}
+
+		/**
+		 * @brief Pop a single value and validate that it is a reference type
+		 */
+		public Type PopRef ()
+		{
+			int c = this.Count;
+			if (c < 1) throw new Exception ("stack going negative");
+			Type st = this[--c];
+			if ((st != null) && !isBoxeds[c] && st.IsValueType) {
+				throw new Exception ("stack has " + st.Name + ", expecting a ref type");
+			}
+			return Pop (1);
+		}
+
+		/**
+		 * @brief Pop a single value and validate that it is a value type
+		 */
+		public Type PopValue ()
+		{
+			int c = this.Count;
+			if (c < 1) throw new Exception ("stack going negative");
+			Type st = this[--c];
+			if (st == null) {
+				throw new Exception ("stack has null, expecting a value type");
+			}
+			if (!st.IsValueType) {
+				throw new Exception ("stack has " + st.Name + ", expecting a value type");
+			}
+			if (isBoxeds[c]) {
+				throw new Exception ("stack has boxed " + st.Name + ", expecting an unboxed value type");
+			}
+			return Pop (1);
+		}
+
+		// ex = what is expected to be on stack
+		// st = what is actually on stack (null for ldnull)
+		// stBoxed = stack value is boxed
+		public static void ExpectedVsOnStack (Type ex, Type st, bool stBoxed)
+		{
+			// ldnull pushed on stack can go into any pointer type
+			if (st == null) {
+				if (ex.IsByRef || ex.IsPointer || ex.IsClass || ex.IsInterface) return;
+				throw new Exception ("stack has null, expect " + ex.Name);
+			}
+
 			// simple case of expecting an object
 			// ...so the stack can have object,string, etc
-			if (ex.IsAssignableFrom (st)) return;
+			// but we cant allow int = boxed int here
+			if (ex.IsAssignableFrom (st) && !stBoxed) return;
 
 			// case of expecting an enum on the stack
 			// but all the CIL code knows about are ints etc
@@ -122,8 +186,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			// and that should be assignable from what's on stack
 			if (ex.IsEnum && typeof (int).IsAssignableFrom (st)) return;
 
-			// if expecting a char, it's ok if stack has an int on it
-			if ((ex == typeof (char)) && (st == typeof (int))) return;
+			// bool, char, int are interchangeable on the stack
+			if ((ex == typeof (bool) || ex == typeof (char) || ex == typeof (int)) && 
+			    (st == typeof (bool) || st == typeof (char) || st == typeof (int))) return;
+
+			// float and double are interchangeable on the stack
+			if ((ex == typeof (float) || ex == typeof (double)) && 
+			    (st == typeof (float) || st == typeof (double))) return;
+
+			// object can accept any boxed type
+			if ((ex == typeof (object)) && stBoxed) return;
 
 			// otherwise, it is disallowed
 			throw new Exception ("stack has " + st.Name + ", expect " + ex.Name);
@@ -132,25 +204,36 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		/**
 		 * @brief Pop values without any validation.
 		 */
-		public void Pop (int n)
+		public Type Pop (int n)
 		{
+			Type lastPopped = null;
 			int c = this.Count;
 			if (n > c) throw new Exception ("stack going negative");
-			switch (n) {
-				case 0: break;
-				case 1: {
-					nextToLastPopped = lastPopped;
-					lastPopped       = this[c-1];
-					this.RemoveAt (c - 1);
-					break;
-				}
-				default: {
-					nextToLastPopped = this[c-1];
-					lastPopped       = this[c-2];
-					this.RemoveRange (c - n, n);
-					break;
-				}
+			if (n > 0) {
+				lastPopped = this[c-n];
+				this.RemoveRange (c - n, n);
+				isBoxeds.RemoveRange (c - n, n);
 			}
+			return lastPopped;
+		}
+
+		/**
+		 * @brief Peek at the n'th stack value.
+		 *        n = 0 : top of stack
+		 *            1 : next to top
+		 *                ...
+		 */
+		public Type Peek (int n)
+		{
+			int c = this.Count;
+			if (n > c - 1) throw new Exception ("stack going negative");
+			return this[c-n-1];
+		}
+		public bool PeekBoxed (int n)
+		{
+			int c = isBoxeds.Count;
+			if (n > c - 1) throw new Exception ("stack going negative");
+			return isBoxeds[c-n-1];
 		}
 
 		/**
@@ -158,7 +241,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		public void Push (Type t)
 		{
+			Push (t, false);
+		}
+		public void Push (Type t, bool isBoxed)
+		{
 			this.Add (t);
+			isBoxeds.Add (isBoxed);
 		}
 
 		/**
@@ -166,14 +254,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 *        We should have the stack types be the same no matter how we branched 
 		 *        or fell through to a particular label.
 		 */
-		public void Matches (Type[] ts)
+		public void Matches (ScriptMyLabel label)
 		{
-			if (ts.Length != this.Count) {
+			Type[] ts       = label.stackDepth;
+			bool[] tsBoxeds = label.stackBoxeds;
+
+			if (ts == null) {
+				label.stackDepth  = this.ToArray ();
+				label.stackBoxeds = isBoxeds.ToArray ();
+			} else if (ts.Length != this.Count) {
 				throw new Exception ("stack depth mismatch");
-			}
-			for (int i = this.Count; -- i >= 0;) {
-				if (ts[i] != this[i]) {
-					throw new Exception ("stack type mismatch");
+			} else {
+				for (int i = this.Count; -- i >= 0;) {
+					if ((ts[i] != this[i]) || (tsBoxeds[i] != this.isBoxeds[i])) {
+						throw new Exception ("stack type mismatch");
+					}
 				}
 			}
 		}
@@ -667,57 +762,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if ((stack != 1) && (opcode == OpCodes.Throw)) {
 				throw new Exception (opcode + " stack depth " + stack);
 			}
-
-			int pop = 0;
-			switch (opcode.StackBehaviourPop) {
-				case StackBehaviour.Pop0:                               break;
-				case StackBehaviour.Pop1:               pop = 1;        break;
-				case StackBehaviour.Pop1_pop1:          pop = 2;        break;
-				case StackBehaviour.Popi:               pop = 1;        break;
-				case StackBehaviour.Popi_pop1:          pop = 2;        break;
-				case StackBehaviour.Popi_popi:          pop = 2;        break;
-				case StackBehaviour.Popi_popi_popi:     pop = 3;        break;
-				case StackBehaviour.Popi_popi8:         pop = 2;        break;
-				case StackBehaviour.Popi_popr4:         pop = 2;        break;
-				case StackBehaviour.Popi_popr8:         pop = 2;        break;
-				case StackBehaviour.Popref:             pop = 1;        break;
-				case StackBehaviour.Popref_pop1:        pop = 2;        break;
-				case StackBehaviour.Popref_popi:        pop = 2;        break;
-				case StackBehaviour.Popref_popi_pop1:   pop = 3;        break;
-				case StackBehaviour.Popref_popi_popi:   pop = 3;        break;
-				case StackBehaviour.Popref_popi_popi8:  pop = 3;        break;
-				case StackBehaviour.Popref_popi_popr4:  pop = 3;        break;
-				case StackBehaviour.Popref_popi_popr8:  pop = 3;        break;
-				case StackBehaviour.Popref_popi_popref: pop = 3;        break;
-				case StackBehaviour.Varpop:             this.VarPop (); break;
-				default: throw new Exception (opcode + " unknown pop behavior " + opcode.StackBehaviourPop);
-			}
-			coll.stackDepth.Pop (pop);
-
-			switch (opcode.StackBehaviourPush) {
-				case StackBehaviour.Push0:                                               break;
-				case StackBehaviour.Push1:       this.Push1 ();                          break;
-				case StackBehaviour.Push1_push1: this.Push2 ();                          break;
-				case StackBehaviour.Pushi:       this.PushI ();                          break;
-				case StackBehaviour.Pushi8:      coll.stackDepth.Push (typeof (long));   break;
-				case StackBehaviour.Pushr4:      coll.stackDepth.Push (typeof (float));  break;
-				case StackBehaviour.Pushr8:      coll.stackDepth.Push (typeof (double)); break;
-				case StackBehaviour.Pushref:     this.PushRef ();                        break;
-				case StackBehaviour.Varpush:     this.VarPush ();                        break;
-				default: throw new Exception (opcode + " unknown push behavior " + opcode.StackBehaviourPush);
-			}
-		}
-
-		protected virtual void VarPop  () { throw new Exception ("no VarPop() for "  + this.opcode); }
-
-		protected virtual void Push1   () { throw new Exception ("no Push1() for "   + this.opcode); }
-		protected virtual void Push2   () { throw new Exception ("no Push2() for "   + this.opcode); }
-		protected virtual void PushRef () { throw new Exception ("no PushRef() for " + this.opcode); }
-		protected virtual void VarPush () { throw new Exception ("no VarPush() for " + this.opcode); }
-
-		protected virtual void PushI ()
-		{
-			coll.stackDepth.Push (typeof (int));
 		}
 
 		/**
@@ -803,72 +847,207 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public GraphNodeEmitNull (ScriptCollector coll, Token errorAt, OpCode opcode) : base (coll, errorAt, opcode)
 		{ }
 
-		protected override void VarPop ()
+		public override void ChainLin ()
 		{
-			// OpCodes.Ret pops from the stack iff the return type is not void
-			if ((opcode == OpCodes.Ret) && (this.coll.wrapped.retType != typeof (void))) {
-				coll.stackDepth.Pop (this.coll.wrapped.retType);
-			}
-		}
+			base.ChainLin ();
 
-		protected override void Push1 ()
-		{
-			Type push = coll.stackDepth.lastPopped;
 			switch (opcode.ToString ()) {
-				case "ldarg.0":    push = coll.wrapped.argTypes[0]; break;
-				case "ldarg.1":    push = coll.wrapped.argTypes[1]; break;
-				case "ldarg.2":    push = coll.wrapped.argTypes[2]; break;
-				case "ldarg.3":    push = coll.wrapped.argTypes[3]; break;
-				case "add":        break;
-				case "sub":        break;
-				case "mul":        break;
-				case "div":        break;
-				case "div.un":     break;
-				case "rem":        break;
-				case "rem.un":     break;
-				case "and":        break;
-				case "or":         break;
-				case "xor":        break;
-				case "shl":        break;
-				case "shr":        break;
-				case "shr.un":     break;
-				case "neg":        break;
-				case "not":        break;
-				case "add.ovf":    break;
-				case "add.ovf.un": break;
-				case "mul.ovf":    break;
-				case "mul.ovf.un": break;
-				case "sub.ovf":    break;
-				case "sub.ovf.un": break;
-				default: base.Push1 (); return;
-			}
-			coll.stackDepth.Push (push);
-		}
-
-		protected override void Push2 ()
-		{
-			switch (opcode.ToString ()) {
+				case "nop": break;
+				case "break": break;
+				case "ldarg.0": coll.stackDepth.Push (coll.wrapped.argTypes[0]); break;
+				case "ldarg.1": coll.stackDepth.Push (coll.wrapped.argTypes[1]); break;
+				case "ldarg.2": coll.stackDepth.Push (coll.wrapped.argTypes[2]); break;
+				case "ldarg.3": coll.stackDepth.Push (coll.wrapped.argTypes[3]); break;
+				case "ldnull":  coll.stackDepth.Push (null); break;
+				case "ldc.i4.m1":
+				case "ldc.i4.0":
+				case "ldc.i4.1":
+				case "ldc.i4.2":
+				case "ldc.i4.3":
+				case "ldc.i4.4":
+				case "ldc.i4.5":
+				case "ldc.i4.6":
+				case "ldc.i4.7":
+				case "ldc.i4.8": {
+					coll.stackDepth.Push (typeof (int));
+					break;
+				}
 				case "dup": {
-					coll.stackDepth.Push (coll.stackDepth.lastPopped);
-					coll.stackDepth.Push (coll.stackDepth.lastPopped);
+					Type t = coll.stackDepth.Peek (0);
+					bool b = coll.stackDepth.PeekBoxed (0);
+					coll.stackDepth.Push (t, b);
 					break;
 				}
-				default: base.Push2 (); return;
+				case "pop": {
+					coll.stackDepth.Pop (1);
+					break;
+				}
+				case "ret": {
+					int sd = (coll.wrapped.retType != typeof (void)) ? 1 : 0;
+					if (coll.stackDepth.Count != sd) throw new Exception ("bad stack depth");
+					if (sd > 0) {
+						coll.stackDepth.Pop (coll.wrapped.retType);
+					}
+					break;
+				}
+				case "add":
+				case "sub":
+				case "mul":
+				case "div":
+				case "div.un":
+				case "rem":
+				case "rem.un":
+				case "and":
+				case "or":
+				case "xor":
+				case "shl":
+				case "shr":
+				case "shr.un":
+				case "add.ovf":
+				case "add.ovf.un":
+				case "mul.ovf":
+				case "mul.ovf.un":
+				case "sub.ovf":
+				case "sub.ovf.un": {
+					coll.stackDepth.PopNumVal ();
+					Type t = coll.stackDepth.PopNumVal ();
+					coll.stackDepth.Push (t);
+					break;
+				}
+				case "neg":
+				case "not": {
+					Type t = coll.stackDepth.PopNumVal ();
+					coll.stackDepth.Push (t);
+					break;
+				}
+				case "conv.i1":
+				case "conv.i2":
+				case "conv.i4":
+				case "conv.i8":
+				case "conv.r4":
+				case "conv.r8":
+				case "conv.u4":
+				case "conv.u8":
+				case "conv.r.un":
+				case "conv.ovf.i1.un":
+				case "conv.ovf.i2.un":
+				case "conv.ovf.i4.un":
+				case "conv.ovf.i8.un":
+				case "conv.ovf.u1.un":
+				case "conv.ovf.u2.un":
+				case "conv.ovf.u4.un":
+				case "conv.ovf.u8.un":
+				case "conv.ovf.i.un":
+				case "conv.ovf.u.un":
+				case "conv.ovf.i1":
+				case "conv.ovf.u1":
+				case "conv.ovf.i2":
+				case "conv.ovf.u2":
+				case "conv.ovf.i4":
+				case "conv.ovf.u4":
+				case "conv.ovf.i8":
+				case "conv.ovf.u8":
+				case "conv.u2":
+				case "conv.u1":
+				case "conv.i":
+				case "conv.ovf.i":
+				case "conv.ovf.u":
+				case "conv.u": {
+					coll.stackDepth.PopNumVal ();
+					coll.stackDepth.Push (ConvToType (opcode));
+					break;
+				}
+				case "throw": {
+					if (coll.stackDepth.Count != 1) throw new Exception ("bad stack depth " + coll.stackDepth.Count);
+					coll.stackDepth.PopRef ();
+					break;
+				}
+				case "ldlen": {
+					coll.stackDepth.Pop (typeof (string));
+					coll.stackDepth.Push (typeof (int));
+					break;
+				}
+				case "ldelem.i1":
+				case "ldelem.u1":
+				case "ldelem.i2":
+				case "ldelem.u2":
+				case "ldelem.i4":
+				case "ldelem.u4":
+				case "ldelem.i8":
+				case "ldelem.i":
+				case "ldelem.r4":
+				case "ldelem.r8":
+				case "ldelem.ref": {
+					Type t = coll.stackDepth.Peek (1).GetElementType ();
+					coll.stackDepth.Pop (typeof (int));
+					coll.stackDepth.Pop (t.MakeArrayType ());
+					coll.stackDepth.Push (t);
+					break;
+				}
+				case "stelem.i":
+				case "stelem.i1":
+				case "stelem.i2":
+				case "stelem.i4":
+				case "stelem.i8":
+				case "stelem.r4":
+				case "stelem.r8":
+				case "stelem.ref": {
+					Type t = coll.stackDepth.Peek (2).GetElementType ();
+					coll.stackDepth.Pop (t);
+					coll.stackDepth.Pop (typeof (int));
+					coll.stackDepth.Pop (t.MakeArrayType ());
+					break;
+				}
+				case "endfinally":
+				case "rethrow": {
+					if (coll.stackDepth.Count != 0) throw new Exception ("bad stack depth " + coll.stackDepth.Count);
+					break;
+				}
+				case "ceq": {
+					Type t = coll.stackDepth.Pop (1);
+					if (t == null) {
+						coll.stackDepth.PopRef ();
+					} else {
+						coll.stackDepth.Pop (t);
+					}
+					coll.stackDepth.Push (typeof (int));
+					break;
+				}
+				case "cgt":
+				case "cgt.un":
+				case "clt":
+				case "clt.un": {
+					coll.stackDepth.PopNumVal ();
+					coll.stackDepth.PopNumVal ();
+					coll.stackDepth.Push (typeof (int));
+					break;
+				}
+				default: throw new Exception ("unknown opcode " + opcode.ToString ());
 			}
 		}
 
-		protected override void PushRef ()
+		private static Type ConvToType (OpCode opcode)
 		{
-			switch (opcode.ToString ()) {
-				case "ldnull": {
-					coll.stackDepth.Push (typeof (object));
-					break;
-				}
-				case "ldelem.ref": {
-					coll.stackDepth.Push (coll.stackDepth.lastPopped.GetElementType ());
-					break;
-				}
-				default: base.PushRef (); return;
+			string s = opcode.ToString ();
+			s = s.Substring (5);  // strip off "conv."
+			if (s.StartsWith ("ovf.")) s = s.Substring (4);
+			if (s.EndsWith (".un")) s = s.Substring (0, s.Length - 3);
+
+			switch (s) {
+				case "i":  return typeof (IntPtr);
+				case "i1": return typeof (sbyte);
+				case "i2": return typeof (short);
+				case "i4": return typeof (int);
+				case "i8": return typeof (long);
+				case "r":
+				case "r4": return typeof (float);
+				case "r8": return typeof (double);
+				case "u1": return typeof (byte);
+				case "u2": return typeof (ushort);
+				case "u4": return typeof (uint);
+				case "u8": return typeof (ulong);
+				case "u":  return typeof (UIntPtr);
+				default: throw new Exception ("unknown opcode " + opcode.ToString ());
 			}
 		}
 
@@ -972,23 +1151,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.field = field;
 		}
 
-		protected override void Push1 ()
+		public override void ChainLin ()
 		{
+			base.ChainLin ();
+
 			switch (opcode.ToString ()) {
-				case "ldfld":  break;
-				case "ldsfld": break;
-				default: base.Push1 (); return;
+				case "ldfld":   coll.stackDepth.Pop  (field.DeclaringType); coll.stackDepth.Push (field.FieldType);                  break;
+				case "ldflda":  coll.stackDepth.Pop  (field.DeclaringType); coll.stackDepth.Push (field.FieldType.MakeByRefType ()); break;
+				case "stfld":   coll.stackDepth.Pop  (field.FieldType);     coll.stackDepth.Pop  (field.DeclaringType);              break;
+				case "ldsfld":                                              coll.stackDepth.Push (field.FieldType);                  break;
+				case "ldsflda":                                             coll.stackDepth.Push (field.FieldType.MakeByRefType ()); break;
+				case "stsfld":                                              coll.stackDepth.Pop  (field.FieldType);                  break;
+				default: throw new Exception ("unknown opcode " + opcode.ToString ());
 			}
-			coll.stackDepth.Push (field.FieldType);
-		}
-		protected override void PushI ()
-		{
-			switch (opcode.ToString ()) {
-				case "ldflda":  break;
-				case "ldsflda": break;
-				default: base.PushI (); return;
-			}
-			coll.stackDepth.Push (field.FieldType.MakeByRefType ());
 		}
 
 		public override void DebString (StringBuilder sb)
@@ -1011,18 +1186,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.myLocal = myLocal;
 		}
 
-		protected override void Push1 ()
+		public override void ChainLin ()
 		{
+			base.ChainLin ();
+
 			switch (opcode.ToString ()) {
-				case "ldloc": coll.stackDepth.Push (myLocal.type); break;
-				default: base.Push1 (); return;
-			}
-		}
-		protected override void PushI ()
-		{
-			switch (opcode.ToString ()) {
+				case "ldloc":  coll.stackDepth.Push (myLocal.type); break;
 				case "ldloca": coll.stackDepth.Push (myLocal.type.MakeByRefType ()); break;
-				default: base.PushI (); return;
+				case "stloc":  coll.stackDepth.Pop  (myLocal.type); break;
+				default: throw new Exception ("unknown opcode " + opcode.ToString ());
 			}
 		}
 
@@ -1061,32 +1233,60 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.type = type;
 		}
 
-		protected override void Push1 ()
+		public override void ChainLin ()
 		{
-			switch (opcode.ToString ()) {
-				case "ldelem":    break;
-				case "unbox.any": break;
-				default: base.Push1 (); return;
-			}
-			coll.stackDepth.Push (type);
-		}
-		protected override void PushI ()
-		{
-			switch (opcode.ToString ()) {
-				case "ldelema": coll.stackDepth.Push (type.MakeByRefType ()); break;
-				default: base.PushI (); return;
-			}
-		}
+			base.ChainLin ();
 
-		protected override void PushRef ()
-		{
 			switch (opcode.ToString ()) {
-				case "castclass": break;
-				case "box":       break;
-				case "newarr":    coll.stackDepth.Push (type.MakeArrayType ()); return;
-				default: base.PushRef (); return;
+				case "castclass":
+				case "isinst": {
+					coll.stackDepth.PopRef ();
+					coll.stackDepth.Push (type, type.IsValueType);
+					break;
+				}
+				case "box": {
+					if (!type.IsValueType) throw new Exception ("can't box a non-value type");
+					coll.stackDepth.Pop (type);
+					coll.stackDepth.Push (type, true);
+					break;
+				}
+				case "unbox":
+				case "unbox.any": {
+					if (!type.IsValueType) throw new Exception ("can't unbox to a non-value type");
+					coll.stackDepth.PopRef ();
+					coll.stackDepth.Push (type);
+					break;
+				}
+				case "newarr": {
+					coll.stackDepth.Pop (typeof (int));
+					coll.stackDepth.Push (type.MakeArrayType ());
+					break;
+				}
+				case "sizeof": {
+					coll.stackDepth.Pop (1);
+					coll.stackDepth.Push (typeof (int));
+					break;
+				}
+				case "ldelem": {
+					coll.stackDepth.Pop (typeof (int));
+					coll.stackDepth.Pop (type.MakeArrayType ());
+					coll.stackDepth.Push (type);
+					break;
+				}
+				case "ldelema": {
+					coll.stackDepth.Pop (typeof (int));
+					coll.stackDepth.Pop (type.MakeArrayType ());
+					coll.stackDepth.Push (type.MakeByRefType ());
+					break;
+				}
+				case "stelem": {
+					coll.stackDepth.Pop (type);
+					coll.stackDepth.Pop (typeof (int));
+					coll.stackDepth.Pop (type.MakeArrayType ());
+					break;
+				}
+				default: throw new Exception ("unknown opcode " + opcode.ToString ());
 			}
-			coll.stackDepth.Push (type);
 		}
 
 		public override void DebString (StringBuilder sb)
@@ -1113,10 +1313,50 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			base.ChainLin ();
 
+			switch (opcode.ToString ()) {
+				case "brfalse.s":
+				case "brtrue.s":
+				case "brfalse":
+				case "brtrue": {
+					coll.stackDepth.Pop (1);
+					break;
+				}
+				case "beq.s":
+				case "bge.s":
+				case "bgt.s":
+				case "ble.s":
+				case "blt.s":
+				case "bne.un.s":
+				case "bge.un.s":
+				case "bgt.un.s":
+				case "ble.un.s":
+				case "blt.un.s":
+				case "beq":
+				case "bge":
+				case "bgt":
+				case "ble":
+				case "blt":
+				case "bne.un":
+				case "bge.un":
+				case "bgt.un":
+				case "ble.un":
+				case "blt.un": {
+					coll.stackDepth.PopNumVal ();
+					coll.stackDepth.PopNumVal ();
+					break;
+				}
+				case "br":
+				case "br.s": break;
+				case "leave": {
+					if (coll.stackDepth.Count != 0) throw new Exception ("bad stack depth " + coll.stackDepth.Count);
+					break;
+				}
+				default: throw new Exception ("unknown opcode " + opcode.ToString ());
+			}
+
 			// if a target doesn't have a depth yet, set its depth to the depth after instruction executes
 			// otherwise, make sure it matches all other branches to that target and what fell through to it
-			if (myLabel.stackDepth == null) myLabel.stackDepth = coll.stackDepth.ToArray ();
-			else coll.stackDepth.Matches (myLabel.stackDepth);
+			coll.stackDepth.Matches (myLabel);
 		}
 
 		public override void DebString (StringBuilder sb)
@@ -1246,11 +1486,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			base.ChainLin ();
 
+			switch (opcode.ToString ()) {
+				case "switch": {
+					coll.stackDepth.Pop (typeof (int));
+					break;
+				}
+				default: throw new Exception ("unknown opcode " + opcode.ToString ());
+			}
+
 			// if a target doesn't have a depth yet, set its depth to the depth after instruction executes
 			// otherwise, make sure it matches all other branches to that target and what fell through to it
 			foreach (ScriptMyLabel myLabel in myLabels) {
-				if (myLabel.stackDepth == null) myLabel.stackDepth = coll.stackDepth.ToArray ();
-				else coll.stackDepth.Matches (myLabel.stackDepth);
+				coll.stackDepth.Matches (myLabel);
 			}
 		}
 
@@ -1325,16 +1572,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.method = method;
 		}
 
-		protected override void VarPop ()
+		public override void ChainLin ()
 		{
-			// calls have Varpop so pop the number of arguments
-			// the internal methods are all static so the arg list include the 'this' stack value
-			coll.stackDepth.Pop (this.method.argTypes);
-		}
-		protected override void VarPush ()
-		{
-			// calls are also Varpush so they push a return value iff non-void
-			if (this.method.retType != typeof (void)) coll.stackDepth.Push (this.method.retType);
+			base.ChainLin ();
+
+			switch (opcode.ToString ()) {
+				case "call": {
+
+					// calls have Varpop so pop the number of arguments
+					// they are all static so there is no separate 'this' parameter
+					coll.stackDepth.Pop (this.method.argTypes);
+
+					// calls are also Varpush so they push a return value iff non-void
+					if (this.method.retType != typeof (void)) coll.stackDepth.Push (this.method.retType);
+					break;
+				}
+
+				default: throw new Exception ("unknown opcode " + opcode.ToString ());
+			}
 		}
 
 		public override void DebString (StringBuilder sb)
@@ -1357,18 +1612,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.method = method;
 		}
 
-		protected override void VarPop ()
+		public override void ChainLin ()
 		{
-			// calls have Varpop so pop the number of arguments
-			coll.stackDepth.Pop (this.method.GetParameters ());
-			if ((this.method.CallingConvention & CallingConventions.HasThis) != 0) {
-				coll.stackDepth.Pop (method.DeclaringType);
+			base.ChainLin ();
+
+			switch (opcode.ToString ()) {
+				case "call":
+				case "callvirt": {
+
+					// calls have Varpop so pop the number of arguments
+					coll.stackDepth.Pop (this.method.GetParameters ());
+					if ((this.method.CallingConvention & CallingConventions.HasThis) != 0) {
+						coll.stackDepth.Pop (method.DeclaringType);
+					}
+
+					// calls are also Varpush so they push a return value iff non-void
+					if (this.method.ReturnType != typeof (void)) coll.stackDepth.Push (this.method.ReturnType);
+					break;
+				}
+
+				default: throw new Exception ("unknown opcode " + opcode.ToString ());
 			}
-		}
-		protected override void VarPush ()
-		{
-			// calls are also Varpush so they push a return value iff non-void
-			if (this.method.ReturnType != typeof (void)) coll.stackDepth.Push (this.method.ReturnType);
 		}
 
 		public override void DebString (StringBuilder sb)
@@ -1391,20 +1655,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.ctor = ctor;
 		}
 
-		protected override void VarPop ()
+		public override void ChainLin ()
 		{
-			// constructors have Varpop so pop the number of arguments
-			coll.stackDepth.Pop (this.ctor.GetParameters ());
-		}
+			base.ChainLin ();
 
-		protected override void PushRef ()
-		{
 			switch (opcode.ToString ()) {
 				case "newobj": {
+					coll.stackDepth.Pop (ctor.GetParameters ());
 					coll.stackDepth.Push (ctor.DeclaringType);
 					break;
 				}
-				default: base.PushRef (); return;
+
+				default: throw new Exception ("unknown opcode " + opcode.ToString ());
 			}
 		}
 
@@ -1428,6 +1690,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.value = value;
 		}
 
+		public override void ChainLin ()
+		{
+			base.ChainLin ();
+
+			switch (opcode.ToString ()) {
+				case "ldc.r8": coll.stackDepth.Push (typeof (double)); break;
+				default: throw new Exception ("unknown opcode " + opcode.ToString ());
+			}
+		}
+
 		public override void DebString (StringBuilder sb)
 		{
 			base.DebString (sb);
@@ -1446,6 +1718,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public GraphNodeEmitFloat (ScriptCollector coll, Token errorAt, OpCode opcode, float value) : base (coll, errorAt, opcode)
 		{
 			this.value = value;
+		}
+
+		public override void ChainLin ()
+		{
+			base.ChainLin ();
+
+			switch (opcode.ToString ()) {
+				case "ldc.r4": coll.stackDepth.Push (typeof (float)); break;
+				default: throw new Exception ("unknown opcode " + opcode.ToString ());
+			}
 		}
 
 		public override void DebString (StringBuilder sb)
@@ -1468,25 +1750,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.value = value;
 		}
 
-		protected override void Push1 ()
+		public override void ChainLin ()
 		{
-			switch (opcode.ToString ()) {
-				case "ldarg":   break;
-				case "ldarg.s": break;
-				default: base.Push1 (); return;
-			}
-			coll.stackDepth.Push (coll.wrapped.argTypes[value]);
-		}
-		protected override void PushI ()
-		{
-			switch (opcode.ToString ()) {
-				case "ldarga":   break;
-				case "ldarga.s": break;
-				default: base.PushI (); return;
-			}
-			coll.stackDepth.Push (coll.wrapped.argTypes[value].MakeByRefType ());
-		}
+			base.ChainLin ();
 
+			switch (opcode.ToString ()) {
+				case "ldarg":
+				case "ldarg.s":  coll.stackDepth.Push (coll.wrapped.argTypes[value]);                  break;
+				case "ldarga":
+				case "ldarga.s": coll.stackDepth.Push (coll.wrapped.argTypes[value].MakeByRefType ()); break;
+				case "starg":
+				case "starg.s":  coll.stackDepth.Pop  (coll.wrapped.argTypes[value]);                  break;
+				case "ldc.i4":
+				case "ldc.i4.s": coll.stackDepth.Push (typeof (int));                                  break;
+				default: throw new Exception ("unknown opcode " + opcode.ToString ());
+			}
+		}
 
 		public override void DebString (StringBuilder sb)
 		{
@@ -1508,14 +1787,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.value = value;
 		}
 
-		protected override void PushRef ()
+		public override void ChainLin ()
 		{
+			base.ChainLin ();
+
 			switch (opcode.ToString ()) {
-				case "ldstr": {
-					coll.stackDepth.Push (typeof (string));
-					break;
-				}
-				default: base.PushRef (); return;
+				case "ldstr": coll.stackDepth.Push (typeof (string)); break;
+				default: throw new Exception ("unknown opcode " + opcode.ToString ());
 			}
 		}
 
@@ -1552,11 +1830,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			//     label must have had a forward branch to it so we can know stack depth
 			//     set the current stack depth to the label's stack depth as of that forward branch
 			if (myLabel.whereAmI.prevLin.CanFallThrough ()) {
-				if (myLabel.stackDepth == null) {
-					myLabel.stackDepth = coll.stackDepth.ToArray ();
-				} else {
-					coll.stackDepth.Matches (myLabel.stackDepth);
-				}
+				coll.stackDepth.Matches (myLabel);
 			} else {
 				if (myLabel.stackDepth == null) {
 					throw new Exception ("stack depth unknown at " + myLabel.name);
