@@ -1554,7 +1554,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					int depth = ((ScriptCollector)scg.ilGen).stackDepth.Count;
 					if (depth > 0) {
 						// maybe need to call Trivialize()
-						throw new Exception ("call label stack depth " + depth);
+						throw new Exception ("call label stack depth " + depth + " at " + errorAt.SrcLoc);
 					}
 
 					/*
@@ -3172,12 +3172,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				if (declVar != null) {
 
 					/*
-					 * Maybe accessing a method declared directly by that interface.
+					 * Maybe accessing a method or property declared directly by that interface.
 					 */
 					if (impl == sdtDecl) return new CompValuIntfMember (declVar, baseRVal);
 
 					/*
-					 * Accessing a method of another interface that the primary interface says it implements.
+					 * Accessing a method or propterty of another interface that the primary interface says it implements.
 					 * In this case, we have to cast from the primary interface to that secondary interface.
 					 *
 					 * interface IEnumerable {
@@ -3437,6 +3437,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Sanity check.
 			 */
 			if (!youveAnError) {
+				if (cVal.type == null) throw new Exception ("cVal has no type " + cVal.GetType ());
 				string cValType = cVal.type.ToString ();
 				string rValType = rVal.GetRValType (this, argsig).ToString ();
 				if (cValType == "bool") cValType = "integer";
@@ -3983,6 +3984,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Make sure all arguments are trivial, ie, don't involve their own call labels.
+			 * For any that aren't, output code to calculate the arg and put in a temporary.
 			 */
 			nArgs = argRVals.Length;
 			for (i = 0; i < nArgs; i ++) {

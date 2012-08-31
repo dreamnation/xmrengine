@@ -1,5 +1,5 @@
 // Kunta's Dictionary/List implementation
-// v1.2.0
+// v1.3.0
 
 xmroption advflowctl;
 xmroption arrays;
@@ -17,7 +17,7 @@ class Kunta {
     }
 
     public interface IEnumerator<T> {
-        T GetCurrent ();
+        T Current { get; }
         integer MoveNext ();
         Reset ();
     }
@@ -71,7 +71,7 @@ class Kunta {
             List<KVP> kvps = this.kvpss[index];
             if (kvps == undef) return undef;
             for (IEnumerator<KVP> kvpenum = kvps.GetEnumerator (); kvpenum.MoveNext ();) {
-                KVP kvp = kvpenum.GetCurrent ();
+                KVP kvp = kvpenum.Current;
                 if (kvp.kee == kee) return kvp;
             }
             return undef;
@@ -109,11 +109,11 @@ class Kunta {
             }
 
             // get element currently pointed to
-            public KVP GetCurrent () : IEnumerator<KVP>
-            {
+            public KVP Current : IEnumerator<KVP>
+            { get {
                 if (this.listenum == undef) throw "at end of list";
-                return this.listenum.GetCurrent ();
-            }
+                return this.listenum.Current;
+            } }
 
             // move to next element in list
             public integer MoveNext () : IEnumerator<KVP>
@@ -165,10 +165,10 @@ class Kunta {
                 }
 
                 // get key element currently pointed to
-                public K GetCurrent () : IEnumerator<K>
-                {
-                    return this.listenum.GetCurrent ().kee;
-                }
+                public K Current : IEnumerator<K>
+                { get {
+                    return this.listenum.Current.kee;
+                } }
 
                 // move to next element in list
                 public integer MoveNext () : IEnumerator<K>
@@ -209,10 +209,10 @@ class Kunta {
                 }
 
                 // get value element currently pointed to
-                public V GetCurrent () : IEnumerator<V>
-                {
-                    return this.listenum.GetCurrent ().value;
-                }
+                public V Current : IEnumerator<V>
+                { get {
+                    return this.listenum.Current.value;
+                } }
 
                 // move to next element in list
                 public integer MoveNext () : IEnumerator<V>
@@ -300,11 +300,11 @@ class Kunta {
             }
 
             // get element currently pointed to
-            public T GetCurrent () : IEnumerator<T>
-            {
+            public T Current : IEnumerator<T>
+            { get {
                 if (atend) throw "at end of list";
                 return current.obj;
-            }
+            } }
 
             // move to next element in list
             public integer MoveNext () : IEnumerator<T>

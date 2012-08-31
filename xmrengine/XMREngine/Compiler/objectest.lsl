@@ -64,7 +64,7 @@ default {
         integer first = 1;
         for (Kunta.IEnumerator<string> stuffenum = stuff.GetEnumerator (); stuffenum.MoveNext ();) {
             if (first) llOwnerSay ("typeof (stuffenum) = " + xmrTypeName (stuffenum));
-            llOwnerSay ("element=(" + xmrTypeName (stuffenum.GetCurrent ()) + ") " + stuffenum.GetCurrent ());
+            llOwnerSay ("element=(" + xmrTypeName (stuffenum.Current) + ") " + stuffenum.Current);
             first = 0;
         }
 
@@ -80,14 +80,14 @@ default {
         s2i.Add ("three", 3);
         MyCountable s2iCountable = (MyCountable) s2i;
         for (Kunta.IEnumerator<KVP<string,integer>> kvpenum = s2iCountable.GetEnumerator (); kvpenum.MoveNext ();) {
-            KVP<string,integer> kvp = kvpenum.GetCurrent ();
+            KVP<string,integer> kvp = kvpenum.Current;
             llOwnerSay ("s2i: " + kvp.kee + " => " + kvp.value);
         }
         for (Kunta.IEnumerator<string> keyenum = s2i.Keys.GetEnumerator (); keyenum.MoveNext ();) {
-            llOwnerSay ("s2i.key = " + keyenum.GetCurrent ());
+            llOwnerSay ("s2i.key = " + keyenum.Current);
         }
         for (Kunta.IEnumerator<integer> valenum = s2i.Values.GetEnumerator (); valenum.MoveNext ();) {
-            llOwnerSay ("s2i.value = " + valenum.GetCurrent ());
+            llOwnerSay ("s2i.value = " + valenum.Current);
         }
 
         float[,] x = new float[,](2,3);  // 2 rows, 3 columns

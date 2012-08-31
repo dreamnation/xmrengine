@@ -659,12 +659,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 	// The value is the entrypoint of a script-defined type's interface method combined with
 	// the pointer used to access the method.  Thus there is one of these per call site.
+	// They also handle accessing interface properties.
 	public class CompValuIntfMember : CompValu {
 		private TokenDeclVar declVar;
 		private CompValu baseRVal;
 
-		public CompValuIntfMember (TokenDeclVar declVar, CompValu baseRVal) : base (declVar.GetDelType ())
+		public CompValuIntfMember (TokenDeclVar declVar, CompValu baseRVal) : base (declVar.type)
 		{
+			if (this.type == null) throw new Exception ("interface member type is null");
 			this.declVar  = declVar;   // which element of the baseRVal vector to be accessed
 			this.baseRVal = baseRVal;  // the vector of delegates implementing the interface
 		}
@@ -721,11 +723,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		/**
-		 * @brief Reading a property is non-trivial if the getter() is non-trivial.
+		 * @brief Reading a method (ie, it's delegate) is always trivial, it's just retrieving
+		 *        an element from the delegate array that make up the interface object.
+		 *
+		 *        Reading a property is always non-trivial because we don't know which implementation 
+		 *        the interface is pointing to, so we don't know if it's trivial or not, so assume 
+		 *        the worst, ie, that it is non-trivial and might call CheckRun().
+		 *
+		 *        But all that assumes that locating the interface object in the first place is 
+		 *        trivial, ie, baseRVal.PushVal() must not call CheckRun() either.
 		 */
 		public override bool IsReadTrivial (ScriptCodeGen scg)
 		{
-			return (declVar.getProp == null) || declVar.getProp.IsFuncTrivial (scg);
+			return baseRVal.IsReadTrivial (scg) && (declVar.getProp == null);
 		}
 
 		/**
@@ -884,8 +894,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				scg.ilGen.Emit (errorAt, OpCodes.Pop);
 			}
 		}
+
 		public override bool IsReadTrivial (ScriptCodeGen scg)
 		{
+			// accessing it in any way can't be trivial if reading the pointer isn't trivial
+			if (!baseRVal.IsReadTrivial (scg)) return false;
+
+			// now the only way it can be non-trivial to read is if it is a property and the 
+			// getter() method is non-trivial.  reading a method means getting a delegate 
+			// which is always trivial, and reading a simple field is alwasy trivial, ie, no 
+			// CheckRun() call can possibly be involved.
 			return (declVar.getProp == null) || declVar.getProp.IsFuncTrivial (scg);
 		}
 
