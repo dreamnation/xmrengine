@@ -176,9 +176,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public object[] ehArgs;             // event handler argument array
         public bool doGblInit = true;       // default state_entry() needs to initialize global variables
-        public int heapLimit;               // let script use this many bytes of heap maximum
+        public int heapLimit = Int32.MaxValue;
+                                            // let script use this many bytes of heap maximum
                                             // includes global vars, local vars, that reference heap
-                                            // does not include value-type vars, that is part of stackLimit
+                                            // does not include value-type vars, they are part of stackLimit
         public int heapTotal;               // total heap usage for the whole script
                                             // ...atomic updates only
         public string traceHeapUse = null;  // null: quiet; else: name of script
