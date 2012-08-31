@@ -549,7 +549,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             StringBuilder msg = new StringBuilder();
 
-            msg.Append("[XMREngine]: Exception while running script event handler.\n");
+            msg.Append("[XMREngine]: Exception while running ");
+            msg.Append(m_ItemID);
+            msg.Append('\n');
 
             /*
              * Tell script owner what to do.
@@ -572,8 +574,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             /*
              * Send error message to owner.
+             * Suppress internal code stack trace lines.
              */
-            this.llOwnerSay(msg.ToString());
+            string msgst = msg.ToString();
+            if (!msgst.EndsWith ("\n")) msgst += '\n';
+            int j = 0;
+            for (int i = 0; (i = msgst.IndexOf ('\n', i)) >= 0; j = ++ i) {
+                string line = msgst.Substring (j, i - j);
+                if (line.StartsWith ("at ")) {
+                    if (line.StartsWith ("at (wrapper")) continue;  // at (wrapper ...
+                    int k = line.LastIndexOf (".cs:");  // ... .cs:linenumber
+                    if (Int32.TryParse (line.Substring (k + 4), out k)) continue;
+                }
+                this.llOwnerSay (line);
+            }
 
             /*
              * Say script is sleeping for a very long time.

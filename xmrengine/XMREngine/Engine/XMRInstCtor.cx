@@ -269,17 +269,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             /*
              * This is how many total heap bytes script is allowed to use.
-             * Start with some fixed amount then subtract off static global sizes.
              */
             this.heapLimit  = m_HeapSize;
-            this.heapLimit -= 16 * objCode.glblSizes.iasArrays;
-            this.heapLimit -=  4 * objCode.glblSizes.iasFloats;
-            this.heapLimit -=  4 * objCode.glblSizes.iasIntegers;
-            this.heapLimit -= 16 * objCode.glblSizes.iasLists;
-            this.heapLimit -= 16 * objCode.glblSizes.iasObjects;
-            this.heapLimit -= 16 * objCode.glblSizes.iasRotations;
-            this.heapLimit -= 16 * objCode.glblSizes.iasStrings;
-            this.heapLimit -= 12 * objCode.glblSizes.iasVectors;
 
             /*
              * Set up microthread object which actually calls the script event handler functions.
