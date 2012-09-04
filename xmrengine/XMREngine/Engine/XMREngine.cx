@@ -89,6 +89,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public XMREngine()
         {
+            m_log.Info ("[XMREngine]: commit " + GITCOMMITHASH + ((GITCOMMITCLEAN != 0) ? "" : "(dirty)") + " " + GITCOMMITDATE);
             string envar = Environment.GetEnvironmentVariable("XMREngineTraceCalls");
             m_TraceCalls = (envar != null) && ((envar[0] & 1) != 0);
             m_log.DebugFormat("[XMREngine]: m_TraceCalls={0}", m_TraceCalls);

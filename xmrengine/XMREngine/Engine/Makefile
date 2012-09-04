@@ -3,9 +3,13 @@ LFLAGS := `pkg-config --libs mono`
 
 GCC := gcc $(CFLAGS) -Wall -O2 -g
 
+COMMITHASH  := $(strip $(shell git log -1 | grep ^commit | sed 's/commit//g'))
+COMMITDATE  := $(strip $(shell git log -1 --date=iso | grep ^Date: | sed 's/Date://g'))
+COMMITCLEAN := $(strip $(shell git status | grep -q modified: ; echo $$?))
+
 OPENSIMDLLDIR ?= ../../../bin
 
-ENGINECSFILES = XMREngine.cs \
+ENGINECSFILES = XMREngine_$(COMMITHASH)_$(COMMITCLEAN).cs \
                 XMREvents.cs \
                 XMRInstBackend.cs \
                 XMRInstCapture.cs \
@@ -57,6 +61,12 @@ $(OPENSIMDLLDIR)/xmrengshare.dll: $(wildcard ../*/*.cx) $(wildcard ../*/*.h)
 
 MMRScriptCompile.cs: ../Compiler/MMRScriptCompile.cx
 	cpp -I../Compiler -C -P -nostdinc -o $@ $<
+
+XMREngine_$(COMMITHASH)_$(COMMITCLEAN).cs: XMREngine.cx $(wildcard ../*/*.h)
+	cpp -I../Compiler \
+		-DGITCOMMITHASH='"$(COMMITHASH)"' \
+		-DGITCOMMITDATE='"$(COMMITDATE)"' \
+		-DGITCOMMITCLEAN=$(COMMITCLEAN) -C -P -nostdinc -o $@ $<
 
 %.cs: %.cx $(wildcard ../*/*.h)
 	cpp -I../Compiler -C -P -nostdinc -o $@ $<
