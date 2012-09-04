@@ -565,7 +565,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Display full exception message in log.
              */
-            m_log.Debug(msg.ToString() + XMRExceptionFixString (e.ToString(), true));
+            m_log.Debug(msg.ToString() + XMRExceptionFixString (e.ToString(), false) + 
+                        "\n--------\n" + e.StackTrace);
 
             /*
              * Give script owner the stack dump.
