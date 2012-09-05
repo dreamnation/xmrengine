@@ -261,6 +261,57 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return sf.objArray;
         }
 
+        /**
+         * @brief Convert all LSL_Integers in a list to System.Int32s, 
+         *        as required by llParcelMediaQuery().
+         */
+        public static LSL_List FixLLParcelMediaQuery (LSL_List oldlist)
+        {
+            object[] oldarray = oldlist.Data;
+            int len = oldarray.Length;
+            object[] newarray = new object[len];
+            for (int i = 0; i < len; i ++) {
+                object obj = oldarray[i];
+                if (obj is LSL_Integer) obj = (int)(LSL_Integer)obj;
+                newarray[i] = obj;
+            }
+            return new LSL_List (newarray);
+        }
+
+        /**
+         * @brief Convert *SOME* LSL_Integers in a list to System.Int32s, 
+         *        as required by llParcelMediaCommandList().
+         */
+        public static LSL_List FixLLParcelMediaCommandList (LSL_List oldlist)
+        {
+            object[] oldarray = oldlist.Data;
+            int len = oldarray.Length;
+            object[] newarray = new object[len];
+            int verbatim = 0;
+            for (int i = 0; i < len; i ++) {
+                object obj = oldarray[i];
+                if (-- verbatim < 0) {
+                    if (obj is LSL_Integer) obj = (int)(LSL_Integer)obj;
+                    if (obj is int) {
+                        switch ((int)obj) {
+                            case SCRIPTBASECLASS.PARCEL_MEDIA_COMMAND_AUTO_ALIGN: {
+                                // leave next integer as LSL_Integer
+                                verbatim = 1;
+                                break;
+                            }
+                            case SCRIPTBASECLASS.PARCEL_MEDIA_COMMAND_SIZE: {
+                                // leave next two integers as LSL_Integer
+                                verbatim = 2;
+                                break;
+                            }
+                        }
+                    }
+                }
+                newarray[i] = obj;
+            }
+            return new LSL_List (newarray);
+        }
+
         public static void xmrConsoleWriteLine (string s)
         {
             Console.WriteLine (s);

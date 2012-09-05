@@ -37,8 +37,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static MethodInfo roundMethInfo = ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Round", 
 				new Type[] { typeof (double), typeof (MidpointRounding) });
 
-		private static readonly MethodInfo lslListLSLInts2SysInts =  ScriptCodeGen.GetStaticMethod (typeof (TokenDeclInline), 
-				"LSLListLSLInts2SysInts", new Type[] { typeof (LSL_List) });
+		private static readonly MethodInfo fixLLParcelMediaQuery = ScriptCodeGen.GetStaticMethod 
+				(typeof (XMRInstAbstract), "FixLLParcelMediaQuery", new Type[] { typeof (LSL_List) });
+
+		private static readonly MethodInfo fixLLParcelMediaCommandList = ScriptCodeGen.GetStaticMethod 
+				(typeof (XMRInstAbstract), "FixLLParcelMediaCommandList", new Type[] { typeof (LSL_List) });
 
 		/*
 		 * For those listed in noCheckRun, we just generate the call (simple computations).
@@ -318,7 +321,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				args[i].PushVal (scg, errorAt, argDecl.types[i]);
 			}
 			if (methInfo.Name == "llParcelMediaQuery") {
-				scg.ilGen.Emit (errorAt, OpCodes.Call, lslListLSLInts2SysInts);
+				scg.ilGen.Emit (errorAt, OpCodes.Call, fixLLParcelMediaQuery);
+			}
+			if (methInfo.Name == "llParcelMediaCommandList") {
+				scg.ilGen.Emit (errorAt, OpCodes.Call, fixLLParcelMediaCommandList);
 			}
 			if (methInfo.IsVirtual) {                         // call API function
 				scg.ilGen.Emit (errorAt, OpCodes.Callvirt, methInfo);
@@ -329,23 +335,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (doCheckRun) {
 				scg.EmitCallCheckRun (errorAt);           // maybe call CheckRun()
 			}
-		}
-
-		/**
-		 * @brief Convert the LSL_Integers in a list to System.Int32s, 
-		 *        as required by the jackassed llParcelMediaQuery().
-		 */
-		public static LSL_List LSLListLSLInts2SysInts (LSL_List oldlist)
-		{
-			object[] oldarray = oldlist.Data;
-			int len = oldarray.Length;
-			object[] newarray = new object[len];
-			for (int i = 0; i < len; i ++) {
-				object obj = oldarray[i];
-				if (obj is LSL_Integer) obj = (int)(LSL_Integer)obj;
-				newarray[i] = obj;
-			}
-			return new LSL_List (newarray);
 		}
 	}
 }

@@ -284,9 +284,71 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Console.WriteLine ("llOwnerSay: " + msg);
         }
 
+        public LSL_List llParcelMediaQuery (LSL_List query)
+        {
+            int len = query.Length;
+            object[] data = query.Data;
+            List<object> output = new List<object> ();
+            for (int i = 0; i < len; i ++) {
+                Console.WriteLine ("llParcelMediaQuery: [" + i + "]=" + data[i].GetType().Name + " " + data[i].ToString ());
+                switch ((int)data[i]) {
+                    case PARCEL_MEDIA_COMMAND_TEXTURE: {
+                        output.Add (new LSL_String ("uuid Texture"));
+                        break;
+                    }
+                    case PARCEL_MEDIA_COMMAND_URL: {
+                        output.Add (new LSL_String ("U-R-L"));
+                        break;
+                    }
+                    case PARCEL_MEDIA_COMMAND_TYPE: {
+                        output.Add (new LSL_String ("mime type"));
+                        break;
+                    }
+                    case PARCEL_MEDIA_COMMAND_SIZE: {
+                        output.Add (new LSL_Integer (11));
+                        output.Add (new LSL_Integer (20));
+                        break;
+                    }
+                    case PARCEL_MEDIA_COMMAND_DESC: {
+                        output.Add (new LSL_String ("description"));
+                        break;
+                    }
+                    case PARCEL_MEDIA_COMMAND_LOOP_SET: {
+                        output.Add (new LSL_Float ("29.92"));
+                        break;
+                    }
+                }
+            }
+            return new LSL_List (output.ToArray ());
+        }
+
+        public void llParcelMediaCommandList (LSL_List query)
+        {
+            int len = query.Length;
+            object[] data = query.Data;
+            for (int i = 0; i < len; i ++) {
+                Console.WriteLine ("llParcelMediaCommandList: [" + i + "]=" + data[i].GetType().Name + " " + data[i].ToString ());
+            }
+        }
+
         /************************\
          *  Taken from OpenSim  *
         \************************/
+
+        public const int PARCEL_MEDIA_COMMAND_STOP = 0;
+        public const int PARCEL_MEDIA_COMMAND_PAUSE = 1;
+        public const int PARCEL_MEDIA_COMMAND_PLAY = 2;
+        public const int PARCEL_MEDIA_COMMAND_LOOP = 3;
+        public const int PARCEL_MEDIA_COMMAND_TEXTURE = 4;
+        public const int PARCEL_MEDIA_COMMAND_URL = 5;
+        public const int PARCEL_MEDIA_COMMAND_TIME = 6;
+        public const int PARCEL_MEDIA_COMMAND_AGENT = 7;
+        public const int PARCEL_MEDIA_COMMAND_UNLOAD = 8;
+        public const int PARCEL_MEDIA_COMMAND_AUTO_ALIGN = 9;
+        public const int PARCEL_MEDIA_COMMAND_TYPE = 10;
+        public const int PARCEL_MEDIA_COMMAND_SIZE = 11;
+        public const int PARCEL_MEDIA_COMMAND_DESC = 12;
+        public const int PARCEL_MEDIA_COMMAND_LOOP_SET = 13;
 
         public LSL_Integer llSubStringIndex(string source, string pattern)
         {

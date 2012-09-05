@@ -18,5 +18,6 @@ testit proptest
 testit trycatchexample
 testit trycatchtest
 testit while1
+testit testllparcelmedia
 
 echo "SUCCESS"
