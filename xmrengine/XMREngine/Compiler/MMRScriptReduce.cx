@@ -2546,6 +2546,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			TokenStmtBlock forStmtBlock = new TokenStmtBlock (tokenStmtFor);
 			forStmtBlock.outerStmtBlock = currentStmtBlock;
 			forStmtBlock.function       = currentDeclFunc;
+			currentStmtBlock            = forStmtBlock;
 			tokenScript.PushVarFrame ();
 
 			TokenDeclVar tokenDeclVar   = ParseDeclVar (ref token, null);

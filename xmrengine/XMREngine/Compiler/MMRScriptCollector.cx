@@ -362,6 +362,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief Append to debugging string for printing out the instruction.
 		 */
 		public abstract void DebString (StringBuilder sb);
+		public override string ToString ()
+		{
+			StringBuilder sb = new StringBuilder ();
+			this.DebString (sb);
+			return sb.ToString ();
+		}
 
 		/**
 		 * @brief See if this instruction reads a local variable.
@@ -1095,6 +1101,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						case 0: {
 							GraphNodeBeginExceptionBlock thistry = gn.excBlock;
 							nn = thistry.endExcBlock;
+							if (nn == null) throw new NullReferenceException ("thistry.endExcBlock");
 							index ++;
 							return true;
 						}
@@ -1105,6 +1112,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						case 1: {
 							if (this.leaveTargetEnumerator.MoveNext ()) {
 								nn = this.leaveTargetEnumerator.Current;
+								if (nn == null) throw new NullReferenceException ("this.leaveTargetEnumerator.Current");
 								return true;
 							}
 							break;
@@ -1116,6 +1124,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 							while ((nntry = nntry.excBlock) != null) {
 								if (nntry.catchFinallyBlock is GraphNodeBeginFinallyBlock) {
 									nn = nntry.catchFinallyBlock;
+									if (nn == null) throw new NullReferenceException ("nntry.catchFinallyBlock");
 									index ++;
 									return true;
 								}
@@ -2420,7 +2429,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						/*
 						 * Not start of a block, should be normal fallthru instruction.
 						 */
-						if (nextFallthruNode != null) throw new Exception ("more than one fallthru");
+						if (nextFallthruNode != null) throw new Exception ("more than one fallthru from " + gn.ToString ());
 						nextFallthruNode = nn;
 					}
 				}

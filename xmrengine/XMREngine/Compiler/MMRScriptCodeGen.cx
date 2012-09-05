@@ -1,7 +1,7 @@
-/********************************************************\
- *  COPYRIGHT 2009,2010, Mike Rieker, Beverly, MA, USA  *
- *  All rights reserved.                                *
-\********************************************************/
+/*************************************************************\
+ *  COPYRIGHT 2009,2010,2012, Mike Rieker, Beverly, MA, USA  *
+ *  All rights reserved.                                     *
+\*************************************************************/
 
 #define DEBUG_STACKCAPRES 0
 #define DEBUG_TRYSTMT 0
@@ -1647,19 +1647,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
-			 * Output the goto instruction.
-			 */
-			ilGen.Emit (breakStmt, OpCodes.Br, curBreakTarg.label);
-
-			/*
 			 * Tell anyone who cares that the break target was actually used.
 			 */
 			curBreakTarg.used = true;
 
 			/*
-			 * 'break' statements never fall through.
+			 * Output the instructions.
 			 */
-			mightGetHere = false;
+			EmitJumpCode (curBreakTarg.label, curBreakTarg.block, breakStmt);
 		}
 
 		/**
@@ -1678,19 +1673,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
-			 * Output the goto instruction.
-			 */
-			ilGen.Emit (contStmt, OpCodes.Br, curContTarg.label);
-
-			/*
 			 * Tell anyone who cares that the continue target was actually used.
 			 */
 			curContTarg.used = true;
 
 			/*
-			 * 'continue' statements never fall through.
+			 * Output the instructions.
 			 */
-			mightGetHere = false;
+			EmitJumpCode (curContTarg.label, curContTarg.block, contStmt);
 		}
 
 		/**
@@ -1704,8 +1694,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			BreakContTarg oldContTarg  = curContTarg;
 			ScriptMyLabel loopLabel    = ilGen.DefineLabel ("doloop_" + doStmt.Unique);
 
-			curBreakTarg = new BreakContTarg (ilGen, "dobreak_" + doStmt.Unique);
-			curContTarg  = new BreakContTarg (ilGen, "docont_"  + doStmt.Unique);
+			curBreakTarg = new BreakContTarg (this, "dobreak_" + doStmt.Unique);
+			curContTarg  = new BreakContTarg (this, "docont_"  + doStmt.Unique);
 
 			ilGen.MarkLabel (loopLabel);
 			GenerateStmt (doStmt.bodyStmt);
@@ -1759,8 +1749,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			BreakContTarg oldContTarg  = curContTarg;
 			ScriptMyLabel loopLabel    = ilGen.DefineLabel ("forloop_" + forStmt.Unique);
 
-			curBreakTarg = new BreakContTarg (ilGen, "forbreak_" + forStmt.Unique);
-			curContTarg  = new BreakContTarg (ilGen, "forcont_"  + forStmt.Unique);
+			curBreakTarg = new BreakContTarg (this, "forbreak_" + forStmt.Unique);
+			curContTarg  = new BreakContTarg (this, "forcont_"  + forStmt.Unique);
 
 			if (forStmt.initStmt != null) {
 				GenerateStmt (forStmt.initStmt);
@@ -1849,8 +1839,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ErrorMsg (forEachStmt.arrayRVal, "must be an array");
 			}
 
-			curBreakTarg = new BreakContTarg (ilGen, "foreachbreak_" + forEachStmt.Unique);
-			curContTarg  = new BreakContTarg (ilGen, "foreachcont_"  + forEachStmt.Unique);
+			curBreakTarg = new BreakContTarg (this, "foreachbreak_" + forEachStmt.Unique);
+			curContTarg  = new BreakContTarg (this, "foreachcont_"  + forEachStmt.Unique);
 
 			CompValuTemp indexVar = new CompValuTemp (new TokenTypeInt (forEachStmt), "foreachloop_index_" + forEachStmt.Unique, this);
 			ScriptMyLabel loopLabel = ilGen.DefineLabel ("foreachloop_" + forEachStmt.Unique);
@@ -1939,10 +1929,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				 */
 				testRVal.PushVal (this, ifStmt.testRVal, tokenTypeBool);
 				ScriptMyLabel doneLabel = ilGen.DefineLabel ("ifdone_" + ifStmt.Unique);
-				ilGen.Emit (ifStmt, OpCodes.Brfalse, doneLabel);     // brfalse doneLabel
-				GenerateStmt (ifStmt.trueStmt);              // generate true body code
+				ilGen.Emit (ifStmt, OpCodes.Brfalse, doneLabel);  // brfalse doneLabel
+				GenerateStmt (ifStmt.trueStmt);                   // generate true body code
 				ilGen.MarkLabel (doneLabel);
-				mightGetHere = true;                         // there's always a possibility of getting here
+				mightGetHere = true;                              // there's always a possibility of getting here
 			} else {
 
 				/*
@@ -1950,16 +1940,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				 */
 				testRVal.PushVal (this, ifStmt.testRVal, tokenTypeBool);
 				ScriptMyLabel elseLabel = ilGen.DefineLabel ("ifelse_" + ifStmt.Unique);
-				ilGen.Emit (ifStmt, OpCodes.Brfalse, elseLabel);     // brfalse elseLabel
-				GenerateStmt (ifStmt.trueStmt);              // generate true body code
-				bool trueMightGetHere = mightGetHere;        // save whether or not true falls through
+				ilGen.Emit (ifStmt, OpCodes.Brfalse, elseLabel);  // brfalse elseLabel
+				GenerateStmt (ifStmt.trueStmt);                   // generate true body code
+				bool trueMightGetHere = mightGetHere;             // save whether or not true falls through
 				ScriptMyLabel doneLabel = ilGen.DefineLabel ("ifdone_" + ifStmt.Unique);
-				ilGen.Emit (ifStmt, OpCodes.Br, doneLabel);          // branch to done
-				ilGen.MarkLabel (elseLabel);                 // beginning of else code
-				mightGetHere = true;                         // the top of the else might be executed
-				GenerateStmt (ifStmt.elseStmt);              // output else code
-				ilGen.MarkLabel (doneLabel);                 // where end of true clause code branches to
-				mightGetHere |= trueMightGetHere;            // gets this far if either true or else falls through
+				ilGen.Emit (ifStmt, OpCodes.Br, doneLabel);       // branch to done
+				ilGen.MarkLabel (elseLabel);                      // beginning of else code
+				mightGetHere = true;                              // the top of the else might be executed
+				GenerateStmt (ifStmt.elseStmt);                   // output else code
+				ilGen.MarkLabel (doneLabel);                      // where end of true clause code branches to
+				mightGetHere |= trueMightGetHere;                 // gets this far if either true or else falls through
 			}
 		}
 
@@ -1984,19 +1974,42 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
+			 * Emit instructions to do the jump.
+			 */
+			EmitJumpCode (stmtLabel.labelStruct, stmtLabel.block, jumpStmt);
+		}
+
+		/**
+		 * @brief Emit code to jump to a label
+		 * @param target = label being jumped to
+		 * @param targetsBlock = { ... } the label is defined in
+		 */
+		private void EmitJumpCode (ScriptMyLabel target, TokenStmtBlock targetsBlock, Token errorAt)
+		{
+			/*
+			 * Jumps never fall through.
+			 */
+			mightGetHere = false;
+
+			/*
 			 * Find which block the target label is in.  Must be in this or an outer block,
 			 * no laterals allowed.  And if we exit a try/catch block, use Leave instead of Br.
+			 *
+			 *    jump lateral;
+			 *    {
+			 *        @lateral;
+			 *    }
 			 */
 			bool useLeave = false;
 			TokenStmtBlock stmtBlock;
 			Stack<TokenStmtTry> finallyBlocksCalled = new Stack<TokenStmtTry> ();
-			for (stmtBlock = curStmtBlock; stmtBlock != stmtLabel.block; stmtBlock = stmtBlock.outerStmtBlock) {
+			for (stmtBlock = curStmtBlock; stmtBlock != targetsBlock; stmtBlock = stmtBlock.outerStmtBlock) {
 				if (stmtBlock == null) {
-					ErrorMsg (jumpStmt, "no lateral jumps allowed");
+					ErrorMsg (errorAt, "no lateral jumps allowed");
 					return;
 				}
 				if (stmtBlock.isFinally) {
-					ErrorMsg (jumpStmt, "cannot jump out of finally");
+					ErrorMsg (errorAt, "cannot jump out of finally");
 					return;
 				}
 				if (stmtBlock.isTry || stmtBlock.isCatch) useLeave = true;
@@ -2004,11 +2017,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					finallyBlocksCalled.Push (stmtBlock.tryStmt);
 				}
 			}
-
-			/*
-			 * Get where the jump is headed to.
-			 */
-			ScriptMyLabel target = stmtLabel.labelStruct;
 
 			/*
 			 * If popping through more than one finally block, we have to break it down for the stack 
@@ -2053,7 +2061,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			int level = 0;
 			while (finallyBlocksCalled.Count > 1) {
 				TokenStmtTry finallyBlock = finallyBlocksCalled.Pop ();
-				string intername = "intr" + (++ level) + "_" + stmtLabel.labelStruct.name;
+				string intername = "intr" + (++ level) + "_" + target.name;
 				IntermediateLeave iLeave;
 				if (!finallyBlock.iLeaves.TryGetValue (intername, out iLeave)) {
 					iLeave = new IntermediateLeave ();
@@ -2071,17 +2079,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * restore to that will properly jump back into the finally block.
 			 */
 			if (useLeave) {
-				new CallLabel (this, jumpStmt);
-				ilGen.Emit (jumpStmt, OpCodes.Leave, target);
+				new CallLabel (this, errorAt);
+				ilGen.Emit (errorAt, OpCodes.Leave, target);
 				openCallLabel = null;
 			} else {
-				ilGen.Emit (jumpStmt, OpCodes.Br, target);
+				ilGen.Emit (errorAt, OpCodes.Br, target);
 			}
-
-			/*
-			 * jump statements never fall through.
-			 */
-			mightGetHere = false;
 		}
 
 		/**
@@ -2258,7 +2261,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			TokenSwitchCase sortedCases  = null;
 			TokenSwitchCase defaultCase  = null;
 
-			curBreakTarg = new BreakContTarg (ilGen, "switchbreak_" + switchStmt.Unique);
+			curBreakTarg = new BreakContTarg (this, "switchbreak_" + switchStmt.Unique);
 
 			/*
 			 * Build list of cases sorted by ascending values.
@@ -2520,14 +2523,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
-			 * Stack the call labels and break/continue statement targets.
+			 * Stack the call labels.
+			 * Try blocks have their own series of call labels.
 			 */
-			ScriptMyLocal saveCallNo = actCallNo;                   // save outer call labels
+			ScriptMyLocal saveCallNo = actCallNo;
 			LinkedList<CallLabel> saveCallLabels = actCallLabels;
-			BreakContTarg oldBreakTarg = curBreakTarg;		// cannot continue out of try/catch
-			BreakContTarg oldContTarg  = curContTarg;		// breaks jump to end of try subblock
-			curBreakTarg = null;
-			curContTarg  = null;
 
 			/*
 			 * Generate code for either try { } catch { } or try { } finally { }.
@@ -2536,12 +2536,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (tryStmt.finallyStmt != null) GenerateStmtTryFinally (tryStmt);
 
 			/*
-			 * Restore call labels and break/continue statement targets.
+			 * Restore call labels.
 			 */
 			actCallNo     = saveCallNo;
 			actCallLabels = saveCallLabels;
-			curBreakTarg  = oldBreakTarg;
-			curContTarg   = oldContTarg;
 		}
 
 
@@ -2556,8 +2554,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 *          if (__tryCallNo >= 0) goto tryCallSw;                  // maybe go do restore
 		 *          <try body using __tryCallNo>                           // execute script-defined code
 		 *                                                                 // ...stack capture WILL run catch/finally { } subblock
-		 *        tryBreak:                                                // breaks jump here
-		 *          leave tryEnd;                                          // executes finally { } subblock and exits
+		 *          leave tryEnd;                                          // exits
 		 *        tryThrow:<tryCallLabel>:
 		 *          throw new ScriptRestoreCatchException(__catThrown);    // catch { } was running, jump to its beginning
 		 *        tryCallSw:                                               // restoring...
@@ -2570,7 +2567,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 *          __tryCallNo = tryThrow:<tryCallLabel>
 		 *          if (__catCallNo >= 0) goto catchCallSw;                // if restoring, go check below
 		 *          <catch body using __catCallNo>                         // normal, execute script-defined code
-		 *        catchBreak:                                              // breaks jump here
 		 *          leave tryEnd;                                          // all done, exit catch { }
 		 *        catchRetro:
 		 *          rethrow;
@@ -2585,12 +2581,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			CompValuTemp catCallNo = new CompValuTemp (tokenTypeInt, "__catCallNo_" + tryStmt.Unique, this);
 			CompValuTemp catThrown = new CompValuTemp (tokenTypeObj, "__catThrown_" + tryStmt.Unique, this);
 
-			BreakContTarg tryBreak    = new BreakContTarg (ilGen, "__tryBreak_"    + tryStmt.Unique);
-			ScriptMyLabel tryCallSw   = ilGen.DefineLabel (       "__tryCallSw_"   + tryStmt.Unique);
-			BreakContTarg catchBreak  = new BreakContTarg (ilGen, "__catchBreak_"  + tryStmt.Unique);
-			ScriptMyLabel catchRetro  = ilGen.DefineLabel (       "__catchRetro_"  + tryStmt.Unique);
-			ScriptMyLabel catchCallSw = ilGen.DefineLabel (       "__catchCallSw_" + tryStmt.Unique);
-			ScriptMyLabel tryEnd      = ilGen.DefineLabel (       "__tryEnd_"      + tryStmt.Unique);
+			ScriptMyLabel tryCallSw   = ilGen.DefineLabel ("__tryCallSw_"   + tryStmt.Unique);
+			ScriptMyLabel catchRetro  = ilGen.DefineLabel ("__catchRetro_"  + tryStmt.Unique);
+			ScriptMyLabel catchCallSw = ilGen.DefineLabel ("__catchCallSw_" + tryStmt.Unique);
+			ScriptMyLabel tryEnd      = ilGen.DefineLabel ("__tryEnd_"      + tryStmt.Unique);
 
 			ilGen.Emit (tryStmt, OpCodes.Ldc_I4_M1); tryCallNo.Pop (this, tryStmt);
 			ilGen.Emit (tryStmt, OpCodes.Ldc_I4_M1); catCallNo.Pop (this, tryStmt);
@@ -2634,12 +2628,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			actCallNo = tryCallNo.localBuilder;                     // set up __tryCallNo for call labels
 			actCallLabels = new LinkedList<CallLabel> ();
 
-			curBreakTarg = tryBreak;				// breaks jump to end of try subblock
 			GenerateStmtBlock (tryStmt.tryStmt);			// output the try block statement subblock
 
-			bool tryBlockFallsOutBottom = mightGetHere | tryBreak.used;
+			bool tryBlockFallsOutBottom = mightGetHere;
 			if (tryBlockFallsOutBottom) {
-				ilGen.MarkLabel (tryBreak.label);		//       tryBreak:
 				new CallLabel (this, tryStmt);			//       <tryCallLabel>:
 				ilGen.Emit (tryStmt, OpCodes.Leave, tryEnd);	//         leave tryEnd;
 				openCallLabel = null;
@@ -2718,16 +2710,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			actCallNo = catCallNo.localBuilder;             	// set up __catCallNo for call labels
 			actCallLabels.Clear ();
-			curBreakTarg = catchBreak;				// break statements jump to end of subblock
 			mightGetHere = true;					// if we can get to the 'try' assume we can get to the 'catch'
 			GenerateStmtBlock (tryStmt.catchStmt);			// output catch clause statement subblock
 
-			if (catchBreak.used) {
-				ilGen.MarkLabel (catchBreak.label);
+			if (mightGetHere) {
+				new CallLabel (this, tryStmt.catchStmt);
+				ilGen.Emit (tryStmt.catchStmt, OpCodes.Leave, tryEnd);
+				openCallLabel = null;
 			}
-			new CallLabel (this, tryStmt.catchStmt);
-			ilGen.Emit (tryStmt.catchStmt, OpCodes.Leave, tryEnd);
-			openCallLabel = null;
 
 			ilGen.MarkLabel (catchRetro);				// not a script-visible exception, rethrow it
 			ilGen.Emit (tryStmt.catchStmt, OpCodes.Pop);
@@ -2740,8 +2730,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ilGen.EndExceptionBlock ();
 			ilGen.MarkLabel (tryEnd);
 
-			mightGetHere |= catchBreak.used;			// get here if catch body falls through or has a break statement
-			mightGetHere |= tryBlockFallsOutBottom;			// also if try body falls out bottom or has a break statement
+			mightGetHere |= tryBlockFallsOutBottom;			// also get here if try body falls out bottom
 		}
 
 		/**
@@ -2770,7 +2759,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 *              if (__tryCallNo >= 0) goto tryCallSw;                // maybe go do restore
 		 *              <try body using __tryCallNo>                         // execute script-defined code
 		 *                                                                   // ...stack capture WILL run catch/finally { } subblock
-		 *            tryBreak:                                              // breaks jump here
 		 *              leave tryEnd;                                        // executes finally { } subblock and exits
 		 *            tryThrow:<tryCallLabel>:
 		 *              throw new ScriptRestoreCatchException(__catThrown);  // catch { } was running, jump to its beginning
@@ -2802,11 +2790,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			CompValuTemp tryCallNo = new CompValuTemp (tokenTypeInt, "__tryCallNo_" + tryStmt.Unique, this);
 			CompValuTemp catThrown = new CompValuTemp (tokenTypeObj, "__catThrown_" + tryStmt.Unique, this);
 
-			BreakContTarg tryBreak    = new BreakContTarg (ilGen, "__tryBreak_"    + tryStmt.Unique);
 			ScriptMyLabel tryCallSw   = ilGen.DefineLabel (       "__tryCallSw_"   + tryStmt.Unique);
 			ScriptMyLabel catchRetro  = ilGen.DefineLabel (       "__catchRetro_"  + tryStmt.Unique);
 			ScriptMyLabel finCallSw   = ilGen.DefineLabel (       "__finCallSw_"   + tryStmt.Unique);
-			BreakContTarg finEnd      = new BreakContTarg (ilGen, "__finEnd_"      + tryStmt.Unique);
+			BreakContTarg finEnd      = new BreakContTarg (this, "__finEnd_"      + tryStmt.Unique);
 			ScriptMyLabel tryEnd      = ilGen.DefineLabel (       "__tryEnd_"      + tryStmt.Unique);
 
 			ilGen.Emit (tryStmt, OpCodes.Ldc_I4_M1); finCallNo.Pop (this, tryStmt);
@@ -2852,15 +2839,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			actCallNo = tryCallNo.localBuilder;                     // set up __tryCallNo for call labels
 			actCallLabels = new LinkedList<CallLabel> ();
 
-			curBreakTarg = tryBreak;				// breaks jump to end of try subblock
 			GenerateStmtBlock (tryStmt.tryStmt);			// output the try block statement subblock
 
-			if (tryBreak.used) {
-				ilGen.MarkLabel (tryBreak.label);		//       tryBreak:
+			if (mightGetHere) {
+				new CallLabel (this, tryStmt);			//       <newCallLabel>:
+				ilGen.Emit (tryStmt, OpCodes.Leave, tryEnd);	//         leave tryEnd;
+				openCallLabel = null;
 			}
-			new CallLabel (this, tryStmt);				//       <newCallLabel>:
-			ilGen.Emit (tryStmt, OpCodes.Leave, tryEnd);		//         leave tryEnd;
-			openCallLabel = null;
 
 			foreach (IntermediateLeave iLeave in tryStmt.iLeaves.Values) {
 				ilGen.MarkLabel (iLeave.jumpIntoLabel);		//       intr2_exit:
@@ -2932,7 +2917,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			actCallNo = finCallNo.localBuilder;             	// set up __finCallNo for call labels
 			actCallLabels.Clear ();
-			curBreakTarg = finEnd;					// break statements jump to end of subblock
 			mightGetHere = true;					// if we can get to the 'try' assume we can get to the 'finally'
 			GenerateStmtBlock (tryStmt.finallyStmt);		// output finally clause statement subblock
 
@@ -2972,8 +2956,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			BreakContTarg oldContTarg  = curContTarg;
 			ScriptMyLabel loopLabel    = ilGen.DefineLabel ("whileloop_" + whileStmt.Unique);
 
-			curBreakTarg = new BreakContTarg (ilGen, "whilebreak_" + whileStmt.Unique);
-			curContTarg  = new BreakContTarg (ilGen, "whilecont_"  + whileStmt.Unique);
+			curBreakTarg = new BreakContTarg (this, "whilebreak_" + whileStmt.Unique);
+			curContTarg  = new BreakContTarg (this, "whilecont_"  + whileStmt.Unique);
 
 			ilGen.MarkLabel (loopLabel);                                          // loop:
 			CompValu testRVal = GenerateFromRVal (whileStmt.testRVal);            //   testRVal = while test expression
@@ -5229,11 +5213,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief Defines an internal label that is used as a target for 'break' and 'continue' statements.
 		 */
 		private class BreakContTarg {
-			public ScriptMyLabel label;
 			public bool used;
-			public BreakContTarg (ScriptMyILGen ilGen, string name) {
-				label = ilGen.DefineLabel (name);  // label to be used
-				used  = false;                     // assume it isn't referenced at all
+			public ScriptMyLabel label;
+			public TokenStmtBlock block;
+
+			public BreakContTarg (ScriptCodeGen scg, string name) {
+				used  = false;                         // assume it isn't referenced at all
+				label = scg.ilGen.DefineLabel (name);  // label that the break/continue jumps to
+				block = scg.curStmtBlock;              // { ... } that the break/continue label is in
 			}
 		}
 

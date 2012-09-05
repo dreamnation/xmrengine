@@ -1,3 +1,4 @@
+xmroption advflowctl;
 xmroption arrays;
 xmroption objects;
 xmroption trycatch;
@@ -172,6 +173,23 @@ default {
             if (!(xmrExceptionThrownValue (ex) is Vase)) throw;
             Vase v = (Vase)xmrExceptionThrownValue (ex);
             llOwnerSay ("  caught vase " + v.ToString ());
+        }
+
+       for (integer z = 0; z < 10; z ++) {
+            try {
+                if (z & 1) continue;
+                if (z > 7) break;
+            } finally {
+                llOwnerSay ("finally " + z);
+            }
+            llOwnerSay ("normal " + z);
+            try {
+                llOwnerSay ((string)(1000 / z));
+                continue;
+            } catch (exception e) {
+                llOwnerSay (xmrExceptionTypeName (e));
+            }
+            llOwnerSay ("next...");
         }
 
         llOwnerSay ("all done");
