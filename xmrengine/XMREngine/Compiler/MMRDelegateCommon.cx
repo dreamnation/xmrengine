@@ -11,10 +11,8 @@ using System.Reflection.Emit;
 namespace OpenSim.Region.ScriptEngine.XMREngine {
 
     public class DelegateCommon {
-        private System.Type ret;     // typeof(void) for void, never null
-        private System.Type[] args;  // might be zero length
-        private string sig;          // rettype(arg1type,arg2type,...), eg, "void(list,string,integer)"
-        private Type type;           // resultant delegate type
+        private string sig;  // rettype(arg1type,arg2type,...), eg, "void(list,string,integer)"
+        private Type type;   // resultant delegate type
 
         private static Dictionary<string, DelegateCommon> delegateCommons = new Dictionary<string, DelegateCommon> ();
         private static Dictionary<Type, DelegateCommon> delegateCommonsBySysType = new Dictionary<Type, DelegateCommon> ();
@@ -29,8 +27,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             lock (delegateCommons) {
                 if (!delegateCommons.TryGetValue (sig, out dc)) {
                     dc = new DelegateCommon ();
-                    dc.ret  = ret;
-                    dc.args = args;
                     dc.sig  = sig;
                     dc.type = CreateDelegateType (sig, ret, args);
                     delegateCommons.Add (sig, dc);
