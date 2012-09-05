@@ -37,6 +37,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static MethodInfo roundMethInfo = ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Round", 
 				new Type[] { typeof (double), typeof (MidpointRounding) });
 
+		private static readonly MethodInfo lslListLSLInts2SysInts =  ScriptCodeGen.GetStaticMethod (typeof (TokenDeclInline), 
+				"LSLListLSLInts2SysInts", new Type[] { typeof (LSL_List) });
+
 		/*
 		 * For those listed in noCheckRun, we just generate the call (simple computations).
 		 * For all others, we generate the call then a call to CheckRun().
@@ -94,10 +97,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			inf = new TokenDeclInline (ifd, false, "llAcos(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Acos",    oneDoub));  inf.codeGen = inf.CodeGenStatic;
 			inf = new TokenDeclInline (ifd, false, "llAsin(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Asin",    oneDoub));  inf.codeGen = inf.CodeGenStatic;
 			inf = new TokenDeclInline (ifd, false, "llAtan2(float,float)", typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Atan2",   twoDoubs)); inf.codeGen = inf.CodeGenStatic;
-		///	inf = new TokenDeclInline (ifd, false, "llCeil(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Ceiling", oneDoub));  inf.codeGen = inf.CodeGenStatic;
 			inf = new TokenDeclInline (ifd, false, "llCos(float)",         typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Cos",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
 			inf = new TokenDeclInline (ifd, false, "llFabs(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Abs",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
-		///	inf = new TokenDeclInline (ifd, false, "llFloor(float)",       typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Floor",   oneDoub));  inf.codeGen = inf.CodeGenStatic;
 			inf = new TokenDeclInline (ifd, false, "llLog(float)",         typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Log",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
 			inf = new TokenDeclInline (ifd, false, "llLog10(float)",       typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Log10",   oneDoub));  inf.codeGen = inf.CodeGenStatic;
 			inf = new TokenDeclInline (ifd, false, "llPow(float,float)",   typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Pow",     twoDoubs)); inf.codeGen = inf.CodeGenStatic;
@@ -316,6 +317,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			for (int i = 0; i < args.Length; i ++) {          // push arguments, boxing/unboxing as needed
 				args[i].PushVal (scg, errorAt, argDecl.types[i]);
 			}
+			if (methInfo.Name == "llParcelMediaQuery") {
+				scg.ilGen.Emit (errorAt, OpCodes.Call, lslListLSLInts2SysInts);
+			}
 			if (methInfo.IsVirtual) {                         // call API function
 				scg.ilGen.Emit (errorAt, OpCodes.Callvirt, methInfo);
 			} else {
@@ -325,6 +329,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (doCheckRun) {
 				scg.EmitCallCheckRun (errorAt);           // maybe call CheckRun()
 			}
+		}
+
+		/**
+		 * @brief Convert the LSL_Integers in a list to System.Int32s, 
+		 *        as required by the jackassed llParcelMediaQuery().
+		 */
+		public static LSL_List LSLListLSLInts2SysInts (LSL_List oldlist)
+		{
+			object[] oldarray = oldlist.Data;
+			int len = oldarray.Length;
+			object[] newarray = new object[len];
+			for (int i = 0; i < len; i ++) {
+				object obj = oldarray[i];
+				if (obj is LSL_Integer) obj = (int)(LSL_Integer)obj;
+				newarray[i] = obj;
+			}
+			return new LSL_List (newarray);
 		}
 	}
 }
