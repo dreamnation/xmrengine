@@ -899,6 +899,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					ilGen.Emit (declFunc, OpCodes.Call, ehArgUnwrapInteger);
 					stkTokType = tokenTypeInt;                       // stack has a type 'int' on it now
 				}
+				if (argSysType == typeof (LSL_List)) {                   // LSL_List -> LSL_List
+					TypeCast.CastTopOfStack (this, argVar.name, stkTokType, argTokType, true);
+					stkTokType = argTokType;                         // stack has a type 'LSL_List' on it now
+				}
 				if (argSysType == typeof (LSL_Rotation)) {               // OpenMetaverse.Quaternion/LSL_Rotation -> LSL_Rotation
 					ilGen.Emit (declFunc, OpCodes.Call, ehArgUnwrapRotation);
 					stkTokType = tokenTypeRot;                       // stack has a type 'LSL_Rotation' on it now
