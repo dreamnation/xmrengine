@@ -25,7 +25,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				if ((argTypes == null) || (calledBy == null)) return false;
 				if (argTypes.Length != calledBy.Length) return false;
 				for (int i = argTypes.Length; -- i >= 0;) {
-					if (!argTypes[i].IsAssignableFrom (calledBy[i])) return false;
+					if (!TypeCast.IsAssignableFrom (argTypes[i], calledBy[i])) return false;
 				}
 				return true;
 			}

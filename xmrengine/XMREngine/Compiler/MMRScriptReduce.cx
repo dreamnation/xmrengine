@@ -4237,6 +4237,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		}
 
 		/**
+		 * @brief See if the class implements the interface.
+		 *        Do a recursive (deep) check in all rootward classes.
+		 */
+		public bool CanCastToIntf (TokenDeclSDTypeInterface intf)
+		{
+			if (this.implements.Contains (intf)) return true;
+			if (this.extends == null) return false;
+			return this.extends.CanCastToIntf (intf);
+		}
+
+		/**
 		 * @brief Write enough out so we can reconstruct with ReadFromFile.
 		 */
 		public override void WriteToFile (BinaryWriter objFileWriter)
@@ -4849,19 +4860,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			return typeof (XMRSDTypeClObj);
 		}
 
-		public override bool IsAssignableFrom (TokenType src)
-		{
-			// given type must be a script-defined class to be assignable to this type
-			if (!(src is TokenTypeSDTypeClass)) return false;
-
-			// this type must be the same or rootward of given type
-			TokenDeclSDTypeClass sd = ((TokenTypeSDTypeClass)src).decl;
-			while (sd != null) {
-				if (sd == this.decl) return true;
-				sd = sd.extends;
-			}
-			return false;
-		}
 		public override void AssignVarSlot (TokenDeclVar declVar, ref XMRInstArSizes ias)
 		{
 			declVar.vTableArray = iarSDTClObjsFieldInfo;
@@ -4954,13 +4952,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			return decl.GetSysType ();
 		}
 
-		public override bool IsAssignableFrom (TokenType src)
-		{
-			if (!(src is TokenTypeSDTypeDelegate)) return false;
-			TokenTypeSDTypeDelegate sd = (TokenTypeSDTypeDelegate)src;
-			return this.decl.GetSysType () == sd.decl.GetSysType ();
-		}
-
 		public override string ToString ()
 		{
 			return decl.longName.val;
@@ -5016,17 +5007,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public override Type ToSysType ()
 		{
 			return typeof (Delegate[]);
-		}
-		public override bool IsAssignableFrom (TokenType src)
-		{
-			if (src is TokenTypeSDTypeInterface) {
-				return this.decl == ((TokenTypeSDTypeInterface)src).decl;
-			}
-			if (src is TokenTypeSDTypeClass) {
-				TokenDeclSDTypeClass sd = ((TokenTypeSDTypeClass)src).decl;
-				return sd.implements.Contains (this.decl);
-			}
-			return false;
 		}
 
 		/**

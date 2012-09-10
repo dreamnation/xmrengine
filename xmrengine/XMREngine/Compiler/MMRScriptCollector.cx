@@ -1886,7 +1886,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private List<ScriptMyLocal> declaredLocals = new List<ScriptMyLocal> ();
 		private List<ScriptMyLabel> definedLabels  = new List<ScriptMyLabel> ();
 
-		public override string methName { get { return wrapped.methName; } }
+		public string methName { get { return wrapped.methName; } }
 
 		/**
 		 * @brief Wrap the optimizer around the ScriptObjWriter to collect the instruction stream.
@@ -1900,7 +1900,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.lastLin       = gnb;
 		}
 
-		public override ScriptMyLocal DeclareLocal (Type type, string name)
+		public ScriptMyLocal DeclareLocal (Type type, string name)
 		{
 			ScriptMyLocal loc = new ScriptMyLocal ();
 			loc.name   = name;
@@ -1910,7 +1910,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			return loc;
 		}
 
-		public override ScriptMyLabel DefineLabel (string name)
+		public ScriptMyLabel DefineLabel (string name)
 		{
 			ScriptMyLabel lbl = new ScriptMyLabel ();
 			lbl.name   = name;
@@ -1919,7 +1919,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			return lbl;
 		}
 
-		public override void BeginExceptionBlock ()
+		public void BeginExceptionBlock ()
 		{
 			GraphNodeBeginExceptionBlock tryBlock = new GraphNodeBeginExceptionBlock (this);
 			tryBlock.ChainLin ();
@@ -1928,7 +1928,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.curTryBlock = tryBlock;
 		}
 
-		public override void BeginCatchBlock (Type excType)
+		public void BeginCatchBlock (Type excType)
 		{
 			GraphNodeBeginCatchBlock catchBlock = new GraphNodeBeginCatchBlock (this, excType);
 			catchBlock.ChainLin ();
@@ -1937,7 +1937,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			curTryBlock = curExcBlock.tryBlock;
 		}
 
-		public override void BeginFinallyBlock ()
+		public void BeginFinallyBlock ()
 		{
 			GraphNodeBeginFinallyBlock finallyBlock = new GraphNodeBeginFinallyBlock (this);
 			finallyBlock.ChainLin ();
@@ -1946,7 +1946,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			curTryBlock = curExcBlock.tryBlock;
 		}
 
-		public override void EndExceptionBlock ()
+		public void EndExceptionBlock ()
 		{
 			GraphNodeEndExceptionBlock endExcBlock = new GraphNodeEndExceptionBlock (this);
 			endExcBlock.ChainLin ();
@@ -1955,7 +1955,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			curExcBlock = curExcBlock.excBlock;
 		}
 
-		public override void Emit (Token errorAt, OpCode opcode)
+		public void Emit (Token errorAt, OpCode opcode)
 		{
 			if (opcode == OpCodes.Endfinally) {
 				new GraphNodeEmitNullEndfinally (this, errorAt).ChainLin ();
@@ -1964,23 +1964,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 		}
 
-		public override void Emit (Token errorAt, OpCode opcode, FieldInfo field)
+		public void Emit (Token errorAt, OpCode opcode, FieldInfo field)
 		{
 			if (field == null) throw new ArgumentNullException ("field");
 			new GraphNodeEmitField (this, errorAt, opcode, field).ChainLin ();
 		}
 
-		public override void Emit (Token errorAt, OpCode opcode, ScriptMyLocal myLocal)
+		public void Emit (Token errorAt, OpCode opcode, ScriptMyLocal myLocal)
 		{
 			new GraphNodeEmitLocal (this, errorAt, opcode, myLocal).ChainLin ();
 		}
 
-		public override void Emit (Token errorAt, OpCode opcode, Type type)
+		public void Emit (Token errorAt, OpCode opcode, Type type)
 		{
 			new GraphNodeEmitType (this, errorAt, opcode, type).ChainLin ();
 		}
 
-		public override void Emit (Token errorAt, OpCode opcode, ScriptMyLabel myLabel)
+		public void Emit (Token errorAt, OpCode opcode, ScriptMyLabel myLabel)
 		{
 			if (opcode == OpCodes.Leave) {
 				new GraphNodeEmitLabelLeave (this, errorAt, myLabel).ChainLin ();
@@ -1989,50 +1989,50 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 		}
 
-		public override void Emit (Token errorAt, OpCode opcode, ScriptMyLabel[] myLabels)
+		public void Emit (Token errorAt, OpCode opcode, ScriptMyLabel[] myLabels)
 		{
 			new GraphNodeEmitLabels (this, errorAt, opcode, myLabels).ChainLin ();
 		}
 
-		public override void Emit (Token errorAt, OpCode opcode, ScriptObjWriter method)
+		public void Emit (Token errorAt, OpCode opcode, ScriptObjWriter method)
 		{
 			if (method == null) throw new ArgumentNullException ("method");
 			new GraphNodeEmitIntMeth (this, errorAt, opcode, method).ChainLin ();
 		}
 
-		public override void Emit (Token errorAt, OpCode opcode, MethodInfo method)
+		public void Emit (Token errorAt, OpCode opcode, MethodInfo method)
 		{
 			if (method == null) throw new ArgumentNullException ("method");
 			new GraphNodeEmitExtMeth (this, errorAt, opcode, method).ChainLin ();
 		}
 
-		public override void Emit (Token errorAt, OpCode opcode, ConstructorInfo ctor)
+		public void Emit (Token errorAt, OpCode opcode, ConstructorInfo ctor)
 		{
 			if (ctor == null) throw new ArgumentNullException ("ctor");
 			new GraphNodeEmitCtor (this, errorAt, opcode, ctor).ChainLin ();
 		}
 
-		public override void Emit (Token errorAt, OpCode opcode, double value)
+		public void Emit (Token errorAt, OpCode opcode, double value)
 		{
 			new GraphNodeEmitDouble (this, errorAt, opcode, value).ChainLin ();
 		}
 
-		public override void Emit (Token errorAt, OpCode opcode, float value)
+		public void Emit (Token errorAt, OpCode opcode, float value)
 		{
 			new GraphNodeEmitFloat (this, errorAt, opcode, value).ChainLin ();
 		}
 
-		public override void Emit (Token errorAt, OpCode opcode, int value)
+		public void Emit (Token errorAt, OpCode opcode, int value)
 		{
 			new GraphNodeEmitInt (this, errorAt, opcode, value).ChainLin ();
 		}
 
-		public override void Emit (Token errorAt, OpCode opcode, string value)
+		public void Emit (Token errorAt, OpCode opcode, string value)
 		{
 			new GraphNodeEmitString (this, errorAt, opcode, value).ChainLin ();
 		}
 
-		public override void MarkLabel (ScriptMyLabel myLabel)
+		public void MarkLabel (ScriptMyLabel myLabel)
 		{
 			myLabel.whereAmI = new GraphNodeMarkLabel (this, myLabel);
 			myLabel.whereAmI.ChainLin ();

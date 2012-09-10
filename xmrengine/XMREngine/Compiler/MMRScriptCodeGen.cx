@@ -26,8 +26,15 @@ using System.Threading;
 
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
+	public interface IScriptCodeGen
+	{
+		ScriptMyILGen ilGen { get; } // the output instruction stream
+		void ErrorMsg (Token token, string message);
+		void PushDefaultValue (TokenType type);
+		void PushXMRInst (); 
+	}
 
-	public class ScriptCodeGen
+	public class ScriptCodeGen : IScriptCodeGen
 	{
 		public static readonly string OBJECT_CODE_MAGIC = "XMRObjectCode";
 		public static int COMPILED_VERSION_VALUE = 16;  // incremented when compiler changes for compatibility testing
@@ -141,7 +148,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public ScriptObjCode scriptObjCode = null;
 
 		// These get cleared at beginning of every function definition
-		public  ScriptMyILGen ilGen     = null;  // the output instruction stream
 		private ScriptMyLabel retLabel  = null;  // where to jump to exit function
 		private ScriptMyLocal retValue  = null;
 		private ScriptMyLocal actCallNo = null;  // for the active try/catch/finally stack or the big one outside them all
@@ -150,6 +156,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public  CallLabel openCallLabel = null;  // only one call label can be open at a time
 		                                         // - the call label is open from the time of CallPre() until corresponding CallPost()
 		                                         // - so no non-trivial pushes/pops etc allowed between a CallPre() and a CallPost()
+
+		private ScriptMyILGen _ilGen;
+		public ScriptMyILGen ilGen { get { return _ilGen; } }
 
 		private ScriptCodeGen (TokenScript tokenScript, BinaryWriter objFileWriter, string sourceHash)
 		{
@@ -859,11 +868,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * They just have the XMRInstance pointer as the one argument.
 			 */
 			string functionName = statename + " " + eventname;
-			ilGen = new ScriptObjWriter (tokenScript, 
-			                             functionName,
-			                             typeof (void),
-			                             instanceTypeArg,
-			                             objFileWriter);
+			_ilGen = new ScriptObjWriter (tokenScript, 
+			                              functionName,
+			                              typeof (void),
+			                              instanceTypeArg,
+			                              objFileWriter);
 			StartFunctionBody (declFunc);
 
 			/*
@@ -887,7 +896,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				 */
 				PushXMRInst ();                                          // instance
 				ilGen.Emit (declFunc, OpCodes.Ldfld, ehArgsFieldInfo);   // instance.ehArgs (array of objects)
-				ilGen.PushInt (i);                                       // array index = i
+				ilGen.Emit (declFunc, OpCodes.Ldc_I4, i);                // array index = i
 				ilGen.Emit (declFunc, OpCodes.Ldelem, typeof (object));  // select the argument we want
 				TokenType stkTokType = tokenTypeObj;                     // stack has a type 'object' on it now
 				Type argSysType = argTokType.ToSysType ();               // this is the type the script expects
@@ -979,7 +988,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Set up code generator for the function's contents.
 			 */
-			ilGen = declFunc.ilGen;
+			_ilGen = declFunc.ilGen;
 			StartFunctionBody (declFunc);
 
 			/*
@@ -1151,12 +1160,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ScriptMyLabel cmRestore = null;
 			if (!isTrivial) {
 				actCallNo = ilGen.DeclareLocal (typeof (int), "__mainCallNo");
-				ilGen.PushInt (-1);
+				ilGen.Emit (curDeclFunc, OpCodes.Ldc_I4_M1);
 				ilGen.Emit (curDeclFunc, OpCodes.Stloc, actCallNo);
 				cmRestore = ilGen.DefineLabel ("__cmRestore");
 				PushXMRInst ();
 				ilGen.Emit (curDeclFunc, OpCodes.Ldfld, ScriptCodeGen.callModeFieldInfo);
-				ilGen.PushInt (XMRInstAbstract.CALLMODE_NORMAL);
+				ilGen.Emit (curDeclFunc, OpCodes.Ldc_I4, XMRInstAbstract.CALLMODE_NORMAL);
 				ilGen.Emit (curDeclFunc, OpCodes.Bne_Un, cmRestore);
 				ilGen.BeginExceptionBlock ();
 			}
@@ -1165,7 +1174,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Splice in the code optimizer for the body of the function.
 			 */
 			ScriptCollector collector = new ScriptCollector ((ScriptObjWriter)ilGen);
-			ilGen = collector;
+			_ilGen = collector;
 
 			/*
 			 * If this is the default state_entry() handler, output code to set all global
@@ -1202,7 +1211,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 				// doGblInit = 0;
 				PushXMRInst ();                                  // instance
-				ilGen.PushInt (0);
+				ilGen.Emit (curDeclFunc, OpCodes.Ldc_I4_0);
 				ilGen.Emit (curDeclFunc, OpCodes.Stfld, doGblInitFieldInfo);  // instance.doGblInit
 
 				//skipGblInit:
@@ -1262,7 +1271,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * at the __call_ labels.
 			 */
 			collector.Optimize ();
-			ilGen = collector.WriteOutAll ();
+			_ilGen = collector.WriteOutAll ();
 			collector = null;
 
 			/*
@@ -1281,7 +1290,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				endFin = ilGen.DefineLabel ("__endFin");
 				PushXMRInst ();
 				ilGen.Emit (curDeclFunc, OpCodes.Ldfld, callModeFieldInfo);
-				ilGen.PushInt (XMRInstAbstract.CALLMODE_NORMAL);
+				ilGen.Emit (curDeclFunc, OpCodes.Ldc_I4, XMRInstAbstract.CALLMODE_NORMAL);
 				ilGen.Emit (curDeclFunc, OpCodes.Beq, endFin);
 				activeTemps = GenerateFrameCaptureCode ();
 				ilGen.MarkLabel (endFin);
@@ -1312,7 +1321,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * No more instructions for this method.
 			 */
 			((ScriptObjWriter)ilGen).EndMethod ();
-			ilGen = null;
+			_ilGen = null;
 
 			/*
 			 * Not generating function code any more.
@@ -1380,7 +1389,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			PushXMRInst ();
 			ilGen.Emit (curDeclFunc, OpCodes.Ldstr, ilGen.methName);
 			ilGen.Emit (curDeclFunc, OpCodes.Ldloc, actCallNo);  // __mainCallNo
-			ilGen.PushInt (nSaves);
+			ilGen.Emit (curDeclFunc, OpCodes.Ldc_I4, nSaves);
 			ilGen.Emit (curDeclFunc, OpCodes.Call, captureStackFrameMethodInfo);
 
 			/*
@@ -1389,7 +1398,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			int i = 0;
 			foreach (TokenDeclVar argVar in curDeclFunc.argDecl.varDict) {
 				ilGen.Emit (curDeclFunc, OpCodes.Dup);
-				ilGen.PushInt (i);
+				ilGen.Emit (curDeclFunc, OpCodes.Ldc_I4, i);
 				argVar.location.PushVal (this, argVar.name, tokenTypeObj);
 				ilGen.Emit (curDeclFunc, OpCodes.Stelem_Ref);
 				i ++;
@@ -1400,7 +1409,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			foreach (ScriptMyLocal lcl in activeTemps) {
 				ilGen.Emit (curDeclFunc, OpCodes.Dup);
-				ilGen.PushInt (i ++);
+				ilGen.Emit (curDeclFunc, OpCodes.Ldc_I4, i ++);
 				ilGen.Emit (curDeclFunc, OpCodes.Ldloc, lcl);
 				if (lcl.type.IsValueType) ilGen.Emit (curDeclFunc, OpCodes.Box, lcl.type);
 				ilGen.Emit (curDeclFunc, OpCodes.Stelem_Ref);
@@ -1448,7 +1457,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				CompValu argLoc = argVar.location;
 				argLoc.PopPre (this, argVar.name);
 				ilGen.Emit (curDeclFunc, OpCodes.Ldloc, objArray);
-				ilGen.PushInt (i);
+				ilGen.Emit (curDeclFunc, OpCodes.Ldc_I4, i);
 				ilGen.Emit (curDeclFunc, OpCodes.Ldelem_Ref);
 #if DEBUG_STACKCAPRES
 				ilGen.Emit (curDeclFunc, OpCodes.Ldstr, " ");
@@ -1470,7 +1479,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			foreach (ScriptMyLocal lcl in activeTemps) {
 				ilGen.Emit (curDeclFunc, OpCodes.Ldloc, objArray);
-				ilGen.PushInt (i ++);
+				ilGen.Emit (curDeclFunc, OpCodes.Ldc_I4, i ++);
 				ilGen.Emit (curDeclFunc, OpCodes.Ldelem_Ref);
 #if DEBUG_STACKCAPRES
 				ilGen.Emit (curDeclFunc, OpCodes.Ldstr, " ");
@@ -1568,7 +1577,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					scg.actCallLabels.AddLast (this);
 					scg.allCallLabels.AddLast (this);
 					this.callLabel = scg.ilGen.DefineLabel (name);
-					scg.ilGen.PushInt (this.index);
+					scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4, this.index);
 					scg.ilGen.Emit (errorAt, OpCodes.Stloc, scg.actCallNo);
 					scg.ilGen.MarkLabel (this.callLabel);
 				}
@@ -1851,7 +1860,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ScriptMyLocal objectVar = ((keyLVal == null) || (valLVal == null)) ? ilGen.DeclareLocal (typeof (object), "foreachobj_" + forEachStmt.Unique) : null;
 
 			// indexVar = 0
-			ilGen.PushInt (0);
+			ilGen.Emit (forEachStmt, OpCodes.Ldc_I4_0);
 			indexVar.Pop (this, forEachStmt);
 
 			ilGen.MarkLabel (loopLabel);
@@ -1862,7 +1871,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			// ForEach arg 1: indexVar ++
 			indexVar.PushVal (this, forEachStmt);
 			ilGen.Emit (forEachStmt, OpCodes.Dup);
-			ilGen.PushInt (1);
+			ilGen.Emit (forEachStmt, OpCodes.Ldc_I4_1);
 			ilGen.Emit (forEachStmt, OpCodes.Add);
 			indexVar.Pop (this, forEachStmt);
 
@@ -2133,7 +2142,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			newobjStmt.objptrVar.location.PopPre (this, newobjStmt);
 			ilGen.Emit (newobjStmt, OpCodes.Ldarg_0);
-			ilGen.PushInt (curDeclFunc.sdtClass.sdTypeIndex);
+			ilGen.Emit (newobjStmt, OpCodes.Ldc_I4, curDeclFunc.sdtClass.sdTypeIndex);
 			ilGen.Emit (newobjStmt, OpCodes.Newobj, sdtClassConstructorInfo);
 			newobjStmt.objptrVar.location.PopPost (this, newobjStmt);
 
@@ -2242,7 +2251,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ilGen.Emit (stateStmt, OpCodes.Ldstr, stateStmt.state.val);
 				ilGen.Emit (stateStmt, OpCodes.Newobj, scriptUndefinedStateExceptionConstructorInfo);
 			} else {
-				ilGen.PushInt (index);				// new state's index
+				ilGen.Emit (stateStmt, OpCodes.Ldc_I4, index);	// new state's index
 				ilGen.Emit (stateStmt, OpCodes.Newobj, scriptChangeStateExceptionConstructorInfo);
 			}
 			ilGen.Emit (stateStmt, OpCodes.Throw);
@@ -2395,7 +2404,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 * The OpCodes.Switch falls through if out of range (unsigned compare).
 					 */
 					if (offset != lowValue) {
-						ilGen.PushInt (lowValue - offset);
+						ilGen.Emit (switchStmt, OpCodes.Ldc_I4, lowValue - offset);
 						ilGen.Emit (switchStmt, OpCodes.Sub);
 						offset = lowValue;
 					}
@@ -2409,16 +2418,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 */
 					if (lowValue == thisCase.val2) {
 						ilGen.Emit (switchStmt, OpCodes.Dup);
-						ilGen.PushInt (lowValue - offset);
+						ilGen.Emit (switchStmt, OpCodes.Ldc_I4, lowValue - offset);
 						ilGen.Emit (switchStmt, OpCodes.Beq, thisCase.label);
 					} else {
 						if (offset != lowValue) {
-							ilGen.PushInt (lowValue - offset);
+							ilGen.Emit (switchStmt, OpCodes.Ldc_I4, lowValue - offset);
 							ilGen.Emit (switchStmt, OpCodes.Sub);
 							offset = lowValue;
 						}
 						ilGen.Emit (switchStmt, OpCodes.Dup);
-						ilGen.PushInt (thisCase.val2 - offset);
+						ilGen.Emit (switchStmt, OpCodes.Ldc_I4, thisCase.val2 - offset);
 						ilGen.Emit (switchStmt, OpCodes.Ble_Un, thisCase.label);
 					}
 					thisCase = thisCase.nextSortedCase;
@@ -2443,7 +2452,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					GenerateStmt (stmt);		// output the case/explicit default body
 				}
 				if (mightGetHere) {
-					ilGen.PushInt (0);		// in case we fall through, push a dummy integer index
+					ilGen.Emit (thisCase, OpCodes.Ldc_I4_0);
+									// in case we fall through, push a dummy integer index
 				}
 			}
 
@@ -2626,7 +2636,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 #endif
 
 			tryCallNo.PushVal (this, tryStmt);			//         if (__tryCallNo >= 0) goto tryCallSw;
-			ilGen.PushInt (0);
+			ilGen.Emit (tryStmt, OpCodes.Ldc_I4_0);
 			ilGen.Emit (tryStmt, OpCodes.Bge, tryCallSw);
 
 			actCallNo = tryCallNo.localBuilder;                     // set up __tryCallNo for call labels
@@ -2695,7 +2705,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ilGen.Emit (tryStmt.catchStmt, OpCodes.Dup);
 			if (catchVarLoc.type is TokenTypeSDType) {		// try to cast to type script requires
 				PushXMRInst ();
-				ilGen.PushInt (((TokenTypeSDType)catchVarLoc.type).GetDecl ().sdTypeIndex);
+				ilGen.Emit (tryStmt.catchStmt, OpCodes.Ldc_I4, ((TokenTypeSDType)catchVarLoc.type).GetDecl ().sdTypeIndex);
 				ilGen.Emit (tryStmt.catchStmt, OpCodes.Call, catchTryCastToSDTypeMethodInfo);
 			}
 			Type sysType = catchVarLoc.type.ToSysType ();
@@ -2705,11 +2715,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (sysType.IsValueType) ilGen.Emit (tryStmt.catchStmt, OpCodes.Unbox_Any, sysType);
 			catchVarLoc.Pop (this, tryStmt.catchVar.name);  	// store string in script-visible variable
 			catThrown.Pop (this, tryStmt);				// store exception object in catThrown
-			ilGen.PushInt (tryThrow.index);				// __tryCallNo = tryThrow so it knows to do 'throw catThrown' on restore
+			ilGen.Emit (tryStmt, OpCodes.Ldc_I4, tryThrow.index);	// __tryCallNo = tryThrow so it knows to do 'throw catThrown' on restore
 			tryCallNo.Pop (this, tryStmt);
 
 			catCallNo.PushVal (this, tryStmt);			// if (__catCallNo >= 0) goto catchCallSw;
-			ilGen.PushInt (0);
+			ilGen.Emit (tryStmt.catchStmt, OpCodes.Ldc_I4_0);
 			ilGen.Emit (tryStmt.catchStmt, OpCodes.Bge, catchCallSw);
 
 			actCallNo = catCallNo.localBuilder;             	// set up __catCallNo for call labels
@@ -2837,7 +2847,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 #endif
 
 			tryCallNo.PushVal (this, tryStmt);			//         if (__tryCallNo >= 0) goto tryCallSw;
-			ilGen.PushInt (0);
+			ilGen.Emit (tryStmt, OpCodes.Ldc_I4_0);
 			ilGen.Emit (tryStmt, OpCodes.Bge, tryCallSw);
 
 			actCallNo = tryCallNo.localBuilder;                     // set up __tryCallNo for call labels
@@ -2894,11 +2904,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ilGen.Emit (tryStmt, OpCodes.Call, scriptRestoreCatchExceptionUnwrap);  // exc = ScriptRestoreCatchException.Unwrap (exc);
 			PushXMRInst ();						// if (callMode == CALLMODE_SAVE) goto catchRetro;
 			ilGen.Emit (tryStmt, OpCodes.Ldfld, callModeFieldInfo);
-			ilGen.PushInt (XMRInstAbstract.CALLMODE_SAVE);
+			ilGen.Emit (tryStmt, OpCodes.Ldc_I4, XMRInstAbstract.CALLMODE_SAVE);
 			ilGen.Emit (tryStmt, OpCodes.Beq, catchRetro);
 
 			catThrown.Pop (this, tryStmt);				// __catThrown = exc;
-			ilGen.PushInt (tryThrow.index);				// __tryCallNo = tryThrow:<tryCallLabel>;
+			ilGen.Emit (tryStmt, OpCodes.Ldc_I4, tryThrow.index);	// __tryCallNo = tryThrow:<tryCallLabel>;
 			tryCallNo.Pop (this, tryStmt);
 			ilGen.Emit (tryStmt, OpCodes.Rethrow);
 
@@ -2912,11 +2922,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			PushXMRInst ();						// if (callMode == CALLMODE_SAVE) goto finEnd;
 			ilGen.Emit (tryStmt, OpCodes.Ldfld, callModeFieldInfo);
-			ilGen.PushInt (XMRInstAbstract.CALLMODE_SAVE);
+			ilGen.Emit (tryStmt, OpCodes.Ldc_I4, XMRInstAbstract.CALLMODE_SAVE);
 			ilGen.Emit (tryStmt, OpCodes.Beq, finEnd.label);
 
 			finCallNo.PushVal (this, tryStmt);			// if (__finCallNo >= 0) goto finCallSw;
-			ilGen.PushInt (0);
+			ilGen.Emit (tryStmt, OpCodes.Ldc_I4_0);
 			ilGen.Emit (tryStmt, OpCodes.Bge, finCallSw);
 
 			actCallNo = finCallNo.localBuilder;             	// set up __finCallNo for call labels
@@ -3631,7 +3641,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				right.PushVal (this, token.rValRight);
 				ilGen.Emit (token, OpCodes.Ceq);
 				if (opcodeIndex == "!=") {
-					ilGen.PushInt (1);
+					ilGen.Emit (token, OpCodes.Ldc_I4_1);
 					ilGen.Emit (token, OpCodes.Xor);
 				}
 				retRVal.Pop (this, token);
@@ -3812,7 +3822,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Perform the ++/--.
 			 */
 			if ((lVal.type is TokenTypeChar) || (lVal.type is TokenTypeInt)) {
-				ilGen.PushInt (1);
+				ilGen.Emit (asnPost, OpCodes.Ldc_I4_1);
 			} else if (lVal.type is TokenTypeFloat) {
 				ilGen.Emit (asnPost, OpCodes.Ldc_R4, 1.0f);
 			} else {
@@ -3866,7 +3876,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Perform the ++/--.
 			 */
 			if ((lVal.type is TokenTypeChar) || (lVal.type is TokenTypeInt)) {
-				ilGen.PushInt (1);
+				ilGen.Emit (asnPre, OpCodes.Ldc_I4_1);
 			} else if (lVal.type is TokenTypeFloat) {
 				ilGen.Emit (asnPre, OpCodes.Ldc_R4, 1.0f);
 			} else {
@@ -4121,7 +4131,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Create a temp object[] array to hold all the initial values.
 			 */
-			ilGen.PushInt (rValList.nItems);
+			ilGen.Emit (rValList, OpCodes.Ldc_I4, rValList.nItems);
 			ilGen.Emit (rValList, OpCodes.Newarr, typeof (object));
 
 			/*
@@ -4138,7 +4148,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				/*
 				 * Get index in that array.
 				 */
-				ilGen.PushInt (i);
+				ilGen.Emit (rValList, OpCodes.Ldc_I4, i);
 
 				/*
 				 * Store initialization value in array location.
@@ -4216,7 +4226,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			CompValuTemp array = new CompValuTemp (arrayType, "$newarini", this);
 			PushXMRInst ();
 			for (int k = 0; k < rank; k ++) {
-				ilGen.PushInt (dimSizes[k]);
+				ilGen.Emit (values, OpCodes.Ldc_I4, dimSizes[k]);
 			}
 			ilGen.Emit (values, OpCodes.Call, newMeth.ilGen);
 			array.Pop (this, arrayType);
@@ -4328,7 +4338,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				if (initValue != null) {
 					array.PushVal (this, val);
 					for (int i = 0; i <= dimNo; i ++) {
-						ilGen.PushInt (subscripts[i]);
+						ilGen.Emit (val, OpCodes.Ldc_I4, subscripts[i]);
 					}
 					initValue.PushVal (this, val, eleType);
 					ilGen.Emit (val, OpCodes.Call, setMeth.ilGen);
@@ -4448,7 +4458,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				CompValu interm = GenerateFromTypeExp (val, ((TokenTypeExpNot)typeExp).typeExp);
 				CompValuTemp result = new CompValuTemp (tokenTypeBool, null, this);
 				interm.PushVal (this, ((TokenTypeExpNot)typeExp).typeExp, tokenTypeBool);
-				ilGen.PushInt (1);
+				ilGen.Emit (typeExp, OpCodes.Ldc_I4_1);
 				ilGen.Emit (typeExp, OpCodes.Xor);
 				result.Pop (this, typeExp);
 				return result;
@@ -4462,7 +4472,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ilGen.Emit (typeExp, OpCodes.Isinst, ((TokenTypeExpType)typeExp).typeToken.ToSysType ());
 				ilGen.Emit (typeExp, OpCodes.Ldnull);
 				ilGen.Emit (typeExp, OpCodes.Ceq);
-				ilGen.PushInt (1);
+				ilGen.Emit (typeExp, OpCodes.Ldc_I4_1);
 				ilGen.Emit (typeExp, OpCodes.Xor);
 				result.Pop (this, typeExp);
 				return result;
@@ -4495,11 +4505,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				return;
 			}
 			if (type is TokenTypeChar) {
-				ilGen.PushInt (0);
+				ilGen.Emit (type, OpCodes.Ldc_I4_0);
 				return;
 			}
 			if (type is TokenTypeList) {
-				ilGen.PushInt (0);
+				ilGen.Emit (type, OpCodes.Ldc_I4_0);
 				ilGen.Emit (type, OpCodes.Newarr, typeof (object));
 				ilGen.Emit (type, OpCodes.Newobj, lslListConstructorInfo);
 				return;
@@ -4526,7 +4536,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				return;
 			}
 			if (type is TokenTypeInt) {
-				ilGen.PushInt (0);
+				ilGen.Emit (type, OpCodes.Ldc_I4_0);
 				return;
 			}
 			if (type is TokenTypeFloat) {
@@ -4660,7 +4670,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (curDeclFunc.IsFuncTrivial (this)) throw new Exception (curDeclFunc.fullName + " is supposed to be trivial");
 			new CallLabel (this, errorAt);                           // jump here when stack restored
 			PushXMRInst ();                                          // instance
-			ilGen.PushInt (errorAt.line);                            // source line number
+			ilGen.Emit (errorAt, OpCodes.Ldc_I4, errorAt.line);      // source line number
 			ilGen.Emit (errorAt, OpCodes.Call, checkRunMethodInfo);  // instance.CheckRun()
 			openCallLabel = null;
 		}
@@ -4724,10 +4734,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (opcode is TokenKwExclam) {
 				CompValuTemp outRVal = new CompValuTemp (new TokenTypeInt (opcode), null, this);
 				inRVal.PushVal (this, opcode, tokenTypeBool);  // anything converts to boolean
-				ilGen.PushInt (1);                     // then XOR with 1 to flip it
+				ilGen.Emit (opcode, OpCodes.Ldc_I4_1);         // then XOR with 1 to flip it
 				ilGen.Emit (opcode, OpCodes.Xor);
-				outRVal.Pop (this, opcode);            // pop into result
-				return outRVal;                        // tell caller where we put it
+				outRVal.Pop (this, opcode);                    // pop into result
+				return outRVal;                                // tell caller where we put it
 			}
 
 			throw new Exception ("unhandled opcode " + opcode.ToString ());

@@ -9,81 +9,29 @@ using System.Reflection.Emit;
 
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
-	public abstract class ScriptMyILGen
+	public interface ScriptMyILGen
 	{
-		public abstract string methName { get; }
-		public abstract ScriptMyLocal DeclareLocal (Type type, string name);
-		public abstract ScriptMyLabel DefineLabel (string name);
-		public abstract void BeginExceptionBlock ();
-		public abstract void BeginCatchBlock (Type excType);
-		public abstract void BeginFinallyBlock ();
-		public abstract void EndExceptionBlock ();
-		public abstract void Emit (Token errorAt, OpCode opcode);
-		public abstract void Emit (Token errorAt, OpCode opcode, FieldInfo field);
-		public abstract void Emit (Token errorAt, OpCode opcode, ScriptMyLocal myLocal);
-		public abstract void Emit (Token errorAt, OpCode opcode, Type type);
-		public abstract void Emit (Token errorAt, OpCode opcode, ScriptMyLabel myLabel);
-		public abstract void Emit (Token errorAt, OpCode opcode, ScriptMyLabel[] myLabels);
-		public abstract void Emit (Token errorAt, OpCode opcode, ScriptObjWriter method);
-		public abstract void Emit (Token errorAt, OpCode opcode, MethodInfo method);
-		public abstract void Emit (Token errorAt, OpCode opcode, ConstructorInfo ctor);
-		public abstract void Emit (Token errorAt, OpCode opcode, double value);
-		public abstract void Emit (Token errorAt, OpCode opcode, float value);
-		public abstract void Emit (Token errorAt, OpCode opcode, int value);
-		public abstract void Emit (Token errorAt, OpCode opcode, string value);
-		public abstract void MarkLabel (ScriptMyLabel myLabel);
-
-		public void PushInt (int c)
-		{
-			switch (c) {
-				case -1: {
-					Emit (null, OpCodes.Ldc_I4_M1);
-					return;
-				}
-				case 0: {
-					Emit (null, OpCodes.Ldc_I4_0);
-					return;
-				}
-				case 1: {
-					Emit (null, OpCodes.Ldc_I4_1);
-					return;
-				}
-				case 2: {
-					Emit (null, OpCodes.Ldc_I4_2);
-					return;
-				}
-				case 3: {
-					Emit (null, OpCodes.Ldc_I4_3);
-					return;
-				}
-				case 4: {
-					Emit (null, OpCodes.Ldc_I4_4);
-					return;
-				}
-				case 5: {
-					Emit (null, OpCodes.Ldc_I4_5);
-					return;
-				}
-				case 6: {
-					Emit (null, OpCodes.Ldc_I4_6);
-					return;
-				}
-				case 7: {
-					Emit (null, OpCodes.Ldc_I4_7);
-					return;
-				}
-				case 8: {
-					Emit (null, OpCodes.Ldc_I4_8);
-					return;
-				}
-				default: break;
-			}
-			if ((c >= 0) && (c <= 127)) {  // negatives dont seem to work
-				Emit (null, OpCodes.Ldc_I4_S, c);
-				return;
-			}
-			Emit (null, OpCodes.Ldc_I4, c);
-		}
+		string methName { get; }
+		ScriptMyLocal DeclareLocal (Type type, string name);
+		ScriptMyLabel DefineLabel (string name);
+		void BeginExceptionBlock ();
+		void BeginCatchBlock (Type excType);
+		void BeginFinallyBlock ();
+		void EndExceptionBlock ();
+		void Emit (Token errorAt, OpCode opcode);
+		void Emit (Token errorAt, OpCode opcode, FieldInfo field);
+		void Emit (Token errorAt, OpCode opcode, ScriptMyLocal myLocal);
+		void Emit (Token errorAt, OpCode opcode, Type type);
+		void Emit (Token errorAt, OpCode opcode, ScriptMyLabel myLabel);
+		void Emit (Token errorAt, OpCode opcode, ScriptMyLabel[] myLabels);
+		void Emit (Token errorAt, OpCode opcode, ScriptObjWriter method);
+		void Emit (Token errorAt, OpCode opcode, MethodInfo method);
+		void Emit (Token errorAt, OpCode opcode, ConstructorInfo ctor);
+		void Emit (Token errorAt, OpCode opcode, double value);
+		void Emit (Token errorAt, OpCode opcode, float value);
+		void Emit (Token errorAt, OpCode opcode, int value);
+		void Emit (Token errorAt, OpCode opcode, string value);
+		void MarkLabel (ScriptMyLabel myLabel);
 	}
 
 	/**

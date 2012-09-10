@@ -1029,3 +1029,70 @@ at default state_entry <trycatchexample.lsl(9,36)>
  stacktrace:
 at default state_entry <trycatchexample.lsl(17,23)>
 
+
+TYPE CASTING
+------------
+
+While not an added feature as such, here are the type castings the  XMREngine 
+script compiler allows (those marked with * require an explicit type cast):
+
+array     ->   object
+char      ->   integer
+char      ->   list
+char      ->   object
+char      ->   string
+exception ->   list
+exception ->   object
+exception ->   string
+float     ->   integer
+float     ->   list
+float     ->   object
+float     ->   string
+integer   ->   char
+integer   ->   float
+integer   ->   list
+integer   ->   object
+integer   ->   string
+list      ->   object
+list      ->   string
+object    -> * array
+object    -> * char
+object    -> * exception
+object    -> * float
+object    -> * integer
+object    -> * list
+object    -> * rotation
+object    ->   string
+object    -> * vector
+rotation  ->   list
+rotation  ->   object
+rotation  ->   string
+string    ->   float
+string    ->   integer
+string    ->   list
+string    ->   object
+string    ->   rotation
+string    ->   vector
+vector    ->   list
+vector    ->   object
+vector    ->   string
+
+undef     ->   object
+undef     ->   script-defined class
+undef     ->   script-defined delegate
+undef     ->   script-defined interface
+
+implicit rootward cast of script-defined class type.
+explicit leafward cast of script-defined class type.
+
+implicit cast of interface to another interface if the old interface type 
+declares that it implements the new interface type.
+
+implicit cast of script-defined class type to an implemented interface type.
+
+explicit cast of script-defined interface type to class type if the class type 
+was declared to implement the interface type.
+
+implicit cast of script-defined {class,delegate,interface} type to object.
+explicit cast of object to script-defined {class,delegate,interface} type.
+

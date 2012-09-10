@@ -43,6 +43,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic, null, 
 						new Type[] { typeof (ILGenerator) }, null);
 
+		private static readonly OpCode[] opCodesLdcI4M1P8 = new OpCode[] {
+			OpCodes.Ldc_I4_M1, OpCodes.Ldc_I4_0, OpCodes.Ldc_I4_1, OpCodes.Ldc_I4_2, OpCodes.Ldc_I4_3, 
+			OpCodes.Ldc_I4_4,  OpCodes.Ldc_I4_5, OpCodes.Ldc_I4_6, OpCodes.Ldc_I4_7, OpCodes.Ldc_I4_8
+		};
+
 		private BinaryWriter objFileWriter;
 		private string lastErrorAtFile = "";
 		private int    lastErrorAtLine = 0;
@@ -53,7 +58,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public int localNumber = 0;
 
 		private string _methName;
-		public override string methName { get { return _methName; } }
+		public string methName { get { return _methName; } }
 
 		public Type   retType;
 		public Type[] argTypes;
@@ -140,7 +145,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		/**
 		 * @brief Declare a local variable for use by the function
 		 */
-		public override ScriptMyLocal DeclareLocal (Type type, string name)
+		public ScriptMyLocal DeclareLocal (Type type, string name)
 		{
 			ScriptMyLocal myLocal = new ScriptMyLocal ();
 			myLocal.type   = type;
@@ -161,7 +166,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		/**
 		 * @brief Define a label for use by the function
 		 */
-		public override ScriptMyLabel DefineLabel (string name)
+		public ScriptMyLabel DefineLabel (string name)
 		{
 			ScriptMyLabel myLabel = new ScriptMyLabel ();
 			myLabel.name   = name;
@@ -179,34 +184,34 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		/**
 		 * @brief try/catch blocks.
 		 */
-		public override void BeginExceptionBlock ()
+		public void BeginExceptionBlock ()
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.BegExcBlk);
 		}
 
-		public override void BeginCatchBlock (Type excType)
+		public void BeginCatchBlock (Type excType)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.BegCatBlk);
 			objFileWriter.Write (GetStrFromType (excType));
 		}
 
-		public override void BeginFinallyBlock ()
+		public void BeginFinallyBlock ()
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.BegFinBlk);
 		}
 
-		public override void EndExceptionBlock ()
+		public void EndExceptionBlock ()
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EndExcBlk);
 		}
 
-		public override void Emit (Token errorAt, OpCode opcode)
+		public void Emit (Token errorAt, OpCode opcode)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitNull);
 			WriteOpCode (errorAt, opcode);
 		}
 
-		public override void Emit (Token errorAt, OpCode opcode, FieldInfo field)
+		public void Emit (Token errorAt, OpCode opcode, FieldInfo field)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitField);
 			WriteOpCode (errorAt, opcode);
@@ -214,28 +219,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			objFileWriter.Write (field.Name);
 		}
 
-		public override void Emit (Token errorAt, OpCode opcode, ScriptMyLocal myLocal)
+		public void Emit (Token errorAt, OpCode opcode, ScriptMyLocal myLocal)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitLocal);
 			WriteOpCode (errorAt, opcode);
 			objFileWriter.Write (myLocal.number);
 		}
 
-		public override void Emit (Token errorAt, OpCode opcode, Type type)
+		public void Emit (Token errorAt, OpCode opcode, Type type)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitType);
 			WriteOpCode (errorAt, opcode);
 			objFileWriter.Write (GetStrFromType (type));
 		}
 
-		public override void Emit (Token errorAt, OpCode opcode, ScriptMyLabel myLabel)
+		public void Emit (Token errorAt, OpCode opcode, ScriptMyLabel myLabel)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitLabel);
 			WriteOpCode (errorAt, opcode);
 			objFileWriter.Write (myLabel.number);
 		}
 
-		public override void Emit (Token errorAt, OpCode opcode, ScriptMyLabel[] myLabels)
+		public void Emit (Token errorAt, OpCode opcode, ScriptMyLabel[] myLabels)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitLabels);
 			WriteOpCode (errorAt, opcode);
@@ -246,7 +251,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 		}
 
-		public override void Emit (Token errorAt, OpCode opcode, ScriptObjWriter method)
+		public void Emit (Token errorAt, OpCode opcode, ScriptObjWriter method)
 		{
 			if (method == null) throw new ArgumentNullException ("method");
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitMethodInt);
@@ -254,7 +259,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			objFileWriter.Write (method.methName);
 		}
 
-		public override void Emit (Token errorAt, OpCode opcode, MethodInfo method)
+		public void Emit (Token errorAt, OpCode opcode, MethodInfo method)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitMethodExt);
 			WriteOpCode (errorAt, opcode);
@@ -268,7 +273,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 		}
 
-		public override void Emit (Token errorAt, OpCode opcode, ConstructorInfo ctor)
+		public void Emit (Token errorAt, OpCode opcode, ConstructorInfo ctor)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitCtor);
 			WriteOpCode (errorAt, opcode);
@@ -281,7 +286,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 		}
 
-		public override void Emit (Token errorAt, OpCode opcode, double value)
+		public void Emit (Token errorAt, OpCode opcode, double value)
 		{
 			if (opcode != OpCodes.Ldc_R8) {
 				throw new Exception ("bad opcode " + opcode.ToString ());
@@ -291,7 +296,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			objFileWriter.Write (value);
 		}
 
-		public override void Emit (Token errorAt, OpCode opcode, float value)
+		public void Emit (Token errorAt, OpCode opcode, float value)
 		{
 			if (opcode != OpCodes.Ldc_R4) {
 				throw new Exception ("bad opcode " + opcode.ToString ());
@@ -301,14 +306,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			objFileWriter.Write (value);
 		}
 
-		public override void Emit (Token errorAt, OpCode opcode, int value)
+		public void Emit (Token errorAt, OpCode opcode, int value)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitInteger);
 			WriteOpCode (errorAt, opcode);
 			objFileWriter.Write (value);
 		}
 
-		public override void Emit (Token errorAt, OpCode opcode, string value)
+		public void Emit (Token errorAt, OpCode opcode, string value)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.EmitString);
 			WriteOpCode (errorAt, opcode);
@@ -318,7 +323,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		/**
 		 * @brief Declare that the target of a label is the next instruction.
 		 */
-		public override void MarkLabel (ScriptMyLabel myLabel)
+		public void MarkLabel (ScriptMyLabel myLabel)
 		{
 			objFileWriter.Write ((byte)ScriptObjWriterCode.MarkLabel);
 			objFileWriter.Write (myLabel.number);
@@ -764,6 +769,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						int value     = objReader.ReadInt32 ();
 
 						SaveSrcLoc (srcLocs, offset, srcFile, srcLine, srcPosn);
+
+						if (opCode == OpCodes.Ldc_I4) {
+							if ((value >= -1) && (value <= 8)) {
+								opCode = opCodesLdcI4M1P8[value+1];
+								ilGen.Emit (opCode);
+								LinePrefix (offset, dbg, ilGenArg, opCode);
+								break;
+							}
+							if ((value >= 0) && (value <= 127)) {
+								opCode = OpCodes.Ldc_I4_S;
+							}
+						}
+
 						ilGen.Emit (opCode, value);
 
 						LinePrefix (offset, dbg, ilGenArg, opCode);

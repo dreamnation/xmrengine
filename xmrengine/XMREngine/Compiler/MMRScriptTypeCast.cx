@@ -21,7 +21,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 {
 
 	public class TypeCast {
-		private delegate void CastDelegate (ScriptCodeGen scg, Token errorAt);
+		private delegate void CastDelegate (IScriptCodeGen scg, Token errorAt);
 
 		private static ConstructorInfo floatConstructorStringInfo   = typeof (LSL_Float).GetConstructor (new Type[] { typeof (string) });
 		private static ConstructorInfo integerConstructorStringInfo = typeof (LSL_Integer).GetConstructor (new Type[] { typeof (string) });
@@ -75,8 +75,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ltc.Add ("bool object",      TypeCastBool2Object);
 			ltc.Add ("bool string",      TypeCastBool2String);
 			ltc.Add ("char integer",     TypeCastChar2Integer);
+			ltc.Add ("char list",        TypeCastChar2List);
 			ltc.Add ("char object",      TypeCastChar2Object);
 			ltc.Add ("char string",      TypeCastChar2String);
+			ltc.Add ("exception list",   TypeCastExc2List);
 			ltc.Add ("exception object", TypeCastExc2Object);
 			ltc.Add ("exception string", TypeCastExc2String);
 			ltc.Add ("float bool",       TypeCastFloat2Bool);
@@ -122,6 +124,64 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		/**
+		 * @brief See if the given type can be cast to the other implicitly.
+		 * @param dstType = type being cast to
+		 * @param srcType = type being cast from
+		 * @returns false: implicit cast not allowed
+		 *           true: implicit cast allowed
+		 */
+		public static bool IsAssignableFrom (TokenType dstType, TokenType srcType)
+		{
+			/*
+			 * Do a 'dry run' of the casting operation, discarding any emits and not printing any errors.
+			 * But if the casting tries to print error(s), return false.
+			 * Otherwise assume the cast is allowed and return true.
+			 */
+			SCGIAF scg = new SCGIAF ();
+			scg.ok = true;
+			scg._ilGen = migiaf;
+			CastTopOfStack (scg, null, srcType, dstType, false);
+			return scg.ok;
+		}
+
+		private struct SCGIAF : IScriptCodeGen {
+			public bool ok;
+			public ScriptMyILGen _ilGen;
+
+			// IScriptCodeGen
+			public ScriptMyILGen ilGen { get { return _ilGen; } }
+			public void ErrorMsg (Token token, string message) { ok = false; }
+			public void PushDefaultValue (TokenType type) { }
+			public void PushXMRInst () { }
+		}
+
+		private static readonly MIGIAF migiaf = new MIGIAF ();
+		private struct MIGIAF : ScriptMyILGen {
+			// ScriptMyILGen
+			public string methName { get { return null; } }
+			public ScriptMyLocal DeclareLocal (Type type, string name) { return null; }
+			public ScriptMyLabel DefineLabel (string name) { return null; }
+			public void BeginExceptionBlock () { }
+			public void BeginCatchBlock (Type excType) { }
+			public void BeginFinallyBlock () { }
+			public void EndExceptionBlock () { }
+			public void Emit (Token errorAt, OpCode opcode) { }
+			public void Emit (Token errorAt, OpCode opcode, FieldInfo field) { }
+			public void Emit (Token errorAt, OpCode opcode, ScriptMyLocal myLocal) { }
+			public void Emit (Token errorAt, OpCode opcode, Type type) { }
+			public void Emit (Token errorAt, OpCode opcode, ScriptMyLabel myLabel) { }
+			public void Emit (Token errorAt, OpCode opcode, ScriptMyLabel[] myLabels) { }
+			public void Emit (Token errorAt, OpCode opcode, ScriptObjWriter method) { }
+			public void Emit (Token errorAt, OpCode opcode, MethodInfo method) { }
+			public void Emit (Token errorAt, OpCode opcode, ConstructorInfo ctor) { }
+			public void Emit (Token errorAt, OpCode opcode, double value) { }
+			public void Emit (Token errorAt, OpCode opcode, float value) { }
+			public void Emit (Token errorAt, OpCode opcode, int value) { }
+			public void Emit (Token errorAt, OpCode opcode, string value) { }
+			public void MarkLabel (ScriptMyLabel myLabel) { }
+		}
+
+		/**
 		 * @brief Emit code that converts the top stack item from 'oldType' to 'newType'
 		 * @param scg = what script we are compiling
 		 * @param errorAt = token used for source location for error messages
@@ -131,7 +191,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 *                           true: consider both implicit and explicit casts
 		 * @returns with code emitted for conversion (or error message output if not allowed, and stack left unchanged)
 		 */
-		public static void CastTopOfStack (ScriptCodeGen scg, Token errorAt, TokenType oldType, TokenType newType, bool explicitAllowed)
+		public static void CastTopOfStack (IScriptCodeGen scg, Token errorAt, TokenType oldType, TokenType newType, bool explicitAllowed)
 		{
 			CastDelegate castDelegate;
 			string oldString = oldType.ToString ();
@@ -165,7 +225,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				for (TokenDeclSDTypeClass sdtc = newSDTC; sdtc != null; sdtc = sdtc.extends) {
 					if (sdtc == oldSDTC) {
 						ExplCheck (scg, errorAt, explicitAllowed, oldString, newString);
-						scg.ilGen.PushInt (newSDTC.sdTypeIndex);
+						scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4, newSDTC.sdTypeIndex);
 						scg.ilGen.Emit (errorAt, OpCodes.Call, sdTypeClassCastClass2ClassMethodInfo);
 						return;
 					}
@@ -197,12 +257,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if ((oldType is TokenTypeSDTypeClass) && (newType is TokenTypeSDTypeInterface)) {
 				TokenDeclSDTypeClass oldSDTC = ((TokenTypeSDTypeClass)oldType).decl;
 				int intfIndex;
-				if (!oldSDTC.intfIndices.TryGetValue (newType.ToString (), out intfIndex)) {
-					scg.ErrorMsg (errorAt, oldString + " does not implement " + newString);
-					intfIndex = -1;
-				}
+				if (!oldSDTC.intfIndices.TryGetValue (newType.ToString (), out intfIndex)) goto illcast;
 				scg.ilGen.Emit (errorAt, OpCodes.Ldfld, sdtcITableFieldInfo);
-				scg.ilGen.PushInt (intfIndex);
+				scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4, intfIndex);
 				scg.ilGen.Emit (errorAt, OpCodes.Ldelem, typeof (Delegate[]));
 				return;
 			}
@@ -211,10 +268,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * A script-defined interface type can be explicitly cast to a script-defined class type by 
 			 * extracting the Target property from element 0 of the delegate array that is the interface
 			 * object and making sure it casts to the correct script-defined class type.
+			 *
+			 * But then only if the class type implements the interface type.
 			 */
 			if ((oldType is TokenTypeSDTypeInterface) && (newType is TokenTypeSDTypeClass)) {
+				TokenTypeSDTypeInterface oldSDTI = (TokenTypeSDTypeInterface)oldType;
+				TokenTypeSDTypeClass     newSDTC = (TokenTypeSDTypeClass)    newType;
+
+				if (!newSDTC.decl.CanCastToIntf (oldSDTI.decl)) goto illcast;
+
 				ExplCheck (scg, errorAt, explicitAllowed, oldString, newString);
-				scg.ilGen.PushInt (((TokenTypeSDTypeClass)newType).decl.sdTypeIndex);
+				scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4, newSDTC.decl.sdTypeIndex);
 				scg.ilGen.Emit (errorAt, OpCodes.Call, sdTypeClassCastIFace2ClassMethodInfo);
 				return;
 			}
@@ -268,7 +332,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			if ((oldType is TokenTypeObject) && (newType is TokenTypeSDTypeClass)) {
 				ExplCheck (scg, errorAt, explicitAllowed, oldString, newString);
-				scg.ilGen.PushInt (((TokenTypeSDTypeClass)newType).decl.sdTypeIndex);
+				scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4, ((TokenTypeSDTypeClass)newType).decl.sdTypeIndex);
 				scg.ilGen.Emit (errorAt, OpCodes.Call, sdTypeClassCastClass2ClassMethodInfo);
 				return;
 			}
@@ -306,8 +370,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		illcast:
 			scg.ErrorMsg (errorAt, "illegal to cast from " + oldString + " to " + newString);
+			if (!(oldType is TokenTypeVoid)) scg.ilGen.Emit (errorAt, OpCodes.Pop);
+			scg.PushDefaultValue (newType);
 		}
-		private static void ExplCheck (ScriptCodeGen scg, Token errorAt, bool explicitAllowed, string oldString, string newString)
+		private static void ExplCheck (IScriptCodeGen scg, Token errorAt, bool explicitAllowed, string oldString, string newString)
 		{
 			if (!explicitAllowed) {
 				scg.ErrorMsg (errorAt, "must explicitly cast from " + oldString + " to " + newString);
@@ -317,7 +383,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		/**
 		 * @brief If value on the stack is an LSL-style wrapped value, unwrap it.
 		 */
-		public static void LSLUnwrap (ScriptCodeGen scg, Token errorAt, TokenType type)
+		public static void LSLUnwrap (IScriptCodeGen scg, Token errorAt, TokenType type)
 		{
 			if (type.ToLSLWrapType () == typeof (LSL_Float)) {
 				scg.ilGen.Emit (errorAt, OpCodes.Ldfld, lslFloatValueFieldInfo);
@@ -333,7 +399,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		/**
 		 * @brief If caller wants the unwrapped value on stack wrapped LSL-style, wrap it.
 		 */
-		private static void LSLWrap (ScriptCodeGen scg, Token errorAt, TokenType type)
+		private static void LSLWrap (IScriptCodeGen scg, Token errorAt, TokenType type)
 		{
 			if (type.ToLSLWrapType () == typeof (LSL_Float)) {
 				scg.ilGen.Emit (errorAt, OpCodes.Newobj, lslFloatConstructorInfo);
@@ -351,10 +417,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 *        They can assume there are no LSL wrapped values on input
 		 *        and they should not output an LSL wrapped value.
 		 */
-		private static void TypeCastArray2Object (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastArray2Object (IScriptCodeGen scg, Token errorAt)
 		{
 		}
-		private static void TypeCastBool2Float (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastBool2Float (IScriptCodeGen scg, Token errorAt)
 		{
 			if (typeof (SCRIPTFLOAT) == typeof (float)) {
 				scg.ilGen.Emit (errorAt, OpCodes.Conv_R4);
@@ -364,58 +430,67 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				throw new Exception ("unknown type");
 			}
 		}
-		private static void TypeCastBool2Integer (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastBool2Integer (IScriptCodeGen scg, Token errorAt)
 		{
 		}
-		private static void TypeCastBool2Object (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastBool2Object (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Box, typeof (bool));
 		}
-		private static void TypeCastChar2Integer (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastChar2Integer (IScriptCodeGen scg, Token errorAt)
 		{
 		}
-		private static void TypeCastChar2Object (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastChar2List (IScriptCodeGen scg, Token errorAt)
+		{
+			scg.ilGen.Emit (errorAt, OpCodes.Box, typeof (char));
+			scg.ilGen.Emit (errorAt, OpCodes.Call, listOfOneObjMethodInfo);
+		}
+		private static void TypeCastChar2Object (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Box, typeof (char));
 		}
-		private static void TypeCastChar2String (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastChar2String (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Call, charToStringMethodInfo);
 		}
-		private static void TypeCastExc2Object (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastExc2List (IScriptCodeGen scg, Token errorAt)
+		{
+			scg.ilGen.Emit (errorAt, OpCodes.Call, listOfOneObjMethodInfo);
+		}
+		private static void TypeCastExc2Object (IScriptCodeGen scg, Token errorAt)
 		{
 		}
-		private static void TypeCastExc2String (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastExc2String (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.PushXMRInst ();
 			scg.ilGen.Emit (errorAt, OpCodes.Call, excToStringMethodInfo);
 		}
-		private static void TypeCastFloat2Bool (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastFloat2Bool (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Ldc_R4, 0.0f);
 			scg.ilGen.Emit (errorAt, OpCodes.Ceq);
 			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_1);
 			scg.ilGen.Emit (errorAt, OpCodes.Xor);
 		}
-		private static void TypeCastFloat2Integer (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastFloat2Integer (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Conv_I4);
 		}
-		private static void TypeCastFloat2Object (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastFloat2Object (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Box, typeof (SCRIPTFLOAT));
 		}
-		private static void TypeCastInteger2Bool (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastInteger2Bool (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_0);
 			scg.ilGen.Emit (errorAt, OpCodes.Ceq);
 			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_1);
 			scg.ilGen.Emit (errorAt, OpCodes.Xor);
 		}
-		private static void TypeCastInteger2Char (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastInteger2Char (IScriptCodeGen scg, Token errorAt)
 		{
 		}
-		private static void TypeCastInteger2Float (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastInteger2Float (IScriptCodeGen scg, Token errorAt)
 		{
 			if (typeof (SCRIPTFLOAT) == typeof (float)) {
 				scg.ilGen.Emit (errorAt, OpCodes.Conv_R4);
@@ -425,149 +500,144 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				throw new Exception ("unknown type");
 			}
 		}
-		private static void TypeCastInteger2Object (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastInteger2Object (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Box, typeof (int));
 		}
-		private static void TypeCastList2Object (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastList2Object (IScriptCodeGen scg, Token errorAt)
 		{
 		}
-		private static void TypeCastObject2Array (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastObject2Array (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Castclass, typeof (XMR_Array));
 		}
-		private static void TypeCastObject2Bool (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastObject2Bool (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Unbox_Any, typeof (bool));
 		}
-		private static void TypeCastObject2Char (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastObject2Char (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Unbox_Any, typeof (char));
 		}
-		private static void TypeCastObject2Exc (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastObject2Exc (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Castclass, typeof (Exception));
 		}
-		private static void TypeCastObject2Float (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastObject2Float (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Unbox_Any, typeof (SCRIPTFLOAT));
 		}
-		private static void TypeCastObject2Integer (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastObject2Integer (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Unbox_Any, typeof (int));
 		}
-		private static void TypeCastObject2List (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastObject2List (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Castclass, typeof (LSL_List));
 		}
-		private static void TypeCastObject2Rotation (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastObject2Rotation (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Unbox_Any, typeof (LSL_Rotation));
 		}
-		private static void TypeCastObject2Vector (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastObject2Vector (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Unbox_Any, typeof (LSL_Vector));
 		}
-		private static void TypeCastRotation2Bool (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastRotation2Bool (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Call, rotationToBoolMethodInfo);
 		}
-		private static void TypeCastRotation2Object (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastRotation2Object (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Box, typeof (LSL_Rotation));
 		}
-		private static void TypeCastString2Bool (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastString2Bool (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Ldstr, "");
 			scg.ilGen.Emit (errorAt, OpCodes.Ceq);
 			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_1);
 			scg.ilGen.Emit (errorAt, OpCodes.Xor);
 		}
-		private static void TypeCastString2Object (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastString2Object (IScriptCodeGen scg, Token errorAt)
 		{
 		}
-		private static void TypeCastString2Rotation (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastString2Rotation (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Newobj, rotationConstrucorStringInfo);
 		}
-		private static void TypeCastString2Vector (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastString2Vector (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Newobj, vectorConstrucorStringInfo);
 		}
-		private static void TypeCastVector2Bool (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastVector2Bool (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Call, vectorToBoolMethodInfo);
 		}
-		private static void TypeCastVector2List (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastVector2List (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Box, typeof (LSL_Vector));
-			scg.PushXMRInst ();
 			scg.ilGen.Emit (errorAt, OpCodes.Call, listOfOneObjMethodInfo);
 		}
-		private static void TypeCastVector2Object (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastVector2Object (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Box, typeof (LSL_Vector));
 		}
-		private static void TypeCastBool2String (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastBool2String (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Call, boolToStringMethodInfo);
 		}
-		private static void TypeCastFloat2List (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastFloat2List (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Box, typeof (SCRIPTFLOAT));
-			scg.PushXMRInst ();
 			scg.ilGen.Emit (errorAt, OpCodes.Call, listOfOneObjMethodInfo);
 		}
-		private static void TypeCastFloat2String (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastFloat2String (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Call, floatToStringMethodInfo);
 		}
-		private static void TypeCastInteger2List (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastInteger2List (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Box, typeof (int));
-			scg.PushXMRInst ();
 			scg.ilGen.Emit (errorAt, OpCodes.Call, listOfOneObjMethodInfo);
 		}
-		private static void TypeCastInteger2String (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastInteger2String (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Call, intToStringMethodInfo);
 		}
-		private static void TypeCastList2String (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastList2String (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Call, listToStringMethodInfo);
 		}
-		private static void TypeCastObject2String (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastObject2String (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Call, objectToStringMethodInfo);
 		}
-		private static void TypeCastRotation2List (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastRotation2List (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Box, typeof (LSL_Rotation));
-			scg.PushXMRInst ();
 			scg.ilGen.Emit (errorAt, OpCodes.Call, listOfOneObjMethodInfo);
 		}
-		private static void TypeCastRotation2String (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastRotation2String (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Call, rotationToStringMethodInfo);
 		}
-		private static void TypeCastString2Float (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastString2Float (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Newobj, floatConstructorStringInfo);
 			scg.ilGen.Emit (errorAt, OpCodes.Ldfld, lslFloatValueFieldInfo);
 		}
-		private static void TypeCastString2Integer (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastString2Integer (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Newobj, integerConstructorStringInfo);
 			scg.ilGen.Emit (errorAt, OpCodes.Ldfld, lslIntegerValueFieldInfo);
 		}
-		private static void TypeCastString2List (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastString2List (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Newobj, lslStringConstructorInfo);
 			scg.ilGen.Emit (errorAt, OpCodes.Box, typeof (LSL_String));
-			scg.PushXMRInst ();
 			scg.ilGen.Emit (errorAt, OpCodes.Call, listOfOneObjMethodInfo);
 		}
-		private static void TypeCastVector2String (ScriptCodeGen scg, Token errorAt)
+		private static void TypeCastVector2String (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Call, vectorToStringMethodInfo);
 		}

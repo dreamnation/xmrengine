@@ -329,6 +329,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             return o.GetHashCode ();
         }
+        public static int xmrHashCode (string s)
+        {
+            return s.GetHashCode ();
+        }
 
         public int xmrHeapLeft ()
         {
