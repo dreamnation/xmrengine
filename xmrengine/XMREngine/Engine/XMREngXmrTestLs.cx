@@ -7,8 +7,11 @@ using log4net;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using System.Text;
 using System.Threading;
+
+#include "lsltypes.h"
 
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
@@ -151,6 +154,170 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             } finally {
                 outFile.Close();
             }
+        }
+
+        private void XmrTestPev (string[] args, int indx)
+        {
+            bool flagAll = false;
+            int numScripts = 0;
+            XMRInstance[] instances;
+
+            /*
+             * Decode command line options.
+             */
+            int i, j;
+            List<string> selargs = new List<string> (args.Length);
+            MethodInfo[] eventmethods = typeof (IEventHandlers).GetMethods ();
+            MethodInfo eventmethod;
+            for (i = indx; i < args.Length; i ++) {
+                string arg = args[i];
+                if (arg == "-all") {
+                    flagAll = true;
+                    continue;
+                }
+                if (arg == "-help") {
+                    m_log.Info ("[XMREngine]: xmr pev -all | <part-of-script-name> <event-name> <params...>");
+                    return;
+                }
+                if (arg[0] == '-') {
+                    m_log.Error ("[XMREngine]: unknown option " + arg + ", try 'xmr pev -help'");
+                    return;
+                }
+                for (j = 0; j < eventmethods.Length; j ++) {
+                    eventmethod = eventmethods[j];
+                    if (eventmethod.Name == arg) goto gotevent;
+                }
+                selargs.Add (arg);
+            }
+            m_log.Error ("[XMREngine]: missing <event-name> <params...>, try 'xmr pev -help'");
+            return;
+        gotevent:
+            string eventname = eventmethod.Name;
+            StringBuilder sourcesb = new StringBuilder ();
+            while (++ i < args.Length) {
+                sourcesb.Append (' ');
+                sourcesb.Append (args[i]);
+            }
+            string sourcest = sourcesb.ToString ();
+            string sourcehash;
+            youveanerror = false;
+            Token t = TokenBegin.Construct ("", null, ErrorMsg, sourcest, out sourcehash);
+            if (youveanerror) return;
+            ParameterInfo[] paraminfos = eventmethod.GetParameters ();
+            object[] paramvalues = new object[paraminfos.Length];
+            i = 0;
+            while (!((t = t.nextToken) is TokenEnd)) {
+                if (i >= paramvalues.Length) {
+                    ErrorMsg (t, "extra parameter(s)");
+                    return;
+                }
+                paramvalues[i] = ParseParamValue (ref t);
+                if (paramvalues[i] == null) return;
+                i ++;
+            }
+            OpenSim.Region.ScriptEngine.Shared.EventParams eps = 
+                    new OpenSim.Region.ScriptEngine.Shared.EventParams (eventname, paramvalues, zeroDetectParams);
+
+            /*
+             * Scan instance list to find those that match selection criteria.
+             */
+            if (!Monitor.TryEnter(m_InstancesDict, 100)) {
+                m_log.Error("[XMREngine]: deadlock m_LockedDict=" + m_LockedDict);
+                return;
+            }
+
+            try {
+                instances = new XMRInstance[m_InstancesDict.Count];
+                foreach (XMRInstance ins in m_InstancesDict.Values) {
+                    if (flagAll || InstanceMatchesArgs (ins, selargs.ToArray (), 0)) {
+                        instances[numScripts++] = ins;
+                    }
+                }
+            } finally {
+                Monitor.Exit(m_InstancesDict);
+            }
+    
+            /*
+             * Post event to the matching instances.
+             */
+            for (i = 0; i < numScripts; i ++) {
+                XMRInstance inst = instances[i];
+                m_log.Debug("[XMREngine]: post " + eventname + " to " + inst.m_DescName);
+                inst.PostEvent (eps);
+            }
+        }
+
+        private object ParseParamValue (ref Token token)
+        {
+            if (token is TokenFloat) {
+                return new LSL_Float (((TokenFloat)token).val);
+            }
+            if (token is TokenInt) {
+                return new LSL_Integer (((TokenInt)token).val);
+            }
+            if (token is TokenStr) {
+                return new LSL_String (((TokenStr)token).val);
+            }
+            if (token is TokenKwCmpLT) {
+                List<SCRIPTFLOAT> valuelist = new List<SCRIPTFLOAT> ();
+                while (!((token = token.nextToken) is TokenKwCmpGT)) {
+                    if (!(token is TokenKwComma)) {
+                        object value = ParseParamValue (ref token);
+                        if (value == null) return null;
+                        if (value is int) value = (SCRIPTFLOAT)(int)value;
+                        if (!(value is SCRIPTFLOAT)) {
+                            ErrorMsg (token, "must be float or integer constant");
+                            return null;
+                        }
+                        valuelist.Add ((SCRIPTFLOAT)value);
+                    } else if (token.prevToken is TokenKwComma) {
+                        ErrorMsg (token, "missing constant");
+                        return null;
+                    }
+                }
+                SCRIPTFLOAT[] values = valuelist.ToArray ();
+                switch (values.Length) {
+                    case 3: {
+                        return new LSL_Vector (values[0], values[1], values[2]);
+                    }
+                    case 4: {
+                        return new LSL_Rotation (values[0], values[1], values[2], values[3]);
+                    }
+                    default: {
+                        ErrorMsg (token, "not rotation or vector");
+                        return null;
+                    }
+                }
+            }
+            if (token is TokenKwBrkOpen) {
+                List<object> valuelist = new List<object> ();
+                while (!((token = token.nextToken) is TokenKwBrkClose)) {
+                    if (!(token is TokenKwComma)) {
+                        object value = ParseParamValue (ref token);
+                        if (value == null) return null;
+                        valuelist.Add (value);
+                    } else if (token.prevToken is TokenKwComma) {
+                        ErrorMsg (token, "missing constant");
+                        return null;
+                    }
+                }
+                return new LSL_List (valuelist.ToArray ());
+            }
+            if (token is TokenName) {
+                FieldInfo field = typeof (OpenSim.Region.ScriptEngine.Shared.ScriptBase.ScriptBaseClass).GetField (((TokenName)token).val);
+                if ((field != null) && field.IsPublic && (field.IsLiteral || (field.IsStatic && field.IsInitOnly))) {
+                    return field.GetValue (null);
+                }
+            }
+            ErrorMsg (token, "invalid constant");
+            return null;
+        }
+
+        private bool youveanerror;
+        private void ErrorMsg (Token token, string message)
+        {
+            youveanerror = true;
+            m_log.Info ("[XMREngine]: " + token.posn + " " + message);
         }
 
         private void XmrTestReset (string[] args, int indx)

@@ -347,6 +347,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_log.Info ("[XMREngine]: xmr gc");
                     m_log.Info ("[XMREngine]: xmr ls [-help ...]");
                     m_log.Info ("[XMREngine]: xmr mvv [<newvalue>] - show/set migration version value");
+                    m_log.Info ("[XMREngine]: xmr pev [-help ...] - post event");
                     m_log.Info ("[XMREngine]: xmr reset [-help ...]");
                     m_log.Info ("[XMREngine]: xmr resume - resume script processing");
                     m_log.Info ("[XMREngine]: xmr suspend - suspend script processing");
@@ -379,6 +380,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                             break;
                         }
                     }
+                    break;
+                }
+                case "pev": {
+                    XmrTestPev (args, 2);
                     break;
                 }
                 case "reset": {
