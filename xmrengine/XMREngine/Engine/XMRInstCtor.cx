@@ -220,8 +220,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * Otherwise, compile the source to create object file then create
              * ScriptObjCode from that.
              */
+            string assetID  = m_AssetID.ToString();
+            m_CameFrom = "asset://" + assetID;
             ScriptObjCode objCode = ScriptCompile.Compile(m_SourceCode, 
-                                                          m_AssetID.ToString(), 
+                                                          assetID, 
+                                                          m_CameFrom, 
                                                           m_ScriptBasePath, 
                                                           m_ForceReset, 
                                                           ErrorHandler);
@@ -378,19 +381,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         private void ErrorHandler(Token token, string message)
         {
-            if (token != null)
-            {
-                m_CompilerErrors.Add(
-                        String.Format("{0} Error: {1}", token.SrcLoc, message));
-            }
-            else if (message != null)
-            {
-                m_CompilerErrors.Add(
-                        String.Format("(0,0) Error: {0}", message));
-            }
-            else
-            {
-                m_CompilerErrors.Add("Error compiling, see exception in log");
+            if (token != null) {
+                string srcloc = token.SrcLoc;
+                if (srcloc.StartsWith (m_CameFrom)) {
+                    srcloc = srcloc.Substring (m_CameFrom.Length);
+                }
+                m_CompilerErrors.Add(srcloc + " Error: " + message);
+            } else if (message != null) {
+                m_CompilerErrors.Add("(0,0) Error: " + message);
+            } else {
+                m_CompilerErrors.Add("(0,0) Error compiling, see exception in log");
             }
         }
 

@@ -330,13 +330,13 @@ version:
          */
         public static ScriptObjCode Compile (string source, 
                                              string assetID,
+                                             string cameFrom, 
                                              string scriptBasePath,
                                              bool forceRecompile,
                                              TokenErrorMessage errorMessage)
         {
             bool oldObjFile = false;
             Stream objFileStream = null;
-            Stream webStream = null;
             StreamWriter asmFileWriter = null;
             string envar = null;
             string fname = Path.Combine (scriptBasePath, assetID);
@@ -366,7 +366,6 @@ version:
                 /*
                  * Parse source string into tokens.
                  */
-                string cameFrom = "asset:///" + assetID;
                 TokenBegin tokenBegin;
                 try {
                     tokenBegin = TokenBegin.Construct(cameFrom, saveSource, errorMessage, source, out sourceHash);
@@ -385,51 +384,23 @@ version:
                     objFileStream = File.Create (objFileName + ".tmp");
 
                     /*
-                     * If source is 'XMROption' 'fetchbinary' ...,
-                     * read xmrobj file from the given URL.
+                     * Create abstract syntax tree from raw tokens.
                      */
-                    if (false && //////////////// DISABLED ////////////////
-                        (tokenBegin.nextToken is TokenName) &&
-                        (((TokenName)tokenBegin.nextToken).val == "XMROption") &&
-                        (tokenBegin.nextToken.nextToken is TokenName) &&
-                        (((TokenName)tokenBegin.nextToken.nextToken).val == "fetchbinary")) {
+                    TokenScript tokenScript = ScriptReduce.Reduce(tokenBegin);
+                    if (tokenScript == null) {
+                        m_log.Debug ("[XMREngine]: reduction errors on " + assetID);
+                        return null;
+                    }
 
-                        /*
-                         * Open web stream.
-                         */
-                        webStream = FetchBinary (tokenBegin.nextToken.nextToken.nextToken, errorMessage);
-                        if (webStream == null) return null;
-                        webStream = Decrypt (webStream);
-
-                        /*
-                         * Copy object from web and write to .xmrobj file.
-                         */
-                        byte[] buffer = new byte[32768];
-                        int len;
-                        while ((len = webStream.Read (buffer, 0, buffer.Length)) > 0) {
-                            objFileStream.Write (buffer, 0, len);
-                        }
-                    } else {
-
-                        /*
-                         * Create abstract syntax tree from raw tokens.
-                         */
-                        TokenScript tokenScript = ScriptReduce.Reduce(tokenBegin);
-                        if (tokenScript == null) {
-                            m_log.Debug ("[XMREngine]: reduction errors on " + assetID);
-                            return null;
-                        }
-
-                        /*
-                         * Compile abstract syntax tree to write object file.
-                         */
-                        BinaryWriter objFileWriter = new BinaryWriter (objFileStream);
-                        bool ok = ScriptCodeGen.CodeGen(tokenScript, objFileWriter, sourceHash);
-                        if (!ok) {
-                            m_log.Debug ("[XMREngine]: compile error on " + assetID);
-                            objFileStream.Close ();
-                            return null;
-                        }
+                    /*
+                     * Compile abstract syntax tree to write object file.
+                     */
+                    BinaryWriter objFileWriter = new BinaryWriter (objFileStream);
+                    bool ok = ScriptCodeGen.CodeGen(tokenScript, objFileWriter, sourceHash);
+                    if (!ok) {
+                        m_log.Debug ("[XMREngine]: compile error on " + assetID);
+                        objFileStream.Close ();
+                        return null;
                     }
                     objFileStream.Close ();
 
@@ -490,7 +461,7 @@ version:
              */
             if (oldObjFile && (scriptObjCode != null) && scriptObjCode.IsExpired ()) {
                 m_log.Debug ("[XMREngine]: expiration reached on " + assetID + ", reloading");
-                scriptObjCode = Compile (source, assetID, scriptBasePath, true, errorMessage);
+                scriptObjCode = Compile (source, assetID, cameFrom, scriptBasePath, true, errorMessage);
             }
 
             return scriptObjCode;
