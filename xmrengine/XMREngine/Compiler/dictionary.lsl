@@ -1,5 +1,5 @@
-// Kunta's Dictionary/List implementation
-// v1.3.0
+// Kunta's Dictionary/LinkedList implementation
+// v1.4.0
 
 xmroption advflowctl;
 xmroption arrays;
@@ -19,6 +19,7 @@ class Kunta {
     public interface IEnumerator<T> {
         T Current { get; }
         integer MoveNext ();
+        RemCurrent ();
         Reset ();
     }
 
@@ -26,7 +27,7 @@ class Kunta {
         typedef KVP KeyValuePair<K,V>;
         private integer count;
         private integer hashSize;
-        private List<KVP>[] kvpss;
+        private LinkedList<KVP>[] kvpss;
         private KeyList   keyList   = new KeyList   (this);
         private ValueList valueList = new ValueList (this);
 
@@ -44,7 +45,7 @@ class Kunta {
 
         private InitKVPSS ()
         {
-            this.kvpss = new List<KVP>[] (hashSize);
+            this.kvpss = new LinkedList<KVP>[] (hashSize);
         }
 
         public KVP Add (K kee, V val)
@@ -55,11 +56,11 @@ class Kunta {
             KVP kvp = new KVP ();
             kvp.kee = kee;
             kvp.value = val;
-            List<KVP> kvps = this.kvpss[index];
+            LinkedList<KVP> kvps = this.kvpss[index];
             if (kvps == undef) {
-                this.kvpss[index] = kvps = new List<KVP> ();
+                this.kvpss[index] = kvps = new LinkedList<KVP> ();
             }
-            kvps.Enqueue (kvp);
+            kvps.AddLast (kvp);
             count ++;
             return kvp;
         }
@@ -68,13 +69,29 @@ class Kunta {
         {
             integer index = xmrHashCode (kee) % hashSize;
             if (index < 0) index += hashSize;
-            List<KVP> kvps = this.kvpss[index];
+            LinkedList<KVP> kvps = this.kvpss[index];
             if (kvps == undef) return undef;
             for (IEnumerator<KVP> kvpenum = kvps.GetEnumerator (); kvpenum.MoveNext ();) {
                 KVP kvp = kvpenum.Current;
                 if (kvp.kee == kee) return kvp;
             }
             return undef;
+        }
+
+        public integer RemByKey (K kee)
+        {
+            integer index = xmrHashCode (kee) % hashSize;
+            if (index < 0) index += hashSize;
+            LinkedList<KVP> kvps = this.kvpss[index];
+            if (kvps == undef) return 0;
+            for (IEnumerator<KVP> kvpenum = kvps.GetEnumerator (); kvpenum.MoveNext ();) {
+                KVP kvp = kvpenum.Current;
+                if (kvp.kee == kee) {
+                    kvpenum.RemCurrent ();
+                    return 1;
+                }
+            }
+            return 0;
         }
 
         public integer Count : ICountable<KVP>
@@ -118,7 +135,7 @@ class Kunta {
             // move to next element in list
             public integer MoveNext () : IEnumerator<KVP>
             {
-                List<KVP> kvps;
+                LinkedList<KVP> kvps;
                 while (1) {
                     if (this.listenum == undef) jump done;
                     if (this.listenum.MoveNext ()) break;
@@ -130,6 +147,13 @@ class Kunta {
                     this.listenum = kvps.GetEnumerator ();
                 }
                 return 1;
+            }
+
+            // remove current element from list
+            public RemCurrent () : IEnumerator<KVP>
+            {
+                if (this.listenum == undef) throw "at end of list";
+                this.listenum.RemCurrent ();
             }
 
             // reset back to just before beginning of list
@@ -173,7 +197,13 @@ class Kunta {
                 // move to next element in list
                 public integer MoveNext () : IEnumerator<K>
                 {
-                    return listenum.MoveNext ();
+                    return this.listenum.MoveNext ();
+                }
+
+                // remove current element from list
+                public RemCurrent () : IEnumerator<K>
+                {
+                    this.listenum.RemCurrent ();
                 }
 
                 // reset back to just before beginning of list
@@ -217,7 +247,13 @@ class Kunta {
                 // move to next element in list
                 public integer MoveNext () : IEnumerator<V>
                 {
-                    return listenum.MoveNext ();
+                    return this.listenum.MoveNext ();
+                }
+
+                // remove current element from list
+                public RemCurrent () : IEnumerator<V>
+                {
+                    this.listenum.RemCurrent ();
                 }
 
                 // reset back to just before beginning of list
@@ -234,47 +270,103 @@ class Kunta {
         public V value;
     }
 
-    public class List<T> : ICountable<T> {
-        private Enumerator.Node first;
-        private Enumerator.Node last;
+    public class LinkedList<T> : Node, ICountable<T> {
         private integer count;
 
-        // add to end of list
-        public Enqueue (T obj)
+        public constructor ()
         {
-            Enumerator.Node node = new Enumerator.Node ();
+            this.next = this;
+            this.prev = this;
+        }
+
+        // add to beginning of list
+        public Node AddFirst (T obj)
+        {
+            return AddAfter (this, obj);
+        }
+
+        // add to end of list
+        public Node AddLast (T obj)
+        {
+            return AddBefore (this, obj);
+        }
+
+        // add after an arbitrary node
+        public Node AddAfter (Node other, T obj)
+        {
+            Node node = new Node ();
             node.obj = obj;
 
-            node.next = undef;
-            if ((node.prev = last) == undef) {
-                first = node;
-            } else {
-                last.next = node;
-            }
-            last = node;
+            node.next = other.next;
+            node.prev = other;
+
+            node.next.prev = node;
+            node.prev.next = node;
+
             count ++;
+
+            return node;
+        }
+
+        // add before an arbitrary node
+        public Node AddBefore (Node other, T obj)
+        {
+            Node node = new Node ();
+            node.obj = obj;
+
+            node.next = other;
+            node.prev = other.prev;
+
+            node.next.prev = node;
+            node.prev.next = node;
+
+            count ++;
+
+            return node;
+        }
+
+        // get first and last node
+        public Node First
+        { get {
+            if (this.next == this) return undef;
+            return this.next;
+        } }
+        public Node Last
+        { get {
+            if (this.prev == this) return undef;
+            return this.prev;
+        } }
+
+        // peek at beginning of list
+        public T PeekFirst ()
+        {
+            Node node = this.next;
+            if (node == this) throw "list is empty";
+            return node.obj;
+        }
+
+        // peek at end of list
+        public T PeekLast ()
+        {
+            Node node = this.prev;
+            if (node == this) throw "list is empty";
+            return node.obj;
         }
 
         // remove from beginning of list
-        public T Dequeue ()
+        public T RemFirst ()
         {
-            Enumerator.Node node = first;
-            if ((first = node.next) == undef) {
-                last = undef;
-            }
-            count --;
-            return node.obj;
+            Node node = this.next;
+            if (node == this) throw "list is empty";
+            return RemNode (node);
         }
 
         // remove from end of list
-        public T Pop ()
+        public T RemLast ()
         {
-            Enumerator.Node node = last;
-            if ((last = node.prev) == undef) {
-                first = undef;
-            }
-            count --;
-            return node.obj;
+            Node node = this.prev;
+            if (node == this) throw "list is empty";
+            return RemNode (node);
         }
 
         // see how many are in list
@@ -283,26 +375,45 @@ class Kunta {
             return count;
         } }
 
+        // remove node from list
+        public T RemNode (Node node)
+        {
+            node.prev.next = node.next;
+            node.next.prev = node.prev;
+            count --;
+            return node.obj;
+        }
+
         // iterate through list
         public IEnumerator<T> GetEnumerator () : IEnumerable<T>
         {
             return new Enumerator (this);
         }
 
+        // list elements
+        public class Node {
+            public Node next;
+            public Node prev;
+            public T obj;
+        }
+
         private class Enumerator : IEnumerator<T> {
-            private List<T> thelist;
             private integer atend;
+            private integer removed;
+            private LinkedList<T> thelist;
             private Node current;
 
-            public constructor (List<T> thelist)
+            public constructor (LinkedList<T> thelist)
             {
                 this.thelist = thelist;
+                this.current = thelist;
             }
 
             // get element currently pointed to
             public T Current : IEnumerator<T>
             { get {
                 if (atend) throw "at end of list";
+                if (removed) throw "has been removed";
                 return current.obj;
             } }
 
@@ -310,24 +421,28 @@ class Kunta {
             public integer MoveNext () : IEnumerator<T>
             {
                 if (atend) return 0;
-                if (current == undef) current = thelist.first;
-                                 else current = current.next;
-                atend = (current == undef);
+                current = current.next;
+                atend   = (current == thelist);
+                removed = 0;
                 return !atend;
+            }
+
+            // remove current element from list
+            public RemCurrent () : IEnumerator<T>
+            {
+                if (atend) throw "at end of list";
+                if (!removed) {
+                    thelist.RemNode (current);
+                    removed = 1;
+                }
             }
 
             // reset back to just before beginning of list
             public Reset () : IEnumerator<T>
             {
-                atend = 0;
-                current = undef;
-            }
-
-            // list elements
-            public class Node {
-                public Node next;
-                public Node prev;
-                public T obj;
+                atend   = 0;
+                removed = 0;
+                current = thelist;
             }
         }
     }

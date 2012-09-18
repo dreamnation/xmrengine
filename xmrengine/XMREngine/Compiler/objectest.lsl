@@ -54,12 +54,12 @@ default {
     state_entry ()
     {
         llOwnerSay ("nontriv 99 = " + nontriv);
-        Kunta.List<string> stuff = new Kunta.List<string> ();
+        Kunta.LinkedList<string> stuff = new Kunta.LinkedList<string> ();
         llOwnerSay ("typeof(stuff) = " + xmrTypeName (stuff));
-        stuff.Enqueue ("abcdef");
-        stuff.Enqueue (1);
-        stuff.Enqueue ((string)[2,3,4]);
-        stuff.Enqueue (<5,6,7>);
+        stuff.AddLast ("abcdef");
+        stuff.AddLast (1);
+        stuff.AddLast ((string)[2,3,4]);
+        stuff.AddLast (<5,6,7>);
         llOwnerSay ("count=" + stuff.Count);
         integer first = 1;
         for (Kunta.IEnumerator<string> stuffenum = stuff.GetEnumerator (); stuffenum.MoveNext ();) {
