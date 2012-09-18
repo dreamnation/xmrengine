@@ -182,7 +182,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				token.DebString (sb);
 				Console.WriteLine (sb.ToString ());
 				if (token.prevToken != prevTok) {
-					Console.WriteLine ("ScriptReduce*:  -- prevToken link bad");
+					Console.WriteLine ("ScriptReduce*:  -- prevToken link bad => " + token.prevToken.GetHashCode ().ToString ("X8"));
 				}
 				if (token is TokenKwBrcOpen) braces += 4;
 				if (token is TokenKwParOpen) braces += 2;
@@ -424,7 +424,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					 * Malloc the script-defined type object.
 					 */
 					TokenDeclSDType decl;
-					if (kw is TokenKwClass) decl = new TokenDeclSDTypeClass (name);
+					if (kw is TokenKwClass) decl = new TokenDeclSDTypeClass (name, kw.prevToken is TokenKwPartial);
 					               else decl = new TokenDeclSDTypeInterface (name);
 					decl.outerSDType = outerLevels.Peek ();
 
@@ -434,27 +434,52 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					if (!ParseGenProtoParamList (ref t, decl)) continue;
 
 					/*
-					 * Enter it in name lists so it can be seen by others.
-					 */
-					CatalogSDTypeDecl (decl);
-
-					/*
 					 * Splice in a TokenDeclSDType token that replaces the keyword and the name tokens 
 					 * and any generic parameters including the '<', ','s and '>'.
 					 *   kw = points to 'class' or 'interface' keyword.
 					 *    t = points to just past last part of class name parsed, hopefully a ':' or '{'.
 					 */
-					decl.prevToken = kw.prevToken;
+					decl.prevToken = decl.isPartial ? kw.prevToken.prevToken : kw.prevToken;
 					decl.nextToken = t;
 					decl.prevToken.nextToken = decl;
 					decl.nextToken.prevToken = decl;
-					t = decl;  // must be before '{'
+
+					/*
+					 * Enter it in name lists so it can be seen by others.
+					 */
+					Token partialNewBody = CatalogSDTypeDecl (decl);
 
 					/*
 					 * Start inner type definitions.
 					 */
 					braceLevels.Push (openBraceLevel);
 					outerLevels.Push (decl);
+
+					/*
+					 * Scan the body starting on for before the '{'.
+					 *
+					 * If this body had an old partial merged into it,
+					 * resume scanning at the beginning of the new body, 
+					 * ie, what used to be the first token after the '{' 
+					 * before the old body was spliced in.
+					 */
+					if (partialNewBody != null) {
+
+						/*
+						 * We have a partial that has had old partial body merged 
+						 * into new partial body.  So resume scanning at the beginning 
+						 * of the new partial body so we don't get any duplicate scanning 
+						 * of the old partial body.
+						 *
+						 *   <decl> ... { <oldbody> <newbody> }
+						 *                          ^- resume scanning here
+						 *                             but inc openBraceLevel because
+						 *                             we skipped scanning the '{'
+						 */
+						openBraceLevel ++;
+						t = partialNewBody;
+					}
+					t = t.prevToken;
 					continue;
 				}
 
@@ -670,19 +695,124 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 *        Its short name (eg, 'Node') gets put in the next outer level (eg, 'List')'s inner type definition table.
 		 *        Its long name (eg, 'List.Node') gets put in the global type definition table.
 		 */
-		public void CatalogSDTypeDecl (TokenDeclSDType decl)
+		public Token CatalogSDTypeDecl (TokenDeclSDType decl)
 		{
 			string longName = decl.longName.val;
 			TokenDeclSDType dupDecl;
-			if (tokenScript.sdSrcTypesTryGetValue (longName, out dupDecl)) {
-				ErrorMsg (decl, "duplicate definition of type " + longName);
-				ErrorMsg (dupDecl, "previous definition here");
-			} else {
+			if (!tokenScript.sdSrcTypesTryGetValue (longName, out dupDecl)) {
 				tokenScript.sdSrcTypesAdd (longName, decl);
 				if (decl.outerSDType != null) {
 					decl.outerSDType.innerSDTypes.Add (decl.shortName.val, decl);
 				}
+				return null;
 			}
+
+			if (!dupDecl.isPartial || !decl.isPartial) {
+				ErrorMsg (decl, "duplicate definition of type " + longName);
+				ErrorMsg (dupDecl, "previous definition here");
+				return null;
+			}
+
+			if (!GenericParametersMatch (decl, dupDecl)) {
+				ErrorMsg (decl, "all partial class generic parameters must match");
+			}
+
+			/*
+			 * Have new declaration be the cataloged one because body is going to get 
+			 * snipped out of old declaration and pasted into new declaration.
+			 */
+			tokenScript.sdSrcTypesRep (longName, decl);
+			if (decl.outerSDType != null) {
+				 decl.outerSDType.innerSDTypes[decl.shortName.val] = decl;
+			}
+
+			/*
+			 * Find old partial definition's opening brace.
+			 */
+			Token dupBrcOpen;
+			for (dupBrcOpen = dupDecl; !(dupBrcOpen is TokenKwBrcOpen); dupBrcOpen = dupBrcOpen.nextToken) {
+				if (dupBrcOpen == dupDecl.endToken) {
+					ErrorMsg (dupDecl, "missing {");
+					return null;
+				}
+			}
+
+			/*
+			 * Find new partial definition's opening brace.
+			 */
+			Token brcOpen;
+			for (brcOpen = decl; !(brcOpen is TokenKwBrcOpen); brcOpen = brcOpen.nextToken) {
+				if (brcOpen is TokenEnd) {
+					ErrorMsg (decl, "missing {");
+					return null;
+				}
+			}
+			Token body = brcOpen.nextToken;
+
+			/*
+			 * Stick old partial definition's extends/implementeds list just 
+			 * in front of new partial definition's extends/implementeds list.
+			 *
+			 *    class    oldextimp    {          oldbody    }                 ...
+			 *   dupDecl               dupBrcOpen            dupDecl.endToken
+			 *
+			 *    class    newextimp    {          newbody    }                 ...
+			 *   decl                  brcOpen    body       decl.endToken
+			 *
+			 * becomes
+			 *
+			 *    class             ...
+			 *   dupDecl
+			 *   dupDecl.endToken
+			 *
+			 *    class    oldextimp   newextimp    {          oldbody   newbody    }              ...
+			 *   decl                              brcOpen              body       decl.endToken
+			 */
+			if (dupBrcOpen != dupDecl.nextToken) {
+				dupBrcOpen.prevToken.nextToken = decl.nextToken;
+				dupDecl.nextToken.prevToken = decl;
+				decl.nextToken.prevToken = dupBrcOpen.prevToken;
+				decl.nextToken = dupDecl.nextToken;
+			}
+
+			/*
+			 * Stick old partial definition's body just 
+			 * in front of new partial definition's body.
+			 */
+			if (dupBrcOpen.nextToken != dupDecl.endToken) {
+				dupBrcOpen.nextToken.prevToken = brcOpen;
+				dupDecl.endToken.prevToken.nextToken = body;
+				body.prevToken = dupDecl.endToken.prevToken;
+				brcOpen.nextToken = dupBrcOpen.nextToken;
+			}
+
+			/*
+			 * Null out old definition's extends/implementeds list and body 
+			 * by having the declaration token be the only thing left.
+			 */
+			dupDecl.nextToken = dupDecl.endToken.nextToken;
+			dupDecl.nextToken.prevToken = dupDecl;
+			dupDecl.endToken = dupDecl;
+
+			return body;
+		}
+
+		/**
+		 * @brief Determine whether or not the generic parameters of two class declarations match exactly.
+		 */
+		private static bool GenericParametersMatch (TokenDeclSDType c1, TokenDeclSDType c2)
+		{
+			if ((c1.genParams == null) && (c2.genParams == null)) return true;
+			if ((c1.genParams == null) || (c2.genParams == null)) return false;
+			Dictionary<string, int> gp1 = c1.genParams;
+			Dictionary<string, int> gp2 = c2.genParams;
+			if (gp1.Count != gp2.Count) return false;
+			foreach (KeyValuePair<string, int> kvp1 in gp1) {
+				int v2;
+				if (!gp2.TryGetValue (kvp1.Key, out v2)) return false;
+				if (v2 != kvp1.Value) return false;
+			}
+			return true;
 		}
 
 		/**
@@ -730,9 +860,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					 * Check for beginning of non-generic script-defined type definitions.
 					 * They can have nested definitions in their innerSDTypes[] that match 
 					 * name tokens, so add them to the stack.
+					 *
+					 * But just ignore any preliminary partial definitions as they have had 
+					 * their entire contents spliced out and spliced into a subsequent partial 
+					 * definition.  So if we originally had:
+					 *    partial class Abc { public intenger one; }
+					 *    partial class Abc { public intenger two; }
+					 * We now have:
+					 *    partial_class_Abc    <== if we are here, just ignore the partial_class_Abc token
+					 *    partial_class_Abc { public intenger one; public intenger two; }
 					 */
 					if (t is TokenDeclSDType) {
-						outerSDType = (TokenDeclSDType)t;
+						if (((TokenDeclSDType)t).endToken != t) {
+							outerSDType = (TokenDeclSDType)t;
+						}
 						continue;
 					}
 
@@ -1009,7 +1150,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				 *
 				 *    class <arraytypename> {
 				 */
-				fa = new TokenDeclSDTypeClass (new TokenName (tokenScript, name));
+				fa = new TokenDeclSDTypeClass (new TokenName (tokenScript, name), false);
 				CatalogSDTypeDecl (fa);
 				repeat |= REPEAT_INSTGEN;
 				((TokenDeclSDTypeClass)fa).arrayOfType = ofType;
@@ -1318,7 +1459,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 * @param token = points to possible script-defined type keyword
 		 * @param outerSDType = null: top-level type
 		 *                      else: sub-type of this type
-		 * @param flags = access level (SDT_{PRIVATE,PROTECTED,PUBLIC}
+		 * @param flags = access level (SDT_{PRIVATE,PROTECTED,PUBLIC})
 		 * @returns true: something defined; else: not a sd type def
 		 */
 		private bool ParseDeclSDTypes (ref Token token, TokenDeclSDType outerSDType, uint flags)
@@ -1384,6 +1525,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			tokdeclcl.accessLevel = flags;
 			u = u.nextToken;
 
+			// maybe it is a partial class that had its body snipped out
+			// by a later partial class declaration of the same class
+			if (tokdeclcl.endToken == tokdeclcl) {
+				token = u;
+				return;
+			}
+
 			// make this class the currently compiled class
 			// used for retrieving stuff like 'this' possibly
 			// in field initialization code
@@ -1410,7 +1558,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 						if (u is TokenKwBrcOpen) break;
 					}
 					u = u.nextToken;
-					if (!(u is TokenKwComma)) break;
+
+					// allow : in case it is spliced from multiple partial class definitions
+					if (!(u is TokenKwComma) && !(u is TokenKwColon)) break;
 					u = u.nextToken;
 				}
 			}
@@ -3892,6 +4042,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		                                             // eg, for 'Dictionary<K,V>'
 		                                             //     ...genParams gives K->0; V->1
 
+		public bool isPartial;                       // was declared with 'partial' keyword
+		                                             // classes only, all others always false
+
 		/*
 		 * Name of the type.
 		 *   shortName = doesn't include outer class type names
@@ -4115,7 +4268,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			TokenDeclSDType sdt;
 			switch (code) {
 				case CLASS: {
-					sdt = new TokenDeclSDTypeClass (n);
+					sdt = new TokenDeclSDTypeClass (n, false);
 					break;
 				}
 				case DELEGATE: {
@@ -4216,14 +4369,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		                                     //   i = interface number from this.intfIndices[name]
 		                                     //   j = method of interface from iface.methods[name].vTableIndex
 
-		public TokenDeclSDTypeClass (TokenName shortName) : base (shortName)
+		public TokenDeclSDTypeClass (TokenName shortName, bool isPartial) : base (shortName)
 		{
 			this.shortName = shortName;
+			this.isPartial = isPartial;
 		}
 
 		protected override TokenDeclSDType MakeBlank (TokenName shortName)
 		{
-			return new TokenDeclSDTypeClass (shortName);
+			return new TokenDeclSDTypeClass (shortName, false);
 		}
 
 		public override TokenType MakeRefToken (Token t)
@@ -6463,6 +6617,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			if (sdSrcTypesSealed) throw new Exception ("sdSrcTypes is sealed");
 			value.sdTypeIndex = sdSrcTypes.Count;
 			sdSrcTypes.Add (key, value);
+		}
+		public void sdSrcTypesRep (string key, TokenDeclSDType value)
+		{
+			if (sdSrcTypesSealed) throw new Exception ("sdSrcTypes is sealed");
+			value.sdTypeIndex = sdSrcTypes[key].sdTypeIndex;
+			sdSrcTypes[key] = value;
 		}
 		public void sdSrcTypesReplace (string key, TokenDeclSDType value)
 		{

@@ -6,7 +6,7 @@ xmroption arrays;
 xmroption objects;
 xmroption trycatch;
 
-class Kunta {
+partial class Kunta {
 
     public interface ICountable<T> : IEnumerable<T> {
         integer Count { get; }

@@ -959,6 +959,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             kws.Add ("interface",   GetTokenCtor (typeof (TokenKwInterface)));
             kws.Add ("new",         GetTokenCtor (typeof (TokenKwNew)));
             kws.Add ("override",    GetTokenCtor (typeof (TokenKwOverride)));
+            kws.Add ("partial",     GetTokenCtor (typeof (TokenKwPartial)));
             kws.Add ("private",     GetTokenCtor (typeof (TokenKwPrivate)));
             kws.Add ("protected",   GetTokenCtor (typeof (TokenKwProtected)));
             kws.Add ("public",      GetTokenCtor (typeof (TokenKwPublic)));
@@ -1328,6 +1329,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
     DEFTOKENKW(Jump       , "jump",        Null, Null, false)
     DEFTOKENKW(New        , "new",         Null, Null, false)
     DEFTOKENKW(Override   , "override",    Null, Null, false)
+    DEFTOKENKW(Partial    , "partial",     Null, Null, false)
     DEFTOKENKW(Private    , "private",     Null, Null, false)
     DEFTOKENKW(Protected  , "protected",   Null, Null, false)
     DEFTOKENKW(Public     , "public",      Null, Null, false)

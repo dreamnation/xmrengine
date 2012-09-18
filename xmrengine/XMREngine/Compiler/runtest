@@ -20,5 +20,6 @@ testit trycatchtest
 testit while1
 testit testllparcelmedia
 testit typeassigntest
+testit partialtest
 
 echo "SUCCESS"

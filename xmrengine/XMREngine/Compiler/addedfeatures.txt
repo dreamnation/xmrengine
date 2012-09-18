@@ -646,6 +646,7 @@ Keywords:
     new         - allocates a new instance of a script-defined class and calls a constructor
                 - also used on member declaration to ignore any rootward definition override
     override    - declares a script-defined class's method as overriding a rootward method
+    partial     - declares that this is only part of a class's definition
     private     - declares a member can be accessed only from within class
     protected   - declares a member can be accessed only from within class or a leafward class
     public      - declares a member can be accessed anywhere
@@ -659,9 +660,9 @@ Keywords:
 
 CLASSES
 
-    class <classname> : <extends>, <interface> ... {
+    [ partial ] class <classname> : <extends>, <interface> ... {
 
-        <accessquals> class ... { ... }
+        <accessquals> [ partial ] class ... { ... }
 
         <accessquals> constant <fieldname> = <constinitvalue> ;
 
@@ -765,7 +766,7 @@ INTERFACES
 
     interface <intfname> {
 
-        class ... { ... }
+        [ partial ] class ... { ... }
 
         delegate ... ( ... ) ;
 
@@ -852,6 +853,7 @@ Other Definitions
                      override final | static | static new | virtual | virtual new
 
       - qualifier keywords can appear in any order, eg, public new abstract and abstract public new are equally valid
+        except that partial, if specified, must be placed immediately before class
       - exactly one of public, protected, private must be specified for each member of a class
 
       - methodalloc can be any one of these combinations:
