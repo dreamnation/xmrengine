@@ -76,15 +76,15 @@ default {
 
         MyDict s2i = new MyDict (23);
         s2i.Add ("one", 1);
-        s2i.Add ("two", 2);
-        s2i.Add ("three", 3);
+        s2i["two"]    = 2;
+        s2i["three"]  = 3;
         MyCountable s2iCountable = (MyCountable) s2i;
         for (Kunta.IEnumerator<KVP<string,integer>> kvpenum = s2iCountable.GetEnumerator (); kvpenum.MoveNext ();) {
             KVP<string,integer> kvp = kvpenum.Current;
             llOwnerSay ("s2i: " + kvp.kee + " => " + kvp.value);
         }
         for (Kunta.IEnumerator<string> keyenum = s2i.Keys.GetEnumerator (); keyenum.MoveNext ();) {
-            llOwnerSay ("s2i.key = " + keyenum.Current);
+            llOwnerSay ("s2i.key = " + keyenum.Current + " => " + s2i[keyenum.Current]);
         }
         for (Kunta.IEnumerator<integer> valenum = s2i.Values.GetEnumerator (); valenum.MoveNext ();) {
             llOwnerSay ("s2i.value = " + valenum.Current);
@@ -219,6 +219,7 @@ default {
         IFace1 vaseoveriface1 = (Vase)vaseover;
         llOwnerSay (xmrTypeName (vaseoveriface1) + "=" + vaseoveriface1.IFace1A (42));           // VaseOver=VaseOver.Meth0: 42
         llOwnerSay (xmrTypeName (vaseoveriface1) + "=" + vaseoveriface1.IFace1B ("farenheit"));  // VaseOver=Vase.Meth0: farenheit
+        llOwnerSay (vaseoveriface1["treefife",35]);                                              // treefife:35
 
         IFace2 vaseoveriface2 = vaseover;
         llOwnerSay (xmrTypeName (vaseoveriface2) + "+" + vaseoveriface2.IFace2A (11, 45));                   // VaseOver=VaseOver.IFace2A: 1145
@@ -229,6 +230,7 @@ default {
 interface IFace1 {
     string IFace1A (integer i);
     string IFace1B (string s);
+    string [string name, integer numb] { get; }
 }
 
 interface IFace2 {
@@ -240,6 +242,7 @@ class Vase : IFace1 {
     private static string vasemeth0 = "Vase.Meth0: ";
     public virtual string Meth0 (integer i) : IFace1.IFace1A { return vasemeth0 + i; }
     public virtual string Meth0 (string  s) : IFace1.IFace1B { return vasemeth0 + s; }
+    public virtual string [string name, integer numb] : IFace1 { get { return name + ":" + numb; } }
 }
 
 class VaseOver : Vase, IFace2 {

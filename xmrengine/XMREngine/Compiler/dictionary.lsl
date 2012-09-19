@@ -1,5 +1,5 @@
 // Kunta's Dictionary/LinkedList implementation
-// v1.4.0
+// v1.5.0
 
 xmroption advflowctl;
 xmroption arrays;
@@ -76,6 +76,22 @@ partial class Kunta {
                 if (kvp.kee == kee) return kvp;
             }
             return undef;
+        }
+
+        public V [K kee] {
+            get {
+                KVP kvp = this.GetByKey (kee);
+                if (kvp == undef) throw "key not found";
+                return kvp.value;
+            }
+            set {
+                KVP kvp = this.GetByKey (kee);
+                if (kvp == undef) {
+                    this.Add (kee, value);
+                } else {
+                    kvp.value = value;
+                }
+            }
         }
 
         public integer RemByKey (K kee)

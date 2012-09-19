@@ -3079,6 +3079,47 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
+			 * Maybe it is accessing the $idxprop property of a script-defined class.
+			 */
+			if (baseCompValu.type is TokenTypeSDTypeClass) {
+				TokenName name = new TokenName (lVal, "$idxprop");
+				TokenTypeSDTypeClass sdtType = (TokenTypeSDTypeClass)baseCompValu.type;
+				TokenDeclSDTypeClass sdtDecl = sdtType.decl;
+				TokenDeclVar idxProp = FindThisMember (sdtDecl, name, null);
+				if (idxProp == null) {
+					ErrorMsg (lVal, "no index property in class " + sdtDecl.longName.val);
+					return new CompValuVoid (lVal);
+				}
+				if ((idxProp.sdtFlags & ScriptReduce.SDT_STATIC) != 0) {
+					ErrorMsg (lVal, "non-static reference to static member " + idxProp.name.val);
+					return new CompValuVoid (idxProp);
+				}
+				CheckAccess (idxProp, name);
+
+				TokenType[] argTypes = IdxPropArgTypes (idxProp);
+				CompValu[] compValus = IdxPropCompValus (lVal, argTypes.Length);
+				return new CompValuIdxProp (idxProp, baseCompValu, argTypes, compValus);
+
+			}
+
+			/*
+			 * Maybe they are accessing $idxprop property of a script-defined interface.
+			 */
+			if (baseCompValu.type is TokenTypeSDTypeInterface) {
+				TokenName name = new TokenName (lVal, "$idxprop");
+				TokenTypeSDTypeInterface sdtType = (TokenTypeSDTypeInterface)baseCompValu.type;
+				TokenDeclVar idxProp = FindInterfaceMember (sdtType, name, null, ref baseCompValu);
+				if (idxProp == null) {
+					ErrorMsg (lVal, "no index property defined for interface " + sdtType.decl.longName.val);
+					return baseCompValu;
+				}
+
+				TokenType[] argTypes = IdxPropArgTypes (idxProp);
+				CompValu[] compValus = IdxPropCompValus (lVal, argTypes.Length);
+				return new CompValuIdxProp (idxProp, baseCompValu, argTypes, compValus);
+			}
+
+			/*
 			 * Maybe it is extracting a character from a string.
 			 */
 			if (baseCompValu.type is TokenTypeStr) {
@@ -3103,6 +3144,59 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 			subCompValu = GenerateFromRVal (lVal.subRVal);
 			return new CompValuArEle (new TokenTypeObject (lVal), baseCompValu, subCompValu);
+		}
+
+		/**
+		 * @brief Get number and type of arguments required by an index property.
+		 */
+		private static TokenType[] IdxPropArgTypes (TokenDeclVar idxProp)
+		{
+			TokenType[] argTypes;
+			if (idxProp.getProp != null) {
+				int nArgs = idxProp.getProp.argDecl.varDict.Count;
+				argTypes = new TokenType[nArgs];
+				foreach (TokenDeclVar var in idxProp.getProp.argDecl.varDict) {
+					argTypes[var.vTableIndex] = var.type;
+				}
+			} else {
+				int nArgs = idxProp.setProp.argDecl.varDict.Count - 1;
+				argTypes = new TokenType[nArgs];
+				foreach (TokenDeclVar var in idxProp.setProp.argDecl.varDict) {
+					if (var.vTableIndex < nArgs) {
+						argTypes[var.vTableIndex] = var.type;
+					}
+				}
+			}
+			return argTypes;
+		}
+
+		/**
+		 * @brief Get number and computed value of index property arguments.
+		 * @param lVal = list of arguments
+		 * @param nArgs = number of arguments required
+		 * @returns null: argument count mismatch
+		 *          else: array of index property argument values
+		 */
+		private CompValu[] IdxPropCompValus (TokenLValArEle lVal, int nArgs)
+		{
+			TokenRVal subRVal = lVal.subRVal;
+			int nSubs = 1;
+			if (subRVal is TokenRValList) {
+				nSubs   = ((TokenRValList)subRVal).nItems;
+				subRVal = ((TokenRValList)subRVal).rVal;
+			}
+
+			if (nSubs != nArgs) {
+				ErrorMsg (lVal, "index property requires " + nArgs + " subscript(s)");
+				return null;
+			}
+
+			CompValu[] subCompValus = new CompValu[nArgs];
+			for (int i = 0; i < nArgs; i ++) {
+				subCompValus[i] = GenerateFromRVal (subRVal);
+				subRVal = (TokenRVal)subRVal.nextToken;
+			}
+			return subCompValus;
 		}
 
 		/**
@@ -3164,66 +3258,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			if (baseRVal.type is TokenTypeSDTypeInterface) {
 				TokenTypeSDTypeInterface sdtType = (TokenTypeSDTypeInterface)baseRVal.type;
-				TokenDeclSDTypeInterface sdtDecl = sdtType.decl;
-				TokenDeclSDTypeInterface impl;
-				TokenDeclVar declVar = sdtDecl.FindIFaceMember (this, lVal.fieldName, argsig, out impl);
+				TokenDeclVar declVar = FindInterfaceMember (sdtType, lVal.fieldName, argsig, ref baseRVal);
 				if (declVar != null) {
-
-					/*
-					 * Maybe accessing a method or property declared directly by that interface.
-					 */
-					if (impl == sdtDecl) return new CompValuIntfMember (declVar, baseRVal);
-
-					/*
-					 * Accessing a method or propterty of another interface that the primary interface says it implements.
-					 * In this case, we have to cast from the primary interface to that secondary interface.
-					 *
-					 * interface IEnumerable {
-					 *     IEnumerator GetEnumerator ();
-					 * }
-					 * interface ICountable : IEnumerable {
-					 *     integer GetCount ();
-					 * }
-					 * class List : ICountable {
-					 *     public GetCount () : ICountable { ... }
-					 *     public GetEnumerator () : IEnumerator { ... }
-					 * }
-					 *
-					 *     ICountable aList = new List ();
-					 *     IEnumerator anEnumer = aList.GetEnumerator ();   << we are here
-					 *                                                      << baseRVal = aList
-					 *                                                      << sdtDecl = ICountable
-					 *                                                      << impl = IEnumerator
-					 *                                                      << fieldName = GetEnumerator
-					 *                                                      << argsig = ()
-					 * So we have to cast aList from ICountable to IEnumerable.
-					 */
-
-					// make type token for the secondary interface type
-					TokenType subIntfType = impl.MakeRefToken (lVal);
-
-					// make a temp variable of the secondary interface type
-					CompValuTemp castBase = new CompValuTemp (subIntfType, null, this);
-
-					// output code to cast from the primary interface to the secondary interface
-					// this is 2 basic steps:
-					// 1) cast from primary interface object -> class object
-					//    ...gets it from interfaceObject.delegateArray[0].Target
-					// 2) cast from class object -> secondary interface object
-					//    ...gets it from classObject.sdtcITable[interfaceIndex]
-					baseRVal.PushVal (this, lVal.baseRVal, subIntfType);
-
-					// save result of casting in temp
-					castBase.Pop (this, lVal);
-
-					// now set up reference to the member
-					return new CompValuIntfMember (declVar, castBase);
+					return new CompValuIntfMember (declVar, baseRVal);
 				}
-
-				/*
-				 * Can't find it anywhere.
-				 */
-				ErrorMsg (lVal.fieldName, "no member " + fieldName + " in interface " + sdtDecl.longName.val);
+				ErrorMsg (lVal.fieldName, "no member " + fieldName + " in interface " + sdtType.decl.longName.val);
 				return new CompValuVoid (lVal.fieldName);
 			}
 
@@ -4035,7 +4074,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 *        Note that a 'call' is considered an operator, so all arguments of a call
 		 *        should be trivialized, but the method itself does not need to be.
 		 */
-		private CompValu Trivialize (CompValu operand, Token errorAt)
+		public CompValu Trivialize (CompValu operand, Token errorAt)
 		{
 			if (operand.IsReadTrivial (this)) return operand;
 			CompValuTemp temp = new CompValuTemp (operand.type, null, this);
@@ -4971,6 +5010,73 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			return null;
+		}
+
+
+		/**
+		 * @brief Find a member of an interface.
+		 * @param sdType = interface type
+		 * @param name = name of member to find
+		 * @param argsig = null: field/property; else: script-visible method argument types
+		 * @param baseRVal = pointer to interface object
+		 * @returns null: no such member
+		 *          else: pointer to member
+		 *                baseRVal = possibly modified to point to type-casted interface object
+		 */
+		private TokenDeclVar FindInterfaceMember (TokenTypeSDTypeInterface sdtType, TokenName name, TokenType[] argsig, ref CompValu baseRVal)
+		{
+			TokenDeclSDTypeInterface sdtDecl = sdtType.decl;
+			TokenDeclSDTypeInterface impl;
+			TokenDeclVar declVar = sdtDecl.FindIFaceMember (this, name, argsig, out impl);
+			if ((declVar != null) && (impl != sdtDecl)) {
+
+				/*
+				 * Accessing a method or propterty of another interface that the primary interface says it implements.
+				 * In this case, we have to cast from the primary interface to that secondary interface.
+				 *
+				 * interface IEnumerable {
+				 *     IEnumerator GetEnumerator ();
+				 * }
+				 * interface ICountable : IEnumerable {
+				 *     integer GetCount ();
+				 * }
+				 * class List : ICountable {
+				 *     public GetCount () : ICountable { ... }
+				 *     public GetEnumerator () : IEnumerable { ... }
+				 * }
+				 *
+				 *     ICountable aList = new List ();
+				 *     IEnumerator anEnumer = aList.GetEnumerator ();   << we are here
+				 *                                                      << baseRVal = aList
+				 *                                                      << sdtDecl = ICountable
+				 *                                                      << impl = IEnumerable
+				 *                                                      << name = GetEnumerator
+				 *                                                      << argsig = ()
+				 * So we have to cast aList from ICountable to IEnumerable.
+				 */
+
+				// make type token for the secondary interface type
+				TokenType subIntfType = impl.MakeRefToken (name);
+
+				// make a temp variable of the secondary interface type
+				CompValuTemp castBase = new CompValuTemp (subIntfType, null, this);
+
+				// output code to cast from the primary interface to the secondary interface
+				// this is 2 basic steps:
+				// 1) cast from primary interface object -> class object
+				//    ...gets it from interfaceObject.delegateArray[0].Target
+				// 2) cast from class object -> secondary interface object
+				//    ...gets it from classObject.sdtcITable[interfaceIndex]
+				baseRVal.PushVal (this, name, subIntfType);
+
+				// save result of casting in temp
+				castBase.Pop (this, name);
+
+				// return temp reference
+				baseRVal = castBase;
+			}
+
+			return declVar;
 		}
 
 		/**

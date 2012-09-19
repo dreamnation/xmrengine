@@ -18,9 +18,9 @@ llOwnerSay: gblPropCheckRun=790
 llOwnerSay: s2i: two => 2
 llOwnerSay: s2i: one => 1
 llOwnerSay: s2i: three => 3
-llOwnerSay: s2i.key = two
-llOwnerSay: s2i.key = one
-llOwnerSay: s2i.key = three
+llOwnerSay: s2i.key = two => 2
+llOwnerSay: s2i.key = one => 1
+llOwnerSay: s2i.key = three => 3
 llOwnerSay: s2i.value = 2
 llOwnerSay: s2i.value = 1
 llOwnerSay: s2i.value = 3
@@ -70,5 +70,6 @@ llOwnerSay: VaseOver=VaseOver.Meth0: 2993
 llOwnerSay: VaseOver=Vase.Meth0: victor
 llOwnerSay: VaseOver=VaseOver.Meth0: 42
 llOwnerSay: VaseOver=Vase.Meth0: farenheit
+llOwnerSay: treefife:35
 llOwnerSay: VaseOver+VaseOver.IFace2A: 1145
 llOwnerSay: VaseOver+VaseOver.IFace2B: eleven-forty-five

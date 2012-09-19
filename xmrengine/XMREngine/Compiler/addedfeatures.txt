@@ -660,7 +660,7 @@ Keywords:
 
 CLASSES
 
-    [ partial ] class <classname> : <extends>, <interface> ... {
+    [ partial ] class <classname> [ : <extends>, <interface> ... ] {
 
         <accessquals> [ partial ] class ... { ... }
 
@@ -677,7 +677,11 @@ CLASSES
         <methodquals> [ <rettype> ] <methodname> [ : <intftype> [ . <intfmeth> ] ]
                 ( <arglist> ) [ ; | { <methodbody> } ]
 
-        <methodquals> <type> <propname> { [ get [ ; | { <getbody> } ] ] [ set [ ; | { <setbody> } ] ] }
+        <methodquals> <type> <propname> [ : <intftype> [ . <intfprop> ] ]
+                { [ get [ ; | { <getbody> } ] ] [ set [ ; | { <setbody> } ] ] }
+
+        <methodquals> <type> '[' <arglist> ']' [ : <intftype> ]
+                { [ get [ ; | { <getbody> } ] ] [ set [ ; | { <setbody> } ] ] }
 
         typedef <typedefname> <definition> ;
     }
@@ -686,6 +690,33 @@ CLASSES
     available.  'this.' is implied when accessing instance fields or methods 
     from within an instance method or field initializer as is common with 
     similar oo languages.
+
+    <type> '[' <arglist> ']' { [ get [ ; | { <getbody> } ] ] [ set [ ; | { <setbody> } ] ] }
+    provides array-like syntax to access the property.  For example:
+
+        class ArrayList<T> {
+            ...
+            T [integer index] {
+                get
+                {
+                    Ptr<T> ptr = first;
+                    ...
+                    return ptr.val;
+                }
+                set
+                {
+                    Ptr<T> ptr = first;
+                    ...
+                    ptr.val = value;
+                }
+            }
+        }
+
+        ...
+
+        ArrayList<string> strings = new ArrayList<string> ();
+        strings[3] = "abc";
+        llOwnerSay (strings[3]);
 
 DELEGATES
 
@@ -764,7 +795,7 @@ FIXED-DIMENSION ARRAYS
 
 INTERFACES
 
-    interface <intfname> {
+    interface <intfname> [ : <interface> ... ] {
 
         [ partial ] class ... { ... }
 
@@ -775,6 +806,8 @@ INTERFACES
         [ <rettype> ] <methodname> ( <arglist> ) ;
 
         <type> <propname> { [ get ; ] [ set ; ] }
+
+        <type> '[' <arglist> ']' { [ get ; ] [ set ; ] }
 
         typedef <typedefname> <definition> ;
     }

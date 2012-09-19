@@ -889,9 +889,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					 * This handles types such as integer[,][], List<string>[], etc.
 					 * They are an instantiation of an internally generated type of the same name, brackets and all.
 					 * Note that to malloc an array, use something like 'new float[,][](3,5)', not 'new float[3,5][]'.
+					 *
+					 * Note that we must not get confused by $idxprop property declarations such as:
+					 *    float [string kee] { get { ... } }
+					 * ... and try to convert 'float' '[' to an array type.
 					 */
 					if ((t is TokenType) && (t.nextToken is TokenKwBrkOpen)) {
-						t = InstantiateJaggedArray (t, tokenBegin, ref repeat);
+						if ((t.nextToken.nextToken is TokenKwBrkClose) || 
+						    (t.nextToken.nextToken is TokenKwComma)) {
+							t = InstantiateJaggedArray (t, tokenBegin, ref repeat);
+						}
 					}
 				}
 
@@ -1679,11 +1686,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 				/*
 				 * <type> <name> [ : <implintfs> ] { [ get { <body> } ] [ set { <body> } ] }
+				 * <type> '[' ... ']' [ : <implintfs> ] { [ get { <body> } ] [ set { <body> } ] }
 				 */
-				if ((token is TokenType) &&
+				bool prop = (token is TokenType) &&
 				    (token.nextToken is TokenName) &&
 				    (token.nextToken.nextToken is TokenKwBrcOpen || 
-				     token.nextToken.nextToken is TokenKwColon)) {
+				     token.nextToken.nextToken is TokenKwColon);
+				prop |= (token is TokenType) && (token.nextToken is TokenKwBrkOpen);
+				if (prop) {
 					TokenDeclVar var = ParseProperty (ref token, (flags & SDT_ABSTRACT) != 0, true);
 					if (var != null) {
 						var.sdtClass = tokdeclcl;
@@ -1846,6 +1856,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 * @param imp = allow implemented interface specs
 		 * @returns null: parse failure
 		 *          else: property
+		 *
+		 * <type> <name> [ : <implintfs> ] { [ get { <body> } ] [ set { <body> } ] }
+		 * <type> '[' ... ']' [ : <implintfs> ] { [ get { <body> } ] [ set { <body> } ] }
 		 */
 		private TokenDeclVar ParseProperty (ref Token token, bool abs, bool imp)
 		{
@@ -1854,8 +1867,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 *   <type> <name>
 			 */
 			TokenType type = (TokenType)token;
-			TokenName name = (TokenName)token.nextToken;
-			token = token.nextToken.nextToken;
+			TokenName name;
+			TokenArgDecl args;
+			Token argTokens = null;
+			token = token.nextToken;
+			if (token is TokenKwBrkOpen) {
+				argTokens = token;
+				name  = new TokenName (token, "$idxprop");
+				args  = ParseFuncArgs (ref token, typeof (TokenKwBrkClose));
+			} else {
+				name  = (TokenName)token;
+				token = token.nextToken;
+				args  = new TokenArgDecl (token);
+			}
 
 			/*
 			 * Maybe it claims to implement some interface properties.
@@ -1893,12 +1917,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				 * Maybe create a getter function.
 				 */
 				if (token is TokenKwGet) {
-					TokenArgDecl argDecl = new TokenArgDecl (token);
-
 					getFunc = new TokenDeclVar (token, null, tokenScript);
 					getFunc.name       = new TokenName (token, name.val + "$get");
 					getFunc.retType    = type;
-					getFunc.argDecl    = argDecl;
+					getFunc.argDecl    = args;
 					getFunc.implements = MakePropertyImplements (implements, "$get");
 
 					token = token.nextToken;
@@ -1914,7 +1936,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				 * Maybe create a setter function.
 				 */
 				if (token is TokenKwSet) {
-					TokenArgDecl argDecl = new TokenArgDecl (token);
+					TokenArgDecl argDecl = args;
+					if (getFunc != null) {
+						argDecl = (argTokens == null) ? new TokenArgDecl (token) :
+							ParseFuncArgs (ref argTokens, typeof (TokenKwBrkClose));
+					}
 					argDecl.AddArg (type, new TokenName (token, "value"));
 
 					setFunc = new TokenDeclVar (token, null, tokenScript);
@@ -2005,7 +2031,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				token = SkipPastSemi (token);
 				return;
 			}
-			tokenDeclFunc.argDecl      = ParseFuncArgs (ref token);
+			tokenDeclFunc.argDecl      = ParseFuncArgs (ref token, typeof (TokenKwParClose));
 			if (tokenDeclFunc.argDecl == null) return;
 
 			TokenDeclVar saveDeclFunc = currentDeclFunc;
@@ -2282,11 +2308,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 				/*
 				 * <type> <name> { [ get ; ] [ set ; ] }
+				 * <type> '[' ... ']' { [ get ; ] [ set ; ] }
 				 * abstract property
 				 */
-				if ((token is TokenType) &&
+				bool prop = (token is TokenType) &&
 				    (token.nextToken is TokenName) &&
-				    (token.nextToken.nextToken is TokenKwBrcOpen)) {
+				    (token.nextToken.nextToken is TokenKwBrcOpen || 
+				     token.nextToken.nextToken is TokenKwColon);
+				prop |= (token is TokenType) && (token.nextToken is TokenKwBrkOpen);
+				if (prop) {
 					ParseProperty (ref token, true, false);
 					continue;
 				}
@@ -2394,7 +2424,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			TokenDeclVar tokenDeclFunc = new TokenDeclVar (simpleName, null, tokenScript);
 			tokenDeclFunc.name         = simpleName;
 			tokenDeclFunc.retType      = retType;
-			tokenDeclFunc.argDecl      = ParseFuncArgs (ref token);
+			tokenDeclFunc.argDecl      = ParseFuncArgs (ref token, typeof (TokenKwParClose));
 			if (tokenDeclFunc.argDecl == null) return null;
 
 			if (token is TokenKwColon) {
@@ -3230,16 +3260,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 * @param token = points to TokenKwParOpen
 		 * @returns null: parse error
 		 *          else: points to token with types and names
-		 *          token = updated past the TokenKwParClose
+		 *          token = updated past the TokenKw{Brk,Par}Close
 		 */
-		private TokenArgDecl ParseFuncArgs (ref Token token)
+		private TokenArgDecl ParseFuncArgs (ref Token token, Type end)
 		{
 			TokenArgDecl tokenArgDecl = new TokenArgDecl (token);
 
 			bool first = true;
 			do {
 				token = token.nextToken;
-				if ((token is TokenKwParClose) && first) break;
+				if ((token.GetType () == end) && first) break;
 				if (!(token is TokenType)) {
 					ErrorMsg (token, "expecting arg type");
 					token = SkipPastSemi (token);
@@ -3261,8 +3291,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				first = false;
 			} while (token is TokenKwComma);
 
-			if (!(token is TokenKwParClose)) {
-				ErrorMsg (token, "expecting comma or close paren");
+			if (token.GetType () != end) {
+				ErrorMsg (token, "expecting comma or close bracket/paren");
 				token = SkipPastSemi (token);
 				return null;
 			}
@@ -5611,6 +5641,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 */
 			if ((baseType is TokenTypeSDTypeClass) && (((TokenTypeSDTypeClass)baseType).decl.arrayOfType != null)) {
 				return ((TokenTypeSDTypeClass)baseType).decl.arrayOfType;
+			}
+
+			/*
+			 * Maybe referencing $idxprop property of script-defined class or interface.
+			 */
+			if (baseType is TokenTypeSDTypeClass) {
+				TokenDeclSDTypeClass sdtDecl = ((TokenTypeSDTypeClass)baseType).decl;
+				TokenDeclVar idxProp = scg.FindSingleMember (sdtDecl.members, new TokenName (this, "$idxprop"), null);
+				if (idxProp != null) return idxProp.type;
+			}
+			if (baseType is TokenTypeSDTypeInterface) {
+				TokenDeclSDTypeInterface sdtDecl = ((TokenTypeSDTypeInterface)baseType).decl;
+				TokenDeclVar idxProp = sdtDecl.FindIFaceMember (scg, new TokenName (this, "$idxprop"), null, out sdtDecl);
+				if (idxProp != null) return idxProp.type;
 			}
 
 			/*

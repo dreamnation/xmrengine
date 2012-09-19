@@ -626,6 +626,125 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 	}
 
+	// The value is in an $idxprop property of a script-defined type class or interface instance.
+	// Reading and writing is via a method call.
+	public class CompValuIdxProp : CompValu {
+		private TokenDeclVar idxProp;  // $idxprop property within baseRVal
+		private CompValu baseRVal;     // pointer to class or interface object containing property
+		private TokenType[] argTypes;  // argument types as required by $idxprop declaration
+		private CompValu[] indices;    // actual index values to pass to getter/setter method
+		private CompValu setProp;      // location of setter method
+
+		public CompValuIdxProp (TokenDeclVar idxProp, CompValu baseRVal, TokenType[] argTypes, CompValu[] indices) : base (idxProp.type)
+		{			
+			this.idxProp  = idxProp;
+			this.baseRVal = baseRVal;
+			this.argTypes = argTypes;
+			this.indices  = indices;
+		}
+
+		/**
+		 * @brief Pushing the property's value is a matter of calling the getter method
+		 *        with the supplied argument list as is.
+		 */
+		public override void PushVal (ScriptCodeGen scg, Token errorAt)
+		{
+			if (idxProp.getProp != null) {
+				if (!idxProp.getProp.IsFuncTrivial (scg)) {
+					for (int i = indices.Length; -- i >= 0;) {
+						indices[i] = scg.Trivialize (indices[i], errorAt);
+					}
+				}
+				CompValu getProp = GetIdxPropMeth (idxProp.getProp);
+				getProp.CallPre (scg, errorAt);
+				for (int i = 0; i < indices.Length; i ++) {
+					indices[i].PushVal (scg, errorAt, argTypes[i]);
+				}
+				getProp.CallPost (scg, errorAt);
+			} else {
+				// write-only property
+				scg.ErrorMsg (errorAt, "member not readable");
+				scg.PushDefaultValue (idxProp.type);
+			}
+		}
+
+		/**
+		 * @brief A property does not have a memory address.
+		 */
+		public override void PushRef (ScriptCodeGen scg, Token errorAt)
+		{
+			scg.ErrorMsg (errorAt, "member has no address");
+			scg.ilGen.Emit (errorAt, OpCodes.Ldnull);
+		}
+
+		/**
+		 * @brief Preparing to write a property consists of preparing to call the setter method
+		 *        then pushing the index arguments.
+		 */
+		public override void PopPre (ScriptCodeGen scg, Token errorAt)
+		{
+			if (idxProp.setProp != null) {
+				if (!idxProp.setProp.IsFuncTrivial (scg)) {
+					for (int i = indices.Length; -- i >= 0;) {
+						indices[i] = scg.Trivialize (indices[i], errorAt);
+					}
+				}
+				this.setProp = GetIdxPropMeth (idxProp.setProp);
+				this.setProp.CallPre (scg, errorAt);
+				for (int i = 0; i < indices.Length; i ++) {
+					indices[i].PushVal (scg, errorAt, argTypes[i]);
+				}
+			} else {
+				// read-only property
+				scg.ErrorMsg (errorAt, "member not writable");
+			}
+		}
+
+		/**
+		 * @brief Finishing writing a property consists of finishing the call to the setter method
+		 *        now that the value to be written has been pushed by our caller.
+		 */
+		public override void PopPost (ScriptCodeGen scg, Token errorAt)
+		{
+			if (idxProp.setProp != null) {
+				this.setProp.CallPost (scg, errorAt);
+			} else {
+				scg.ilGen.Emit (errorAt, OpCodes.Pop);
+			}
+		}
+
+		public override bool IsReadTrivial (ScriptCodeGen scg)
+		{
+			// if no getter, reading would throw an error, so doesn't really matter what we say
+			if (idxProp.getProp == null) return true;
+
+			// assume interface methods are always non-trivial because we don't know anything about the actual implementation
+			if (baseRVal.type is TokenTypeSDTypeInterface) return false;
+
+			// accessing it in any way can't be trivial if reading the pointer isn't trivial
+			if (!baseRVal.IsReadTrivial (scg)) return false;
+
+			// likewise with the indices
+			foreach (CompValu idx in indices) {
+				if (!idx.IsReadTrivial (scg)) return false;
+			}
+
+			// now the only way it can be non-trivial to read is if the getter() method itself is non-trivial.
+			return idxProp.getProp.IsFuncTrivial (scg);
+		}
+
+		/**
+		 * @brief Get how to call the getter or setter method.
+		 */
+		private CompValu GetIdxPropMeth (TokenDeclVar meth)
+		{
+			if (baseRVal.type is TokenTypeSDTypeClass) {
+				return new CompValuInstMember (meth, baseRVal, false);
+			}
+			return new CompValuIntfMember (meth, baseRVal);
+		}
+	}
+
 	// This represents the type and location of an internally-defined function
 	// that a script can call
 	public class CompValuInline : CompValu {
