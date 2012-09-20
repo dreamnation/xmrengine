@@ -33,9 +33,18 @@ Keywords:
     switch
     ...
     :
+    &&&
+    |||
 
 'break'    : valid in 'do', 'for', 'foreach', 'switch', 'while'
 'continue' : valid in 'do', 'for', 'foreach', 'while'
+
+'&&&' : provides short-circuiting AND operation
+        left-hand operand evaluated before right-hand operand
+        right-hand operand evaulated only if left-hand operand is true
+'|||' : provides short-circuiting OR operation
+        left-hand operand evaluated before right-hand operand
+        right-hand operand evaulated only if left-hand operand is false
 
 'constant' usage as follows:
 

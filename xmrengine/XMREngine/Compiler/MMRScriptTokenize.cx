@@ -820,6 +820,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
         private static Delim[] delims = new Delim[] {
             new Delim ("...", typeof (TokenKwDotDotDot)),
+            new Delim ("&&&", typeof (TokenKwAndAndAnd)),
+            new Delim ("|||", typeof (TokenKwOrOrOr)),
             new Delim ("<<=", typeof (TokenKwAsnLSh)),
             new Delim (">>=", typeof (TokenKwAsnRSh)),
             new Delim ("<=",  typeof (TokenKwCmpLE)),
@@ -1256,6 +1258,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
     }
 
     DEFTOKENKW(DotDotDot, "...", Null, Null, false)
+    DEFTOKENKW(AndAndAnd, "&&&", Null, Null, false)
+    DEFTOKENKW(OrOrOr   , "|||", Null, Null, false)
     DEFTOKENKW(AsnLSh   , "<<=", Null, Null, true)
     DEFTOKENKW(AsnRSh   , ">>=", Null, Null, true)
     DEFTOKENKW(CmpLE    , "<=",  Null, Null, true)

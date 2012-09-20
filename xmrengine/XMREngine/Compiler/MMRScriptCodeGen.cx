@@ -3601,6 +3601,98 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			/*
+			 * If "&&&", it is a short-circuiting AND.
+			 * Compute left-hand operand and if true, compute right-hand operand.
+			 */
+			if (opcodeIndex == "&&&") {
+				bool leftVal, rightVal;
+				left = GenerateFromRVal (token.rValLeft);
+				if (!IsConstBoolExpr (left, out leftVal)) {
+					ScriptMyLabel falseLabel = ilGen.DefineLabel ("ssandfalse");
+					left.PushVal (this, tokenTypeBool);
+					ilGen.Emit (token, OpCodes.Brfalse, falseLabel);
+					right = GenerateFromRVal (token.rValRight);
+					if (!IsConstBoolExpr (right, out rightVal)) {
+						right.PushVal (this, tokenTypeBool);
+						goto donessand;
+					}
+					if (!rightVal) {
+						ilGen.MarkLabel (falseLabel);
+						return new CompValuInteger (new TokenTypeInt (token.rValLeft), 0);
+					}
+					ilGen.Emit (token, OpCodes.Ldc_I4_1);
+				donessand:
+					ScriptMyLabel doneLabel = ilGen.DefineLabel ("ssanddone");
+					ilGen.Emit (token, OpCodes.Br, doneLabel);
+					ilGen.MarkLabel (falseLabel);
+					ilGen.Emit (token, OpCodes.Ldc_I4_0);
+					ilGen.MarkLabel (doneLabel);
+					CompValuTemp retRVal = new CompValuTemp (new TokenTypeInt (token), null, this);
+					retRVal.Pop (this, token);
+					return retRVal;
+				}
+
+				if (!leftVal) {
+					return new CompValuInteger (new TokenTypeInt (token.rValLeft), 0);
+				}
+
+				right = GenerateFromRVal (token.rValRight);
+				if (!IsConstBoolExpr (right, out rightVal)) {
+					right.PushVal (this, tokenTypeBool);
+					CompValuTemp retRVal = new CompValuTemp (new TokenTypeInt (token), null, this);
+					retRVal.Pop (this, token);
+					return retRVal;
+				}
+				return new CompValuInteger (new TokenTypeInt (token), rightVal ? 1 : 0);
+			}
+
+			/*
+			 * If "|||", it is a short-circuiting OR.
+			 * Compute left-hand operand and if false, compute right-hand operand.
+			 */
+			if (opcodeIndex == "|||") {
+				bool leftVal, rightVal;
+				left = GenerateFromRVal (token.rValLeft);
+				if (!IsConstBoolExpr (left, out leftVal)) {
+					ScriptMyLabel trueLabel = ilGen.DefineLabel ("ssortrue");
+					left.PushVal (this, tokenTypeBool);
+					ilGen.Emit (token, OpCodes.Brtrue, trueLabel);
+					right = GenerateFromRVal (token.rValRight);
+					if (!IsConstBoolExpr (right, out rightVal)) {
+						right.PushVal (this, tokenTypeBool);
+						goto donessor;
+					}
+					if (rightVal) {
+						ilGen.MarkLabel (trueLabel);
+						return new CompValuInteger (new TokenTypeInt (token.rValLeft), 1);
+					}
+					ilGen.Emit (token, OpCodes.Ldc_I4_0);
+				donessor:
+					ScriptMyLabel doneLabel = ilGen.DefineLabel ("ssanddone");
+					ilGen.Emit (token, OpCodes.Br, doneLabel);
+					ilGen.MarkLabel (trueLabel);
+					ilGen.Emit (token, OpCodes.Ldc_I4_1);
+					ilGen.MarkLabel (doneLabel);
+					CompValuTemp retRVal = new CompValuTemp (new TokenTypeInt (token), null, this);
+					retRVal.Pop (this, token);
+					return retRVal;
+				}
+
+				if (leftVal) {
+					return new CompValuInteger (new TokenTypeInt (token.rValLeft), 1);
+				}
+
+				right = GenerateFromRVal (token.rValRight);
+				if (!IsConstBoolExpr (right, out rightVal)) {
+					right.PushVal (this, tokenTypeBool);
+					CompValuTemp retRVal = new CompValuTemp (new TokenTypeInt (token), null, this);
+					retRVal.Pop (this, token);
+					return retRVal;
+				}
+				return new CompValuInteger (new TokenTypeInt (token), rightVal ? 1 : 0);
+			}
+
+			/*
 			 * Computation of some sort, compute right-hand operand value then left-hand value
 			 * because LSL is supposed to be right-to-left evaluation.
 			 */

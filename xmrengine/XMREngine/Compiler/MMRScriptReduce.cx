@@ -60,7 +60,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 			// http://www.lslwiki.net/lslwiki/wakka.php?wakka=operators
 
-			p.Add (typeof (TokenKwComma),   30);
+			p.Add (typeof (TokenKwComma),     30);
+
+			p.Add (typeof (TokenKwOrOrOr),    40);
+			p.Add (typeof (TokenKwAndAndAnd), 45);
 
 #define ASNPR 50
 			p.Add (typeof (TokenKwAsnLSh), ASNPR);  // all assignment operators of equal precedence
@@ -6344,7 +6347,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 */
 			string opstr = opcode.ToString ();
 			if ((opstr == "==") || (opstr == "!=") || (opstr == ">=") || (opstr == ">") || 
-			    (opstr == "&&") || (opstr == "||") || (opstr == "<=") || (opstr == "<")) {
+			    (opstr == "&&") || (opstr == "||") || (opstr == "<=") || (opstr == "<") || 
+			    (opstr == "&&&") || (opstr == "|||")) {
 				return new TokenTypeBool (opcode);
 			}
 

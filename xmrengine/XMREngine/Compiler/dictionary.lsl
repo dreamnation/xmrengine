@@ -1,5 +1,5 @@
 // Kunta's Dictionary/LinkedList implementation
-// v1.5.0
+// v1.5.1
 
 xmroption advflowctl;
 xmroption arrays;
@@ -152,10 +152,7 @@ partial class Kunta {
             public integer MoveNext () : IEnumerator<KVP>
             {
                 LinkedList<KVP> kvps;
-                while (1) {
-                    if (this.listenum == undef) jump done;
-                    if (this.listenum.MoveNext ()) break;
-                @done;
+                while (this.listenum == undef ||| !this.listenum.MoveNext ()) {
                     do {
                         if (this.index >= thedict.hashSize) return 0;
                         kvps = this.thedict.kvpss[this.index++];
