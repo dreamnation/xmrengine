@@ -2503,7 +2503,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			BreakContTarg   oldBreakTarg = curBreakTarg;
 			ScriptMyLabel   defaultLabel = null;
-			TokenSwitchCase sortedCases  = null;
+			TokenSwitchCase caseTreeTop  = null;
 			TokenSwitchCase defaultCase  = null;
 
 			curBreakTarg = new BreakContTarg (this, "switchbreak_" + switchStmt.Unique);
@@ -2511,14 +2511,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Make sure value is in a temp so we don't compute it more than once.
 			 */
-			testRVal = Trivialize (testRVal, switchStmt.testRVal);
+			if (!(testRVal is CompValuTemp)) {
+				CompValuTemp temp = new CompValuTemp (testRVal.type, null, this);
+				testRVal.PushVal (this, switchStmt);
+				temp.Pop (this, switchStmt);
+				testRVal = temp;
+			}
 
 			/*
-			 * Build list of cases sorted by ascending values.
+			 * Build tree of cases.
 			 * There should not be any overlapping of values.
 			 */
 			for (TokenSwitchCase thisCase = switchStmt.cases; thisCase != null; thisCase = thisCase.nextCase) {
-				thisCase.label = ilGen.DefineLabel ("case_" + thisCase.Unique);
+				thisCase.label = ilGen.DefineLabel ("case");
 
 				/*
 				 * The default case if any, goes in its own separate slot.
@@ -2540,76 +2545,40 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				CompValu rVal = GenerateFromRVal (thisCase.rVal1);
 				if (!IsConstStrExpr (rVal, out thisCase.str1)) {
 					ErrorMsg (thisCase.rVal1, "must be compile-time string constant");
-					return;
+					continue;
 				}
 				thisCase.str2 = thisCase.str1;
 				if (thisCase.rVal2 != null) {
 					rVal = GenerateFromRVal (thisCase.rVal2);
 					if (!IsConstStrExpr (rVal, out thisCase.str2)) {
 						ErrorMsg (thisCase.rVal2, "must be compile-time string constant");
-						return;
+						continue;
 					}
 				}
 				if (String.Compare (thisCase.str2, thisCase.str1, StringComparison.Ordinal) < 0) {
 					ErrorMsg (thisCase.rVal2, "must be .ge. first value for the case");
-					return;
+					continue;
 				}
 
 				/*
 				 * Insert into list, sorted by value.
 				 * Note that both limits are inclusive.
 				 */
-				TokenSwitchCase lastCase = null;
-				TokenSwitchCase nextCase;
-				for (nextCase = sortedCases; nextCase != null; nextCase = nextCase.nextSortedCase) {
-					if (String.Compare (nextCase.str1, thisCase.str2, StringComparison.Ordinal) >  0) break;
-					if (String.Compare (nextCase.str2, thisCase.str1, StringComparison.Ordinal) >= 0) {
-						ErrorMsg (thisCase, "value used by previous case");
-						ErrorMsg (nextCase, "...previous case");
-						return;
-					}
-					lastCase = nextCase;
-				}
-				thisCase.nextSortedCase = nextCase;
-				if (lastCase == null) {
-					sortedCases = thisCase;
-				} else {
-					lastCase.nextSortedCase = thisCase;
-				}
+				caseTreeTop = InsertCaseInTree (caseTreeTop, thisCase);
 			}
 
 			/*
-			 * Output compare and branch instructions.
+			 * Balance tree so we end up generating code that does O(log2 n) comparisons.
 			 */
-			for (TokenSwitchCase thisCase = sortedCases; thisCase != null; thisCase = thisCase.nextSortedCase) {
-				if (thisCase.str2 == thisCase.str1) {
-					testRVal.PushVal (this, switchStmt, tokenTypeStr);
-					ilGen.Emit (thisCase, OpCodes.Ldstr,   thisCase.str1);
-					ilGen.Emit (thisCase, OpCodes.Ldc_I4,  (int)StringComparison.Ordinal);
-					ilGen.Emit (thisCase, OpCodes.Call,    stringCompareMethodInfo);
-					ilGen.Emit (thisCase, OpCodes.Brfalse, thisCase.label);
-				} else {
-					ScriptMyLabel notlbl = ilGen.DefineLabel ("notcase_" + thisCase.Unique);
-					testRVal.PushVal (this, switchStmt,    tokenTypeStr);
-					ilGen.Emit (thisCase, OpCodes.Ldstr,   thisCase.str1);
-					ilGen.Emit (thisCase, OpCodes.Ldc_I4,  (int)StringComparison.Ordinal);
-					ilGen.Emit (thisCase, OpCodes.Call,    stringCompareMethodInfo);
-					ilGen.Emit (thisCase, OpCodes.Ldc_I4_0);
-					ilGen.Emit (thisCase, OpCodes.Blt,     notlbl);
-					testRVal.PushVal (this, switchStmt, tokenTypeStr);
-					ilGen.Emit (thisCase, OpCodes.Ldstr,   thisCase.str2);
-					ilGen.Emit (thisCase, OpCodes.Ldc_I4,  (int)StringComparison.Ordinal);
-					ilGen.Emit (thisCase, OpCodes.Call,    stringCompareMethodInfo);
-					ilGen.Emit (thisCase, OpCodes.Ldc_I4_0);
-					ilGen.Emit (thisCase, OpCodes.Ble,     thisCase.label);
-					ilGen.MarkLabel (notlbl);
-				}
-			}
+			caseTreeTop = BalanceTree (caseTreeTop);
 
+			/*
+			 * Output compare and branch instructions in a tree-like fashion so we do O(log2 n) comparisons.
+			 */
 			if (defaultLabel == null) {
-				defaultLabel = ilGen.DefineLabel ("default_" + switchStmt.Unique);
+				defaultLabel = ilGen.DefineLabel ("default");
 			}
-			ilGen.Emit (switchStmt, OpCodes.Br, defaultLabel);
+			OutputStrCase (testRVal, caseTreeTop, defaultLabel);
 
 			/*
 			 * Output code for the cases themselves, in the order given by the programmer, 
@@ -2640,6 +2609,218 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			curBreakTarg = oldBreakTarg;
+		}
+
+		/**
+		 * @brief Insert a case in a tree of cases
+		 * @param r = root of existing cases to insert into
+		 * @param n = new case being inserted
+		 * @returns new root with new case inserted
+		 */
+		private TokenSwitchCase InsertCaseInTree (TokenSwitchCase r, TokenSwitchCase n)
+		{
+			if (r == null) return n;
+
+			TokenSwitchCase t = r;
+			while (true) {
+				if (String.Compare (n.str2, t.str1, StringComparison.Ordinal) < 0) {
+					if (t.lowerCase == null) {
+						t.lowerCase = n;
+						break;
+					}
+					t = t.lowerCase;
+					continue;
+				}
+				if (String.Compare (n.str1, t.str2, StringComparison.Ordinal) > 0) {
+					if (t.higherCase == null) {
+						t.higherCase = n;
+						break;
+					}
+					t = t.higherCase;
+					continue;
+				}
+				ErrorMsg (n, "duplicate case");
+				ErrorMsg (r, "...duplicate of");
+				break;
+			}
+			return r;
+		}
+
+		/**
+		 * @brief Balance a tree so left & right halves contain same number within +-1
+		 * @param r = root of tree to balance
+		 * @returns new root
+		 */
+		private static TokenSwitchCase BalanceTree (TokenSwitchCase r)
+		{
+			if (r == null) return r;
+
+			int lc = CountTree (r.lowerCase);
+			int hc = CountTree (r.higherCase);
+			TokenSwitchCase n, x;
+
+			/*
+			 * If lower side is heavy, move highest nodes from lower side to 
+			 * higher side until balanced.
+			 */
+			while (lc > hc + 1) {
+				x = ExtractHighest (r.lowerCase, out n);
+				n.lowerCase  = x;
+				n.higherCase = r;
+				r.lowerCase  = null;
+				r = n;
+				lc --;
+				hc ++;
+			}
+
+			/*
+			 * If higher side is heavy, move lowest nodes from higher side to 
+			 * lower side until balanced.
+			 */
+			while (hc > lc + 1) {
+				x = ExtractLowest (r.higherCase, out n);
+				n.higherCase = x;
+				n.lowerCase  = r;
+				r.higherCase = null;
+				r = n;
+				lc ++;
+				hc --;
+			}
+
+			/*
+			 * Now balance each side because they can be lopsided individually.
+			 */
+			r.lowerCase  = BalanceTree (r.lowerCase);
+			r.higherCase = BalanceTree (r.higherCase);
+			return r;
+		}
+
+		/**
+		 * @brief Get number of nodes in a tree
+		 * @param n = root of tree to count
+		 * @returns number of nodes including root
+		 */
+		private static int CountTree (TokenSwitchCase n)
+		{
+			if (n == null) return 0;
+			return 1 + CountTree (n.lowerCase) + CountTree (n.higherCase);
+		}
+
+		// Extract highest node from a tree
+		// @param r = root of tree to extract highest from
+		// @returns new root after node has been extracted
+		//          n = node that was extracted from tree
+		private static TokenSwitchCase ExtractHighest (TokenSwitchCase r, out TokenSwitchCase n)
+		{
+			if (r.higherCase == null) {
+				n = r;
+				return r.lowerCase;
+			}
+			r.higherCase = ExtractHighest (r.higherCase, out n);
+			return r;
+		}
+
+		// Extract lowest node from a tree
+		// @param r = root of tree to extract lowest from
+		// @returns new root after node has been extracted
+		//          n = node that was extracted from tree
+		private static TokenSwitchCase ExtractLowest (TokenSwitchCase r, out TokenSwitchCase n)
+		{
+			if (r.lowerCase == null) {
+				n = r;
+				return r.higherCase;
+			}
+			r.lowerCase = ExtractLowest (r.lowerCase, out n);
+			return r;
+		}
+
+		/**
+		 * Output code for string-style case of a switch/case to jump to the script code associated with the case.
+		 * @param testRVal = value being switched on
+		 * @param thisCase = case that the code is being output for
+		 * @param defaultLabel = where the default clause is (or past all cases if none)
+		 * Note:
+		 *   Outputs code for this case and the lowerCase and higherCases if any.
+		 *   If no lowerCase or higherCase, outputs a br to defaultLabel so this code never falls through.
+		 */
+		private void OutputStrCase (CompValu testRVal, TokenSwitchCase thisCase, ScriptMyLabel defaultLabel)
+		{
+			/*
+			 * If nothing lower on tree and there is a single case value, 
+			 * just do one compare for equality.
+			 */
+			if ((thisCase.lowerCase == null) && (thisCase.higherCase == null) && (thisCase.str1 == thisCase.str2)) {
+				testRVal.PushVal (this, thisCase, tokenTypeStr);
+				ilGen.Emit (thisCase, OpCodes.Ldstr,   thisCase.str1);
+				ilGen.Emit (thisCase, OpCodes.Ldc_I4,  (int)StringComparison.Ordinal);
+				ilGen.Emit (thisCase, OpCodes.Call,    stringCompareMethodInfo);
+				ilGen.Emit (thisCase, OpCodes.Brfalse, thisCase.label);
+				ilGen.Emit (thisCase, OpCodes.Br,      defaultLabel);
+				return;
+			}
+
+			/*
+			 * Determine where to jump if switch value is lower than lower case value.
+			 */
+			ScriptMyLabel lowerLabel = defaultLabel;
+			if (thisCase.lowerCase != null) {
+				lowerLabel = ilGen.DefineLabel ("lower");
+			}
+
+			/*
+			 * If single case value, put comparison result in this temp.
+			 */
+			CompValuTemp cmpv1 = null;
+			if (thisCase.str1 == thisCase.str2) {
+				cmpv1 = new CompValuTemp (tokenTypeInt, null, this);
+			}
+
+			/*
+			 * If switch value .lt. lower case value, jump to lower label.
+			 * Maybe save comparison result in a temp.
+			 */
+			testRVal.PushVal (this, thisCase, tokenTypeStr);
+			ilGen.Emit (thisCase, OpCodes.Ldstr,  thisCase.str1);
+			ilGen.Emit (thisCase, OpCodes.Ldc_I4, (int)StringComparison.Ordinal);
+			ilGen.Emit (thisCase, OpCodes.Call,   stringCompareMethodInfo);
+			if (cmpv1 != null) {
+				ilGen.Emit (thisCase, OpCodes.Dup);
+				cmpv1.Pop (this, thisCase);
+			}
+			ilGen.Emit (thisCase, OpCodes.Ldc_I4_0);
+			ilGen.Emit (thisCase, OpCodes.Blt,    lowerLabel);
+
+			/*
+			 * If switch value .le. higher case value, jump to case code.
+			 * Maybe get comparison from the temp.
+			 */
+			if (cmpv1 == null) {
+				testRVal.PushVal (this, thisCase, tokenTypeStr);
+				ilGen.Emit (thisCase, OpCodes.Ldstr,  thisCase.str2);
+				ilGen.Emit (thisCase, OpCodes.Ldc_I4, (int)StringComparison.Ordinal);
+				ilGen.Emit (thisCase, OpCodes.Call,   stringCompareMethodInfo);
+			} else {
+				cmpv1.PushVal (this, thisCase);
+			}
+			ilGen.Emit (thisCase, OpCodes.Ldc_I4_0);
+			ilGen.Emit (thisCase, OpCodes.Ble,    thisCase.label);
+
+			/*
+			 * Output code for higher comparison if any.
+			 */
+			if (thisCase.higherCase == null) {
+				ilGen.Emit (thisCase, OpCodes.Br, defaultLabel);
+			} else {
+				OutputStrCase (testRVal, thisCase.higherCase, defaultLabel);
+			}
+
+			/*
+			 * Output code for lower comparison if any.
+			 */
+			if (thisCase.lowerCase != null) {
+				ilGen.MarkLabel (lowerLabel);
+				OutputStrCase (testRVal, thisCase.lowerCase, defaultLabel);
+			}
 		}
 
 		/**

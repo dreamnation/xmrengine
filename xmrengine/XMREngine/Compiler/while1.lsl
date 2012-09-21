@@ -40,6 +40,28 @@ default {
                 }
             }
         }
+
+        for (integer i = 0; i <= 16; i ++) {
+            string x = (string)i;
+            switch (x) {
+                case  "1": llOwnerSay ("one"); break;
+                case  "2": llOwnerSay ("two"); break;
+                case  "3": llOwnerSay ("tree"); break;
+                case  "4": llOwnerSay ("four"); break;
+                case  "5": llOwnerSay ("fife"); break;
+                case  "6": llOwnerSay ("six"); break;
+                case  "7": llOwnerSay ("seven"); break;
+                case  "8": llOwnerSay ("eight"); break;
+                case  "9": llOwnerSay ("niner"); break;
+                case "10": llOwnerSay ("ten"); break;
+                case "11": llOwnerSay ("eleven"); break;
+                case "12": llOwnerSay ("twelve"); break;
+                case "13": llOwnerSay ("thirteen"); break;
+                case "14": llOwnerSay ("fourteen"); break;
+                case "15": llOwnerSay ("fifteen"); break;
+                default: llOwnerSay ((string)x); break;
+            }
+        }
     }
 }
 

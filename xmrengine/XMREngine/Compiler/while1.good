@@ -77,3 +77,20 @@ llOwnerSay: 1 &&& 1 ||| 1 &&& 0 = 1
 llOwnerSay: i=1
 llOwnerSay: j=1
 llOwnerSay: 1 &&& 1 ||| 1 &&& 1 = 1
+llOwnerSay: 0
+llOwnerSay: one
+llOwnerSay: two
+llOwnerSay: tree
+llOwnerSay: four
+llOwnerSay: fife
+llOwnerSay: six
+llOwnerSay: seven
+llOwnerSay: eight
+llOwnerSay: niner
+llOwnerSay: ten
+llOwnerSay: eleven
+llOwnerSay: twelve
+llOwnerSay: thirteen
+llOwnerSay: fourteen
+llOwnerSay: fifteen
+llOwnerSay: 16
