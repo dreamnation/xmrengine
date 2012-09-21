@@ -6881,6 +6881,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		public int val1;                        // codegen: value of rVal1 here
 		public int val2;                        // codegen: value of rVal2 here
+		public string str1;
+		public string str2;
 		public ScriptMyLabel label;             // codegen: target label here
 		public TokenSwitchCase nextSortedCase;  // codegen: next case in ascending val order
 

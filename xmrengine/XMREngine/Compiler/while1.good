@@ -2,16 +2,22 @@ Compiling...
 Running...
 llOwnerSay: something 1
 llOwnerSay: one
+llOwnerSay: One
 llOwnerSay: something 2
 llOwnerSay: two or tree
+llOwnerSay: Two Or Tree
 llOwnerSay: something 3
 llOwnerSay: two or tree
+llOwnerSay: Two Or Tree
 llOwnerSay: something 4
 llOwnerSay: four
+llOwnerSay: Four
 llOwnerSay: something 5
 llOwnerSay: fife
+llOwnerSay: Fife
 llOwnerSay: something 6
 llOwnerSay: something big
+llOwnerSay: Something Big
 llOwnerSay: done 6
 llOwnerSay: i=0
 llOwnerSay: m=0

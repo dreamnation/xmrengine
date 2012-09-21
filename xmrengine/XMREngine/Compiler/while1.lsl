@@ -14,7 +14,14 @@ integer SomethingToCall ()
             case 2 ... 3: llOwnerSay ("two or tree"); break;
             case 4: llOwnerSay ("four"); break;
             case 5: llOwnerSay ("fife"); break;
-            default: llOwnerSay ("something big"); return i;
+            default: llOwnerSay ("something big"); break;
+        }
+        switch ((string)i) {
+            case "1": llOwnerSay ("One"); break;
+            case "2" ... "3": llOwnerSay ("Two Or Tree"); break;
+            case "4": llOwnerSay ("Four"); break;
+            case "5": llOwnerSay ("Fife"); break;
+            default: llOwnerSay ("Something Big"); return i;
         }
     }
 }

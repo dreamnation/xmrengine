@@ -100,6 +100,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		                                                                                            typeof (object).MakeByRefType () });
 		private static MethodInfo captureStackFrameMethodInfo = typeof (XMRInstAbstract).GetMethod ("CaptureStackFrame", new Type[] { typeof (string), typeof (int), typeof (int) });
 		private static MethodInfo restoreStackFrameMethodInfo = typeof (XMRInstAbstract).GetMethod ("RestoreStackFrame", new Type[] { typeof (string), typeof (int).MakeByRefType () });
+		private static MethodInfo stringCompareMethodInfo     = GetStaticMethod (typeof (String), "Compare", new Type[] { typeof (string), typeof (string), typeof (StringComparison) });
 		private static MethodInfo stringConcat2MethodInfo     = GetStaticMethod (typeof (String), "Concat", new Type[] { typeof (string), typeof (string) });
 		private static MethodInfo stringConcat3MethodInfo     = GetStaticMethod (typeof (String), "Concat", new Type[] { typeof (string), typeof (string), typeof (string) });
 		private static MethodInfo stringConcat4MethodInfo     = GetStaticMethod (typeof (String), "Concat", new Type[] { typeof (string), typeof (string), typeof (string), typeof (string) });
@@ -2269,6 +2270,25 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			if (!mightGetHere) return;
 
+			/*
+			 * Output code to calculate index.
+			 */
+			CompValu testRVal = GenerateFromRVal (switchStmt.testRVal);
+
+			/*
+			 * Generate code based on string or integer index.
+			 */
+			if (testRVal.type is TokenTypeStr) {
+				GenerateStmtSwitchStr (testRVal, switchStmt);
+			} else {
+				GenerateStmtSwitchInt (testRVal, switchStmt);
+			}
+		}
+
+		private void GenerateStmtSwitchInt (CompValu testRVal, TokenStmtSwitch switchStmt)
+		{
+			testRVal.PushVal (this, switchStmt.testRVal, tokenTypeInt);
+
 			BreakContTarg   oldBreakTarg = curBreakTarg;
 			ScriptMyLabel   defaultLabel = null;
 			TokenSwitchCase sortedCases  = null;
@@ -2344,12 +2364,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (defaultLabel == null) {
 				defaultLabel = ilGen.DefineLabel ("default_" + switchStmt.Unique);
 			}
-
-			/*
-			 * Output code to calculate index, push result on stack as an integer.
-			 */
-			CompValu testRVal = GenerateFromRVal (switchStmt.testRVal);
-			testRVal.PushVal (this, switchStmt.testRVal, tokenTypeInt);
 
 			/*
 			 * Output code to jump to the case statement's labels based on integer index on stack.
@@ -2476,6 +2490,149 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Output the 'break' statement target label.
 			 * Note that the integer index is not on the stack at this point.
+			 */
+			if (curBreakTarg.used) {
+				ilGen.MarkLabel (curBreakTarg.label);
+				mightGetHere = true;
+			}
+
+			curBreakTarg = oldBreakTarg;
+		}
+
+		private void GenerateStmtSwitchStr (CompValu testRVal, TokenStmtSwitch switchStmt)
+		{
+			BreakContTarg   oldBreakTarg = curBreakTarg;
+			ScriptMyLabel   defaultLabel = null;
+			TokenSwitchCase sortedCases  = null;
+			TokenSwitchCase defaultCase  = null;
+
+			curBreakTarg = new BreakContTarg (this, "switchbreak_" + switchStmt.Unique);
+
+			/*
+			 * Make sure value is in a temp so we don't compute it more than once.
+			 */
+			testRVal = Trivialize (testRVal, switchStmt.testRVal);
+
+			/*
+			 * Build list of cases sorted by ascending values.
+			 * There should not be any overlapping of values.
+			 */
+			for (TokenSwitchCase thisCase = switchStmt.cases; thisCase != null; thisCase = thisCase.nextCase) {
+				thisCase.label = ilGen.DefineLabel ("case_" + thisCase.Unique);
+
+				/*
+				 * The default case if any, goes in its own separate slot.
+				 */
+				if (thisCase.rVal1 == null) {
+					if (defaultCase != null) {
+						ErrorMsg (thisCase, "only one default case allowed");
+						ErrorMsg (defaultCase, "...prior default case");
+						return;
+					}
+					defaultCase  = thisCase;
+					defaultLabel = thisCase.label;
+					continue;
+				}
+
+				/*
+				 * Evaluate case operands, they must be compile-time string constants.
+				 */
+				CompValu rVal = GenerateFromRVal (thisCase.rVal1);
+				if (!IsConstStrExpr (rVal, out thisCase.str1)) {
+					ErrorMsg (thisCase.rVal1, "must be compile-time string constant");
+					return;
+				}
+				thisCase.str2 = thisCase.str1;
+				if (thisCase.rVal2 != null) {
+					rVal = GenerateFromRVal (thisCase.rVal2);
+					if (!IsConstStrExpr (rVal, out thisCase.str2)) {
+						ErrorMsg (thisCase.rVal2, "must be compile-time string constant");
+						return;
+					}
+				}
+				if (String.Compare (thisCase.str2, thisCase.str1, StringComparison.Ordinal) < 0) {
+					ErrorMsg (thisCase.rVal2, "must be .ge. first value for the case");
+					return;
+				}
+
+				/*
+				 * Insert into list, sorted by value.
+				 * Note that both limits are inclusive.
+				 */
+				TokenSwitchCase lastCase = null;
+				TokenSwitchCase nextCase;
+				for (nextCase = sortedCases; nextCase != null; nextCase = nextCase.nextSortedCase) {
+					if (String.Compare (nextCase.str1, thisCase.str2, StringComparison.Ordinal) >  0) break;
+					if (String.Compare (nextCase.str2, thisCase.str1, StringComparison.Ordinal) >= 0) {
+						ErrorMsg (thisCase, "value used by previous case");
+						ErrorMsg (nextCase, "...previous case");
+						return;
+					}
+					lastCase = nextCase;
+				}
+				thisCase.nextSortedCase = nextCase;
+				if (lastCase == null) {
+					sortedCases = thisCase;
+				} else {
+					lastCase.nextSortedCase = thisCase;
+				}
+			}
+
+			/*
+			 * Output compare and branch instructions.
+			 */
+			for (TokenSwitchCase thisCase = sortedCases; thisCase != null; thisCase = thisCase.nextSortedCase) {
+				if (thisCase.str2 == thisCase.str1) {
+					testRVal.PushVal (this, switchStmt, tokenTypeStr);
+					ilGen.Emit (thisCase, OpCodes.Ldstr,   thisCase.str1);
+					ilGen.Emit (thisCase, OpCodes.Ldc_I4,  (int)StringComparison.Ordinal);
+					ilGen.Emit (thisCase, OpCodes.Call,    stringCompareMethodInfo);
+					ilGen.Emit (thisCase, OpCodes.Brfalse, thisCase.label);
+				} else {
+					ScriptMyLabel notlbl = ilGen.DefineLabel ("notcase_" + thisCase.Unique);
+					testRVal.PushVal (this, switchStmt,    tokenTypeStr);
+					ilGen.Emit (thisCase, OpCodes.Ldstr,   thisCase.str1);
+					ilGen.Emit (thisCase, OpCodes.Ldc_I4,  (int)StringComparison.Ordinal);
+					ilGen.Emit (thisCase, OpCodes.Call,    stringCompareMethodInfo);
+					ilGen.Emit (thisCase, OpCodes.Ldc_I4_0);
+					ilGen.Emit (thisCase, OpCodes.Blt,     notlbl);
+					testRVal.PushVal (this, switchStmt, tokenTypeStr);
+					ilGen.Emit (thisCase, OpCodes.Ldstr,   thisCase.str2);
+					ilGen.Emit (thisCase, OpCodes.Ldc_I4,  (int)StringComparison.Ordinal);
+					ilGen.Emit (thisCase, OpCodes.Call,    stringCompareMethodInfo);
+					ilGen.Emit (thisCase, OpCodes.Ldc_I4_0);
+					ilGen.Emit (thisCase, OpCodes.Ble,     thisCase.label);
+					ilGen.MarkLabel (notlbl);
+				}
+			}
+
+			if (defaultLabel == null) {
+				defaultLabel = ilGen.DefineLabel ("default_" + switchStmt.Unique);
+			}
+			ilGen.Emit (switchStmt, OpCodes.Br, defaultLabel);
+
+			/*
+			 * Output code for the cases themselves, in the order given by the programmer, 
+			 * so they fall through as programmer wants.  This includes the default case, if any.
+			 */
+			for (TokenSwitchCase thisCase = switchStmt.cases; thisCase != null; thisCase = thisCase.nextCase) {
+				ilGen.MarkLabel (thisCase.label);	// the branch comes here
+				mightGetHere = true;			// it's possible to get here
+				for (TokenStmt stmt = thisCase.stmts; stmt != null; stmt = (TokenStmt)(stmt.nextToken)) {
+					GenerateStmt (stmt);		// output the case/explicit default body
+				}
+			}
+
+			/*
+			 * If no explicit default case, output the default label here.
+			 */
+			if (defaultCase == null) {
+				ilGen.MarkLabel (defaultLabel);
+				mightGetHere = true;
+			}
+
+			/*
+			 * Output the 'break' statement target label.
 			 */
 			if (curBreakTarg.used) {
 				ilGen.MarkLabel (curBreakTarg.label);
@@ -4750,6 +4907,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			constVal = 0;
+			return false;
+		}
+
+		/**
+		 * @brief Determine if the expression has a constant string value
+		 *        and if so, return the string value.
+		 * @param expr = expression to evaluate
+		 * @returns true: expression is contant and has string value
+		 *         false: otherwise
+		 */
+		private bool IsConstStrExpr (CompValu expr, out string constVal)
+		{
+			if (expr is CompValuString) {
+				constVal = ((CompValuString)expr).x;
+				return true;
+			}
+			constVal = "";
 			return false;
 		}
 

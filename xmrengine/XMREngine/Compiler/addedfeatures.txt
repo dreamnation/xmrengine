@@ -67,6 +67,8 @@ Keywords:
         [ 'default' ':' singlestatement ]
     '}'
 
+    It also works for stringexpression in the switch with stringconstantexpressions used in the cases.
+
 
 ASSOCIATIVE ARRAYS
 
