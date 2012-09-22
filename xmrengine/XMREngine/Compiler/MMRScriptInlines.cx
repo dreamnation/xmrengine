@@ -23,14 +23,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	public delegate void CodeGenCall (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args);
 
 	public class TokenDeclInline : TokenDeclVar {
+		public static VarDict inlineFunctions = TokenDeclInline.CreateDictionary ();
 
 		public CodeGenCall codeGen;   // method that generates code
 		public MethodInfo methInfo;   // function called by the inline
 		public bool doCheckRun;       // valid for CodeGenBEApi only
 		public int keepNulls;         // valid for CodeGenLLParseString2List only
-
-		private static Type[] oneDoub  = new Type[] { typeof (double) };
-		private static Type[] twoDoubs = new Type[] { typeof (double), typeof (double) };
 
 		private static TokenTypeFloat tokenTypeFloat  = new TokenTypeFloat (null);
 
@@ -43,55 +41,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static readonly MethodInfo fixLLParcelMediaCommandList = ScriptCodeGen.GetStaticMethod 
 				(typeof (XMRInstAbstract), "FixLLParcelMediaCommandList", new Type[] { typeof (LSL_List) });
 
-		/*
-		 * For those listed in noCheckRun, we just generate the call (simple computations).
-		 * For all others, we generate the call then a call to CheckRun().
-		 */
-		private static string[] noCheckRuns = new string[] {
-			"llBase64ToString",
-			"llCSV2List",
-			"llDeleteSubList",
-			"llDeleteSubString",
-			"llDumpList2String",
-			"llEscapeURL",
-			"llEuler2Rot",
-			"llGetListEntryType",
-			"llGetListLength",
-			"llGetSubString",
-			"llGetUnixTime",
-			"llInsertString",
-			"llList2CSV",
-			"llList2Float",
-			"llList2Integer",
-			"llList2Key",
-			"llList2List",
-			"llList2ListStrided",
-			"llList2Rot",
-			"llList2String",
-			"llList2Vector",
-			"llListFindList",
-			"llListInsertList",
-			"llListRandomize",
-			"llListReplaceList",
-			"llListSort",
-			"llListStatistics",
-			"llMD5String",
-			"llParseString2List",
-			"llParseStringKeepNulls",
-			"llStringLength",
-			"llStringToBase64",
-			"llStringTrim",
-			"llSubStringIndex",
-			"llUnescapeURL"
-		};
-
 		/**
 		 * @brief Create a dictionary of inline backend API functions.
 		 */
-		public static VarDict CreateDictionary ()
+		private static VarDict CreateDictionary ()
 		{
 			VarDict ifd = new VarDict ();
 			TokenDeclInline inf;
+
+			Type[] oneDoub  = new Type[] { typeof (double) };
+			Type[] twoDoubs = new Type[] { typeof (double), typeof (double) };
 
 			/*
 			 * Mono generates an FPU instruction for many math calls.
@@ -127,8 +86,50 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @param ifd = internal function dictionary to add them to
 		 * @param ifaceType = interface to scan for functions
 		 */
-		private static void AddInterfaceMethods (VarDict ifd, Type ifaceType)
+		public static void AddInterfaceMethods (VarDict ifd, Type ifaceType)
 		{
+			/*
+			 * For those listed in noCheckRun, we just generate the call (simple computations).
+			 * For all others, we generate the call then a call to CheckRun().
+			 */
+			string[] noCheckRuns = new string[] {
+				"llBase64ToString",
+				"llCSV2List",
+				"llDeleteSubList",
+				"llDeleteSubString",
+				"llDumpList2String",
+				"llEscapeURL",
+				"llEuler2Rot",
+				"llGetListEntryType",
+				"llGetListLength",
+				"llGetSubString",
+				"llGetUnixTime",
+				"llInsertString",
+				"llList2CSV",
+				"llList2Float",
+				"llList2Integer",
+				"llList2Key",
+				"llList2List",
+				"llList2ListStrided",
+				"llList2Rot",
+				"llList2String",
+				"llList2Vector",
+				"llListFindList",
+				"llListInsertList",
+				"llListRandomize",
+				"llListReplaceList",
+				"llListSort",
+				"llListStatistics",
+				"llMD5String",
+				"llParseString2List",
+				"llParseStringKeepNulls",
+				"llStringLength",
+				"llStringToBase64",
+				"llStringTrim",
+				"llSubStringIndex",
+				"llUnescapeURL"
+			};
+
 			MethodInfo[] ifaceMethods = ifaceType.GetMethods ();
 			foreach (MethodInfo ifaceMethod in ifaceMethods) {
 				string key = ifaceMethod.Name;
@@ -176,7 +177,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					///??? string msg = except.ToString ();
 					///??? int i = msg.IndexOf ("\n");
 					///??? if (i > 0) msg = msg.Substring (0, i);
-					///??? Console.WriteLine ("TokenDeclInline*: {0}:     {1}", key, msg);
 
 					///??? IGNORE ANY THAT FAIL - LIKE UNRECOGNIZED TYPE ???///
 					///???                          and OVERLOADED NAMES ???///

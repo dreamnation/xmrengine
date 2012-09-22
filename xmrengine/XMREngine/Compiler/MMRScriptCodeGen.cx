@@ -47,7 +47,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		/*
 		 * Static tables that there only needs to be one copy of for all.
 		 */
-		private static VarDict inlineFunctions = TokenDeclInline.CreateDictionary ();
 		private static VarDict legalEventHandlers = CreateLegalEventHandlers ();
 		private static CompValu[]      zeroCompValus = new CompValu[0];
 		private static TokenType[]     zeroArgs      = new TokenType[0];
@@ -5452,7 +5451,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					return var;
 				}
 			} else {
-				TokenDeclVar inline = FindSingleMember (inlineFunctions, lValName.name, argsig);
+				TokenDeclVar inline = FindSingleMember (TokenDeclInline.inlineFunctions, lValName.name, argsig);
 				if (inline != null) return inline;
 			}
 
