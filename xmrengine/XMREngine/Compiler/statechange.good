@@ -1,0 +1,50 @@
+Compiling...
+Running...
+llOwnerSay: #100: touch to start
+touch_start(0)
+llOwnerSay: #110
+Change to state a
+llOwnerSay: #200
+llSensorRepeat("", "", 1, 96, 3.14159274101257, 0.5)
+llSetTimerEvent(1)
+timer()
+llOwnerSay: #210:3
+timer()
+llOwnerSay: #210:2
+sensor(3)
+llDetectedName(0)
+llDetectedName:"Kunta Kinte"
+llOwnerSay: #205: Kunta Kinte
+llDetectedName(1)
+llDetectedName:"Waki Janus"
+llOwnerSay: #205: Waki Janus
+llDetectedName(2)
+llDetectedName:"Abitar Horan"
+llOwnerSay: #205: Abitar Horan
+timer()
+llOwnerSay: #210:1
+timer()
+llOwnerSay: #210:0
+llOwnerSay: #220
+Change to state b
+llOwnerSay: #300: listening on channel 0
+llListen(0, "", "", "")
+llListen:11
+timer()
+llOwnerSay: #310: 0
+timer()
+llOwnerSay: #310: 1
+listen(0,"Kunta Kinte","12345-6789A-BCDEF","hello #320!")
+llOwnerSay: #320: 0: hello #320!
+touch_start(0)
+llOwnerSay: #330
+Change to state c
+llOwnerSay: #400: listening chan 0 should be cancelled
+timer()
+llOwnerSay: #410: 2
+timer()
+llOwnerSay: #410: 3
+touch_start(0)
+llOwnerSay: #430
+Change to state default
+llOwnerSay: #100: touch to start

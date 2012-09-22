@@ -1,8 +1,16 @@
 #!/bin/bash -v
+
 function testit {
     mono --debug xmrengtest.exe -asm $1.xmrasm $1.lsl 2>&1 | tee $1.out
     diff $1.out $1.good
     mono --debug xmrengtest.exe -serialize $1.lsl 2>&1 | tee $1.ser
+    diff $1.ser $1.good
+}
+
+function testev {
+    mono --debug xmrengtest.exe -eventio -asm $1.xmrasm $1.lsl < $1.events 2>&1 | tee $1.out
+    diff $1.out $1.good
+    mono --debug xmrengtest.exe -eventio -serialize $1.lsl < $1.events 2>&1 | tee $1.ser
     diff $1.ser $1.good
 }
 
@@ -21,5 +29,6 @@ testit while1
 testit testllparcelmedia
 testit typeassigntest
 testit partialtest
+testev statechange
 
 echo "SUCCESS"

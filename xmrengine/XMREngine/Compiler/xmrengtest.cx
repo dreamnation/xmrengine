@@ -240,6 +240,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 List<object> argList = new List<object> ();
                 do {
                     t = t.nextToken;
+                    if ((argList.Count == 0) && (t is TokenKwParClose)) break;
                     object val = ParseEHArg (ref t);
                     if (val == null) goto readLine;
                     argList.Add (val);
@@ -678,57 +679,57 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          *  The rest of ILSL_Api  *
         \**************************/
 
-        private static string ReadLine ()
+#include "makexmrengtestilslapi.inc"
+
+        /**
+         * @brief Called by the various ILSL_Api functions to print their parameters
+         *        and if non-void return value, read return value from stdin.
+         */
+
+        private static void ComVoid (string name, params object[] parms)
         {
-            string line = Console.ReadLine ();
-            if (line == null) throw new Exception ("end of input");
-            ++ XMREngTest.consoleLine;
-            Console.WriteLine (line);
-            return line;
+            PrintParms (name, parms);
         }
-        private void ComVoid (string name, params object[] parms)
+        private static LSL_Float ComLSLFloat (string name, params object[] parms)
         {
-            Console.WriteLine (name + PrintParms (parms));
+            PrintParms (name, parms);
+            object val = ReadRetVal (name);
+            if (val is int) val = (SCRIPTFLOAT)(int)val;
+            return new LSL_Float ((SCRIPTFLOAT)val);
         }
-        private LSL_Float ComLSLFloat (string name, params object[] parms)
+        private static LSL_Integer ComLSLInteger (string name, params object[] parms)
         {
-            Console.WriteLine (name + PrintParms (parms));
-            return new LSL_Float (ReadLine ());
+            PrintParms (name, parms);
+            return new LSL_Integer ((int)ReadRetVal (name));
         }
-        private LSL_Integer ComLSLInteger (string name, params object[] parms)
+        private static LSL_List ComLSLList (string name, params object[] parms)
         {
-            Console.WriteLine (name + PrintParms (parms));
-            return new LSL_Integer (ReadLine ());
+            PrintParms (name, parms);
+            return (LSL_List)ReadRetVal (name);
         }
-        private LSL_Key ComLSLKey (string name, params object[] parms)
+        private static LSL_Rotation ComLSLRotation (string name, params object[] parms)
         {
-            Console.WriteLine (name + PrintParms (parms));
-            return new LSL_Key (ReadLine ());
+            PrintParms (name, parms);
+            return (LSL_Rotation)ReadRetVal (name);
         }
-        private LSL_List ComLSLList (string name, params object[] parms)
+        private static LSL_String ComLSLString (string name, params object[] parms)
         {
-            Console.WriteLine (name + PrintParms (parms));
-            return new LSL_List (ReadLine ());
+            PrintParms (name, parms);
+            return new LSL_String ((string)ReadRetVal (name));
         }
-        private LSL_Rotation ComLSLRotation (string name, params object[] parms)
+        private static LSL_Vector ComLSLVector (string name, params object[] parms)
         {
-            Console.WriteLine (name + PrintParms (parms));
-            return new LSL_Rotation (ReadLine ());
-        }
-        private LSL_String ComLSLString (string name, params object[] parms)
-        {
-            Console.WriteLine (name + PrintParms (parms));
-            return new LSL_String (ReadLine ());
-        }
-        private LSL_Vector ComLSLVector (string name, params object[] parms)
-        {
-            Console.WriteLine (name + PrintParms (parms));
-            return new LSL_Vector (ReadLine ());
+            PrintParms (name, parms);
+            return (LSL_Vector)ReadRetVal (name);
         }
 
-        private string PrintParms (object[] parms)
+        /**
+         * @brief Print api function and parameter values.
+         */
+        private static void PrintParms (string name, object[] parms)
         {
             StringBuilder sb = new StringBuilder ();
+            sb.Append (name);
             sb.Append ('(');
             for (int i = 0; i < parms.Length; i ++) {
                 object p = parms[i];
@@ -736,9 +737,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 PrintParam (sb, p);
             }
             sb.Append (')');
-            return sb.ToString ();
+            Console.WriteLine (sb.ToString ());
         }
-        private void PrintParam (StringBuilder sb, object p)
+        private static void PrintParam (StringBuilder sb, object p)
         {
             if (p == null) {
                 sb.Append ("null");
@@ -758,7 +759,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 sb.Append (p.ToString ());
             }
         }
-        private void PrintParamString (StringBuilder sb, string p)
+        private static void PrintParamString (StringBuilder sb, string p)
         {
             sb.Append ('"');
             foreach (char c in p) {
@@ -779,6 +780,48 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             sb.Append ('"');
         }
 
-#include "makexmrengtestilslapi.inc"
+        /**
+         * @brief Read return value from stdin.
+         *        Must be in form <funcname>:<value>
+         * @param name = name of function that the return value is for
+         * @returns value read from stdin
+         */
+        private static object ReadRetVal (string name)
+        {
+            string line = Console.ReadLine ();
+            if (line == null) throw new Exception ("end of input");
+            ++ XMREngTest.consoleLine;
+            Console.WriteLine (line);
+
+            /*
+             * Parse into tokens.
+             */
+            string sourceHash;
+            line = "# " + XMREngTest.consoleLine + " \"console events\"\n" + line;
+            TokenBegin tokenBegin = TokenBegin.Construct ("console events", null, XMREngTest.StandAloneErrorMessage, line, out sourceHash);
+            if (tokenBegin == null) throw new Exception ("parse error");
+            Token t = tokenBegin.nextToken;
+
+            /*
+             * Get function name and validate.
+             */
+            if (!(t is TokenName) || !(t.nextToken is TokenKwColon)) {
+                throw new Exception ("expecting function name :");
+            }
+            if (((TokenName)t).val != name) {
+                throw new Exception ("expecting function " + name);
+            }
+            t = t.nextToken.nextToken;
+
+            /*
+             * Parse out the value.
+             */
+            object val = XMREngTest.ParseEHArg (ref t);
+            if (val == null) throw new Exception ("value parse error");
+            if (!(t is TokenEnd)) {
+                throw new Exception ("extra stuff at end of line " + t.ToString ());
+            }
+            return val;
+        }
     }
 }
