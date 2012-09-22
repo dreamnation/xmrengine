@@ -20,6 +20,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
     public class XMREngTest
     {
+        public static int consoleLine = 0;
+
         /**
          * @brief Stand-alone test program.
          *
@@ -28,7 +30,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public static void Main (string[] args)
         {
             bool doCheckRun = false;
-            bool serialize = false;
+            bool eventIO    = false;
+            bool serialize  = false;
             string asmFileName = null;
             string objFileName = null;
             string savFileName = null;
@@ -44,6 +47,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
                 if (arg == "-checkrun") {
                     doCheckRun = true;
+                    continue;
+                }
+                if (arg == "-eventio") {
+                    eventIO = true;
                     continue;
                 }
                 if (arg == "-obj") {
@@ -94,7 +101,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Create abstract syntax tree from raw tokens.
              */
-            TokenScript tokenScript = ScriptReduce.Reduce( tokenBegin);
+            TokenScript tokenScript = ScriptReduce.Reduce(tokenBegin);
             if (tokenScript == null) {
                 Console.WriteLine ("Reduction errors.");
                 Environment.Exit (1);
@@ -148,13 +155,130 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             inst.testCheckRun = doCheckRun;
             inst.heapTotal    = inst.glblVars.AllocVarArrays (ref scriptObjCode.glblSizes);
             inst.ehArgs       = new object[0];
+            inst.stateCode    = 0;  // default
+            inst.eventCode    = ScriptEventCode.state_entry;
             MemoryStream serializeStream = null;
             if (serialize) {
                 serializeStream = new MemoryStream ();
             }
             while (true) {
+
+                /*
+                 * Call event handler and wait for it to finish.
+                 */
+                while (true) {
+                    try {
+                        RunScriptEventHandler (ref inst, serializeStream);
+                        break;
+                    } catch (ScriptChangeStateException scse) {
+                        inst.eventCode = ScriptEventCode.state_exit;
+                        inst.ehArgs    = new object[0];
+                        try {
+                            RunScriptEventHandler (ref inst, serializeStream);
+                        } catch (ScriptChangeStateException) {
+                            Console.WriteLine ("State change in state_exit handler ignored");
+                        }
+                        inst.stateCode = scse.newState;
+                        inst.eventCode = ScriptEventCode.state_entry;
+                        Console.WriteLine ("Change to state " + inst.m_ObjCode.stateNames[inst.stateCode]);
+                    } catch (Exception e) {
+                        Console.WriteLine ("Uncaught exception in script: " + inst.XMRExceptionFixString (e.ToString (), true));
+                        return;
+                    }
+                }
+
+                if (!eventIO) return;
+
+                /*
+                 * Read eventname(eventargs) from stdin.
+                 */
+            readLine:
+                string eventLine = Console.ReadLine ();
+                if (eventLine == null) return;
+                ++ consoleLine;
+                Console.WriteLine (eventLine);
+
+                /*
+                 * Parse into tokens.
+                 */
+                eventLine = "# " + consoleLine + " \"console events\"\n" + eventLine;
+                tokenBegin = TokenBegin.Construct ("console events", null, StandAloneErrorMessage, eventLine, out sourceHash);
+                if (tokenBegin == null) continue;
+                Token t = tokenBegin.nextToken;
+
+                /*
+                 * Get event handler name and validate.
+                 */
+                if (!(t is TokenName)) {
+                    t.ErrorMsg ("expecting event name");
+                    goto readLine;
+                }
+                TokenName eventName = (TokenName)t;
+                System.Reflection.MethodInfo[] ifaceMethods = typeof (IEventHandlers).GetMethods ();
+                System.Reflection.MethodInfo ifaceMethod;
+                foreach (System.Reflection.MethodInfo ifm in ifaceMethods) {
+                    ifaceMethod = ifm;
+                    if (ifaceMethod.Name == eventName.val) goto gotEvent;
+                }
+                eventName.ErrorMsg ("unknown event");
+                goto readLine;
+            gotEvent:
+                inst.eventCode = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), eventName.val);
+                if (scriptObjCode.scriptEventHandlerTable[inst.stateCode,(int)inst.eventCode] == null) {
+                    eventName.ErrorMsg ("event handler not defined for state " + scriptObjCode.stateNames[inst.stateCode]);
+                    goto readLine;
+                }
+                t = t.nextToken;
+
+                /*
+                 * Parse argument list.
+                 */
+                if (!(t is TokenKwParOpen)) {
+                    t.ErrorMsg ("expecting ( after event name");
+                    goto readLine;
+                }
+                List<object> argList = new List<object> ();
+                do {
+                    t = t.nextToken;
+                    object val = ParseEHArg (ref t);
+                    if (val == null) goto readLine;
+                    argList.Add (val);
+                } while (t is TokenKwComma);
+                if (!(t is TokenKwParClose)) {
+                    t.ErrorMsg ("expecting , or ) in arg list");
+                    goto readLine;
+                }
+                inst.ehArgs = argList.ToArray ();
+                t = t.nextToken;
+                if (!(t is TokenEnd)) {
+                    t.ErrorMsg ("extra stuff after event args");
+                    goto readLine;
+                }
+            }
+
+        usage:
+            Console.WriteLine ("usage: mono xmrengtest.exe [ -asm <asmoutfile>|- ] [ -checkrun ] [ -eventio ] [ -obj <objoutfile> ] [ -save <sourceoutfile> ] [ -serialize] <sourcefile>");
+            Environment.Exit (1);
+        }
+
+        public static void StandAloneErrorMessage (Token token, string message)
+        {
+            Console.WriteLine ("{0} {1}", token.SrcLoc, message);
+        }
+
+        /**
+         * @brief Run current state event handler until it completes or throws an exception
+         * @param inst = script instance
+         *        inst.stateCode = which state it is in
+         *        inst.eventCode = which handler of that event to run
+         *        inst.ehArgs    = arguments to pass to the event handler
+         * @returns when event handler completes or throws an exception
+         */
+        public static void RunScriptEventHandler (ref TestInstance inst, MemoryStream serializeStream)
+        {
+            while (true) {
                 try {
-                    scriptObjCode.scriptEventHandlerTable[0,(int)ScriptEventCode.state_entry](inst);
+                    inst.m_ObjCode.scriptEventHandlerTable[inst.stateCode,(int)inst.eventCode](inst);
                     break;
                 } catch (StackCaptureException) {
 
@@ -167,7 +291,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     /*
                      * If -serialize, make sure script instance serialization works.
                      */
-                    if (serialize) {
+                    if (serializeStream != null) {
 
                         /*
                          * Write global variables and stack frames out and discard them.
@@ -180,8 +304,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                          * Read global variables and stack frames back in and reconstruct.
                          */
                         serializeStream.Position = 0;
-                        inst = new TestInstance (scriptObjCode);
-                        inst.testCheckRun = doCheckRun;
+                        inst = new TestInstance (inst.m_ObjCode);
+                        inst.testCheckRun = true;
                         inst.MigrateIn (new BinaryReader (serializeStream));
                         if (savePos != serializeStream.Position) throw new Exception ("save/restore positions different");
                     }
@@ -190,21 +314,145 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      * Tell code to restore from inst.stackFrames when it is called back.
                      */
                     inst.callMode = XMRInstAbstract.CALLMODE_RESTORE;
-                } catch (Exception e) {
-                    Console.WriteLine ("Uncaught exception in script: " + inst.XMRExceptionFixString (e.ToString (), true));
-                    break;
                 }
             }
-            return;
-
-        usage:
-            Console.WriteLine ("usage: mono xmrengtest.exe [ -asm <asmoutfile>|- ] [ -checkrun ] [ -obj <objoutfile> ] [ -save <sourceoutfile> ] [ -serialize] <sourcefile>");
-            Environment.Exit (1);
         }
 
-        public static void StandAloneErrorMessage (Token token, string message)
+        /**
+         * @brief Parse out constant for event handler argument value.
+         * @param token = points to beginning of constant
+         * @returns null: error parsing constant
+         *          else: constant value
+         *                token = points just past constant
+         */
+        public static object ParseEHArg (ref Token token)
         {
-            Console.WriteLine ("{0} {1}", token.SrcLoc, message);
+            /*
+             * Simple unary operators.
+             */
+            if (token is TokenKwSub) {
+                token = token.nextToken;
+                Token opTok = token;
+                object val = ParseEHArg (ref token);
+                if (val is int) return -(int)val;
+                if (val is SCRIPTFLOAT) return -(SCRIPTFLOAT)val;
+                opTok.ErrorMsg ("invalid - operand");
+                return null;
+            }
+            if (token is TokenKwTilde) {
+                token = token.nextToken;
+                Token opTok = token;
+                object val = ParseEHArg (ref token);
+                if (val is int) return ~(int)val;
+                opTok.ErrorMsg ("invalid ~ operand");
+                return null;
+            }
+
+            /*
+             * Constants.
+             */
+            if (token is TokenFloat) {
+                object v = ((TokenFloat)token).val;
+                token = token.nextToken;
+                return v;
+            }
+            if (token is TokenInt) {
+                object v = ((TokenInt)token).val;
+                token = token.nextToken;
+                return v;
+            }
+            if (token is TokenStr) {
+                object v = ((TokenStr)token).val;
+                token = token.nextToken;
+                return v;
+            }
+
+            /*
+             * '<'value,...'>', ie, rotation or vector
+             */
+            if (token is TokenKwCmpLT) {
+                List<SCRIPTFLOAT> valist = new List<SCRIPTFLOAT> ();
+                Token openBkt = token;
+                do {
+                    token = token.nextToken;
+                    Token valTok = token;
+                    object val = ParseEHArg (ref token);
+                    if (val == null) return null;
+                    if (val is int) val = (SCRIPTFLOAT)(int)val;
+                    if (!(val is SCRIPTFLOAT)) {
+                        valTok.ErrorMsg ("invalid rotation/vector constant");
+                        return null;
+                    }
+                    valist.Add ((SCRIPTFLOAT)val);
+                } while (token is TokenKwComma);
+                if (!(token is TokenKwCmpGT)) {
+                    token.ErrorMsg ("expecting , or > at end of rotation or vector");
+                    return null;
+                }
+                token = token.nextToken;
+                SCRIPTFLOAT[] valarr = valist.ToArray ();
+                switch (valarr.Length) {
+                    case 3: {
+                        return new LSL_Vector (valarr[0], valarr[1], valarr[2]);
+                    }
+                    case 4: {
+                        return new LSL_Rotation (valarr[0], valarr[1], valarr[2], valarr[3]);
+                    }
+                    default: {
+                        openBkt.ErrorMsg ("bad rotation/vector");
+                        return null;
+                    }
+                }
+            }
+
+            /*
+             * '['value,...']', ie, list
+             */
+            if (token is TokenKwBrkOpen) {
+                List<object> values = new List<object> ();
+                token = token.nextToken;
+                if (!(token is TokenKwBrkClose)) {
+                    do {
+                        token = token.nextToken;
+                        object val = ParseEHArg (ref token);
+                        if (val == null) return null;
+                        if (val is int)         val = new LSL_Integer ((int)val);
+                        if (val is SCRIPTFLOAT) val = new LSL_Float   ((SCRIPTFLOAT)val);
+                        if (val is string)      val = new LSL_String  ((string)val);
+                        values.Add (val);
+                        token = token.nextToken;
+                    } while (token is TokenKwComma);
+                    if (!(token is TokenKwBrkClose)) {
+                        token.ErrorMsg ("expecting , or ] in list");
+                        return null;
+                    }
+                }
+                token = token.nextToken;
+                return new LSL_List (values.ToArray ());
+            }
+
+            /*
+             * All we got left is <name>, lookup pre-defined constant.
+             */
+            if (token is TokenName) {
+                System.Reflection.FieldInfo fi = typeof (SCRIPTBASECLASS).GetField (((TokenName)token).val);
+                if ((fi == null) || !fi.IsPublic || !fi.IsStatic) {
+                    token.ErrorMsg ("unknown constant");
+                    return null;
+                }
+                token = token.nextToken;
+                object val = fi.GetValue (null);
+                if (val is LSL_Float)   val = (SCRIPTFLOAT)((LSL_Float)  val);
+                if (val is LSL_Integer) val = (int)        ((LSL_Integer)val);
+                if (val is LSL_String)  val = (string)     ((LSL_String) val);
+                return val;
+            }
+
+            /*
+             * Who knows what it is supposed to be?
+             */
+            token.ErrorMsg ("invalid operand token " + token.ToString ());
+            return null;
         }
     }
 
@@ -276,8 +524,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     }
 
     public class SCRIPTBASECLASS {
-        public static readonly LSL_Rotation ZERO_ROTATION = new LSL_Rotation (0.0, 0.0, 0.0, 1.0);
-        public static readonly LSL_Vector   ZERO_VECTOR   = new LSL_Vector (0.0, 0.0, 0.0);
 
         public void llOwnerSay (string msg)
         {
@@ -335,19 +581,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          *  Taken from OpenSim  *
         \************************/
 
-        public const int PARCEL_MEDIA_COMMAND_STOP = 0;
-        public const int PARCEL_MEDIA_COMMAND_PAUSE = 1;
-        public const int PARCEL_MEDIA_COMMAND_PLAY = 2;
-        public const int PARCEL_MEDIA_COMMAND_LOOP = 3;
-        public const int PARCEL_MEDIA_COMMAND_TEXTURE = 4;
-        public const int PARCEL_MEDIA_COMMAND_URL = 5;
-        public const int PARCEL_MEDIA_COMMAND_TIME = 6;
-        public const int PARCEL_MEDIA_COMMAND_AGENT = 7;
-        public const int PARCEL_MEDIA_COMMAND_UNLOAD = 8;
-        public const int PARCEL_MEDIA_COMMAND_AUTO_ALIGN = 9;
-        public const int PARCEL_MEDIA_COMMAND_TYPE = 10;
-        public const int PARCEL_MEDIA_COMMAND_SIZE = 11;
-        public const int PARCEL_MEDIA_COMMAND_DESC = 12;
         public const int PARCEL_MEDIA_COMMAND_LOOP_SET = 13;
 
         public LSL_Integer llSubStringIndex(string source, string pattern)
@@ -439,6 +672,113 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     }
                 }
             }
-         }
+        }
+
+        /**************************\
+         *  The rest of ILSL_Api  *
+        \**************************/
+
+        private static string ReadLine ()
+        {
+            string line = Console.ReadLine ();
+            if (line == null) throw new Exception ("end of input");
+            ++ XMREngTest.consoleLine;
+            Console.WriteLine (line);
+            return line;
+        }
+        private void ComVoid (string name, params object[] parms)
+        {
+            Console.WriteLine (name + PrintParms (parms));
+        }
+        private LSL_Float ComLSLFloat (string name, params object[] parms)
+        {
+            Console.WriteLine (name + PrintParms (parms));
+            return new LSL_Float (ReadLine ());
+        }
+        private LSL_Integer ComLSLInteger (string name, params object[] parms)
+        {
+            Console.WriteLine (name + PrintParms (parms));
+            return new LSL_Integer (ReadLine ());
+        }
+        private LSL_Key ComLSLKey (string name, params object[] parms)
+        {
+            Console.WriteLine (name + PrintParms (parms));
+            return new LSL_Key (ReadLine ());
+        }
+        private LSL_List ComLSLList (string name, params object[] parms)
+        {
+            Console.WriteLine (name + PrintParms (parms));
+            return new LSL_List (ReadLine ());
+        }
+        private LSL_Rotation ComLSLRotation (string name, params object[] parms)
+        {
+            Console.WriteLine (name + PrintParms (parms));
+            return new LSL_Rotation (ReadLine ());
+        }
+        private LSL_String ComLSLString (string name, params object[] parms)
+        {
+            Console.WriteLine (name + PrintParms (parms));
+            return new LSL_String (ReadLine ());
+        }
+        private LSL_Vector ComLSLVector (string name, params object[] parms)
+        {
+            Console.WriteLine (name + PrintParms (parms));
+            return new LSL_Vector (ReadLine ());
+        }
+
+        private string PrintParms (object[] parms)
+        {
+            StringBuilder sb = new StringBuilder ();
+            sb.Append ('(');
+            for (int i = 0; i < parms.Length; i ++) {
+                object p = parms[i];
+                if (i > 0) sb.Append (", ");
+                PrintParam (sb, p);
+            }
+            sb.Append (')');
+            return sb.ToString ();
+        }
+        private void PrintParam (StringBuilder sb, object p)
+        {
+            if (p == null) {
+                sb.Append ("null");
+            } else if (p is LSL_List) {
+                sb.Append ('[');
+                object[] d = ((LSL_List)p).Data;
+                for (int i = 0; i < d.Length; i ++) {
+                    if (i > 0) sb.Append (',');
+                    PrintParam (sb, d[i]);
+                }
+                sb.Append (']');
+            } else if (p is LSL_String) {
+                PrintParamString (sb, (string)(LSL_String)p);
+            } else if (p is string) {
+                PrintParamString (sb, (string)p);
+            } else {
+                sb.Append (p.ToString ());
+            }
+        }
+        private void PrintParamString (StringBuilder sb, string p)
+        {
+            sb.Append ('"');
+            foreach (char c in p) {
+                if (c == '\n') {
+                    sb.Append ("\\n");
+                    continue;
+                }
+                if (c == '"') {
+                    sb.Append ("\\\"");
+                    continue;
+                }
+                if (c == '\\') {
+                    sb.Append ("\\\\");
+                    continue;
+                }
+                sb.Append (c);
+            }
+            sb.Append ('"');
+        }
+
+#include "makexmrengtestilslapi.inc"
     }
 }

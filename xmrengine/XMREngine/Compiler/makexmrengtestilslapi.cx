@@ -1,0 +1,165 @@
+/********************************************************\
+ *  COPYRIGHT 2012, Mike Rieker, Beverly, MA, USA       *
+ *  All rights reserved.                                *
+\********************************************************/
+
+using System;
+using System.IO;
+using System.Reflection;
+using System.Text;
+
+#include "lsltypes.h"
+
+namespace OpenSim.Region.ScriptEngine.XMREngine
+{
+    public class XMREngTest
+    {
+        public static readonly string[] skips = new string[] {
+            "llGetSubString",
+            "llOwnerSay",
+            "llParcelMediaCommandList",
+            "llParcelMediaQuery",
+            "llSubStringIndex"
+        };
+
+        public static void Main (string[] args)
+        {
+            MethodInfo[] methods = typeof (OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.ILSL_Api).GetMethods ();
+
+            foreach (MethodInfo method in methods) {
+                string name = method.Name;
+
+                int i;
+                for (i = skips.Length; -- i >= 0;) {
+                    if (skips[i] == name) break;
+                }
+                if (i >= 0) continue;
+
+                if (name.StartsWith ("ll")) {
+                    string comname = null;
+                    Type retType = method.ReturnType;
+                    if (retType == typeof (void)) {
+                        comname = "ComVoid";
+                    }
+                    if (retType == typeof (LSL_Float)) {
+                        comname = "return ComLSLFloat";
+                    }
+                    if (retType == typeof (LSL_Integer)) {
+                        comname = "return ComLSLInteger";
+                    }
+                    if (retType == typeof (LSL_List)) {
+                        comname = "return ComLSLList";
+                    }
+                    if (retType == typeof (LSL_Rotation)) {
+                        comname = "return ComLSLRotation";
+                    }
+                    if (retType == typeof (LSL_String)) {
+                        comname = "return ComLSLString";
+                    }
+                    if (retType == typeof (LSL_Vector)) {
+                        comname = "return ComLSLVector";
+                    }
+                    if (comname == null) {
+                        throw new Exception ("unsupported return type " + retType.ToString ());
+                    }
+
+                    Console.Write ("        public " + TypeStr (retType) + " " + name + " (");
+                    ParameterInfo[] parms = method.GetParameters ();
+                    for (i = 0; i < parms.Length; i ++) {
+                        if (i > 0) Console.Write (", ");
+                        Console.Write (TypeStr (parms[i].ParameterType) + " " + parms[i].Name);
+                    }
+                    Console.WriteLine (")");
+                    Console.WriteLine ("        {");
+                    Console.Write ("            " + comname + " (\"" + name + "\"");
+                    for (i = 0; i < parms.Length; i ++) {
+                        Console.Write (", " + parms[i].Name);
+                    }
+                    Console.WriteLine (");");
+                    Console.WriteLine ("        }");
+                }
+            }
+
+            FieldInfo[] fields = typeof (OpenSim.Region.ScriptEngine.Shared.ScriptBase.ScriptBaseClass).GetFields ();
+            foreach (FieldInfo field in fields) {
+                string name = field.Name;
+                if (!field.IsPublic) continue;
+                if (field.IsLiteral) goto doit;
+                if (!field.IsStatic) continue;
+                if (!field.IsInitOnly) continue;
+            doit:
+                Console.Write ("        public");
+                if (field.IsLiteral) Console.Write (" const");
+                                else Console.Write (" static readonly");
+                Console.Write (" " + TypeStr (field.FieldType) + " " + name + " = ");
+                Console.Write (ValuStr (field.GetValue (null)));
+                Console.WriteLine (";");
+            }
+        }
+
+        public static string TypeStr (Type t)
+        {
+            if (t == typeof (double))       return "double";
+            if (t == typeof (float))        return "float";
+            if (t == typeof (int))          return "int";
+            if (t == typeof (string))       return "string";
+            if (t == typeof (void))         return "void";
+
+            if (t == typeof (LSL_Float))    return "LSL_Float";
+            if (t == typeof (LSL_Integer))  return "LSL_Integer";
+            if (t == typeof (LSL_List))     return "LSL_List";
+            if (t == typeof (LSL_Rotation)) return "LSL_Rotation";
+            if (t == typeof (LSL_String))   return "LSL_String";
+            if (t == typeof (LSL_Vector))   return "LSL_Vector";
+
+            throw new Exception ("unknown type " + t.ToString ());
+        }
+
+        public static string ValuStr (object o)
+        {
+            if (o is double)       return ((double)o).ToString ();
+            if (o is float)        return ((float)o).ToString ();
+            if (o is int)          return ((int)o).ToString ();
+            if (o is string)       return StrStr ((string)o);
+
+            if (o is LSL_Float)    return "new LSL_Float(" + ((double)(LSL_Float)o).ToString () + ")";
+            if (o is LSL_Integer)  return "new LSL_Integer(" + ((int)(LSL_Integer)o).ToString () + ")";
+            if (o is LSL_Rotation) return RotStr ((LSL_Rotation)o);
+            if (o is LSL_String)   return "new LSL_String(" + StrStr ((string)o) + ")";
+            if (o is LSL_Vector)   return VecStr ((LSL_Vector)o);
+
+            throw new Exception ("unknown type " + o.GetType ().ToString ());
+        }
+
+        public static string RotStr (LSL_Rotation r)
+        {
+            return "new LSL_Rotation(" + r.x + "," + r.y + "," + r.z + "," + r.s + ")";
+        }
+        public static string StrStr (string s)
+        {
+            StringBuilder sb = new StringBuilder ();
+            sb.Append ('"');
+            foreach (char c in s) {
+                if (c == '\n') {
+                    sb.Append ("\\n");
+                    continue;
+                }
+                if (c == '"') {
+                    sb.Append ("\\\"");
+                    continue;
+                }
+                if (c == '\\') {
+                    sb.Append ("\\\\");
+                    continue;
+                }
+                sb.Append (c);
+            }
+            sb.Append ('"');
+            return sb.ToString ();
+        }
+        public static string VecStr (LSL_Vector v)
+        {
+            return "new LSL_Vector(" + v.x + "," + v.y + "," + v.z + ")";
+        }
+    }
+}

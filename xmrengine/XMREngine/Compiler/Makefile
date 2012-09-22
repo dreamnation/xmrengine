@@ -111,6 +111,17 @@ xmrengtest.exe: $(TESTSRCFILES) $(wildcard *.h)
 		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(filter-out xmrengshare.dll,$(SAOPENSIMDLLS))) \
 		$(TESTSRCFILES)
 
+xmrengtest_tester.cs: xmrengtest.cx makexmrengtestilslapi.inc $(wildcard *.h)
+	cpp -C -P -nostdinc -DSCRIPTBASECLASS=TestScriptBaseClass -o $@ $<
+
+makexmrengtestilslapi.inc: makexmrengtestilslapi.exe
+	mono --debug makexmrengtestilslapi.exe > makexmrengtestilslapi.inc
+
+makexmrengtestilslapi.exe: makexmrengtestilslapi.cs
+	gmcs -debug -out:$@ \
+		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(filter-out xmrengshare.dll,$(SAOPENSIMDLLS))) \
+		$<
+
 # ------------------------------------------------------------------------------
 #
 # Create shareable that contains types common to both the compilers and the
