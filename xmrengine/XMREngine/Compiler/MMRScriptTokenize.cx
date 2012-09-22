@@ -432,7 +432,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                 /*
                  * Check for keywords/names.
                  */
-                if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c == '_') || (c == '$')) {
+                if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c == '_')) {
                     int j;
 
                     for (j = i; ++ j < source.Length;) {
