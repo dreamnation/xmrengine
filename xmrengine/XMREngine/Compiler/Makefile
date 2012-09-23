@@ -31,6 +31,11 @@ SAOPENSIMDLLS = \
 	OpenSim.Region.ScriptEngine.Shared.dll \
 	OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll
 
+TESTOSIMDLLS = \
+	OpenMetaverseTypes.dll \
+	OpenSim.Region.ScriptEngine.Shared.dll \
+	OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll
+
 SECRETSRCFILES = \
 	IEventHandlers_sa_secret.cs \
 	MMRDelegateCommon_sa_secret.cs \
@@ -77,7 +82,7 @@ TESTSRCFILES = \
 	XMRInstAbstract_tester.cs \
 	XMRSDTypeClObj_tester.cs
 
-default: xmrengcomp.zip xmrengcomp_secret.exe xmrengtest.exe
+default: xmrengcomp.zip xmrengcomp_secret.exe xmrengtest.zip
 
 # ------------------------------------------------------------------------------
 #
@@ -110,9 +115,15 @@ xmrengcomp_secret.exe: $(SECRETSRCFILES) $(wildcard *.h)
 #
 # Create xmrengtest.exe
 #
+xmrengtest.zip: xmrengtest.exe $(patsubst %,$(OPENSIMDLLDIR)/%,$(TESTOSIMDLLS))
+	$(foreach dll,$(TESTOSIMDLLS),$(shell cp $(OPENSIMDLLDIR)/$(dll) $(dll)))
+	rm -f xmrengtest.zip
+	zip -D xmrengtest.zip xmrengtest.exe $(TESTOSIMDLLS)
+	rm -f $(TESTOSIMDLLS)
+
 xmrengtest.exe: $(TESTSRCFILES) $(wildcard *.h)
 	gmcs -debug -out:$@ \
-		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(filter-out xmrengshare.dll,$(SAOPENSIMDLLS))) \
+		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(filter-out xmrengshare.dll,$(TESTOSIMDLLS))) \
 		$(TESTSRCFILES)
 
 xmrengtest_$(COMMITHASH)_$(COMMITCLEAN)_tester.cs: xmrengtest.cx makexmrengtestilslapi.inc $(wildcard *.h)
@@ -128,7 +139,7 @@ makexmrengtestilslapi.inc: makexmrengtestilslapi.exe
 
 makexmrengtestilslapi.exe: makexmrengtestilslapi.cs
 	gmcs -debug -out:$@ \
-		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(filter-out xmrengshare.dll,$(SAOPENSIMDLLS))) \
+		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(filter-out xmrengshare.dll,$(TESTOSIMDLLS))) \
 		$<
 
 # ------------------------------------------------------------------------------
