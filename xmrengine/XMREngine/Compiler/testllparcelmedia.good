@@ -1,33 +1,6 @@
 Compiling...
 Running...
-llParcelMediaQuery: [0]=Int32 4
-llParcelMediaQuery: [1]=Int32 5
-llParcelMediaQuery: [2]=Int32 10
-llParcelMediaQuery: [3]=Int32 11
-llParcelMediaQuery: [4]=Int32 12
-llParcelMediaQuery: [5]=Int32 13
+llParcelMediaQuery([4,5,10,11,12])
+llParcelMediaQuery:["uuid Texture","U-R-L","mime type",1120,"description",29.92]
 llOwnerSay: uuid TextureU-R-Lmime type1120description29.920000
-llParcelMediaCommandList: [0]=Int32 0
-llParcelMediaCommandList: [1]=Int32 1
-llParcelMediaCommandList: [2]=Int32 2
-llParcelMediaCommandList: [3]=Int32 3
-llParcelMediaCommandList: [4]=Int32 4
-llParcelMediaCommandList: [5]=LSLString textureUUID
-llParcelMediaCommandList: [6]=Int32 5
-llParcelMediaCommandList: [7]=LSLString urlString
-llParcelMediaCommandList: [8]=Int32 6
-llParcelMediaCommandList: [9]=LSLFloat 11.450000
-llParcelMediaCommandList: [10]=Int32 7
-llParcelMediaCommandList: [11]=LSLString agentUUID
-llParcelMediaCommandList: [12]=Int32 8
-llParcelMediaCommandList: [13]=Int32 9
-llParcelMediaCommandList: [14]=LSLInteger 1
-llParcelMediaCommandList: [15]=Int32 10
-llParcelMediaCommandList: [16]=LSLString mimeType
-llParcelMediaCommandList: [17]=Int32 11
-llParcelMediaCommandList: [18]=LSLInteger 29
-llParcelMediaCommandList: [19]=LSLInteger 92
-llParcelMediaCommandList: [20]=Int32 12
-llParcelMediaCommandList: [21]=LSLString descrip
-llParcelMediaCommandList: [22]=Int32 13
-llParcelMediaCommandList: [23]=LSLFloat 1.190000
+llParcelMediaCommandList([0,1,2,3,4,"textureUUID",5,"urlString",6,11.450000,7,"agentUUID",8,9,1,10,"mimeType",11,29,92,12,"descrip"])

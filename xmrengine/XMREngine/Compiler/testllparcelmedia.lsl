@@ -5,8 +5,7 @@ default {
                     PARCEL_MEDIA_COMMAND_URL, 
                     PARCEL_MEDIA_COMMAND_TYPE, 
                     PARCEL_MEDIA_COMMAND_SIZE, 
-                    PARCEL_MEDIA_COMMAND_DESC, 
-                    PARCEL_MEDIA_COMMAND_LOOP_SET ];
+                    PARCEL_MEDIA_COMMAND_DESC ];
         list qr = llParcelMediaQuery (ql);
         llOwnerSay ((string)qr);
 
@@ -22,8 +21,7 @@ default {
                     PARCEL_MEDIA_COMMAND_AUTO_ALIGN, 1, 
                     PARCEL_MEDIA_COMMAND_TYPE,       "mimeType", 
                     PARCEL_MEDIA_COMMAND_SIZE,       29, 92, 
-                    PARCEL_MEDIA_COMMAND_DESC,       "descrip", 
-                    PARCEL_MEDIA_COMMAND_LOOP_SET,   1.19 ];
+                    PARCEL_MEDIA_COMMAND_DESC,       "descrip" ];
         llParcelMediaCommandList (cl);
     }
 }
