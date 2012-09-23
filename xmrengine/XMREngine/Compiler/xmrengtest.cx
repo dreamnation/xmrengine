@@ -4,12 +4,13 @@
 \********************************************************/
 
 /**
- * @brief Main program for the script compiler.
+ * @brief Main program for the script tester.
  */
 
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using System.Reflection.Emit;
 using System.Text;
 
@@ -45,6 +46,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     asmFileName = args[i];
                     continue;
                 }
+                if (arg == "-builtins") {
+                    PrintBuiltins ();
+                    return;
+                }
                 if (arg == "-checkrun") {
                     doCheckRun = true;
                     continue;
@@ -67,6 +72,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     serialize  = true;
                     doCheckRun = true;
                     continue;
+                }
+                if (arg == "-version") {
+                    Console.WriteLine ("commit " + GITCOMMITHASH + ((GITCOMMITCLEAN != 0) ? "" : "(dirty)") + " " + GITCOMMITDATE);
+                    return;
                 }
                 if (arg[0] == '-') goto usage;
                 if (srcFileName != null) goto usage;
@@ -222,9 +231,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     goto readLine;
                 }
                 TokenName eventName = (TokenName)t;
-                System.Reflection.MethodInfo[] ifaceMethods = typeof (IEventHandlers).GetMethods ();
-                System.Reflection.MethodInfo ifaceMethod;
-                foreach (System.Reflection.MethodInfo ifm in ifaceMethods) {
+                MethodInfo[] ifaceMethods = typeof (IEventHandlers).GetMethods ();
+                MethodInfo ifaceMethod;
+                foreach (MethodInfo ifm in ifaceMethods) {
                     ifaceMethod = ifm;
                     if (ifaceMethod.Name == eventName.val) goto gotEvent;
                 }
@@ -266,13 +275,76 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
         usage:
-            Console.WriteLine ("usage: mono xmrengtest.exe [ -asm <asmoutfile>|- ] [ -checkrun ] [ -eventio ] [ -obj <objoutfile> ] [ -save <sourceoutfile> ] [ -serialize] <sourcefile>");
+            Console.WriteLine ("usage: mono xmrengtest.exe [ -builtins ] [ -checkrun ] [ -eventio ] [ -save <sourceoutfile> ] [ -serialize ] [ -version ] <sourcefile>");
+            Console.WriteLine ("     -builtins : print list of built-in functions and constants then exit");
+            Console.WriteLine ("     -checkrun : simulate a thread slice at every opportunity");
+            Console.WriteLine ("      -eventio : when default state_entry completes, read next event from stdin and keep doing so until eof");
+            Console.WriteLine ("                 format is:  event_name ( arg1 , arg2 , ... )");
+            Console.WriteLine ("                   example:  http_response(\"firstone\",3,[0,<1,2,3>,\"456\"],\"body\")");
+            Console.WriteLine ("         -save : save copy of source file to sourceoutfile");
+            Console.WriteLine ("    -serialize : serialize and deserialize stack at every opportunity");
+            Console.WriteLine ("      -version : print version number then exit");
             Environment.Exit (1);
         }
 
         public static void StandAloneErrorMessage (Token token, string message)
         {
             Console.WriteLine ("{0} {1}", token.SrcLoc, message);
+        }
+
+        public static void PrintBuiltins ()
+        {
+            Console.WriteLine ("\nBuilt-in functions:\n");
+            SortedDictionary<string, TokenDeclInline> bifs = new SortedDictionary<string, TokenDeclInline> ();
+            foreach (TokenDeclVar bif in TokenDeclInline.inlineFunctions) {
+                bifs.Add (bif.fullName, (TokenDeclInline)bif);
+            }
+            foreach (TokenDeclInline bif in bifs.Values) {
+                char noisy = !IsTaggedNoisy (bif.methInfo) ? ' ' : (bif.retType is TokenTypeVoid) ? 'N' : 'R';
+                Console.WriteLine (noisy + "   " + bif.retType.ToString ().PadLeft (8) + " " + bif.fullName);
+            }
+            Console.WriteLine ("\nN - stub that writes name and arguments to stdout");
+            Console.WriteLine ("R - stub that writes name and arguments to stdout then reads return value from stdin");
+            Console.WriteLine ("    format is:  function_name : return_value");
+            Console.WriteLine ("      example:  llKey2Name:\"Kunta Kinte\"");
+
+            Console.WriteLine ("\nBuilt-in constants:\n");
+            SortedDictionary<string, ScriptConst> scs = new SortedDictionary<string, ScriptConst> ();
+            int widest = 0;
+            foreach (ScriptConst sc in ScriptConst.scriptConstants.Values) {
+                if (widest < sc.name.Length) widest = sc.name.Length;
+                scs.Add (sc.name, sc);
+            }
+            foreach (ScriptConst sc in scs.Values) {
+                Console.WriteLine ("    " + sc.rVal.type.ToString ().PadLeft (8) + " " + sc.name.PadRight (widest) + " = " + BuiltInConstVal (sc.rVal));
+            }
+            Console.WriteLine ("");
+        }
+
+        public static bool IsTaggedNoisy (MethodInfo methInfo)
+        {
+            if (methInfo != null) {
+                foreach (Attribute attr in Attribute.GetCustomAttributes (methInfo)) {
+                    if (attr is xmrMethodIsNoisyAttribute) return true;
+                }
+            }
+            return false;
+        }
+
+        public static string BuiltInConstVal (CompValu rVal)
+        {
+            if (rVal is CompValuInteger) {
+                int x = ((CompValuInteger)rVal).x;
+                return "0x" + x.ToString ("X8") + " = " + x.ToString ().PadLeft (11);
+            }
+            if (rVal is CompValuFloat) return ((CompValuFloat)rVal).x.ToString ();
+            if (rVal is CompValuSField) {
+                FieldInfo fi = ((CompValuSField)rVal).field;
+                StringBuilder sb = new StringBuilder ();
+                SCRIPTBASECLASS.PrintParam (sb, fi.GetValue (null));
+                return sb.ToString ();
+            }
+            return rVal.ToString ();  // just prints the type
         }
 
         /**
@@ -441,7 +513,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * All we got left is <name>, lookup pre-defined constant.
              */
             if (token is TokenName) {
-                System.Reflection.FieldInfo fi = typeof (SCRIPTBASECLASS).GetField (((TokenName)token).val);
+                FieldInfo fi = typeof (SCRIPTBASECLASS).GetField (((TokenName)token).val);
                 if ((fi == null) || !fi.IsPublic || !fi.IsStatic) {
                     token.ErrorMsg ("unknown constant");
                     return null;
@@ -514,24 +586,34 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             return 1000000;
         }
+
+        [xmrMethodIsNoisyAttribute]  // calls Stub<somethingorother>
         public override LSL_List xmrEventDequeue (SCRIPTFLOAT timeout, int returnMask1, int returnMask2,
                                                   int backgroundMask1, int backgroundMask2)
         {
-            return new LSL_List (new object[0]);
+            return StubLSLList ("xmrEventDequeue", timeout, returnMask1, returnMask2, backgroundMask1, backgroundMask2);
         }
+
+        [xmrMethodIsNoisyAttribute]  // calls Stub<somethingorother>
         public override void xmrEventEnqueue (LSL_List ev)
-        { }
-        public override void xmrEventCallHandler (LSL_List ev)
-        { }
+        {
+            StubVoid ("xmrEventEnqueue", ev);
+        }
+
+        [xmrMethodIsNoisyAttribute]  // calls Stub<somethingorother>
         public override LSL_List xmrEventSaveDets ()
         {
-            return new LSL_List (new object[0]);
+            return StubLSLList ("xmrEventSaveDets");
         }
+
+        [xmrMethodIsNoisyAttribute]  // calls Stub<somethingorother>
         public override void xmrEventLoadDets (LSL_List dpList)
-        { }
+        {
+            StubVoid ("xmrEventLoadDets", dpList);
+        }
     }
 
-    public class SCRIPTBASECLASS {
+    public class SCRIPTBASECLASS : OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.ILSL_Api, OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.IOSSL_Api {
 
         public void llOwnerSay (string msg)
         {
@@ -546,6 +628,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public void llDie ()
         {
             throw new ScriptDieException ();
+        }
+
+        public System.Collections.Hashtable osParseJSON (string json)
+        {
+            throw new Exception ("not implemented - should be using XMRInstAbstract.osParseJSON()");
+        }
+
+        public void state (string newstate)
+        {
+            string[] stateNames = ((TestInstance)this).m_ObjCode.stateNames;
+            for (int i = 0; i < stateNames.Length; i ++) {
+                if (stateNames[i] == newstate) {
+                    throw new ScriptChangeStateException (i);
+                }
+            }
+            throw new ScriptUndefinedStateException (newstate);
         }
 
         /*************************\
@@ -2015,6 +2113,195 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return tokens;
         }
 
+        ////////////////////////////
+
+        public string osMovePen(string drawList, int x, int y)
+        {
+            drawList += "MoveTo " + x + "," + y + ";";
+            return drawList;
+        }
+
+        public string osDrawLine(string drawList, int startX, int startY, int endX, int endY)
+        {
+            drawList += "MoveTo "+ startX+","+ startY +"; LineTo "+endX +","+endY +"; ";
+            return drawList;
+        }
+
+        public string osDrawLine(string drawList, int endX, int endY)
+        {
+            drawList += "LineTo " + endX + "," + endY + "; ";
+            return drawList;
+        }
+
+        public string osDrawText(string drawList, string text)
+        {
+            drawList += "Text " + text + "; ";
+            return drawList;
+        }
+
+        public string osDrawEllipse(string drawList, int width, int height)
+        {
+            drawList += "Ellipse " + width + "," + height + "; ";
+            return drawList;
+        }
+
+        public string osDrawRectangle(string drawList, int width, int height)
+        {
+            drawList += "Rectangle " + width + "," + height + "; ";
+            return drawList;
+        }
+
+        public string osDrawFilledRectangle(string drawList, int width, int height)
+        {
+            drawList += "FillRectangle " + width + "," + height + "; ";
+            return drawList;
+        }
+
+        public string osDrawFilledPolygon(string drawList, LSL_List x, LSL_List y)
+        {
+            if (x.Length != y.Length || x.Length < 3)
+            {
+                return "";
+            }
+            drawList += "FillPolygon " + x.GetLSLStringItem(0) + "," + y.GetLSLStringItem(0);
+            for (int i = 1; i < x.Length; i++)
+            {
+                drawList += "," + x.GetLSLStringItem(i) + "," + y.GetLSLStringItem(i);
+            }
+            drawList += "; ";
+            return drawList;
+        }
+
+        public string osDrawPolygon(string drawList, LSL_List x, LSL_List y)
+        {
+            if (x.Length != y.Length || x.Length < 3)
+            {
+                return "";
+            }
+            drawList += "Polygon " + x.GetLSLStringItem(0) + "," + y.GetLSLStringItem(0);
+            for (int i = 1; i < x.Length; i++)
+            {
+                drawList += "," + x.GetLSLStringItem(i) + "," + y.GetLSLStringItem(i);
+            }
+            drawList += "; ";
+            return drawList;
+        }
+
+        public string osSetFontSize(string drawList, int fontSize)
+        {
+            drawList += "FontSize "+ fontSize +"; ";
+            return drawList;
+        }
+
+        public string osSetFontName(string drawList, string fontName)
+        {
+            drawList += "FontName "+ fontName +"; ";
+            return drawList;
+        }
+
+        public string osSetPenSize(string drawList, int penSize)
+        {
+            drawList += "PenSize " + penSize + "; ";
+            return drawList;
+        }
+
+        public string osSetPenColor(string drawList, string color)
+        {
+            drawList += "PenColor " + color + "; ";
+            return drawList;
+        }
+
+        // Deprecated
+        public string osSetPenColour(string drawList, string colour)
+        {
+            drawList += "PenColour " + colour + "; ";
+            return drawList;
+        }
+
+        public string osSetPenCap(string drawList, string direction, string type)
+        {
+            drawList += "PenCap " + direction + "," + type + "; ";
+            return drawList;
+        }
+
+        public string osDrawImage(string drawList, int width, int height, string imageUrl)
+        {
+            drawList +="Image " +width + "," + height+ ","+ imageUrl +"; " ;
+            return drawList;
+        }
+
+        public double osList2Double(LSL_List src, int index)
+        {
+            // There is really no double type in OSSL. C# and other
+            // have one, but the current implementation of LSL_Types.list
+            // is not allowed to contain any.
+            // This really should be removed.
+            //
+            if (index < 0)
+            {
+                index = src.Length + index;
+            }
+            if (index >= src.Length)
+            {
+                return 0.0;
+            }
+            return Convert.ToDouble(src.Data[index]);
+        }
+
+        public LSL_String osFormatString(string str, LSL_List strings)
+        {
+            return String.Format(str, strings.Data);
+        }
+
+        public LSL_List osMatchString(string src, string pattern, int start)
+        {
+            LSL_List result = new LSL_List();
+
+            // Normalize indices (if negative).
+            // After normlaization they may still be
+            // negative, but that is now relative to
+            // the start, rather than the end, of the
+            // sequence.
+            if (start < 0)
+            {
+                start = src.Length + start;
+            }
+
+            if (start < 0 || start >= src.Length)
+            {
+                return result;  // empty list
+            }
+
+            // Find matches beginning at start position
+            System.Text.RegularExpressions.Regex matcher = new System.Text.RegularExpressions.Regex(pattern);
+            System.Text.RegularExpressions.Match match = matcher.Match(src, start);
+            while (match.Success)
+            {
+                foreach (System.Text.RegularExpressions.Group g in match.Groups)
+                {
+                    if (g.Success)
+                    {
+                        result.Add(new LSL_String(g.Value));
+                        result.Add(new LSL_Integer(g.Index));
+                    }
+                }
+
+                match = match.NextMatch();
+            }
+
+            return result;
+        }
+
+        public LSL_String osUnixTimeToTimestamp(long time)
+        {
+            long baseTicks = 621355968000000000;
+            long tickResolution = 10000000;
+            long epochTicks = (time * tickResolution) + baseTicks;
+            DateTime date = new DateTime(epochTicks);
+
+            return date.ToString("yyyy-MM-ddTHH:mm:ss.fffffffZ");
+        }
+
         /**************************\
          *  The rest of ILSL_Api  *
         \**************************/
@@ -2026,41 +2313,63 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          *        and if non-void return value, read return value from stdin.
          */
 
-        private static void ComVoid (string name, params object[] parms)
+        protected static void StubVoid (string name, params object[] parms)
         {
             PrintParms (name, parms);
         }
-        private static LSL_Float ComLSLFloat (string name, params object[] parms)
+        protected static LSL_Float StubLSLFloat (string name, params object[] parms)
         {
             PrintParms (name, parms);
             object val = ReadRetVal (name);
             if (val is int) val = (SCRIPTFLOAT)(int)val;
             return new LSL_Float ((SCRIPTFLOAT)val);
         }
-        private static LSL_Integer ComLSLInteger (string name, params object[] parms)
+        protected static LSL_Integer StubLSLInteger (string name, params object[] parms)
         {
             PrintParms (name, parms);
             return new LSL_Integer ((int)ReadRetVal (name));
         }
-        private static LSL_List ComLSLList (string name, params object[] parms)
+        protected static LSL_List StubLSLList (string name, params object[] parms)
         {
             PrintParms (name, parms);
             return (LSL_List)ReadRetVal (name);
         }
-        private static LSL_Rotation ComLSLRotation (string name, params object[] parms)
+        protected static LSL_Rotation StubLSLRotation (string name, params object[] parms)
         {
             PrintParms (name, parms);
             return (LSL_Rotation)ReadRetVal (name);
         }
-        private static LSL_String ComLSLString (string name, params object[] parms)
+        protected static LSL_String StubLSLString (string name, params object[] parms)
         {
             PrintParms (name, parms);
             return new LSL_String ((string)ReadRetVal (name));
         }
-        private static LSL_Vector ComLSLVector (string name, params object[] parms)
+        protected static LSL_Vector StubLSLVector (string name, params object[] parms)
         {
             PrintParms (name, parms);
             return (LSL_Vector)ReadRetVal (name);
+        }
+        protected static bool StubSysBoolean (string name, params object[] parms)
+        {
+            PrintParms (name, parms);
+            return (int)ReadRetVal (name) != 0;
+        }
+        protected static double StubSysDouble (string name, params object[] parms)
+        {
+            PrintParms (name, parms);
+            object val = ReadRetVal (name);
+            if (val is int) val = (SCRIPTFLOAT)(int)val;
+            return (double)(SCRIPTFLOAT)val;
+        }
+        protected static int StubSysInteger (string name, params object[] parms)
+        {
+            PrintParms (name, parms);
+            return (int)ReadRetVal (name);
+        }
+        protected static string StubSysString (string name, params object[] parms)
+        {
+            PrintParms (name, parms);
+            return (string)ReadRetVal (name);
         }
 
         /**
@@ -2079,7 +2388,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             sb.Append (')');
             Console.WriteLine (sb.ToString ());
         }
-        private static void PrintParam (StringBuilder sb, object p)
+        public static void PrintParam (StringBuilder sb, object p)
         {
             if (p == null) {
                 sb.Append ("null");
@@ -2091,8 +2400,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     PrintParam (sb, d[i]);
                 }
                 sb.Append (']');
+            } else if (p is LSL_Rotation) {
+                LSL_Rotation r = (LSL_Rotation)p;
+                sb.Append ('<');
+                sb.Append (r.x);
+                sb.Append (',');
+                sb.Append (r.y);
+                sb.Append (',');
+                sb.Append (r.z);
+                sb.Append (',');
+                sb.Append (r.s);
+                sb.Append ('>');
             } else if (p is LSL_String) {
                 PrintParamString (sb, (string)(LSL_String)p);
+            } else if (p is LSL_Vector) {
+                LSL_Vector v = (LSL_Vector)p;
+                sb.Append ('<');
+                sb.Append (v.x);
+                sb.Append (',');
+                sb.Append (v.y);
+                sb.Append (',');
+                sb.Append (v.z);
+                sb.Append ('>');
             } else if (p is string) {
                 PrintParamString (sb, (string)p);
             } else {

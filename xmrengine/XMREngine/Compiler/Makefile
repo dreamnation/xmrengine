@@ -1,3 +1,7 @@
+COMMITHASH  := $(strip $(shell git log -1 | grep ^commit | sed 's/commit//g'))
+COMMITDATE  := $(strip $(shell git log -1 --date=iso | grep ^Date: | sed 's/Date://g'))
+COMMITCLEAN := $(strip $(shell git status | grep -q modified: ; echo $$?))
+
 SADLLFILES = \
 	IEventHandlers.cs \
 	MMRDelegateCommon.cs \
@@ -69,7 +73,7 @@ TESTSRCFILES = \
 	MMRScriptTypeCast_tester.cs \
 	MMRScriptVarDict_tester.cs \
 	XMRArray_tester.cs \
-	xmrengtest_tester.cs \
+	xmrengtest_$(COMMITHASH)_$(COMMITCLEAN)_tester.cs \
 	XMRInstAbstract_tester.cs \
 	XMRSDTypeClObj_tester.cs
 
@@ -111,11 +115,16 @@ xmrengtest.exe: $(TESTSRCFILES) $(wildcard *.h)
 		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(filter-out xmrengshare.dll,$(SAOPENSIMDLLS))) \
 		$(TESTSRCFILES)
 
-xmrengtest_tester.cs: xmrengtest.cx makexmrengtestilslapi.inc $(wildcard *.h)
-	cpp -C -P -nostdinc -DSCRIPTBASECLASS=TestScriptBaseClass -o $@ $<
+xmrengtest_$(COMMITHASH)_$(COMMITCLEAN)_tester.cs: xmrengtest.cx makexmrengtestilslapi.inc $(wildcard *.h)
+	cpp -C -P -nostdinc -DSCRIPTBASECLASS=TestScriptBaseClass \
+		-DGITCOMMITHASH='"$(COMMITHASH)"' \
+		-DGITCOMMITDATE='"$(COMMITDATE)"' \
+		-DGITCOMMITCLEAN=$(COMMITCLEAN)   \
+		-o $@ $<
 
 makexmrengtestilslapi.inc: makexmrengtestilslapi.exe
-	mono --debug makexmrengtestilslapi.exe > makexmrengtestilslapi.inc
+	MONO_PATH=../../../bin mono --debug makexmrengtestilslapi.exe > makexmrengtestilslapi.tmp
+	mv -f makexmrengtestilslapi.tmp makexmrengtestilslapi.inc
 
 makexmrengtestilslapi.exe: makexmrengtestilslapi.cs
 	gmcs -debug -out:$@ \

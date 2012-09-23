@@ -15,7 +15,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 	public class ScriptConst {
 
-		private static Dictionary<string, ScriptConst> scriptConstants = Init ();
+		public static Dictionary<string, ScriptConst> scriptConstants = Init ();
 
 		/**
 		 * @brief look up the value of a given built-in constant.

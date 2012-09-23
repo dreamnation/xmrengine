@@ -211,12 +211,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public abstract void CheckRun (int line);
         public abstract int  xmrStackLeft ();
-        [xmrMethodIsComplexAttribute] // xmrEventDequeue() calls CheckRun()
+
+        [xmrMethodIsComplexAttribute] // calls CheckRun()
+        [xmrMethodIsNoisyAttribute]   // calls Stub<somethingorother>()
         public abstract LSL_List xmrEventDequeue (SCRIPTFLOAT timeout, int returnMask1, int returnMask2,
                                                   int backgroundMask1, int backgroundMask2);
+
+        [xmrMethodIsNoisyAttribute]   // calls Stub<somethingorother>()
         public abstract void xmrEventEnqueue (LSL_List ev);
-        public abstract void xmrEventCallHandler (LSL_List ev);
+
+        [xmrMethodIsNoisyAttribute]   // calls Stub<somethingorother>()
         public abstract LSL_List xmrEventSaveDets ();
+
+        [xmrMethodIsNoisyAttribute]   // calls Stub<somethingorother>()
         public abstract void xmrEventLoadDets (LSL_List dpList);
 
         /**************************************************\
@@ -312,11 +319,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return new LSL_List (newarray);
         }
 
-        public static void xmrConsoleWriteLine (string s)
-        {
-            Console.WriteLine (s);
-        }
-
         public static int xmrHashCode (int i)
         {
             return i.GetHashCode ();
@@ -390,6 +392,36 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * Don't know what it is, get the C#-level type name.
              */
             return ot.ToString ();
+        }
+
+        /**
+         * @brief Call the current state's event handler.
+         * @param ev = as returned by xmrEventDequeue saying which event handler to call
+         *             and what argument list to pass to it.  The llDetect...() parameters
+         *             are as currently set for the script (use xmrEventLoadDets to set how
+         *             you want them to be different).
+         */
+        public void xmrEventCallHandler (LSL_List ev)
+        {
+            object[] data = ev.Data;
+            int evc = (int)ev.GetLSLIntegerItem (0);
+            ScriptEventHandler seh = m_ObjCode.scriptEventHandlerTable[stateCode,evc];
+            if (seh != null) {
+                int nargs = data.Length - 1;
+                object[] args = new object[nargs];
+                Array.Copy (data, 1, args, 0, nargs);
+
+                object[]        saveEHArgs    = this.ehArgs;
+                ScriptEventCode saveEventCode = this.eventCode;
+
+                this.ehArgs    = args;
+                this.eventCode = (ScriptEventCode)evc;
+
+                seh (this);
+
+                this.ehArgs    = saveEHArgs;
+                this.eventCode = saveEventCode;
+            }
         }
 
         /**
@@ -691,7 +723,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * see http://www.json.org/ for more details on JSON
          */
         private static LSL_List nullList = new LSL_List (new object[0]);
-        public XMR_Array osParseJSON (string json)
+        public new XMR_Array osParseJSON (string json)
         {
             XMR_Array dict = new XMR_Array (this);
             int idx = ParseJSON (dict, nullList, json, 0);
@@ -1464,6 +1496,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     // Any xmr...() methods that call CheckRun() must be tagged with this attribute
     // so the ScriptCodeGen will know the method is non-trivial.
     public class xmrMethodIsComplexAttribute : Attribute { }
+
+    // Any xmr...() methods in xmrengtest that call Stub<somethingorother>() must be 
+    // tagged with this attribute so the -builtins option will tell the user that 
+    // they are a stub function.
+    public class xmrMethodIsNoisyAttribute : Attribute { }
 
     [SerializableAttribute]
     public class OutOfHeapException : Exception, ISerializable {

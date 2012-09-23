@@ -14,138 +14,109 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 {
     public class XMREngTest
     {
+
+        /*
+         * These functions have actual implementations in xmrengtest.cx's SCRIPTBASECLASS.
+         */
         public static readonly string[] skips = new string[] {
-            "llOwnerSay",
-            "llResetScript",
-            "llDie",
-            "llGetSubString",
-            "llSubStringIndex",
+            "llAbs",
             "llAcos",
             "llAngleBetween",
             "llAsin",
             "llAtan2",
-            "llCos",
-            "llFabs",
-            "llList2Float",
-            "llListStatistics",
-            "llLog10",
-            "llLog",
-            "llPow",
-            "llRot2Angle",
-            "llSin",
-            "llSqrt",
-            "llTan",
-            "llVecDist",
-            "llVecMag",
-            "llAbs",
+            "llAxes2Rot",
+            "llAxisAngle2Rot",
             "llBase64ToInteger",
+            "llBase64ToString",
             "llCeil",
+            "llCos",
+            "llCSV2List",
+            "llDeleteSubList",
+            "llDeleteSubString",
+            "llDie",
+            "llDumpList2String",
+            "llEscapeURL",
+            "llEuler2Rot",
+            "llFabs",
             "llFloor",
             "llGetListEntryType",
             "llGetListLength",
-            "llGetObjectPermMask",
-            "llList2Integer",
-            "llListFindList",
-            "llModPow",
-            "llRound",
-            "llStringLength",
-            "llCSV2List",
-            "llDeleteSubList",
-            "llList2List",
-            "llList2ListStrided",
-            "llListInsertList",
-            "llListReplaceList",
-            "llListSort",
-            "llParseString2List",
-            "llParseStringKeepNulls",
-            "llAxes2Rot",
-            "llAxisAngle2Rot",
-            "llEuler2Rot",
-            "llList2Rot",
-            "llRotBetween",
-            "llBase64ToString",
-            "llDeleteSubString",
-            "llDumpList2String",
-            "llEscapeURL",
+            "llGetSubString",
             "llInsertString",
             "llIntegerToBase64",
             "llList2CSV",
+            "llList2Float",
+            "llList2Integer",
             "llList2Key",
+            "llList2List",
+            "llList2ListStrided",
+            "llList2Rot",
             "llList2String",
-            "llMD5String",
-            "llSHA1String",
-            "llStringToBase64",
-            "llStringTrim",
-            "llToLower",
-            "llToUpper",
-            "llUnescapeURL",
-            "llXorBase64StringsCorrect",
             "llList2Vector",
+            "llListFindList",
+            "llListInsertList",
+            "llListReplaceList",
+            "llListSort",
+            "llListStatistics",
+            "llLog",
+            "llLog10",
+            "llMD5String",
+            "llModPow",
+            "llOwnerSay",
+            "llParseString2List",
+            "llParseStringKeepNulls",
+            "llPow",
+            "llResetScript",
+            "llRot2Angle",
             "llRot2Axis",
             "llRot2Euler",
             "llRot2Fwd",
             "llRot2Left",
             "llRot2Up",
-            "llVecNorm"
+            "llRotBetween",
+            "llRound",
+            "llSHA1String",
+            "llSin",
+            "llSqrt",
+            "llStringLength",
+            "llStringToBase64",
+            "llStringTrim",
+            "llSubStringIndex",
+            "llTan",
+            "llToLower",
+            "llToUpper",
+            "llUnescapeURL",
+            "llVecDist",
+            "llVecMag",
+            "llVecNorm",
+            "llXorBase64StringsCorrect",
+            "osDrawEllipse",
+            "osDrawFilledPolygon",
+            "osDrawFilledRectangle",
+            "osDrawImage",
+            "osDrawLine",
+            "osDrawPolygon",
+            "osDrawRectangle",
+            "osDrawText",
+            "osFormatString",
+            "osList2Double",
+            "osMatchString",
+            "osMovePen",
+            "osParseJSON",
+            "osSetFontName",
+            "osSetFontSize",
+            "osSetPenCap",
+            "osSetPenColor",
+            "osSetPenColour",
+            "osSetPenSize",
+            "osUnixTimeToTimestamp",
+            "state"
         };
 
         public static void Main (string[] args)
         {
-            MethodInfo[] methods = typeof (OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.ILSL_Api).GetMethods ();
-
-            foreach (MethodInfo method in methods) {
-                string name = method.Name;
-
-                int i;
-                for (i = skips.Length; -- i >= 0;) {
-                    if (skips[i] == name) break;
-                }
-                if (i >= 0) continue;
-
-                if (name.StartsWith ("ll")) {
-                    string comname = null;
-                    Type retType = method.ReturnType;
-                    if (retType == typeof (void)) {
-                        comname = "ComVoid";
-                    }
-                    if (retType == typeof (LSL_Float)) {
-                        comname = "return ComLSLFloat";
-                    }
-                    if (retType == typeof (LSL_Integer)) {
-                        comname = "return ComLSLInteger";
-                    }
-                    if (retType == typeof (LSL_List)) {
-                        comname = "return ComLSLList";
-                    }
-                    if (retType == typeof (LSL_Rotation)) {
-                        comname = "return ComLSLRotation";
-                    }
-                    if (retType == typeof (LSL_String)) {
-                        comname = "return ComLSLString";
-                    }
-                    if (retType == typeof (LSL_Vector)) {
-                        comname = "return ComLSLVector";
-                    }
-                    if (comname == null) {
-                        throw new Exception ("unsupported return type " + retType.ToString ());
-                    }
-
-                    Console.Write ("        public " + TypeStr (retType) + " " + name + " (");
-                    ParameterInfo[] parms = method.GetParameters ();
-                    for (i = 0; i < parms.Length; i ++) {
-                        if (i > 0) Console.Write (", ");
-                        Console.Write (TypeStr (parms[i].ParameterType) + " " + parms[i].Name);
-                    }
-                    Console.WriteLine (")");
-                    Console.WriteLine ("        {");
-                    Console.Write ("            " + comname + " (\"" + name + "\"");
-                    for (i = 0; i < parms.Length; i ++) {
-                        Console.Write (", " + parms[i].Name);
-                    }
-                    Console.WriteLine (");");
-                    Console.WriteLine ("        }");
-                }
-            }
+            DoMethods (typeof (OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.ILSL_Api));
+            DoMethods (typeof (OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.IOSSL_Api));
 
             FieldInfo[] fields = typeof (OpenSim.Region.ScriptEngine.Shared.ScriptBase.ScriptBaseClass).GetFields ();
             foreach (FieldInfo field in fields) {
@@ -164,6 +135,75 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
         }
 
+        public static void DoMethods (Type api)
+        {
+            MethodInfo[] methods = api.GetMethods ();
+            foreach (MethodInfo method in methods) {
+                string name = method.Name;
+
+                int i;
+                for (i = skips.Length; -- i >= 0;) {
+                    if (skips[i] == name) break;
+                }
+                if (i >= 0) continue;
+
+                string stubname = null;
+                Type retType = method.ReturnType;
+                if (retType == typeof (void)) {
+                    stubname = "StubVoid";
+                }
+                if (retType == typeof (LSL_Float)) {
+                    stubname = "return StubLSLFloat";
+                }
+                if (retType == typeof (LSL_Integer)) {
+                    stubname = "return StubLSLInteger";
+                }
+                if (retType == typeof (LSL_List)) {
+                    stubname = "return StubLSLList";
+                }
+                if (retType == typeof (LSL_Rotation)) {
+                    stubname = "return StubLSLRotation";
+                }
+                if (retType == typeof (LSL_String)) {
+                    stubname = "return StubLSLString";
+                }
+                if (retType == typeof (LSL_Vector)) {
+                    stubname = "return StubLSLVector";
+                }
+                if (retType == typeof (bool)) {
+                    stubname = "return StubSysBoolean";
+                }
+                if (retType == typeof (double)) {
+                    stubname = "return StubSysDouble";
+                }
+                if (retType == typeof (int)) {
+                    stubname = "return StubSysInteger";
+                }
+                if (retType == typeof (string)) {
+                    stubname = "return StubSysString";
+                }
+                if (stubname == null) {
+                    throw new Exception ("unsupported return type " + retType.ToString () + " for " + name + "()");
+                }
+
+                Console.Write ("        [xmrMethodIsNoisyAttribute]");
+                Console.Write ("        public " + TypeStr (retType) + " " + name + " (");
+                ParameterInfo[] parms = method.GetParameters ();
+                for (i = 0; i < parms.Length; i ++) {
+                    if (i > 0) Console.Write (", ");
+                    Console.Write (TypeStr (parms[i].ParameterType) + " " + parms[i].Name);
+                }
+                Console.WriteLine (")");
+                Console.WriteLine ("        {");
+                Console.Write ("            " + stubname + " (\"" + name + "\"");
+                for (i = 0; i < parms.Length; i ++) {
+                    Console.Write (", " + parms[i].Name);
+                }
+                Console.WriteLine (");");
+                Console.WriteLine ("        }");
+            }
+        }
+
         public static string TypeStr (Type t)
         {
             if (t == typeof (double))       return "double";
@@ -179,7 +219,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (t == typeof (LSL_String))   return "LSL_String";
             if (t == typeof (LSL_Vector))   return "LSL_Vector";
 
-            throw new Exception ("unknown type " + t.ToString ());
+            return t.ToString ();
         }
 
         public static string ValuStr (object o)

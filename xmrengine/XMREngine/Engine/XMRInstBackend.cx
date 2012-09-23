@@ -328,36 +328,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         /**
-         * @brief Call the current state's event handler.
-         * @param ev = as returned by xmrEventDequeue saying which event handler to call
-         *             and what argument list to pass to it.  The llDetect...() parameters
-         *             are as currently set for the script (use xmrEventLoadDets to set how
-         *             you want them to be different).
-         */
-        public override void xmrEventCallHandler (LSL_List ev)
-        {
-            object[] data = ev.Data;
-            int evc = ListInt (data[0]);
-            ScriptEventHandler seh = m_ObjCode.scriptEventHandlerTable[stateCode,evc];
-            if (seh != null) {
-                int nargs = data.Length - 1;
-                object[] args = new object[nargs];
-                Array.Copy (data, 1, args, 0, nargs);
-
-                object[]        saveEHArgs    = this.ehArgs;
-                ScriptEventCode saveEventCode = this.eventCode;
-
-                this.ehArgs    = args;
-                this.eventCode = (ScriptEventCode)evc;
-
-                seh (this);
-
-                this.ehArgs    = saveEHArgs;
-                this.eventCode = saveEventCode;
-            }
-        }
-
-        /**
          * @brief Save current detect params into a list
          * @returns a list containing current detect param values
          */
