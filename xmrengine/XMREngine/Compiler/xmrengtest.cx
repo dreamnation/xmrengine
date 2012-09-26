@@ -13,6 +13,7 @@ using System.IO;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Text;
+using System.Threading;
 
 #include "lsltypes.h"
 
@@ -22,19 +23,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     public class XMREngTest
     {
         public static int consoleLine = 0;
+        public static MemoryStream serializeStream = null;
+        public static TestInstance[] testInstances;
 
         /**
          * @brief Stand-alone test program.
-         *
-         * mono xmrengtest.exe <xmrobjfile> -checkrun -serialize -obj <xmrobjoutput> -asm <xmrasmoutput> <sourcefile>
          */
         public static void Main (string[] args)
         {
             bool doCheckRun = false;
             bool eventIO    = false;
-            bool serialize  = false;
-            string savFileName = null;
-            string srcFileName = null;
+            List<string> srcFileNames = new List<string> ();
             string sourceHash  = null;
 
             for (int i = 0; i < args.Length; i ++) {
@@ -51,14 +50,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     eventIO = true;
                     continue;
                 }
-                if (arg == "-save") {
-                    if (++ i >= args.Length) goto usage;
-                    savFileName = args[i];
-                    continue;
-                }
                 if (arg == "-serialize") {
-                    serialize  = true;
                     doCheckRun = true;
+                    serializeStream = new MemoryStream ();
                     continue;
                 }
                 if (arg == "-version") {
@@ -66,192 +60,123 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     return;
                 }
                 if (arg[0] == '-') goto usage;
-                if (srcFileName != null) goto usage;
-                srcFileName = arg;
+                srcFileNames.Add (arg);
             }
-            if (srcFileName == null) goto usage;
+            if (srcFileNames.Count == 0) goto usage;
 
             /*
-             * Read whole source into memory.
+             * Compile each script and create script instance for each.
              */
-            FileInfo srcFileInfo = new FileInfo (srcFileName);
-            string source = "# 1 \"" + srcFileName + "\"\n" + File.ReadAllText (srcFileInfo.FullName);
-
-            /*
-             * Parse source string into tokens.
-             */
-            Console.WriteLine ("Compiling...");
-            string cameFrom = "file://" + srcFileInfo.FullName;
-            TextWriter saveSource = null;
-            if (savFileName != null) saveSource = File.CreateText (savFileName);
-            TokenBegin tokenBegin;
-            try {
-                tokenBegin = TokenBegin.Construct (cameFrom, saveSource, StandAloneErrorMessage, source, out sourceHash);
-            } finally {
-                if (saveSource != null) saveSource.Close ();
-            }
-            if (tokenBegin == null) {
-                Console.WriteLine ("Parsing errors.");
-                Environment.Exit (1);
-            }
-
-            /*
-             * Create abstract syntax tree from raw tokens.
-             */
-            TokenScript tokenScript = ScriptReduce.Reduce(tokenBegin);
-            if (tokenScript == null) {
-                Console.WriteLine ("Reduction errors.");
-                Environment.Exit (1);
-            }
-
-            /*
-             * Attempt to compile AST to object code.
-             */
-            Stream objFileStream = new MemoryStream ();
-            BinaryWriter objFileWriter = new BinaryWriter (objFileStream);
-            bool ok;
-            ok = ScriptCodeGen.CodeGen (tokenScript, objFileWriter, sourceHash);
-            if (!ok) {
-                Console.WriteLine ("Compilation errors.");
-                Environment.Exit (1);
-            }
-
-            /*
-             * Load object code into memory.
-             * Maybe also output disassembly.
-             */
-            objFileStream.Seek (0, SeekOrigin.Begin);
-            BinaryReader objFileReader = new BinaryReader (objFileStream);
-            ScriptObjCode scriptObjCode;
-            scriptObjCode = ScriptCodeGen.PerformGeneration (objFileReader, null);
-            objFileReader.Close ();
-
-            /*
-             * Instantiate the script and run its default state_entry() handler.
-             */
-            Console.WriteLine ("Running...");
-            TestInstance inst = new TestInstance (scriptObjCode);
-            inst.testCheckRun = doCheckRun;
-            inst.heapTotal    = inst.glblVars.AllocVarArrays (ref scriptObjCode.glblSizes);
-            inst.ehArgs       = new object[0];
-            inst.stateCode    = 0;  // default
-            inst.eventCode    = ScriptEventCode.state_entry;
-            MemoryStream serializeStream = null;
-            if (serialize) {
-                serializeStream = new MemoryStream ();
-            }
-            while (true) {
+            testInstances = new TestInstance[srcFileNames.Count];
+            for (int i = 0; i < srcFileNames.Count; i ++) {
+                string srcFileName = srcFileNames[i];
 
                 /*
-                 * Call event handler and wait for it to finish.
+                 * Read whole source into memory.
                  */
-                while (true) {
-                    try {
-                        RunScriptEventHandler (ref inst, serializeStream);
-                        break;
-                    } catch (ScriptChangeStateException scse) {
-                        inst.eventCode = ScriptEventCode.state_exit;
-                        inst.ehArgs    = new object[0];
-                        try {
-                            RunScriptEventHandler (ref inst, serializeStream);
-                        } catch (ScriptChangeStateException) {
-                            Console.WriteLine ("State change in state_exit handler ignored");
-                        }
-                        inst.stateCode = scse.newState;
-                        inst.eventCode = ScriptEventCode.state_entry;
-                        Console.WriteLine ("Change to state " + inst.m_ObjCode.stateNames[inst.stateCode]);
-                    } catch (ScriptResetException) {
-                        inst.stateCode = 0;
-                        inst.eventCode = ScriptEventCode.state_entry;
-                        inst.doGblInit = true;
-                        Console.WriteLine ("Script called llResetScript()");
-                    } catch (ScriptDieException) {
-                        Console.WriteLine ("Script called llDie()");
-                        return;
-                    } catch (Exception e) {
-                        Console.WriteLine ("Uncaught exception in script: " + inst.XMRExceptionFixString (e.ToString (), true));
-                        return;
-                    }
+                FileInfo srcFileInfo = new FileInfo (srcFileName);
+                string source = "# 1 \"" + srcFileName + "\"\n" + File.ReadAllText (srcFileInfo.FullName);
+
+                /*
+                 * Parse source string into tokens.
+                 */
+                if (srcFileNames.Count > 1) {
+                    Console.WriteLine ("Compiling " + srcFileName + " ...");
+                } else {
+                    Console.WriteLine ("Compiling...");
+                }
+                string cameFrom = "file://" + srcFileInfo.FullName;
+                TokenBegin tokenBegin = TokenBegin.Construct (cameFrom, null, StandAloneErrorMessage, source, out sourceHash);
+                if (tokenBegin == null) {
+                    Console.WriteLine ("Parsing errors.");
+                    Environment.Exit (1);
                 }
 
-                if (!eventIO) return;
+                /*
+                 * Create abstract syntax tree from raw tokens.
+                 */
+                TokenScript tokenScript = ScriptReduce.Reduce(tokenBegin);
+                if (tokenScript == null) {
+                    Console.WriteLine ("Reduction errors.");
+                    Environment.Exit (1);
+                }
 
                 /*
-                 * Read eventname(eventargs) from stdin.
+                 * Attempt to compile AST to object code.
                  */
-            readLine:
-                string eventLine = Console.ReadLine ();
-                if (eventLine == null) return;
+                Stream objFileStream = new MemoryStream ();
+                BinaryWriter objFileWriter = new BinaryWriter (objFileStream);
+                bool ok;
+                ok = ScriptCodeGen.CodeGen (tokenScript, objFileWriter, sourceHash);
+                if (!ok) {
+                    Console.WriteLine ("Compilation errors.");
+                    Environment.Exit (1);
+                }
+
+                /*
+                 * Load object code into memory.
+                 */
+                objFileStream.Seek (0, SeekOrigin.Begin);
+                BinaryReader objFileReader = new BinaryReader (objFileStream);
+                ScriptObjCode scriptObjCode = ScriptCodeGen.PerformGeneration (objFileReader, null);
+                objFileReader.Close ();
+
+                /*
+                 * Instantiate the script and set it up to run its default state_entry() handler.
+                 */
+                Console.WriteLine ("Running...");
+                new TestInstance (i, scriptObjCode, doCheckRun);
+            }
+
+            int index = 0;
+            while (eventIO) {
+
+                /*
+                 * Read input line from stdin.
+                 */
+                string inputLine = Console.ReadLine ();
+                if (inputLine == null) break;
                 ++ consoleLine;
-                Console.WriteLine (eventLine);
+                Console.WriteLine (inputLine);
 
                 /*
                  * Parse into tokens.
                  */
-                eventLine = "# " + consoleLine + " \"console events\"\n" + eventLine;
-                tokenBegin = TokenBegin.Construct ("console events", null, StandAloneErrorMessage, eventLine, out sourceHash);
+                inputLine = "# " + consoleLine + " \"input\"\n" + inputLine;
+                TokenBegin tokenBegin = TokenBegin.Construct ("input", null, StandAloneErrorMessage, inputLine, out sourceHash);
                 if (tokenBegin == null) continue;
                 Token t = tokenBegin.nextToken;
 
                 /*
-                 * Get event handler name and validate.
+                 * Get index token from first integer on line.
+                 * Can be optionally followed by a close parenthesis.
                  */
-                if (!(t is TokenName)) {
-                    t.ErrorMsg ("expecting event name");
-                    goto readLine;
+                if (t is TokenInt) {
+                    index = ((TokenInt)t).val;
+                    if ((index < 0) || (index >= testInstances.Length)) {
+                        t.ErrorMsg ("script index out of range 0.." + (testInstances.Length - 1));
+                        continue;
+                    }
+                    t = t.nextToken;
+                    if (t is TokenKwParClose) {
+                        t = t.nextToken;
+                    }
                 }
-                TokenName eventName = (TokenName)t;
-                MethodInfo[] ifaceMethods = typeof (IEventHandlers).GetMethods ();
-                MethodInfo ifaceMethod;
-                foreach (MethodInfo ifm in ifaceMethods) {
-                    ifaceMethod = ifm;
-                    if (ifaceMethod.Name == eventName.val) goto gotEvent;
-                }
-                eventName.ErrorMsg ("unknown event");
-                goto readLine;
-            gotEvent:
-                inst.eventCode = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), eventName.val);
-                if (scriptObjCode.scriptEventHandlerTable[inst.stateCode,(int)inst.eventCode] == null) {
-                    eventName.ErrorMsg ("event handler not defined for state " + scriptObjCode.stateNames[inst.stateCode]);
-                    goto readLine;
-                }
-                t = t.nextToken;
 
                 /*
-                 * Parse argument list.
+                 * Process the input, stepping the script.
                  */
-                if (!(t is TokenKwParOpen)) {
-                    t.ErrorMsg ("expecting ( after event name");
-                    goto readLine;
-                }
-                List<object> argList = new List<object> ();
-                do {
-                    t = t.nextToken;
-                    if ((argList.Count == 0) && (t is TokenKwParClose)) break;
-                    object val = ParseEHArg (ref t);
-                    if (val == null) goto readLine;
-                    argList.Add (val);
-                } while (t is TokenKwComma);
-                if (!(t is TokenKwParClose)) {
-                    t.ErrorMsg ("expecting , or ) in arg list");
-                    goto readLine;
-                }
-                inst.ehArgs = argList.ToArray ();
-                t = t.nextToken;
-                if (!(t is TokenEnd)) {
-                    t.ErrorMsg ("extra stuff after event args");
-                    goto readLine;
-                }
+                testInstances[index].ProcessInput (t);
             }
+            Environment.Exit (0);
 
         usage:
-            Console.WriteLine ("usage: mono xmrengtest.exe [ -builtins ] [ -checkrun ] [ -eventio ] [ -save <sourceoutfile> ] [ -serialize ] [ -version ] <sourcefile>");
+            Console.WriteLine ("usage: mono xmrengtest.exe [ -builtins ] [ -checkrun ] [ -eventio ] [ -serialize ] [ -version ] <sourcefile> ...");
             Console.WriteLine ("     -builtins : print list of built-in functions and constants then exit");
             Console.WriteLine ("     -checkrun : simulate a thread slice at every opportunity");
             Console.WriteLine ("      -eventio : when default state_entry completes, read next event from stdin and keep doing so until eof");
             Console.WriteLine ("                 format is:  event_name ( arg1 , arg2 , ... )");
             Console.WriteLine ("                   example:  http_response(\"firstone\",3,[0,<1,2,3>,\"456\"],\"body\")");
-            Console.WriteLine ("         -save : save copy of source file to sourceoutfile");
             Console.WriteLine ("    -serialize : serialize and deserialize stack at every opportunity");
             Console.WriteLine ("      -version : print version number then exit");
             Environment.Exit (1);
@@ -315,58 +240,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 return sb.ToString ();
             }
             return rVal.ToString ();  // just prints the type
-        }
-
-        /**
-         * @brief Run current state event handler until it completes or throws an exception
-         * @param inst = script instance
-         *        inst.stateCode = which state it is in
-         *        inst.eventCode = which handler of that event to run
-         *        inst.ehArgs    = arguments to pass to the event handler
-         * @returns when event handler completes or throws an exception
-         */
-        public static void RunScriptEventHandler (ref TestInstance inst, MemoryStream serializeStream)
-        {
-            while (true) {
-                try {
-                    inst.m_ObjCode.scriptEventHandlerTable[inst.stateCode,(int)inst.eventCode](inst);
-                    break;
-                } catch (StackCaptureException) {
-
-                    /*
-                     * Make sure we were called because CheckRun() threw and 
-                     * the code built inst.StackFrames.
-                     */
-                    if (inst.callMode != XMRInstAbstract.CALLMODE_SAVE) throw;
-
-                    /*
-                     * If -serialize, make sure script instance serialization works.
-                     */
-                    if (serializeStream != null) {
-
-                        /*
-                         * Write global variables and stack frames out and discard them.
-                         */
-                        serializeStream.Position = 0;
-                        inst.MigrateOut (new BinaryWriter (serializeStream));
-                        long savePos = serializeStream.Position;
-
-                        /*
-                         * Read global variables and stack frames back in and reconstruct.
-                         */
-                        serializeStream.Position = 0;
-                        inst = new TestInstance (inst.m_ObjCode);
-                        inst.testCheckRun = true;
-                        inst.MigrateIn (new BinaryReader (serializeStream));
-                        if (savePos != serializeStream.Position) throw new Exception ("save/restore positions different");
-                    }
-
-                    /*
-                     * Tell code to restore from inst.stackFrames when it is called back.
-                     */
-                    inst.callMode = XMRInstAbstract.CALLMODE_RESTORE;
-                }
-            }
         }
 
         /**
@@ -508,14 +381,305 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     public class ScriptResetException  : Exception, IXMRUncatchable { }
     public class ScriptDieException    : Exception, IXMRUncatchable { }
 
+    public enum IState {
+        STARTING,
+        STEPIT,
+        RUNNING,
+        WAITINGFORINPUT,
+        WAITINGFOREVENT
+    }
+
     public class TestInstance : XMRInstAbstract {
         private const int HEAPLIMIT = 50000;
-        public bool testCheckRun;
 
-        public TestInstance (ScriptObjCode soc)
+        private bool   testCheckRun;
+        private Thread thread;
+
+        /**
+         * @brief Initial instance for the given index
+         */
+        public TestInstance (int idx, ScriptObjCode soc, bool doCheckRun)
         {
-            m_ObjCode = soc;
-            heapLimit = HEAPLIMIT;
+            instIndex    = idx;
+            m_ObjCode    = soc;
+            heapLimit    = HEAPLIMIT;
+            testCheckRun = doCheckRun;
+            heapTotal    = glblVars.AllocVarArrays (ref m_ObjCode.glblSizes);
+
+            msgPrefix    = "";
+            if (XMREngTest.testInstances.Length > 1) msgPrefix = idx.ToString () + ") ";
+
+            XMREngTest.testInstances[idx] = this;
+
+            /*
+             * Run default state_entry() handler until it is ready for more input.
+             */
+            ehArgs    = new object[0];
+            stateCode = 0;  // default
+            eventCode = ScriptEventCode.state_entry;
+
+            thread = new Thread (ScriptThread);
+            iState = IState.STARTING;
+            thread.Start ();
+            lock (iStateLock) {
+
+                // refetch from testInstances[] in case RunScriptEventHandler2() changes it on us
+                while (XMREngTest.testInstances[idx].iState == IState.STARTING) {
+                    Monitor.Wait (iStateLock);
+                }
+            }
+        }
+
+        /**
+         * @brief Create a new instance that is being reloaded for serialization test.
+         */
+        private TestInstance (TestInstance inst)
+        {
+            instIndex    = inst.instIndex;
+            m_ObjCode    = inst.m_ObjCode;
+            heapLimit    = inst.heapLimit;
+            testCheckRun = inst.testCheckRun;
+            thread       = inst.thread;
+        }
+
+        /**
+         * @brief Process a line of input for the script and step it until it wants more.
+         */
+        public void ProcessInput (Token t)
+        {
+            switch (iState) {
+                case IState.WAITINGFOREVENT: {
+
+                    /*
+                     * Get event handler name and validate.
+                     */
+                    if (!(t is TokenName)) {
+                        t.ErrorMsg ("expecting event name");
+                        break;
+                    }
+                    TokenName eventName = (TokenName)t;
+                    MethodInfo[] ifaceMethods = typeof (IEventHandlers).GetMethods ();
+                    MethodInfo ifaceMethod;
+                    foreach (MethodInfo ifm in ifaceMethods) {
+                        ifaceMethod = ifm;
+                        if (ifaceMethod.Name == eventName.val) goto gotEvent;
+                    }
+                    eventName.ErrorMsg ("unknown event");
+                    break;
+                gotEvent:
+                    eventCode = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), eventName.val);
+                    if (m_ObjCode.scriptEventHandlerTable[stateCode,(int)eventCode] == null) {
+                        eventName.ErrorMsg ("event handler not defined for state " + m_ObjCode.stateNames[stateCode]);
+                        break;
+                    }
+                    t = t.nextToken;
+
+                    /*
+                     * Parse argument list.
+                     */
+                    if (!(t is TokenKwParOpen)) {
+                        t.ErrorMsg ("expecting ( after event name");
+                        break;
+                    }
+                    List<object> argList = new List<object> ();
+                    do {
+                        t = t.nextToken;
+                        if ((argList.Count == 0) && (t is TokenKwParClose)) break;
+                        object val = XMREngTest.ParseEHArg (ref t);
+                        if (val == null) break;
+                        argList.Add (val);
+                    } while (t is TokenKwComma);
+                    if (!(t is TokenKwParClose)) {
+                        t.ErrorMsg ("expecting , or ) in arg list");
+                        break;
+                    }
+                    ehArgs = argList.ToArray ();
+                    t = t.nextToken;
+                    if (!(t is TokenEnd)) {
+                        t.ErrorMsg ("extra stuff after event args");
+                        break;
+                    }
+
+                    StepScript (instIndex);
+                    break;
+                }
+
+                case IState.WAITINGFORINPUT: {
+
+                    /*
+                     * Get function name and validate.
+                     */
+                    if (!(t is TokenName) || !(t.nextToken is TokenKwColon)) {
+                        t.ErrorMsg ("expecting function name :");
+                        break;
+                    }
+                    if (((TokenName)t).val != wfiName) {
+                        t.ErrorMsg ("expecting function " + wfiName);
+                        break;
+                    }
+                    t = t.nextToken.nextToken;
+
+                    /*
+                     * Parse out the value.
+                     */
+                    wfiValue = XMREngTest.ParseEHArg (ref t);
+                    if (wfiValue == null) break;
+                    if (!(t is TokenEnd)) {
+                        t.ErrorMsg ("extra stuff at end of line");
+                        break;
+                    }
+
+                    StepScript (instIndex);
+                    break;
+                }
+
+                default: {
+                    throw new Exception ("bad istate " + iState);
+                }
+            }
+        }
+
+        /**
+         * @brief Step script and wait for it until it wants more input.
+         */
+        private static void StepScript (int idx)
+        {
+            lock (iStateLock) {
+                XMREngTest.testInstances[idx].iState = IState.STEPIT;
+                Monitor.PulseAll (iStateLock);
+
+                // refetch from testInstances[] in case RunScriptEventHandler2() changes it on us
+                while ((XMREngTest.testInstances[idx].iState == IState.STEPIT) || 
+                       (XMREngTest.testInstances[idx].iState == IState.RUNNING)) {
+                    Monitor.Wait (iStateLock);
+                }
+            }
+        }
+
+        /**************************************************\
+         *  The rest of these run in the script's thread  *
+        \**************************************************/
+
+        /**
+         * @brief Main program for the thread.
+         */
+        private void ScriptThread ()
+        {
+            ScriptThreadStatic (this.instIndex);
+        }
+
+        /**
+         * @brief Use a static method in case RunScriptEventHandler() changes instance on us.
+         */
+        private static void ScriptThreadStatic (int index)
+        {
+            while (true) {
+
+                /*
+                 * Run the script event handler until it completes.
+                 * It may also block waiting for input but we don't see that here.
+                 */
+                RunScriptEventHandler (ref XMREngTest.testInstances[index]);
+
+                /*
+                 * Wait for main program to call StepScript()
+                 */
+                TestInstance inst = XMREngTest.testInstances[index];
+                lock (iStateLock) {
+                    inst.iState = IState.WAITINGFOREVENT;
+                    Monitor.PulseAll (iStateLock);
+                    while (inst.iState != IState.STEPIT) {
+                        Monitor.Wait (iStateLock);
+                    }
+                    inst.iState = IState.RUNNING;
+                }
+            }
+        }
+
+        /**
+         * @brief Run current state event handler until it completes or throws an exception
+         * @param inst = script instance
+         *        inst.stateCode = which state it is in
+         *        inst.eventCode = which handler of that event to run
+         *        inst.ehArgs    = arguments to pass to the event handler
+         * @returns when event handler completes or throws an exception
+         */
+        private static void RunScriptEventHandler (ref TestInstance inst)
+        {
+            while (true) {
+                try {
+                    RunScriptEventHandler2 (ref inst);
+                    break;
+                } catch (ScriptChangeStateException scse) {
+                    inst.eventCode = ScriptEventCode.state_exit;
+                    inst.ehArgs    = new object[0];
+                    try {
+                        RunScriptEventHandler2 (ref inst);
+                    } catch (ScriptChangeStateException) {
+                        Console.WriteLine (inst.msgPrefix + "State change in state_exit handler ignored");
+                    }
+                    inst.stateCode = scse.newState;
+                    inst.eventCode = ScriptEventCode.state_entry;
+                    Console.WriteLine (inst.msgPrefix + "Change to state " + inst.m_ObjCode.stateNames[inst.stateCode]);
+                } catch (ScriptResetException) {
+                    inst.stateCode = 0;
+                    inst.eventCode = ScriptEventCode.state_entry;
+                    inst.doGblInit = true;
+                    Console.WriteLine (inst.msgPrefix + "Script called llResetScript()");
+                } catch (ScriptDieException) {
+                    Console.WriteLine (inst.msgPrefix + "Script called llDie()");
+                    Environment.Exit (0);
+                } catch (Exception e) {
+                    Console.WriteLine (inst.msgPrefix + "Uncaught exception in script: " + 
+                            inst.XMRExceptionFixString (e.ToString (), true));
+                    Environment.Exit (3);
+                }
+            }
+        }
+
+        private static void RunScriptEventHandler2 (ref TestInstance inst)
+        {
+            while (true) {
+                try {
+                    inst.m_ObjCode.scriptEventHandlerTable[inst.stateCode,(int)inst.eventCode](inst);
+                    break;
+                } catch (StackCaptureException) {
+
+                    /*
+                     * Make sure we were called because CheckRun() threw and 
+                     * the code built inst.StackFrames.
+                     */
+                    if (inst.callMode != XMRInstAbstract.CALLMODE_SAVE) throw;
+
+                    /*
+                     * If -serialize, make sure script instance serialization works.
+                     */
+                    if (XMREngTest.serializeStream != null) {
+
+                        /*
+                         * Write global variables and stack frames out and discard them.
+                         */
+                        XMREngTest.serializeStream.Position = 0;
+                        inst.MigrateOut (new BinaryWriter (XMREngTest.serializeStream));
+                        long savePos = XMREngTest.serializeStream.Position;
+
+                        /*
+                         * Read global variables and stack frames back in and reconstruct.
+                         */
+                        XMREngTest.serializeStream.Position = 0;
+                        inst = new TestInstance (inst);
+                        inst.MigrateIn (new BinaryReader (XMREngTest.serializeStream));
+                        if (savePos != XMREngTest.serializeStream.Position) {
+                            throw new Exception ("save/restore positions different");
+                        }
+                    }
+
+                    /*
+                     * Tell code to restore from inst.stackFrames when it is called back.
+                     */
+                    inst.callMode = XMRInstAbstract.CALLMODE_RESTORE;
+                }
+            }
         }
 
         /*********************\
@@ -585,10 +749,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
     public class SCRIPTBASECLASS : OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.ILSL_Api, OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.IOSSL_Api {
 
-        public void llOwnerSay (string msg)
-        {
-            Console.WriteLine ("llOwnerSay: " + msg);
-        }
+        protected static object iStateLock = new object ();
+
+        protected int instIndex;  // index in TestInstances[]
+        protected IState iState;
+        protected object wfiValue;
+        protected string msgPrefix;
+        protected string wfiName;
 
         public void llResetScript ()
         {
@@ -2283,60 +2450,60 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          *        and if non-void return value, read return value from stdin.
          */
 
-        protected static void StubVoid (string name, params object[] parms)
+        protected void StubVoid (string name, params object[] parms)
         {
             PrintParms (name, parms);
         }
-        protected static LSL_Float StubLSLFloat (string name, params object[] parms)
+        protected LSL_Float StubLSLFloat (string name, params object[] parms)
         {
             PrintParms (name, parms);
             object val = ReadRetVal (name);
             if (val is int) val = (SCRIPTFLOAT)(int)val;
             return new LSL_Float ((SCRIPTFLOAT)val);
         }
-        protected static LSL_Integer StubLSLInteger (string name, params object[] parms)
+        protected LSL_Integer StubLSLInteger (string name, params object[] parms)
         {
             PrintParms (name, parms);
             return new LSL_Integer ((int)ReadRetVal (name));
         }
-        protected static LSL_List StubLSLList (string name, params object[] parms)
+        protected LSL_List StubLSLList (string name, params object[] parms)
         {
             PrintParms (name, parms);
             return (LSL_List)ReadRetVal (name);
         }
-        protected static LSL_Rotation StubLSLRotation (string name, params object[] parms)
+        protected LSL_Rotation StubLSLRotation (string name, params object[] parms)
         {
             PrintParms (name, parms);
             return (LSL_Rotation)ReadRetVal (name);
         }
-        protected static LSL_String StubLSLString (string name, params object[] parms)
+        protected LSL_String StubLSLString (string name, params object[] parms)
         {
             PrintParms (name, parms);
             return new LSL_String ((string)ReadRetVal (name));
         }
-        protected static LSL_Vector StubLSLVector (string name, params object[] parms)
+        protected LSL_Vector StubLSLVector (string name, params object[] parms)
         {
             PrintParms (name, parms);
             return (LSL_Vector)ReadRetVal (name);
         }
-        protected static bool StubSysBoolean (string name, params object[] parms)
+        protected bool StubSysBoolean (string name, params object[] parms)
         {
             PrintParms (name, parms);
             return (int)ReadRetVal (name) != 0;
         }
-        protected static double StubSysDouble (string name, params object[] parms)
+        protected double StubSysDouble (string name, params object[] parms)
         {
             PrintParms (name, parms);
             object val = ReadRetVal (name);
             if (val is int) val = (SCRIPTFLOAT)(int)val;
             return (double)(SCRIPTFLOAT)val;
         }
-        protected static int StubSysInteger (string name, params object[] parms)
+        protected int StubSysInteger (string name, params object[] parms)
         {
             PrintParms (name, parms);
             return (int)ReadRetVal (name);
         }
-        protected static string StubSysString (string name, params object[] parms)
+        protected string StubSysString (string name, params object[] parms)
         {
             PrintParms (name, parms);
             return (string)ReadRetVal (name);
@@ -2345,17 +2512,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /**
          * @brief Print api function and parameter values.
          */
-        private static void PrintParms (string name, object[] parms)
+        private void PrintParms (string name, object[] parms)
         {
-            StringBuilder sb = new StringBuilder ();
+            StringBuilder sb = new StringBuilder (msgPrefix);
             sb.Append (name);
-            sb.Append ('(');
-            for (int i = 0; i < parms.Length; i ++) {
-                object p = parms[i];
-                if (i > 0) sb.Append (", ");
-                PrintParam (sb, p);
+            if (name == "llOwnerSay") {
+                sb.Append (": ");
+                sb.Append (parms[0].ToString ());
+            } else {
+                sb.Append ('(');
+                for (int i = 0; i < parms.Length; i ++) {
+                    object p = parms[i];
+                    if (i > 0) sb.Append (", ");
+                    PrintParam (sb, p);
+                }
+                sb.Append (')');
             }
-            sb.Append (')');
             Console.WriteLine (sb.ToString ());
         }
         public static void PrintParam (StringBuilder sb, object p)
@@ -2425,42 +2597,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * @param name = name of function that the return value is for
          * @returns value read from stdin
          */
-        private static object ReadRetVal (string name)
+        private object ReadRetVal (string name)
         {
-            string line = Console.ReadLine ();
-            if (line == null) throw new Exception ("end of input");
-            ++ XMREngTest.consoleLine;
-            Console.WriteLine (line);
-
-            /*
-             * Parse into tokens.
-             */
-            string sourceHash;
-            line = "# " + XMREngTest.consoleLine + " \"console events\"\n" + line;
-            TokenBegin tokenBegin = TokenBegin.Construct ("console events", null, XMREngTest.StandAloneErrorMessage, line, out sourceHash);
-            if (tokenBegin == null) throw new Exception ("parse error");
-            Token t = tokenBegin.nextToken;
-
-            /*
-             * Get function name and validate.
-             */
-            if (!(t is TokenName) || !(t.nextToken is TokenKwColon)) {
-                throw new Exception ("expecting function name :");
+            wfiName = name;
+            lock (iStateLock) {
+                iState = IState.WAITINGFORINPUT;
+                Monitor.PulseAll (iStateLock);
+                while (iState != IState.STEPIT) {
+                    Monitor.Wait (iStateLock);
+                }
+                iState = IState.RUNNING;
             }
-            if (((TokenName)t).val != name) {
-                throw new Exception ("expecting function " + name);
-            }
-            t = t.nextToken.nextToken;
-
-            /*
-             * Parse out the value.
-             */
-            object val = XMREngTest.ParseEHArg (ref t);
-            if (val == null) throw new Exception ("value parse error");
-            if (!(t is TokenEnd)) {
-                throw new Exception ("extra stuff at end of line " + t.ToString ());
-            }
-            return val;
+            return wfiValue;
         }
     }
 

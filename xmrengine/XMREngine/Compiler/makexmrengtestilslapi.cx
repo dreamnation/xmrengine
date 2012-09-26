@@ -62,7 +62,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             "llLog10",
             "llMD5String",
             "llModPow",
-            "llOwnerSay",
             "llParseString2List",
             "llParseStringKeepNulls",
             "llPow",
