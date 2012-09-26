@@ -62,9 +62,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 			p.Add (typeof (TokenKwComma),     30);
 
-			p.Add (typeof (TokenKwOrOrOr),    40);
-			p.Add (typeof (TokenKwAndAndAnd), 45);
-
 #define ASNPR 50
 			p.Add (typeof (TokenKwAsnLSh), ASNPR);  // all assignment operators of equal precedence
 			p.Add (typeof (TokenKwAsnRSh), ASNPR);  // ... so they get processed strictly right-to-left
@@ -77,6 +74,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			p.Add (typeof (TokenKwAsnOr),  ASNPR);
 			p.Add (typeof (TokenKwAsnXor), ASNPR);
 			p.Add (typeof (TokenKwAssign), ASNPR);
+
+			p.Add (typeof (TokenKwOrOrOr),    70);
+			p.Add (typeof (TokenKwAndAndAnd), 80);
 
 			p.Add (typeof (TokenKwOrOr),   100);
 
