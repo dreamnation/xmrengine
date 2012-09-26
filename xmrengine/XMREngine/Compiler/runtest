@@ -31,4 +31,17 @@ testit typeassigntest
 testit partialtest
 testev statechange
 
+mono --debug xmrengtest.exe -eventio -ipcchannel -9 \
+	-primname zero -primuuid 0000 ipctest0.lsl \
+	-primname one -primuuid 1111 ipctest1.lsl << EOF | tee ipctest.out
+touch_start(0)
+EOF
+diff ipctest.out ipctest.good
+mono --debug xmrengtest.exe -eventio -ipcchannel -9 -serialize \
+	-primname zero -primuuid 0000 ipctest0.lsl \
+	-primname one -primuuid 1111 ipctest1.lsl << EOF | tee ipctest.ser
+touch_start(0)
+EOF
+diff ipctest.ser ipctest.good
+
 echo "SUCCESS"

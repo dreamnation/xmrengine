@@ -19,21 +19,30 @@ using System.Threading;
 
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
+    public struct PerPrim {
+        public string srcFileName;
+        public string name;
+        public string uuid;
+    }
 
     public class XMREngTest
     {
+        public static bool doCheckRun = false;
         public static int consoleLine = 0;
+        public static LinkedList<int> ipcChannels = new LinkedList<int> ();
+        public static LinkedList<SpokenMsg> spokenMsgs = new LinkedList<SpokenMsg> ();
         public static MemoryStream serializeStream = null;
-        public static TestInstance[] testInstances;
+        public static ScriptRoot[] scriptRoots;
 
         /**
          * @brief Stand-alone test program.
          */
         public static void Main (string[] args)
         {
-            bool doCheckRun = false;
             bool eventIO    = false;
-            List<string> srcFileNames = new List<string> ();
+            List<PerPrim> perPrims = new List<PerPrim> ();
+            string primName    = "";
+            string primUUID    = "";
             string sourceHash  = null;
 
             for (int i = 0; i < args.Length; i ++) {
@@ -50,6 +59,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     eventIO = true;
                     continue;
                 }
+                if (arg == "-ipcchannel") {
+                    try {
+                        ipcChannels.AddLast (int.Parse (args[++i]));
+                    } catch {
+                        goto usage;
+                    }
+                    continue;
+                }
+                if (arg == "-primname") {
+                    if (++ i >= args.Length) goto usage;
+                    primName = args[i];
+                    continue;
+                }
+                if (arg == "-primuuid") {
+                    if (++ i >= args.Length) goto usage;
+                    primUUID = args[i];
+                    continue;
+                }
                 if (arg == "-serialize") {
                     doCheckRun = true;
                     serializeStream = new MemoryStream ();
@@ -60,16 +87,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     return;
                 }
                 if (arg[0] == '-') goto usage;
-                srcFileNames.Add (arg);
+                PerPrim perPrim;
+                perPrim.srcFileName = arg;
+                perPrim.name        = primName;
+                perPrim.uuid        = primUUID;
+                perPrims.Add (perPrim);
             }
-            if (srcFileNames.Count == 0) goto usage;
+            if (perPrims.Count == 0) goto usage;
 
             /*
              * Compile each script and create script instance for each.
              */
-            testInstances = new TestInstance[srcFileNames.Count];
-            for (int i = 0; i < srcFileNames.Count; i ++) {
-                string srcFileName = srcFileNames[i];
+            scriptRoots = new ScriptRoot[perPrims.Count];
+            for (int i = 0; i < perPrims.Count; i ++) {
+                string srcFileName = perPrims[i].srcFileName;
 
                 /*
                  * Read whole source into memory.
@@ -80,7 +111,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 /*
                  * Parse source string into tokens.
                  */
-                if (srcFileNames.Count > 1) {
+                if (perPrims.Count > 1) {
                     Console.WriteLine ("Compiling " + srcFileName + " ...");
                 } else {
                     Console.WriteLine ("Compiling...");
@@ -125,11 +156,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * Instantiate the script and set it up to run its default state_entry() handler.
                  */
                 Console.WriteLine ("Running...");
-                new TestInstance (i, scriptObjCode, doCheckRun);
+                new ScriptRoot (new TestInstance (scriptObjCode), i, perPrims[i]);
             }
 
             int index = 0;
             while (eventIO) {
+
+                /*
+                 * Maybe we can process a spoken message.
+                 */
+            checkSpokenMsgs:
+                foreach (SpokenMsg spokenMsg in spokenMsgs) {
+                checkQueuedTo:
+                    if (spokenMsg.queuedTo.Count <= 0) {
+                        spokenMsgs.Remove (spokenMsg);
+                        goto checkSpokenMsgs;
+                    }
+                    foreach (ScriptRoot target in spokenMsg.queuedTo) {
+                        if (target.iState == IState.WAITINGFOREVENT) {
+                            target.ProcessSpokenMsg (spokenMsg);
+                            spokenMsg.queuedTo.Remove (target);
+                            goto checkQueuedTo;
+                        }
+                    }
+                }
 
                 /*
                  * Read input line from stdin.
@@ -153,8 +203,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  */
                 if (t is TokenInt) {
                     index = ((TokenInt)t).val;
-                    if ((index < 0) || (index >= testInstances.Length)) {
-                        t.ErrorMsg ("script index out of range 0.." + (testInstances.Length - 1));
+                    if ((index < 0) || (index >= scriptRoots.Length)) {
+                        t.ErrorMsg ("script index out of range 0.." + (scriptRoots.Length - 1));
                         continue;
                     }
                     t = t.nextToken;
@@ -166,17 +216,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 /*
                  * Process the input, stepping the script.
                  */
-                testInstances[index].ProcessInput (t);
+                scriptRoots[index].ProcessInput (t);
             }
             Environment.Exit (0);
 
         usage:
-            Console.WriteLine ("usage: mono xmrengtest.exe [ -builtins ] [ -checkrun ] [ -eventio ] [ -serialize ] [ -version ] <sourcefile> ...");
+            Console.WriteLine ("usage: mono xmrengtest.exe [ -builtins ] [ -checkrun ] [ -eventio ] [ -ipcchannel <channel> ] [ -primname <name> ] [ -primuuid <uuid> ] [ -serialize ] [ -version ] <sourcefile> ...");
             Console.WriteLine ("     -builtins : print list of built-in functions and constants then exit");
             Console.WriteLine ("     -checkrun : simulate a thread slice at every opportunity");
             Console.WriteLine ("      -eventio : when default state_entry completes, read next event from stdin and keep doing so until eof");
             Console.WriteLine ("                 format is:  event_name ( arg1 , arg2 , ... )");
             Console.WriteLine ("                   example:  http_response(\"firstone\",3,[0,<1,2,3>,\"456\"],\"body\")");
+            Console.WriteLine ("   -ipcchannel : channel number for which llListen/llListenControl/llListenRemove/llSay are handled internally");
+            Console.WriteLine ("     -primname : give prim name for subsequent script(s)");
+            Console.WriteLine ("     -primuuid : give prim uuid for subsequent script(s)");
             Console.WriteLine ("    -serialize : serialize and deserialize stack at every opportunity");
             Console.WriteLine ("      -version : print version number then exit");
             Environment.Exit (1);
@@ -389,57 +442,60 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         WAITINGFOREVENT
     }
 
-    public class TestInstance : XMRInstAbstract {
-        private const int HEAPLIMIT = 50000;
+    public class Listener {
+        public int channel;
+        public string name;
+        public string id;
+        public string msg;
+        public int active;
+    }
 
-        private bool   testCheckRun;
+    public class SpokenMsg {
+        public object[] ehArgs = new object[4];
+        public LinkedList<ScriptRoot> queuedTo = new LinkedList<ScriptRoot> ();
+    }
+
+    /**
+     * @brief This stuff does not re-instantiate on serialization.
+     */
+    public class ScriptRoot {
+        public static object iStateLock = new object ();
+
+        public  IState iState;
+        public  Listener[] listeners = new Listener[65];
+        public  object wfiValue;
+        public  string msgPrefix;
+        public  string primName;
+        public  string primUUID;
+        public  string wfiName;
+        private TestInstance inst;
         private Thread thread;
 
-        /**
-         * @brief Initial instance for the given index
-         */
-        public TestInstance (int idx, ScriptObjCode soc, bool doCheckRun)
+        public ScriptRoot (TestInstance inst, int index, PerPrim perPrim)
         {
-            instIndex    = idx;
-            m_ObjCode    = soc;
-            heapLimit    = HEAPLIMIT;
-            testCheckRun = doCheckRun;
-            heapTotal    = glblVars.AllocVarArrays (ref m_ObjCode.glblSizes);
+            this.inst     = inst;
+            this.thread   = new Thread (ScriptThread);
+            this.iState   = IState.STARTING;
+            this.primName = perPrim.name;
+            this.primUUID = perPrim.uuid;
 
-            msgPrefix    = "";
-            if (XMREngTest.testInstances.Length > 1) msgPrefix = idx.ToString () + ") ";
+            this.msgPrefix = "";
+            if (XMREngTest.scriptRoots.Length > 1) {
+                this.msgPrefix = index.ToString () + ") ";
+            }
+            XMREngTest.scriptRoots[index] = this;
 
-            XMREngTest.testInstances[idx] = this;
+            inst.scriptRoot = this;
 
             /*
-             * Run default state_entry() handler until it is ready for more input.
+             * Now that everything is set up, run default start_entry() until it stops for something.
              */
-            ehArgs    = new object[0];
-            stateCode = 0;  // default
-            eventCode = ScriptEventCode.state_entry;
-
-            thread = new Thread (ScriptThread);
-            iState = IState.STARTING;
-            thread.Start ();
+            this.thread.Start ();
             lock (iStateLock) {
-
-                // refetch from testInstances[] in case RunScriptEventHandler2() changes it on us
-                while (XMREngTest.testInstances[idx].iState == IState.STARTING) {
+                while (iState == IState.STARTING) {
                     Monitor.Wait (iStateLock);
                 }
             }
-        }
-
-        /**
-         * @brief Create a new instance that is being reloaded for serialization test.
-         */
-        private TestInstance (TestInstance inst)
-        {
-            instIndex    = inst.instIndex;
-            m_ObjCode    = inst.m_ObjCode;
-            heapLimit    = inst.heapLimit;
-            testCheckRun = inst.testCheckRun;
-            thread       = inst.thread;
         }
 
         /**
@@ -467,9 +523,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     eventName.ErrorMsg ("unknown event");
                     break;
                 gotEvent:
-                    eventCode = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), eventName.val);
-                    if (m_ObjCode.scriptEventHandlerTable[stateCode,(int)eventCode] == null) {
-                        eventName.ErrorMsg ("event handler not defined for state " + m_ObjCode.stateNames[stateCode]);
+                    inst.eventCode = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), eventName.val);
+                    if (inst.m_ObjCode.scriptEventHandlerTable[inst.stateCode,(int)inst.eventCode] == null) {
+                        eventName.ErrorMsg ("event handler not defined for state " + inst.m_ObjCode.stateNames[inst.stateCode]);
                         break;
                     }
                     t = t.nextToken;
@@ -493,14 +549,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         t.ErrorMsg ("expecting , or ) in arg list");
                         break;
                     }
-                    ehArgs = argList.ToArray ();
+                    inst.ehArgs = argList.ToArray ();
                     t = t.nextToken;
                     if (!(t is TokenEnd)) {
                         t.ErrorMsg ("extra stuff after event args");
                         break;
                     }
 
-                    StepScript (instIndex);
+                    StepScript ();
                     break;
                 }
 
@@ -529,7 +585,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         break;
                     }
 
-                    StepScript (instIndex);
+                    StepScript ();
                     break;
                 }
 
@@ -540,38 +596,38 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         /**
+         * @brief Some other script sent this script a message via llSay().
+         *        It has already been filtered so just call the listen() event handler.
+         */
+        public void ProcessSpokenMsg (SpokenMsg msg)
+        {
+            inst.ehArgs    = msg.ehArgs;
+            inst.eventCode = ScriptEventCode.listen;
+            StepScript ();
+        }
+
+        /**
          * @brief Step script and wait for it until it wants more input.
          */
-        private static void StepScript (int idx)
+        private void StepScript ()
         {
             lock (iStateLock) {
-                XMREngTest.testInstances[idx].iState = IState.STEPIT;
+                iState = IState.STEPIT;
                 Monitor.PulseAll (iStateLock);
-
-                // refetch from testInstances[] in case RunScriptEventHandler2() changes it on us
-                while ((XMREngTest.testInstances[idx].iState == IState.STEPIT) || 
-                       (XMREngTest.testInstances[idx].iState == IState.RUNNING)) {
+                while ((iState == IState.STEPIT) || (iState == IState.RUNNING)) {
                     Monitor.Wait (iStateLock);
                 }
             }
         }
 
-        /**************************************************\
-         *  The rest of these run in the script's thread  *
-        \**************************************************/
+        /**********************************************************\
+         *  The rest of these methods run in the script's thread  *
+        \**********************************************************/
 
         /**
          * @brief Main program for the thread.
          */
         private void ScriptThread ()
-        {
-            ScriptThreadStatic (this.instIndex);
-        }
-
-        /**
-         * @brief Use a static method in case RunScriptEventHandler() changes instance on us.
-         */
-        private static void ScriptThreadStatic (int index)
         {
             while (true) {
 
@@ -579,19 +635,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * Run the script event handler until it completes.
                  * It may also block waiting for input but we don't see that here.
                  */
-                RunScriptEventHandler (ref XMREngTest.testInstances[index]);
+                RunScriptEventHandler ();
 
                 /*
                  * Wait for main program to call StepScript()
                  */
-                TestInstance inst = XMREngTest.testInstances[index];
                 lock (iStateLock) {
-                    inst.iState = IState.WAITINGFOREVENT;
+                    iState = IState.WAITINGFOREVENT;
                     Monitor.PulseAll (iStateLock);
-                    while (inst.iState != IState.STEPIT) {
+                    while (iState != IState.STEPIT) {
                         Monitor.Wait (iStateLock);
                     }
-                    inst.iState = IState.RUNNING;
+                    iState = IState.RUNNING;
                 }
             }
         }
@@ -604,40 +659,42 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          *        inst.ehArgs    = arguments to pass to the event handler
          * @returns when event handler completes or throws an exception
          */
-        private static void RunScriptEventHandler (ref TestInstance inst)
+        private void RunScriptEventHandler ()
         {
             while (true) {
                 try {
-                    RunScriptEventHandler2 (ref inst);
+                    RunScriptEventHandler2 ();
                     break;
                 } catch (ScriptChangeStateException scse) {
                     inst.eventCode = ScriptEventCode.state_exit;
                     inst.ehArgs    = new object[0];
                     try {
-                        RunScriptEventHandler2 (ref inst);
+                        RunScriptEventHandler2 ();
                     } catch (ScriptChangeStateException) {
-                        Console.WriteLine (inst.msgPrefix + "State change in state_exit handler ignored");
+                        Console.WriteLine (msgPrefix + "State change in state_exit handler ignored");
                     }
+                    listeners = new Listener[listeners.Length];
                     inst.stateCode = scse.newState;
                     inst.eventCode = ScriptEventCode.state_entry;
-                    Console.WriteLine (inst.msgPrefix + "Change to state " + inst.m_ObjCode.stateNames[inst.stateCode]);
+                    Console.WriteLine (msgPrefix + "Change to state " + inst.m_ObjCode.stateNames[inst.stateCode]);
                 } catch (ScriptResetException) {
+                    listeners = new Listener[listeners.Length];
                     inst.stateCode = 0;
                     inst.eventCode = ScriptEventCode.state_entry;
                     inst.doGblInit = true;
-                    Console.WriteLine (inst.msgPrefix + "Script called llResetScript()");
+                    Console.WriteLine (msgPrefix + "Script called llResetScript()");
                 } catch (ScriptDieException) {
-                    Console.WriteLine (inst.msgPrefix + "Script called llDie()");
+                    Console.WriteLine (msgPrefix + "Script called llDie()");
                     Environment.Exit (0);
                 } catch (Exception e) {
-                    Console.WriteLine (inst.msgPrefix + "Uncaught exception in script: " + 
+                    Console.WriteLine (msgPrefix + "Uncaught exception in script: " + 
                             inst.XMRExceptionFixString (e.ToString (), true));
                     Environment.Exit (3);
                 }
             }
         }
 
-        private static void RunScriptEventHandler2 (ref TestInstance inst)
+        private void RunScriptEventHandler2 ()
         {
             while (true) {
                 try {
@@ -681,6 +738,40 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
             }
         }
+    }
+
+    /**
+     * @brief This stuff is re-instantiated on serialization.
+     */
+    public class TestInstance : XMRInstAbstract {
+        private const int HEAPLIMIT = 50000;
+
+        /**
+         * @brief Initial instance for the given index
+         */
+        public TestInstance (ScriptObjCode soc)
+        {
+            m_ObjCode = soc;
+            heapLimit = HEAPLIMIT;
+            heapTotal = glblVars.AllocVarArrays (ref m_ObjCode.glblSizes);
+
+            /*
+             * Run default state_entry() handler until it is ready for more input.
+             */
+            ehArgs    = new object[0];
+            stateCode = 0;  // default
+            eventCode = ScriptEventCode.state_entry;
+        }
+
+        /**
+         * @brief Create a new instance that is being reloaded for serialization test.
+         */
+        public TestInstance (TestInstance inst)
+        {
+            scriptRoot = inst.scriptRoot;
+            m_ObjCode  = inst.m_ObjCode;
+            heapLimit  = inst.heapLimit;
+        }
 
         /*********************\
          *  XMRInstAbstract  *
@@ -688,7 +779,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public override void CheckRun (int line)
         {
-            if (testCheckRun) {
+            if (XMREngTest.doCheckRun) {
                 switch (this.callMode) {
 
                     /*
@@ -747,15 +838,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
     }
 
-    public class SCRIPTBASECLASS : OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.ILSL_Api, OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.IOSSL_Api {
+    public class SCRIPTBASECLASS : 
+            OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.ILSL_Api, 
+            OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.IOSSL_Api {
 
-        protected static object iStateLock = new object ();
-
-        protected int instIndex;  // index in TestInstances[]
-        protected IState iState;
-        protected object wfiValue;
-        protected string msgPrefix;
-        protected string wfiName;
+        public ScriptRoot scriptRoot;
 
         public void llResetScript ()
         {
@@ -781,6 +868,116 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
             }
             throw new ScriptUndefinedStateException (newstate);
+        }
+
+        /**
+         * @brief If channel is enabled via -ipcchannel, we handle message passing internally.
+         *        Otherwise, we play dumb and print the call out and read the return value in.
+         */
+        [xmrMethodIsNoisyAttribute]
+        public LSL_Integer llListen (int channel, string name, string id, string msg)
+        {
+            foreach (int ipc in XMREngTest.ipcChannels) {
+                if (channel == ipc) goto gotit;
+            }
+            return StubLSLInteger ("llListen", channel, name, id, msg);
+
+        gotit:
+            if (id == NULL_KEY) id = "";
+
+            Listener lner = new Listener ();
+            lner.channel  = channel;
+            lner.name     = name;
+            lner.id       = id;
+            lner.msg      = msg;
+            lner.active   = 1;
+
+            for (int i = 0; i < scriptRoot.listeners.Length; i ++) {
+                if (scriptRoot.listeners[i] == null) {
+                    scriptRoot.listeners[i] = lner;
+                    return ++ i;
+                }
+            }
+            throw new Exception ("too many listens");
+        }
+
+        /**
+         * @brief Try to remove the listener from -ipcchannel list.
+         *        Then always play dumb and print it out.
+         */
+        [xmrMethodIsNoisyAttribute]
+        public void llListenRemove (int handle)
+        {
+            int i = handle;
+            if ((-- i >= 0) && (i < scriptRoot.listeners.Length)) {
+                scriptRoot.listeners[i] = null;
+            }
+            StubVoid ("llListenRemove", handle);
+        }
+
+        /**
+         * @brief Try to update the listener from -ipcchannel list.
+         *        Then always play dumb and print it out.
+         */
+        [xmrMethodIsNoisyAttribute]
+        public void llListenControl (int handle, int active)
+        {
+            int i = handle;
+            if ((-- i >= 0) && (i < scriptRoot.listeners.Length) && (scriptRoot.listeners[i] != null)) {
+                scriptRoot.listeners[i].active = active;
+            }
+            StubVoid ("llListenControl", handle, active);
+        }
+
+        /**
+         * @brief If doing llSay() to an -ipcchannel enabled channel and there is something
+         *        listening on that channel, pass the message along quietly.
+         *        Otherwise announce message.
+         */
+        [xmrMethodIsNoisyAttribute]
+        public void llSay (int channel, string msg)
+        {
+            if (msg.Length > 1023) msg = msg.Substring (0, 1023);
+
+            /*
+             * Maybe it gets queued as an -ipcchannel listen event somewhere.
+             */
+            SpokenMsg spokenMsg = new SpokenMsg ();
+            spokenMsg.ehArgs[0] = channel;
+            spokenMsg.ehArgs[1] = scriptRoot.primName;
+            spokenMsg.ehArgs[2] = scriptRoot.primUUID;
+            spokenMsg.ehArgs[3] = msg;
+
+            bool queued = false;
+            foreach (ScriptRoot target in XMREngTest.scriptRoots) {
+                if (target != scriptRoot) {
+                    foreach (Listener lner in target.listeners) {
+                        if (lner == null) continue;
+                        if ((lner.channel == channel) && (lner.active != 0)) {
+                            if ((lner.id   != "") && (lner.id   != scriptRoot.primUUID)) continue;
+                            if ((lner.name != "") && (lner.name != scriptRoot.primName)) continue;
+                            if ((lner.msg  != "") && (lner.msg  != msg))                 continue;
+                            spokenMsg.queuedTo.AddLast (target);
+                            queued = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            /*
+             * If so, add to end of spoken messages queue.
+             */
+            if (queued) {
+                XMREngTest.spokenMsgs.AddLast (spokenMsg);
+            }
+
+            /*
+             * Maybe print it out.
+             */
+            if (!queued || (channel == PUBLIC_CHANNEL) || (channel == DEBUG_CHANNEL)) {
+                StubVoid ("llSay", channel, msg);
+            }
         }
 
         /*************************\
@@ -2514,7 +2711,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         private void PrintParms (string name, object[] parms)
         {
-            StringBuilder sb = new StringBuilder (msgPrefix);
+            StringBuilder sb = new StringBuilder (scriptRoot.msgPrefix);
             sb.Append (name);
             if (name == "llOwnerSay") {
                 sb.Append (": ");
@@ -2599,16 +2796,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         private object ReadRetVal (string name)
         {
-            wfiName = name;
-            lock (iStateLock) {
-                iState = IState.WAITINGFORINPUT;
-                Monitor.PulseAll (iStateLock);
-                while (iState != IState.STEPIT) {
-                    Monitor.Wait (iStateLock);
+            scriptRoot.wfiName = name;
+            lock (ScriptRoot.iStateLock) {
+                scriptRoot.iState = IState.WAITINGFORINPUT;
+                Monitor.PulseAll (ScriptRoot.iStateLock);
+                while (scriptRoot.iState != IState.STEPIT) {
+                    Monitor.Wait (ScriptRoot.iStateLock);
                 }
-                iState = IState.RUNNING;
+                scriptRoot.iState = IState.RUNNING;
             }
-            return wfiValue;
+            return scriptRoot.wfiValue;
         }
     }
 
