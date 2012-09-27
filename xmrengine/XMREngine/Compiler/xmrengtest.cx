@@ -303,8 +303,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Console.WriteLine ("                 format is:  event_name ( arg1 , arg2 , ... )");
             Console.WriteLine ("                   example:  http_response(\"firstone\",3,[0,<1,2,3>,\"456\"],\"body\")");
             Console.WriteLine ("   -ipcchannel : channel number for which llListen/llListenControl/llListenRemove/llSay are handled internally");
-            Console.WriteLine ("     -primname : give prim name for subsequent script(s)");
-            Console.WriteLine ("     -primuuid : give prim uuid for subsequent script(s)");
+            Console.WriteLine ("     -primname : give prim name for subsequent script(s) (returned by llGetKey())");
+            Console.WriteLine ("     -primuuid : give prim uuid for subsequent script(s) (returned by llGetObjectName())");
             Console.WriteLine ("    -serialize : serialize and deserialize stack at every opportunity");
             Console.WriteLine ("      -version : print version number then exit");
             Environment.Exit (1);
@@ -1159,6 +1159,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (!queued || (channel == PUBLIC_CHANNEL) || (channel == DEBUG_CHANNEL)) {
                 StubVoid ("llSay", channel, msg);
             }
+        }
+
+        [xmrMethodIsNoisyAttribute]
+        public LSL_String llGetKey ()
+        {
+            if (scriptRoot.primUUID == "") {
+                return StubLSLString ("llGetKey");
+            }
+            return scriptRoot.primUUID;
+        }
+
+        [xmrMethodIsNoisyAttribute]
+        public LSL_String llGetObjectName ()
+        {
+            if (scriptRoot.primName == "") {
+                return StubLSLString ("llGetObjectName");
+            }
+            return scriptRoot.primName;
         }
 
         /*************************\
