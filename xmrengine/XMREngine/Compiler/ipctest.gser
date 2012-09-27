@@ -1,0 +1,26 @@
+Compiling ipctest0.lsl ...
+Running...
+Compiling ipctest1.lsl ...
+Running...
+0) llOwnerSay: 0
+1) llOwnerSay: 0
+0) llOwnerSay: 1
+1) llOwnerSay: 1
+0) llOwnerSay: 2
+1) llOwnerSay: 2
+0) llOwnerSay: 3
+1) llOwnerSay: 3
+0) llOwnerSay: 4
+1) llOwnerSay: 4
+STATUS;touch_start(0);STATUS-
+;touch_start(0)
+0) [zero:0000] [default] WAITINGFOREVENT
+1) [one:1111] [default] WAITINGFOREVENT
+0) [zero:0000] [default.touch_start(0)] YIELDING
+1) [one:1111] [default] WAITINGFOREVENT
+1) llOwnerSay: heard channel=-9 name=zero id=0000 message=was just touched!
+1) llOwnerSay: heard channel=-9 name=zero id=0000 message=was just touched!
+1) listen (-9, "sender name", "sender uuid", "some silly mesage"); STATUS
+0) [zero:0000] [default] WAITINGFOREVENT
+1) [one:1111] [default.listen(-9,"sender name","sender uuid","some silly mesage")] YIELDING
+1) llOwnerSay: heard channel=-9 name=sender name id=sender uuid message=some silly mesage

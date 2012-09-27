@@ -160,63 +160,138 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             int index = 0;
-            while (eventIO) {
+            Token t = null;
+            while (true) {
 
                 /*
-                 * Maybe we can process a spoken message.
+                 * Keep processing -ipcchannel queues and stepping 
+                 * scripts until all scripts are waiting for some 
+                 * kind of input.
                  */
-            checkSpokenMsgs:
-                foreach (SpokenMsg spokenMsg in spokenMsgs) {
-                checkQueuedTo:
-                    if (spokenMsg.queuedTo.Count <= 0) {
-                        spokenMsgs.Remove (spokenMsg);
-                        goto checkSpokenMsgs;
-                    }
-                    foreach (ScriptRoot target in spokenMsg.queuedTo) {
-                        if (target.iState == IState.WAITINGFOREVENT) {
-                            target.ProcessSpokenMsg (spokenMsg);
-                            spokenMsg.queuedTo.Remove (target);
-                            goto checkQueuedTo;
+                bool didSomething;
+                do {
+                    didSomething = false;
+
+                    /*
+                     * Maybe we can process spoken messages.
+                     * Get as many scripts ready for stepping at once as we can.
+                     */
+                checkSpokenMsgs:
+                    foreach (SpokenMsg spokenMsg in spokenMsgs) {
+                        if (spokenMsg.queuedTo.Count <= 0) {
+                            spokenMsgs.Remove (spokenMsg);
+                            goto checkSpokenMsgs;
+                        }
+                        foreach (ScriptRoot target in spokenMsg.queuedTo) {
+                            if (target.iState == IState.WAITINGFOREVENT) {
+                                target.ProcessSpokenMsg (spokenMsg);
+                                spokenMsg.queuedTo.Remove (target);
+                                didSomething = true;
+                                goto checkSpokenMsgs;
+                            }
                         }
                     }
+
+                    /*
+                     * Step all scripts that need to be stepped.
+                     * They should theoretically all be waiting for some kind of
+                     * input after this completes.
+                     */
+                    bool steppedSomething;
+                    do {
+                        steppedSomething = false;
+                        for (int i = 0; i < scriptRoots.Length; i ++) {
+                            ScriptRoot scriptRoot = scriptRoots[(index+i)%scriptRoots.Length];
+                            if (scriptRoot.iState == IState.YIELDING) {
+                                scriptRoot.StepScript ();
+                                steppedSomething = true;
+                                didSomething = true;
+                            }
+                        }
+                    } while (steppedSomething);
+
+                    /*
+                     * If we stepped something, repeat back in case it queued another -ipcchannel message.
+                     */
+                } while (didSomething);
+
+                /*
+                 * Not having -eventio means stop when everything is waiting for an event.
+                 * The only thing it should allow reading for is return values.
+                 */
+                if (!eventIO) {
+                    for (int i = 0; i < scriptRoots.Length; i ++) {
+                        if (scriptRoots[i].iState == IState.WAITINGFORINPUT) goto gotone;
+                    }
+                    break;
+                gotone:;
                 }
 
                 /*
-                 * Read input line from stdin.
+                 * Read input and pass to script.
                  */
-                string inputLine = Console.ReadLine ();
-                if (inputLine == null) break;
-                ++ consoleLine;
-                Console.WriteLine (inputLine);
-
-                /*
-                 * Parse into tokens.
-                 */
-                inputLine = "# " + consoleLine + " \"input\"\n" + inputLine;
-                TokenBegin tokenBegin = TokenBegin.Construct ("input", null, StandAloneErrorMessage, inputLine, out sourceHash);
-                if (tokenBegin == null) continue;
-                Token t = tokenBegin.nextToken;
-
-                /*
-                 * Get index token from first integer on line.
-                 * Can be optionally followed by a close parenthesis.
-                 */
-                if (t is TokenInt) {
-                    index = ((TokenInt)t).val;
-                    if ((index < 0) || (index >= scriptRoots.Length)) {
-                        t.ErrorMsg ("script index out of range 0.." + (scriptRoots.Length - 1));
-                        continue;
-                    }
-                    t = t.nextToken;
-                    if (t is TokenKwParClose) {
+                if ((t == null) || (t is TokenEnd)) {
+                    t = ReadInputTokens ();
+                    if (t == null) break;
+                }
+                while (true) {
+                    while ((t is TokenBegin) || (t is TokenKwSemi)) {
                         t = t.nextToken;
                     }
-                }
+                    if (t is TokenEnd) break;
 
-                /*
-                 * Process the input, stepping the script.
-                 */
-                scriptRoots[index].ProcessInput (t);
+                    /*
+                     * If 'STATUS' print each script status.
+                     */
+                    if ((t is TokenName) && (((TokenName)t).val == "STATUS")) {
+                        foreach (ScriptRoot sr in scriptRoots) {
+                            sr.PrintStatus ();
+                        }
+                        t = t.nextToken;
+                    } else {
+
+                        /*
+                         * Get index token from first integer on line.
+                         * Can be optionally followed by a close parenthesis.
+                         */
+                        Token u = t;
+                        if (u is TokenInt) {
+                            index = ((TokenInt)u).val;
+                            if ((index < 0) || (index >= scriptRoots.Length)) {
+                                u.ErrorMsg ("script index out of range 0.." + (scriptRoots.Length - 1));
+                                t = null;
+                                continue;
+                            }
+                            u = u.nextToken;
+                            if (u is TokenKwParClose) {
+                                u = u.nextToken;
+                            }
+                        }
+
+                        /*
+                         * If that script isn't ready for input, step everything until it is.
+                         */
+                        ScriptRoot scriptRoot = scriptRoots[index];
+                        if ((scriptRoot.iState != IState.WAITINGFORINPUT) && 
+                            (scriptRoot.iState != IState.WAITINGFOREVENT)) break;
+
+                        /*
+                         * Process the input, getting the script ready to run again.
+                         */
+                        t = scriptRoots[index].ProcessInput (u);
+                    }
+
+                    /*
+                     * Check for end of input or if there is more to do before stepping scripts.
+                     */
+                    if (t == null) break;
+                    if (t is TokenEnd) break;
+                    if (!(t is TokenKwSemi)) {
+                        t.ErrorMsg ("extra stuff at end of line");
+                        t = null;
+                        break;
+                    }
+                }
             }
             Environment.Exit (0);
 
@@ -234,6 +309,66 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Console.WriteLine ("      -version : print version number then exit");
             Environment.Exit (1);
         }
+
+        /**
+         * @begin Read stream of tokens from input.
+         * @returns null: end-of-file on input
+         *          else: stream of tokens
+         */
+        public static TokenBegin ReadInputTokens ()
+        {
+            string sourceHash;
+            Token t;
+            TokenBegin tb, tbb;
+            Token te = null;
+
+            tbb = null;
+            while (true) {
+
+                /*
+                 * Read input line from stdin.
+                 */
+                string inputLine = Console.ReadLine ();
+                if (inputLine == null) return null;
+                ++ consoleLine;
+                Console.WriteLine (inputLine);
+
+                /*
+                 * Parse into tokens.
+                 * If error parsing, print error then read another line.
+                 * Also ignore blank lines.
+                 */
+                inputLine = "# " + consoleLine + " \"input\"\n" + inputLine;
+                tb = TokenBegin.Construct ("input", null, StandAloneErrorMessage, inputLine, out sourceHash);
+                if (tb == null) continue;
+                if (tb.nextToken is TokenEnd) continue;
+
+                /*
+                 * If this is our very first line, remember where it begins.
+                 */
+                if (tbb == null) tbb = tb;
+
+                /*
+                 * If this is a continuation, splice away.
+                 *   te = hyphen from previous line
+                 *   tb = begin token from this line
+                 */
+                if (te != null) {
+                    te.prevToken.nextToken = tb.nextToken;
+                    tb.nextToken.prevToken = te.prevToken;
+                }
+
+                /*
+                 * See if there is a continuation of this line by looking for a hyphen at the end.
+                 * If not, we're all done so return the very first begin token.
+                 * Otherwise, loop back to read in another line.
+                 */
+                for (t = tb; !(t is TokenEnd); t = t.nextToken) { }
+                if (!(t.prevToken is TokenKwSub)) return tbb;
+                te = t.prevToken;
+            }
+        }
+
 
         public static void StandAloneErrorMessage (Token token, string message)
         {
@@ -435,7 +570,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     public class ScriptDieException    : Exception, IXMRUncatchable { }
 
     public enum IState {
-        STARTING,
+        YIELDING,
         STEPIT,
         RUNNING,
         WAITINGFORINPUT,
@@ -468,6 +603,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public  string primName;
         public  string primUUID;
         public  string wfiName;
+        public  string wfiType;
         private TestInstance inst;
         private Thread thread;
 
@@ -475,7 +611,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             this.inst     = inst;
             this.thread   = new Thread (ScriptThread);
-            this.iState   = IState.STARTING;
+            this.iState   = IState.YIELDING;
             this.primName = perPrim.name;
             this.primUUID = perPrim.uuid;
 
@@ -487,21 +623,48 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             inst.scriptRoot = this;
 
-            /*
-             * Now that everything is set up, run default start_entry() until it stops for something.
-             */
             this.thread.Start ();
-            lock (iStateLock) {
-                while (iState == IState.STARTING) {
-                    Monitor.Wait (iStateLock);
+        }
+
+        public void PrintStatus ()
+        {
+            StringBuilder sb = new StringBuilder ();
+            sb.Append (msgPrefix);
+            sb.Append ('[');
+            sb.Append (primName);
+            sb.Append (':');
+            sb.Append (primUUID);
+            sb.Append ("] [");
+            sb.Append (inst.m_ObjCode.stateNames[inst.stateCode]);
+            if (inst.eventCode != ScriptEventCode.None) {
+                sb.Append ('.');
+                sb.Append (inst.eventCode.ToString ());
+                if (inst.ehArgs != null) {
+                    sb.Append ('(');
+                    bool first = true;
+                    foreach (object ehArg in inst.ehArgs) {
+                        if (!first) sb.Append (',');
+                        SCRIPTBASECLASS.PrintParam (sb, ehArg);
+                        first = false;
+                    }
+                    sb.Append (')');
                 }
             }
+            sb.Append ("] ");
+            sb.Append (iState.ToString ());
+            if (iState == IState.WAITINGFORINPUT) {
+                sb.Append (' ');
+                sb.Append (wfiType);
+                sb.Append (' ');
+                sb.Append (wfiName);
+            }
+            Console.WriteLine (sb.ToString ());
         }
 
         /**
          * @brief Process a line of input for the script and step it until it wants more.
          */
-        public void ProcessInput (Token t)
+        public Token ProcessInput (Token t)
         {
             switch (iState) {
                 case IState.WAITINGFOREVENT: {
@@ -511,7 +674,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      */
                     if (!(t is TokenName)) {
                         t.ErrorMsg ("expecting event name");
-                        break;
+                        return null;
                     }
                     TokenName eventName = (TokenName)t;
                     MethodInfo[] ifaceMethods = typeof (IEventHandlers).GetMethods ();
@@ -521,12 +684,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         if (ifaceMethod.Name == eventName.val) goto gotEvent;
                     }
                     eventName.ErrorMsg ("unknown event");
-                    break;
+                    return null;
                 gotEvent:
                     inst.eventCode = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), eventName.val);
                     if (inst.m_ObjCode.scriptEventHandlerTable[inst.stateCode,(int)inst.eventCode] == null) {
                         eventName.ErrorMsg ("event handler not defined for state " + inst.m_ObjCode.stateNames[inst.stateCode]);
-                        break;
+                        return null;
                     }
                     t = t.nextToken;
 
@@ -535,7 +698,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      */
                     if (!(t is TokenKwParOpen)) {
                         t.ErrorMsg ("expecting ( after event name");
-                        break;
+                        return null;
                     }
                     List<object> argList = new List<object> ();
                     do {
@@ -547,16 +710,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     } while (t is TokenKwComma);
                     if (!(t is TokenKwParClose)) {
                         t.ErrorMsg ("expecting , or ) in arg list");
-                        break;
+                        return null;
                     }
                     inst.ehArgs = argList.ToArray ();
                     t = t.nextToken;
-                    if (!(t is TokenEnd)) {
-                        t.ErrorMsg ("extra stuff after event args");
-                        break;
-                    }
 
-                    StepScript ();
+                    iState = IState.YIELDING;
                     break;
                 }
 
@@ -567,11 +726,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      */
                     if (!(t is TokenName) || !(t.nextToken is TokenKwColon)) {
                         t.ErrorMsg ("expecting function name :");
-                        break;
+                        return null;
                     }
                     if (((TokenName)t).val != wfiName) {
                         t.ErrorMsg ("expecting function " + wfiName);
-                        break;
+                        return null;
                     }
                     t = t.nextToken.nextToken;
 
@@ -579,13 +738,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      * Parse out the value.
                      */
                     wfiValue = XMREngTest.ParseEHArg (ref t);
-                    if (wfiValue == null) break;
-                    if (!(t is TokenEnd)) {
-                        t.ErrorMsg ("extra stuff at end of line");
-                        break;
-                    }
+                    if (wfiValue == null) return null;
 
-                    StepScript ();
+                    iState = IState.YIELDING;
                     break;
                 }
 
@@ -593,6 +748,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     throw new Exception ("bad istate " + iState);
                 }
             }
+
+            return t;
         }
 
         /**
@@ -603,15 +760,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             inst.ehArgs    = msg.ehArgs;
             inst.eventCode = ScriptEventCode.listen;
-            StepScript ();
+            iState = IState.YIELDING;
         }
 
         /**
          * @brief Step script and wait for it until it wants more input.
          */
-        private void StepScript ()
+        public void StepScript ()
         {
             lock (iStateLock) {
+                if (iState != IState.YIELDING) throw new Exception ("bad istate " + iState);
                 iState = IState.STEPIT;
                 Monitor.PulseAll (iStateLock);
                 while ((iState == IState.STEPIT) || (iState == IState.RUNNING)) {
@@ -632,21 +790,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             while (true) {
 
                 /*
+                 * Wait for main program to call StepScript()
+                 */
+                lock (iStateLock) {
+                    while (iState != IState.STEPIT) {
+                        Monitor.Wait (iStateLock);
+                    }
+                    iState = IState.RUNNING;
+                }
+
+                /*
                  * Run the script event handler until it completes.
                  * It may also block waiting for input but we don't see that here.
                  */
                 RunScriptEventHandler ();
 
                 /*
-                 * Wait for main program to call StepScript()
+                 * We need another event queued so we have something to do.
                  */
                 lock (iStateLock) {
                     iState = IState.WAITINGFOREVENT;
                     Monitor.PulseAll (iStateLock);
-                    while (iState != IState.STEPIT) {
-                        Monitor.Wait (iStateLock);
-                    }
-                    iState = IState.RUNNING;
                 }
             }
         }
@@ -661,6 +825,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         private void RunScriptEventHandler ()
         {
+            if (inst.eventCode == ScriptEventCode.None) {
+                throw new Exception ("no event queued");
+            }
             while (true) {
                 try {
                     RunScriptEventHandler2 ();
@@ -692,6 +859,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     Environment.Exit (3);
                 }
             }
+            inst.eventCode = ScriptEventCode.None;
+            inst.ehArgs    = null;
         }
 
         private void RunScriptEventHandler2 ()
@@ -707,6 +876,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      * the code built inst.StackFrames.
                      */
                     if (inst.callMode != XMRInstAbstract.CALLMODE_SAVE) throw;
+
+                    /*
+                     * Time-slice to another script.
+                     */
+                    lock (iStateLock) {
+                        iState = IState.YIELDING;
+                        Monitor.PulseAll (iStateLock);
+                        while (iState != IState.STEPIT) {
+                            Monitor.Wait (iStateLock);
+                        }
+                        iState = IState.RUNNING;
+                    }
 
                     /*
                      * If -serialize, make sure script instance serialization works.
@@ -747,7 +928,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private const int HEAPLIMIT = 50000;
 
         /**
-         * @brief Initial instance for the given index
+         * @brief Initial instance for the given script
          */
         public TestInstance (ScriptObjCode soc)
         {
@@ -2654,56 +2835,56 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         protected LSL_Float StubLSLFloat (string name, params object[] parms)
         {
             PrintParms (name, parms);
-            object val = ReadRetVal (name);
+            object val = ReadRetVal (name, "float");
             if (val is int) val = (SCRIPTFLOAT)(int)val;
             return new LSL_Float ((SCRIPTFLOAT)val);
         }
         protected LSL_Integer StubLSLInteger (string name, params object[] parms)
         {
             PrintParms (name, parms);
-            return new LSL_Integer ((int)ReadRetVal (name));
+            return new LSL_Integer ((int)ReadRetVal (name, "integer"));
         }
         protected LSL_List StubLSLList (string name, params object[] parms)
         {
             PrintParms (name, parms);
-            return (LSL_List)ReadRetVal (name);
+            return (LSL_List)ReadRetVal (name, "list");
         }
         protected LSL_Rotation StubLSLRotation (string name, params object[] parms)
         {
             PrintParms (name, parms);
-            return (LSL_Rotation)ReadRetVal (name);
+            return (LSL_Rotation)ReadRetVal (name, "rotation");
         }
         protected LSL_String StubLSLString (string name, params object[] parms)
         {
             PrintParms (name, parms);
-            return new LSL_String ((string)ReadRetVal (name));
+            return new LSL_String ((string)ReadRetVal (name, "string"));
         }
         protected LSL_Vector StubLSLVector (string name, params object[] parms)
         {
             PrintParms (name, parms);
-            return (LSL_Vector)ReadRetVal (name);
+            return (LSL_Vector)ReadRetVal (name, "vector");
         }
         protected bool StubSysBoolean (string name, params object[] parms)
         {
             PrintParms (name, parms);
-            return (int)ReadRetVal (name) != 0;
+            return (int)ReadRetVal (name, "boolean") != 0;
         }
         protected double StubSysDouble (string name, params object[] parms)
         {
             PrintParms (name, parms);
-            object val = ReadRetVal (name);
+            object val = ReadRetVal (name, "float");
             if (val is int) val = (SCRIPTFLOAT)(int)val;
             return (double)(SCRIPTFLOAT)val;
         }
         protected int StubSysInteger (string name, params object[] parms)
         {
             PrintParms (name, parms);
-            return (int)ReadRetVal (name);
+            return (int)ReadRetVal (name, "integer");
         }
         protected string StubSysString (string name, params object[] parms)
         {
             PrintParms (name, parms);
-            return (string)ReadRetVal (name);
+            return (string)ReadRetVal (name, "string");
         }
 
         /**
@@ -2794,9 +2975,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * @param name = name of function that the return value is for
          * @returns value read from stdin
          */
-        private object ReadRetVal (string name)
+        private object ReadRetVal (string name, string type)
         {
             scriptRoot.wfiName = name;
+            scriptRoot.wfiType = type;
             lock (ScriptRoot.iStateLock) {
                 scriptRoot.iState = IState.WAITINGFORINPUT;
                 Monitor.PulseAll (ScriptRoot.iStateLock);

@@ -2,5 +2,20 @@ Compiling ipctest0.lsl ...
 Running...
 Compiling ipctest1.lsl ...
 Running...
+0) llOwnerSay: 0
+0) llOwnerSay: 1
+0) llOwnerSay: 2
+0) llOwnerSay: 3
+0) llOwnerSay: 4
+1) llOwnerSay: 0
+1) llOwnerSay: 1
+1) llOwnerSay: 2
+1) llOwnerSay: 3
+1) llOwnerSay: 4
+touch_start(0);touch_start(0);STATUS;-
 touch_start(0)
+1) llOwnerSay: heard channel=-9 name=zero id=0000 message=was just touched!
+0) [zero:0000] [default.touch_start(0)] YIELDING
+1) [one:1111] [default] WAITINGFOREVENT
+1) llOwnerSay: heard channel=-9 name=zero id=0000 message=was just touched!
 1) llOwnerSay: heard channel=-9 name=zero id=0000 message=was just touched!
