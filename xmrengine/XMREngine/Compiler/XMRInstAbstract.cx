@@ -425,6 +425,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         /**
+         * @brief Sane substring functions.
+         */
+        public string xmrSubstring (string s, int offset)
+        {
+            if (offset >= s.Length) return "";
+            return s.Substring (offset);
+        }
+        public string xmrSubstring (string s, int offset, int length)
+        {
+            if (length <= 0) return "";
+            if (offset >= s.Length) return "";
+            return s.Substring (offset, length);
+        }
+        // java style
+        public string xmrJSubstring (string s, int beg, int end)
+        {
+            if (end <= beg) return "";
+            if (beg >= s.Length) return "";
+            return s.Substring (beg, end - beg);
+        }
+
+        /**
          * @brief Get a delegate for a script-defined function.
          * @param name = name of the function including arg types, eg,
          *               "Verify(array,list,string)"
