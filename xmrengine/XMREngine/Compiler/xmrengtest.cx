@@ -302,7 +302,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Console.WriteLine ("      -eventio : when default state_entry completes, read next event from stdin and keep doing so until eof");
             Console.WriteLine ("                 format is:  event_name ( arg1 , arg2 , ... )");
             Console.WriteLine ("                   example:  http_response(\"firstone\",3,[0,<1,2,3>,\"456\"],\"body\")");
-            Console.WriteLine ("   -ipcchannel : channel number for which llListen/llListenControl/llListenRemove/llSay are handled internally");
+            Console.WriteLine ("   -ipcchannel : channel number for which llListen/llListenControl/llListenRemove/llRegionSay/llRegionSayTo/llSay are handled internally");
             Console.WriteLine ("     -primname : give prim name for subsequent script(s) (returned by llGetKey())");
             Console.WriteLine ("     -primuuid : give prim uuid for subsequent script(s) (returned by llGetObjectName())");
             Console.WriteLine ("    -serialize : serialize and deserialize stack at every opportunity");
@@ -1114,9 +1114,38 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * @brief If doing llSay() to an -ipcchannel enabled channel and there is something
          *        listening on that channel, pass the message along quietly.
          *        Otherwise announce message.
+         * Note:  For xmrengtest purposes, this function is the same as llRegionSay().
          */
         [xmrMethodIsNoisyAttribute]
         public void llSay (int channel, string msg)
+        {
+            ISay ("llSay", null, channel, msg);
+        }
+
+        /**
+         * @brief If doing llRegionSay() to an -ipcchannel enabled channel and there is something
+         *        listening on that channel, pass the message along quietly.
+         *        Otherwise announce message.
+         * Note:  For xmrengtest purposes, this function is the same as llSay().
+         */
+        [xmrMethodIsNoisyAttribute]
+        public void llRegionSay (int channel, string msg)
+        {
+            ISay ("llRegionSay", null, channel, msg);
+        }
+
+        /**
+         * @brief If doing llRegionSayTo() to an -ipcchannel enabled channel and there is something
+         *        listening on that channel, pass the message along quietly.
+         *        Otherwise announce message.
+         */
+        [xmrMethodIsNoisyAttribute]
+        public void llRegionSayTo (string target, int channel, string msg)
+        {
+            ISay ("llRegionSayTo", target, channel, msg);
+        }
+
+        private void ISay (string fname, string target, int channel, string msg)
         {
             if (msg.Length > 1023) msg = msg.Substring (0, 1023);
 
@@ -1130,15 +1159,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             spokenMsg.ehArgs[3] = msg;
 
             bool queued = false;
-            foreach (ScriptRoot target in XMREngTest.scriptRoots) {
-                if (target != scriptRoot) {
-                    foreach (Listener lner in target.listeners) {
+            foreach (ScriptRoot targsr in XMREngTest.scriptRoots) {
+                if ((targsr != scriptRoot) && (target == null || targsr.primUUID == target)) {
+                    foreach (Listener lner in targsr.listeners) {
                         if (lner == null) continue;
                         if ((lner.channel == channel) && (lner.active != 0)) {
                             if ((lner.id   != "") && (lner.id   != scriptRoot.primUUID)) continue;
                             if ((lner.name != "") && (lner.name != scriptRoot.primName)) continue;
                             if ((lner.msg  != "") && (lner.msg  != msg))                 continue;
-                            spokenMsg.queuedTo.AddLast (target);
+                            spokenMsg.queuedTo.AddLast (targsr);
                             queued = true;
                             break;
                         }
@@ -1157,7 +1186,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * Maybe print it out.
              */
             if (!queued || (channel == PUBLIC_CHANNEL) || (channel == DEBUG_CHANNEL)) {
-                StubVoid ("llSay", channel, msg);
+                if (target == null) {
+                    StubVoid (fname, channel, msg);
+                } else {
+                    StubVoid (fname, target, channel, msg);
+                }
             }
         }
 
