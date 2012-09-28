@@ -60,6 +60,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             "llListenRemove",
             "llListFindList",
             "llListInsertList",
+            "llListRandomize",
             "llListReplaceList",
             "llListSort",
             "llListStatistics",

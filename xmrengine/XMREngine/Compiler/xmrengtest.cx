@@ -1179,6 +1179,53 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return scriptRoot.primName;
         }
 
+        [xmrMethodIsNoisyAttribute]
+        public LSL_List llListRandomize(LSL_List src, int stride)
+        {
+            object[] parms = new object[] { src, stride };
+            PrintParms ("llListRandomize", parms);
+            object rv = ReadRetVal ("llListRandomize", "list");
+            if (!(rv is int)) return (LSL_List)rv;
+
+            if (stride <= 0) stride = 1;
+            object[] source = src.Data;
+            int length = source.Length;
+            if ((stride >= length) || (length % stride != 0)) return src;
+
+            Random rand = new Random ((int)rv);
+            object[] output = new object[length];
+
+            if (stride == 1) {
+                Array.Copy (source, 0, output, 0, length);
+                for (int i = length; -- i >= 0;) {
+                    int j = rand.Next (length);
+                    object tmp = output[i];
+                    output[i] = output[j];
+                    output[j] = tmp;
+                }
+            } else {
+                int nbucks = length / stride;
+                int[] buckts = new int[nbucks];
+                for (int i = 0; i < nbucks; i ++) {
+                    buckts[i] = i;
+                }
+
+                for (int i = nbucks; -- i >= 0;) {
+                    int j = rand.Next (nbucks);
+                    int tmp = buckts[i];
+                    buckts[i] = buckts[j];
+                    buckts[j] = tmp;
+                }
+
+                for (int i = 0; i < nbucks; i ++) {
+                    int j = buckts[i];
+                    Array.Copy (source, i * stride, output, j * stride, stride);
+                }
+            }
+
+            return new LSL_List (output);
+        }
+
         /*************************\
          *  Copied from OpenSim  *
         \*************************/
@@ -1907,7 +1954,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
         public LSL_List llListSort (LSL_List src, int stride, int ascending)
         {
-
             if (stride <= 0)
             {
                 stride = 1;
