@@ -12,15 +12,16 @@ Running...
 1) llOwnerSay: 3
 0) llOwnerSay: 4
 1) llOwnerSay: 4
-STATUS;touch_start(0);STATUS-
-;touch_start(0)
-0) [zero:0000] [default] WAITINGFOREVENT
-1) [one:1111] [default] WAITINGFOREVENT
-0) [zero:0000] [default.touch_start(0)] YIELDING
-1) [one:1111] [default] WAITINGFOREVENT
-1) llOwnerSay: heard channel=-9 name=zero id=0000 message=was just touched!
-1) llOwnerSay: heard channel=-9 name=zero id=0000 message=was just touched!
-1) listen (-9, "sender name", "sender uuid", "some silly mesage"); STATUS
-0) [zero:0000] [default] WAITINGFOREVENT
-1) [one:1111] [default.listen(-9,"sender name","sender uuid","some silly mesage")] YIELDING
-1) llOwnerSay: heard channel=-9 name=sender name id=sender uuid message=some silly mesage
+1) llSetTimerEvent(1)
+1) llSetTimerEvent(0)
+1)touch_start(0)
+0) llListRandomize([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51], 1)
+0)llListRandomize:69827238
+1) llOwnerSay: Deck has been shuffled
+1) llOwnerSay: Hand: 
+1)touch_start(0)
+1) llOwnerSay: Hand: 44,
+1)touch_start(0)
+1) llOwnerSay: Hand: 44,39,
+1)touch_start(0)
+1) llOwnerSay: Hand: 44,39,6,

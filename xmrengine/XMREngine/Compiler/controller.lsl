@@ -3,7 +3,7 @@ xmroption advflowctl;
 xmroption arrays;
 xmroption objects;
 
-xmroption include "dictionary.lsl";
+xmroption include "http://dreamnation.net/dictionary.lsl";
 
 typedef Dictionary<K,V>   Kunta.Dictionary<K,V>;
 typedef IEnumerator<T>    Kunta.IEnumerator<T>;
@@ -17,8 +17,8 @@ list shuffledCards;
 integer nextDealCardIndex;
 
 class Player {
-    public string uuid;
-    public string name;
+    public integer link;
+    public key uuid;
     public LinkedList<integer> hand = new LinkedList<integer> ();
 
     public integer HandValue ()
@@ -52,42 +52,32 @@ class Player {
             integer card = henum.Current;
             msg += card + ",";
         }
-        llRegionSayTo (uuid, CHANNEL, msg);
+        llMessageLinked (link, 0, msg, uuid);
     }
 }
 
-constant CHANNEL = -2135482309;
-
-Dictionary<string,Player> players = new Dictionary<string,Player> ();
+Dictionary<integer,Player> players = new Dictionary<integer,Player> ();
 
 default {
-    state_entry ()
+    link_message (integer sender, integer num, string str, key id)
     {
-        for (integer i = 0; i < 5; i ++) {
-            llOwnerSay ((string)i);
-        }
-        llListen (CHANNEL, "", "", "");
-    }
-
-    listen (integer channel, string name, key id, string message)
-    {
-        switch (xmrJSubstring (message, 0, 4)) {
+        switch (xmrJSubstring (str, 0, 4)) {
 
             /*
              * Register new player.
              */
             case "REGP": {
                 Player p;
-                KeyValuePair<string,Player> kvp = players.GetByKey (id);
+                KeyValuePair<integer,Player> kvp = players.GetByKey (sender);
                 if (kvp == undef) {
                     p = new Player ();
-                    p.name = name;
+                    p.link = sender;
                     p.uuid = id;
-                    players.Add (p.uuid, p);
+                    players.Add (p.link, p);
                 } else {
                     p = kvp.value;
                 }
-                llRegionSayTo (id, CHANNEL, "regp");
+                llMessageLinked (p.link, 0, "regp", p.uuid);
                 break;
             }
 
@@ -97,7 +87,7 @@ default {
             case "SHUF": {
                 shuffledCards = llListRandomize (sortedCards, 1);
                 nextDealCardIndex = 0;
-                llRegionSayTo (id, CHANNEL, "shuf");
+                llMessageLinked (sender, 0, "shuf", id);
                 for (IEnumerator<Player> penum = players.Values.GetEnumerator (); penum.MoveNext ();) {
                     Player p = penum.Current;
                     p.hand = new LinkedList<integer> ();
@@ -110,14 +100,14 @@ default {
              * Deal a card to the requesting player.
              */
             case "DEAL": {
-                KeyValuePair<string,Player> kvp = players.GetByKey (id);
+                KeyValuePair<integer,Player> kvp = players.GetByKey (sender);
                 if (kvp == undef) {
-                    llOwnerSay ("invalid player uuid " + id);
+                    llOwnerSay ("invalid player " + sender);
                     break;
                 }
                 Player p = kvp.value;
                 if (nextDealCardIndex >= llGetListLength (shuffledCards)) {
-                    llRegionSayTo (p.uuid, CHANNEL, "deal-1");
+                    llMessageLinked (p.link, 0, "deal-1", p.uuid);
                 } else {
                     integer card = (integer)shuffledCards[nextDealCardIndex++];
                     p.hand.AddLast (card);
@@ -127,7 +117,7 @@ default {
             }
 
             default: {
-                llOwnerSay ("invalid message from " + name + ":" + id + ": " + message);
+                llOwnerSay ("invalid message from " + sender + ": " + str);
                 break;
             }
         }

@@ -2,6 +2,7 @@
 xmroption advflowctl;
 xmroption arrays;
 xmroption objects;
+xmroption trycatch;
 
 xmroption include "http://dreamnation.net/dictionary.lsl";
 
@@ -10,51 +11,44 @@ typedef IEnumerator<T>    Kunta.IEnumerator<T>;
 typedef KeyValuePair<K,V> Kunta.KeyValuePair<K,V>;
 typedef LinkedList<T>     Kunta.LinkedList<T>;
 
-integer registered;
-string  serveruuid;
+integer serverlink;
 integer shuffled;
 LinkedList<integer> hand;
-string myuuid;
-
-constant CHANNEL = -2135482309;
 
 default {
     state_entry ()
     {
-        for (integer i = 0; i < 5; i ++) {
-            llOwnerSay ((string)i);
-        }
-        myuuid = llGetKey ();
-        registered = 0;
+        serverlink = -1;
         shuffled = 0;
-        llListen (CHANNEL, "", "", "");
-        llRegionSay (CHANNEL, "REGP");
+        llMessageLinked (LINK_ALL_OTHERS, 0, "REGP", "");
         llSetTimerEvent (1);
     }
 
     timer ()
     {
-        if (!registered) {
-            llRegionSay (CHANNEL, "REGP");
+        if (serverlink < 0) {
+            llMessageLinked (LINK_ALL_OTHERS, 0, "REGP", "");
         }
     }
 
     touch_start (integer num)
     {
-        if (!shuffled) {
-            llRegionSayTo (serveruuid, CHANNEL, "SHUF");
-        } else {
-            llRegionSayTo (serveruuid, CHANNEL, "DEAL");
+        if (serverlink >= 0) {
+            if (!shuffled) {
+                llMessageLinked (serverlink, 0, "SHUF", "");
+            } else {
+                llMessageLinked (serverlink, 0, "DEAL", "");
+            }
         }
     }
 
-    listen (integer channel, string name, key id, string message)
+    link_message (integer sender, integer num, string str, key id)
     {
-        switch (xmrJSubstring (message, 0, 4)) {
+        switch (xmrJSubstring (str, 0, 4)) {
             case "regp": {
                 llSetTimerEvent (0);
-                registered = 1;
-                serveruuid = id;
+                if (sender < 0) throw "server sender negative " + sender;
+                serverlink = sender;
                 break;
             }
 
@@ -66,17 +60,17 @@ default {
             }
 
             case "deal": {
-                llOwnerSay ("Deal: " + xmrSubstring (message, 4));
+                llOwnerSay ("Deal: " + xmrSubstring (str, 4));
                 break;
             }
 
             case "hand": {
-                llOwnerSay ("Hand: " + xmrSubstring (message, 4));
+                llOwnerSay ("Hand: " + xmrSubstring (str, 4));
                 break;
             }
 
             default: {
-                llOwnerSay ("invalid message from " + name + ":" + id + ": " + message);
+                llOwnerSay ("invalid message from " + sender + ": " + str);
                 break;
             }
         }

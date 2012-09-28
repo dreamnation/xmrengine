@@ -21,6 +21,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 {
     public struct PerPrim {
         public string srcFileName;
+        public int linkNum;
         public string name;
         public string uuid;
     }
@@ -28,9 +29,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     public class XMREngTest
     {
         public static bool doCheckRun = false;
+        public static bool haveLinkNums = false;
         public static int consoleLine = 0;
         public static LinkedList<int> ipcChannels = new LinkedList<int> ();
-        public static LinkedList<SpokenMsg> spokenMsgs = new LinkedList<SpokenMsg> ();
+        public static LinkedList<QueuedEvent> queuedEvents = new LinkedList<QueuedEvent> ();
         public static MemoryStream serializeStream = null;
         public static ScriptRoot[] scriptRoots;
 
@@ -39,11 +41,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public static void Main (string[] args)
         {
-            bool eventIO    = false;
+            bool eventIO      = false;
             List<PerPrim> perPrims = new List<PerPrim> ();
-            string primName    = "";
-            string primUUID    = "";
-            string sourceHash  = null;
+            int linkNum       = 0;
+            string primName   = "";
+            string primUUID   = "";
+            string sourceHash = null;
 
             for (int i = 0; i < args.Length; i ++) {
                 string arg = args[i];
@@ -65,6 +68,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     } catch {
                         goto usage;
                     }
+                    continue;
+                }
+                if (arg == "-linknum") {
+                    if (++ i >= args.Length) goto usage;
+                    try {
+                        linkNum = int.Parse (args[i]);
+                    } catch {
+                        goto usage;
+                    }
+                    haveLinkNums = true;
                     continue;
                 }
                 if (arg == "-primname") {
@@ -89,6 +102,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if (arg[0] == '-') goto usage;
                 PerPrim perPrim;
                 perPrim.srcFileName = arg;
+                perPrim.linkNum     = linkNum;
                 perPrim.name        = primName;
                 perPrim.uuid        = primUUID;
                 perPrims.Add (perPrim);
@@ -173,21 +187,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     didSomething = false;
 
                     /*
-                     * Maybe we can process spoken messages.
+                     * Maybe we can process internally queued events.
                      * Get as many scripts ready for stepping at once as we can.
                      */
-                checkSpokenMsgs:
-                    foreach (SpokenMsg spokenMsg in spokenMsgs) {
-                        if (spokenMsg.queuedTo.Count <= 0) {
-                            spokenMsgs.Remove (spokenMsg);
-                            goto checkSpokenMsgs;
+                checkQueuedEvents:
+                    foreach (QueuedEvent queuedEvent in queuedEvents) {
+                        if (queuedEvent.queuedTo.Count <= 0) {
+                            queuedEvents.Remove (queuedEvent);
+                            goto checkQueuedEvents;
                         }
-                        foreach (ScriptRoot target in spokenMsg.queuedTo) {
+                        foreach (ScriptRoot target in queuedEvent.queuedTo) {
                             if (target.iState == IState.WAITINGFOREVENT) {
-                                target.ProcessSpokenMsg (spokenMsg);
-                                spokenMsg.queuedTo.Remove (target);
+                                queuedEvent.queuedTo.Remove (target);
+                                target.ProcessQueuedEvent (queuedEvent);
                                 didSomething = true;
-                                goto checkSpokenMsgs;
+                                goto checkQueuedEvents;
                             }
                         }
                     }
@@ -296,13 +310,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Environment.Exit (0);
 
         usage:
-            Console.WriteLine ("usage: mono xmrengtest.exe [ -builtins ] [ -checkrun ] [ -eventio ] [ -ipcchannel <channel> ] [ -primname <name> ] [ -primuuid <uuid> ] [ -serialize ] [ -version ] <sourcefile> ...");
+            Console.WriteLine ("usage: mono xmrengtest.exe [ -builtins ] [ -checkrun ] [ -eventio ] [ -ipcchannel <channel> ] [ -linknum <number> ] [ -primname <name> ] [ -primuuid <uuid> ] [ -serialize ] [ -version ] <sourcefile> ...");
             Console.WriteLine ("     -builtins : print list of built-in functions and constants then exit");
             Console.WriteLine ("     -checkrun : simulate a thread slice at every opportunity");
             Console.WriteLine ("      -eventio : when default state_entry completes, read next event from stdin and keep doing so until eof");
             Console.WriteLine ("                 format is:  event_name ( arg1 , arg2 , ... )");
             Console.WriteLine ("                   example:  http_response(\"firstone\",3,[0,<1,2,3>,\"456\"],\"body\")");
             Console.WriteLine ("   -ipcchannel : channel number for which llListen/llListenControl/llListenRemove/llRegionSay/llRegionSayTo/llSay are handled internally");
+            Console.WriteLine ("      -linknum : link number returned by llGetLinkNumber() and used by llMessageLinked()");
             Console.WriteLine ("     -primname : give prim name for subsequent script(s) (returned by llGetKey())");
             Console.WriteLine ("     -primuuid : give prim uuid for subsequent script(s) (returned by llGetObjectName())");
             Console.WriteLine ("    -serialize : serialize and deserialize stack at every opportunity");
@@ -585,9 +600,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public int active;
     }
 
-    public class SpokenMsg {
-        public object[] ehArgs = new object[4];
+    public class QueuedEvent {
+        public ScriptEventCode eventCode;
+        public object[] ehArgs;
         public LinkedList<ScriptRoot> queuedTo = new LinkedList<ScriptRoot> ();
+
+        public QueuedEvent (ScriptEventCode ec, int nargs)
+        {
+            eventCode = ec;
+            ehArgs = new object[nargs];
+        }
     }
 
     /**
@@ -596,6 +618,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     public class ScriptRoot {
         public static object iStateLock = new object ();
 
+        public  int    linkNum;
         public  IState iState;
         public  Listener[] listeners = new Listener[65];
         public  object wfiValue;
@@ -612,6 +635,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             this.inst     = inst;
             this.thread   = new Thread (ScriptThread);
             this.iState   = IState.YIELDING;
+            this.linkNum  = perPrim.linkNum;
             this.primName = perPrim.name;
             this.primUUID = perPrim.uuid;
 
@@ -753,13 +777,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         /**
-         * @brief Some other script sent this script a message via llSay().
-         *        It has already been filtered so just call the listen() event handler.
+         * @brief Process internally queued events.
          */
-        public void ProcessSpokenMsg (SpokenMsg msg)
+        public void ProcessQueuedEvent (QueuedEvent msg)
         {
+            inst.eventCode = msg.eventCode;
             inst.ehArgs    = msg.ehArgs;
-            inst.eventCode = ScriptEventCode.listen;
             iState = IState.YIELDING;
         }
 
@@ -1152,11 +1175,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Maybe it gets queued as an -ipcchannel listen event somewhere.
              */
-            SpokenMsg spokenMsg = new SpokenMsg ();
-            spokenMsg.ehArgs[0] = channel;
-            spokenMsg.ehArgs[1] = scriptRoot.primName;
-            spokenMsg.ehArgs[2] = scriptRoot.primUUID;
-            spokenMsg.ehArgs[3] = msg;
+            QueuedEvent queuedEvent = new QueuedEvent (ScriptEventCode.listen, 4);
+            queuedEvent.ehArgs[0] = channel;
+            queuedEvent.ehArgs[1] = scriptRoot.primName;
+            queuedEvent.ehArgs[2] = scriptRoot.primUUID;
+            queuedEvent.ehArgs[3] = msg;
 
             bool queued = false;
             foreach (ScriptRoot targsr in XMREngTest.scriptRoots) {
@@ -1167,7 +1190,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                             if ((lner.id   != "") && (lner.id   != scriptRoot.primUUID)) continue;
                             if ((lner.name != "") && (lner.name != scriptRoot.primName)) continue;
                             if ((lner.msg  != "") && (lner.msg  != msg))                 continue;
-                            spokenMsg.queuedTo.AddLast (targsr);
+                            queuedEvent.queuedTo.AddLast (targsr);
                             queued = true;
                             break;
                         }
@@ -1176,10 +1199,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             /*
-             * If so, add to end of spoken messages queue.
+             * If so, add to end of internal event queue.
              */
             if (queued) {
-                XMREngTest.spokenMsgs.AddLast (spokenMsg);
+                XMREngTest.queuedEvents.AddLast (queuedEvent);
             }
 
             /*
@@ -1257,6 +1280,67 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             return new LSL_List (output);
+        }
+
+        [xmrMethodIsNoisyAttribute]
+        public LSL_Integer llGetLinkNumber ()
+        {
+            if (!XMREngTest.haveLinkNums) {
+                return StubLSLInteger ("llGetLinkNumber");
+            }
+            return scriptRoot.linkNum;
+        }
+
+        [xmrMethodIsNoisyAttribute]
+        public void llMessageLinked (int link, int num, string str, string id)
+        {
+            if (!XMREngTest.haveLinkNums) {
+                StubVoid ("llMessageLinked", link, num, str, id);
+                return;
+            }
+
+            QueuedEvent queuedEvent = new QueuedEvent (ScriptEventCode.link_message, 4);
+            queuedEvent.ehArgs[0] = scriptRoot.linkNum;
+            queuedEvent.ehArgs[1] = num;
+            queuedEvent.ehArgs[2] = str;
+            queuedEvent.ehArgs[3] = id;
+
+            /*
+             * See if it can be queued to any scripts.
+             */
+            bool queued = false;
+            foreach (ScriptRoot targsr in XMREngTest.scriptRoots) {
+                switch (link) {
+                    case LINK_SET: {
+                        break;
+                    }
+                    case LINK_ALL_OTHERS: {
+                        if (targsr != scriptRoot) break;
+                        continue;
+                    }
+                    case LINK_ALL_CHILDREN: {
+                        if (targsr.linkNum > 1) break;
+                        continue;
+                    }
+                    case LINK_THIS: {
+                        if (targsr == scriptRoot) break;
+                        continue;
+                    }
+                    default: {
+                        if (targsr.linkNum == link) break;
+                        continue;
+                    }
+                }
+                queuedEvent.queuedTo.AddLast (targsr);
+                queued = true;
+            }
+
+            /*
+             * If so, add to end of internal event queue.
+             */
+            if (queued) {
+                XMREngTest.queuedEvents.AddLast (queuedEvent);
+            }
         }
 
         /*************************\

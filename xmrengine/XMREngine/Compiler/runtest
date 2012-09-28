@@ -31,19 +31,25 @@ testit typeassigntest
 testit partialtest
 testev statechange
 
-mono --debug xmrengtest.exe -eventio -ipcchannel -9 \
-	-primname zero -primuuid 0000 ipctest0.lsl \
-	-primname one -primuuid 1111 ipctest1.lsl << EOF | tee ipctest.out
-touch_start(0);touch_start(0);STATUS;-
-touch_start(0)
+mono --debug xmrengtest.exe -eventio -ipcchannel -2135482309 \
+	-primname controller -primuuid 0000 ipctest0.lsl \
+	-primname player1 -primuuid 1111 ipctest1.lsl << EOF | tee ipctest.out
+1)touch_start(0)
+0)llListRandomize:69827238
+1)touch_start(0)
+1)touch_start(0)
+1)touch_start(0)
 EOF
 diff ipctest.out ipctest.good
-mono --debug xmrengtest.exe -eventio -ipcchannel -9 -serialize \
-	-primname zero -primuuid 0000 ipctest0.lsl \
-	-primname one -primuuid 1111 ipctest1.lsl << EOF | tee ipctest.ser
-STATUS;touch_start(0);STATUS-
-;touch_start(0)
-1) listen (-9, "sender name", "sender uuid", "some silly mesage"); STATUS
+
+mono --debug xmrengtest.exe -eventio -ipcchannel -2135482309 -serialize \
+	-primname controller -primuuid 0000 ipctest0.lsl \
+	-primname player1 -primuuid 1111 ipctest1.lsl << EOF | tee ipctest.ser
+1)touch_start(0)
+0)llListRandomize:69827238
+1)touch_start(0)
+1)touch_start(0)
+1)touch_start(0)
 EOF
 diff ipctest.ser ipctest.gser
 
