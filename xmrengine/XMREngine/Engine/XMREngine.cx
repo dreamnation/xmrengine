@@ -733,11 +733,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * Very first line might contain "//" scriptengine ":".
              */
             string firstline = "";
+            string restof1st = "";
             if (script.StartsWith("//")) {
                 int lineEnd = script.IndexOf('\n');
                 if (lineEnd > 1) firstline = script.Substring(0, lineEnd).Trim();
                 int colon = firstline.IndexOf(':');
-                if (colon > 2) engineName = firstline.Substring(2, colon - 2).Trim();
+                if (colon >= 2) {
+                    engineName = firstline.Substring(2, colon - 2).Trim();
+                    if (engineName == "") engineName = defEngine;
+                    restof1st  = "," + firstline.Substring(colon + 1).Trim().ToLowerInvariant() + ",";
+                }
             }
 
             /*
@@ -774,14 +779,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
             ArrayList errors = new ArrayList();
             XMRInstance instance = new XMRInstance();
+            bool opt_forcereset = restof1st.Contains (",forcereset,");
+            Exception initerr = null;
             try {
                 instance.Initialize(localID, itemID, script,
                                     startParam, postOnRez, stateSource,
                                     this, part, item, m_ScriptBasePath,
-                                    m_StackSize, m_HeapSize, errors, false);
+                                    m_StackSize, m_HeapSize, errors, opt_forcereset);
             } catch (Exception e1) {
-                m_log.DebugFormat("[XMREngine]: {0} first load failed ({1}), retrying after reset", itemID.ToString(), e1.Message);
-                m_log.DebugFormat("[XMREngine]:\n{0}", e1.ToString ());
+                initerr = e1;
+            }
+            if ((initerr != null) && !opt_forcereset) {
+                m_log.DebugFormat("[XMREngine]: {0} first load failed ({1}), retrying after reset", itemID.ToString(), initerr.Message);
+                m_log.DebugFormat("[XMREngine]:\n{0}", initerr.ToString ());
+                initerr = null;
                 errors = new ArrayList();
                 try {
                     instance.Initialize(localID, itemID, script,
@@ -789,28 +800,31 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                                         this, part, item, m_ScriptBasePath,
                                         m_StackSize, m_HeapSize, errors, true);
                 } catch (Exception e2) {
-                    m_log.DebugFormat("[XMREngine]: Error starting script {0}: {1}",
-                                      itemID.ToString(), e2.Message);
-                    if (e2.Message != "compilation errors") {
-                        m_log.DebugFormat("[XMREngine]:   exception:\n{0}", e2.ToString());
-                    }
-
-                    /*
-                     * Post errors where GetScriptErrors() can see them.
-                     */
-                    if (errors.Count == 0) {
-                        errors.Add(e2.Message);
-                    } else {
-                        foreach (Object err in errors) {
-                            m_log.DebugFormat("[XMREngine]:   {0}", err.ToString());
-                        }
-                    }
-                    lock (m_ScriptErrors) {
-                        m_ScriptErrors[itemID] = errors;
-                    }
-                
-                    return;
+                    initerr = e2;
                 }
+            }
+            if (initerr != null) {
+                m_log.DebugFormat("[XMREngine]: Error starting script {0}: {1}",
+                                  itemID.ToString(), initerr.Message);
+                if (initerr.Message != "compilation errors") {
+                    m_log.DebugFormat("[XMREngine]:   exception:\n{0}", initerr.ToString());
+                }
+
+                /*
+                 * Post errors where GetScriptErrors() can see them.
+                 */
+                if (errors.Count == 0) {
+                    errors.Add(initerr.Message);
+                } else {
+                    foreach (Object err in errors) {
+                        m_log.DebugFormat("[XMREngine]:   {0}", err.ToString());
+                    }
+                }
+                lock (m_ScriptErrors) {
+                    m_ScriptErrors[itemID] = errors;
+                }
+                
+                return;
             }
 
             /*
