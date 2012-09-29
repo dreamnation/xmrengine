@@ -99,6 +99,7 @@ xmrengcomp.exe: MMRScriptCompile.cx $(patsubst %,$(OPENSIMDLLDIR)/%,$(SAOPENSIMD
 	cpp -C -P -nostdinc -o MMRScriptCompile_sa.cs -DSTANDALONE_COMPILER MMRScriptCompile.cx
 	gmcs -debug -out:xmrengcomp.exe \
 		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(SAOPENSIMDLLS)) \
+		-reference:System.Drawing.dll \
 		MMRScriptCompile_sa.cs
 
 # ------------------------------------------------------------------------------
@@ -109,6 +110,7 @@ xmrengcomp.exe: MMRScriptCompile.cx $(patsubst %,$(OPENSIMDLLDIR)/%,$(SAOPENSIMD
 xmrengcomp_secret.exe: $(SECRETSRCFILES) $(wildcard *.h)
 	gmcs -debug -out:$@ \
 		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(filter-out xmrengshare.dll,$(SAOPENSIMDLLS))) \
+		-reference:System.Drawing.dll \
 		$(SECRETSRCFILES)
 
 # ------------------------------------------------------------------------------
@@ -124,6 +126,7 @@ xmrengtest.zip: xmrengtest.exe $(patsubst %,$(OPENSIMDLLDIR)/%,$(TESTOSIMDLLS))
 xmrengtest.exe: $(TESTSRCFILES) $(wildcard *.h)
 	gmcs -debug -out:$@ \
 		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(filter-out xmrengshare.dll,$(TESTOSIMDLLS))) \
+		-reference:System.Drawing.dll \
 		$(TESTSRCFILES)
 
 xmrengtest_$(COMMITHASH)_$(COMMITCLEAN)_tester.cs: xmrengtest.cx makexmrengtestilslapi.inc $(wildcard *.h)
@@ -150,6 +153,7 @@ makexmrengtestilslapi.exe: makexmrengtestilslapi.cs
 $(OPENSIMDLLDIR)/xmrengshare.dll: $(SADLLFILES) $(patsubst %,$(OPENSIMDLLDIR)/%,$(filter-out xmrengshare.dll,$(SAOPENSIMDLLS)))
 	gmcs -debug -target:library -out:$(OPENSIMDLLDIR)/xmrengshare.dll \
 		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(filter-out xmrengshare.dll,$(SAOPENSIMDLLS))) \
+		-reference:System.Drawing.dll \
 		$(SADLLFILES)
 
 # ------------------------------------------------------------------------------

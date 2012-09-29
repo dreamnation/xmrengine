@@ -1032,6 +1032,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         /**
+         * @brief List fonts available.
+         */
+        public LSL_List xmrFontsAvailable ()
+        {
+            System.Drawing.FontFamily[] families = System.Drawing.FontFamily.Families;
+            object[] output = new object[families.Length];
+            for (int i = 0; i < families.Length; i ++) {
+                output[i] = new LSL_String (families[i].Name);
+            }
+            return new LSL_List (output);
+        }
+
+        /**
          * @brief An heap referencing variable was just set to a new object so we need to
          *        update instance.heapTotal to reflect the new amount of heap available
          *        to the script.
