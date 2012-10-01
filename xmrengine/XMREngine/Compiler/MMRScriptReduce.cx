@@ -2605,7 +2605,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					return null;
 				}
 				Token thisStmt;
-				if ((token is TokenType) || (token is TokenKwConst)) {
+				if (((token is TokenType) && (token.nextToken is TokenName)) || 
+				    (token is TokenKwConst)) {
 					thisStmt = ParseDeclVar (ref token, null);
 				} else {
 					thisStmt = ParseStmt (ref token);
