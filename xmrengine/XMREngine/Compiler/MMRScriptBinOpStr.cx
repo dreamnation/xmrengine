@@ -266,6 +266,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			bos.Add ("char>=char",   new BinOpStr (typeof (bool), BinOpStrCharGeChar));
 			bos.Add ("char+integer", new BinOpStr (typeof (char), BinOpStrCharAddInt, true));
 			bos.Add ("char-integer", new BinOpStr (typeof (char), BinOpStrCharSubInt, true));
+			bos.Add ("char-char",    new BinOpStr (typeof (int),  BinOpStrCharSubChar));
 		}
 
 		private static void DefineBinOpsInteger (Dictionary<string, BinOpStr> bos)
@@ -721,6 +722,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			right.PushVal (scg, errorAt, tokenTypeInt);
 			scg.ilGen.Emit (errorAt, OpCodes.Sub);
 			result.PopPost (scg, errorAt, tokenTypeChar);
+		}
+
+		private static void BinOpStrCharSubChar (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
+		{
+			result.PopPre (scg, errorAt);
+			left.PushVal (scg, errorAt, tokenTypeChar);
+			right.PushVal (scg, errorAt, tokenTypeChar);
+			scg.ilGen.Emit (errorAt, OpCodes.Sub);
+			result.PopPost (scg, errorAt, tokenTypeInt);
 		}
 
 		private static void BinOpStrIntEqInt (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
