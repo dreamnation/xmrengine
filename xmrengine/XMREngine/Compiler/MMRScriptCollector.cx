@@ -258,6 +258,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			Type[] ts       = label.stackDepth;
 			bool[] tsBoxeds = label.stackBoxeds;
+			int i;
 
 			if (ts == null) {
 				label.stackDepth  = this.ToArray ();
@@ -265,12 +266,25 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			} else if (ts.Length != this.Count) {
 				throw new Exception ("stack depth mismatch");
 			} else {
-				for (int i = this.Count; -- i >= 0;) {
-					if ((ts[i] != this[i]) || (tsBoxeds[i] != this.isBoxeds[i])) {
-						throw new Exception ("stack type mismatch");
-					}
+				for (i = this.Count; -- i >= 0;) {
+					if (tsBoxeds[i] != this.isBoxeds[i]) goto mismatch;
+					if (ts[i] == this[i]) continue;
+					if ((ts[i]   == typeof (bool) || ts[i]   == typeof (char) || ts[i]   == typeof (int)) && 
+					    (this[i] == typeof (bool) || this[i] == typeof (char) || this[i] == typeof (int))) continue;
+					if ((ts[i]   == typeof (double) || ts[i]   == typeof (float)) && 
+					    (this[i] == typeof (double) || this[i] == typeof (float))) continue;
+					goto mismatch;
 				}
 			}
+			return;
+		mismatch:
+			throw new Exception ("stack type mismatch: " + StackTypeString (ts[i], tsBoxeds[i]) + " vs " + StackTypeString (this[i], this.isBoxeds[i]));
+		}
+
+		private static string StackTypeString (Type ts, bool isBoxed)
+		{
+			if (!isBoxed) return ts.Name;
+			return "[" + ts.Name + "]";
 		}
 	}
 
