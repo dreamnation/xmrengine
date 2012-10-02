@@ -14,7 +14,8 @@ using System.Collections.Generic;
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
 	public class VarDict : IEnumerable {
-		public VarDict outerVarDict;
+		public VarDict outerVarDict;            // next outer VarDict to search
+		public TokenDeclSDTypeClass thisClass;  // this VarDict is for members of thisClass
 
 		private struct ArgTypes {
 			public TokenType[] argTypes;

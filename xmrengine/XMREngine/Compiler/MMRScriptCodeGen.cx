@@ -3676,7 +3676,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if ((var.sdtClass != null) && ((var.sdtFlags & ScriptReduce.SDT_STATIC) == 0)) {
 
 				if (!IsSDTInstMethod ()) {
-					// our arg0 points to an instance of XMRInstAbstract, not var.sdtClass
 					ErrorMsg (lVal, "cannot access instance member of class from static method");
 					return new CompValuVoid (lVal);
 				}
@@ -3687,7 +3686,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				 *    class A {
 				 *        integer I;
 				 *        class B {
-				 *            Print()
+				 *            Print ()
 				 *            {
 				 *                llOwnerSay ("I=" + (string)I); <- access to I not allowed inside class B.
 				 *                                                  explicit reference required as we don't
@@ -3695,10 +3694,25 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				 *            }
 				 *        }
 				 *    }
+				 *
+				 * But do allow something such as:
+				 *
+				 *    class A {
+				 *        integer I;
+				 *    }
+				 *    class B : A {
+				 *        Print ()
+				 *        {
+				 *            llOwnerSay ("I=" + (string)I);
+				 *        }
+				 *    }
 				 */
-				if (var.sdtClass != curDeclFunc.sdtClass) {
-					// our arg0 points to an instance of curDeclFunc.sdtClass, not var.sdtClass
-					ErrorMsg (lVal, "cannot access instance member of outer class with implied 'this'");
+				for (TokenDeclSDType c = curDeclFunc.sdtClass; c != var.sdtClass; c = c.extends) {
+					if (c == null) {
+						// our arg0 points to an instance of curDeclFunc.sdtClass, not var.sdtClass
+						ErrorMsg (lVal, "cannot access instance member of outer class with implied 'this'");
+						break;
+					}
 				}
 
 				CompValu thisCompValu = new CompValuArg (var.sdtClass.MakeRefToken (lVal), 0);
@@ -5346,6 +5360,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					val = var.location;
 					goto foundit;
 				}
+
+				TokenDeclSDTypeClass baseClass = vars.thisClass;
+				if (baseClass != null) {
+					while ((baseClass = baseClass.extends) != null) {
+						var = baseClass.members.FindExact (name, null);
+						if (var != null) {
+							val = var.location;
+							goto foundit;
+						}
+					}
+				}
 			}
 
 			/*
@@ -5435,6 +5460,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				if (argsig != null) {
 					var = FindSingleMember (vars, lValName.name, null);
 					if (var != null) return var;
+				}
+
+				// if this is the frame for some class members, try searching base class members too
+				TokenDeclSDTypeClass baseClass = vars.thisClass;
+				if (baseClass != null) {
+					while ((baseClass = baseClass.extends) != null) {
+						var = FindSingleMember (baseClass.members, lValName.name, argsig);
+						if (var != null) return var;
+						if (argsig != null) {
+							var = FindSingleMember (baseClass.members, lValName.name, null);
+							if (var != null) return var;
+						}
+					}
 				}
 			}
 

@@ -1584,8 +1584,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			token = u.nextToken;
 
 			// push a var frame to put all the class members in
-			tokenScript.PushVarFrame ();
-			tokdeclcl.members = tokenScript.variablesStack;
+			tokdeclcl.members.thisClass = tokdeclcl;
+			tokenScript.PushVarFrame (tokdeclcl.members);
 
 			/*
 			 * Create a function $instfieldnit to hold all explicit
