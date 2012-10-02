@@ -69,6 +69,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public List<bool> isBoxeds = new List<bool> ();
 
 		/**
+		 * @brief Clear both stacks.
+		 */
+		public new void Clear ()
+		{
+			base.Clear ();
+			isBoxeds.Clear ();
+		}
+
+		/**
 		 * @brief Pop call parameters and validate the types.
 		 */
 		public void Pop (ParameterInfo[] pis)
@@ -198,7 +207,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if ((ex == typeof (object)) && stBoxed) return;
 
 			// otherwise, it is disallowed
-			throw new Exception ("stack has " + st.Name + ", expect " + ex.Name);
+			throw new Exception ("stack has " + StackTypeString (st, stBoxed) + ", expect " + ex.Name);
 		}
 
 		/**
@@ -206,6 +215,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		public Type Pop (int n)
 		{
+			if (this.Count != isBoxeds.Count) throw new Exception ("isBoxeds count bad");
 			Type lastPopped = null;
 			int c = this.Count;
 			if (n > c) throw new Exception ("stack going negative");
@@ -214,6 +224,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				this.RemoveRange (c - n, n);
 				isBoxeds.RemoveRange (c - n, n);
 			}
+			if (this.Count != isBoxeds.Count) throw new Exception ("isBoxeds count bad");
 			return lastPopped;
 		}
 
@@ -227,12 +238,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			int c = this.Count;
 			if (n > c - 1) throw new Exception ("stack going negative");
+			if (this.Count != isBoxeds.Count) throw new Exception ("isBoxeds count bad");
 			return this[c-n-1];
 		}
 		public bool PeekBoxed (int n)
 		{
 			int c = isBoxeds.Count;
 			if (n > c - 1) throw new Exception ("stack going negative");
+			if (this.Count != isBoxeds.Count) throw new Exception ("isBoxeds count bad");
 			return isBoxeds[c-n-1];
 		}
 
@@ -245,6 +258,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		public void Push (Type t, bool isBoxed)
 		{
+			if (this.Count != isBoxeds.Count) throw new Exception ("isBoxeds count bad");
 			this.Add (t);
 			isBoxeds.Add (isBoxed);
 		}
@@ -259,6 +273,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			Type[] ts       = label.stackDepth;
 			bool[] tsBoxeds = label.stackBoxeds;
 			int i;
+
+			if (this.Count != isBoxeds.Count) throw new Exception ("isBoxeds count bad");
 
 			if (ts == null) {
 				label.stackDepth  = this.ToArray ();
@@ -1859,8 +1875,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					throw new Exception ("stack depth unknown at " + myLabel.name);
 				}
 				coll.stackDepth.Clear ();
-				foreach (Type t in myLabel.stackDepth) {
-					coll.stackDepth.Push (t);
+				int n = myLabel.stackDepth.Length;
+				for (int i = 0; i < n; i ++) {
+					coll.stackDepth.Push (myLabel.stackDepth[i], myLabel.stackBoxeds[i]);
 				}
 			}
 		}
