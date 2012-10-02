@@ -432,10 +432,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (offset >= s.Length) return "";
             return s.Substring (offset);
         }
+        // C# style
         public string xmrSubstring (string s, int offset, int length)
         {
             if (length <= 0) return "";
             if (offset >= s.Length) return "";
+            if (length > s.Length - offset) length = s.Length - offset;
             return s.Substring (offset, length);
         }
         // java style
@@ -443,6 +445,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             if (end <= beg) return "";
             if (beg >= s.Length) return "";
+            if (end >  s.Length) end = s.Length;
             return s.Substring (beg, end - beg);
         }
 
