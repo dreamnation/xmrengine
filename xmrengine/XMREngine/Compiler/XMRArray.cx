@@ -315,7 +315,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (key is LSL_Float)   return (SCRIPTFLOAT)(LSL_Float)key;
             if (key is LSL_Key)     return (string)(LSL_Key)key;
             if (key is LSL_String)  return (string)(LSL_String)key;
-            if (key is LSL_List)    return new XMRArrayListKey ((LSL_List)key, this);
+            if (key is LSL_List) {
+                object[] data = ((LSL_List)key).Data;
+                if (data.Length == 1) return FixKey (data[0]);
+                return new XMRArrayListKey ((LSL_List)key, this);
+            }
             return key;  // int, SCRIPTFLOAT, string, LSL_Vector, LSL_Rotation, etc are ok as is
         }
 
