@@ -4591,10 +4591,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				 */
 				foreach (StackedMethod sm in stackedMethods) {
 					int i = sm.methVTI;
-					string methName  = sm.methName;
-					DynamicMethod dm = scriptObjCode.dynamicMethods[methName];
-					vDynMeths[i]     = dm;
-					vMethTypes[i]    = GetDynamicMethodDelegateType (dm, sm.methSig);
+					string methName = sm.methName;
+					DynamicMethod dm;
+					if (scriptObjCode.dynamicMethods.TryGetValue (methName, out dm)) {
+						// method is not abstract
+						vDynMeths[i]  = dm;
+						vMethTypes[i] = GetDynamicMethodDelegateType (dm, sm.methSig);
+					}
 				}
 				stackedMethods = null;
 			}
