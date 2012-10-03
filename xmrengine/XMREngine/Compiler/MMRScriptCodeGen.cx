@@ -3807,6 +3807,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (rVal is TokenRValCall)      cVal = GenerateFromRValCall      ((TokenRValCall)rVal);
 			if (rVal is TokenRValCast)      cVal = GenerateFromRValCast      ((TokenRValCast)rVal);
 			if (rVal is TokenRValConst)     cVal = GenerateFromRValConst     ((TokenRValConst)rVal);
+			if (rVal is TokenRValInitDef)   cVal = GenerateFromRValInitDef   ((TokenRValInitDef)rVal);
 			if (rVal is TokenRValIsType)    cVal = GenerateFromRValIsType    ((TokenRValIsType)rVal);
 			if (rVal is TokenRValList)      cVal = GenerateFromRValList      ((TokenRValList)rVal);
 			if (rVal is TokenRValNewArIni)  cVal = GenerateFromRValNewArIni  ((TokenRValNewArIni)rVal);
@@ -4893,6 +4894,60 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			yRVal = GenerateFromRVal (rValVec.yRVal);
 			zRVal = GenerateFromRVal (rValVec.zRVal);
 			return new CompValuVec (new TokenTypeVec (rValVec), xRVal, yRVal, zRVal);
+		}
+
+		/**
+		 * @brief Generate code to get the default initialization value for a variable.
+		 */
+		private CompValu GenerateFromRValInitDef (TokenRValInitDef rValInitDef)
+		{
+			TokenType type = rValInitDef.type;
+
+			if (type is TokenTypeChar) {
+				return new CompValuChar (type, (char)0);
+			}
+			if (type is TokenTypeRot) {
+				CompValuFloat x = new CompValuFloat (type, SCRIPTBASECLASS.ZERO_ROTATION.x);
+				CompValuFloat y = new CompValuFloat (type, SCRIPTBASECLASS.ZERO_ROTATION.y);
+				CompValuFloat z = new CompValuFloat (type, SCRIPTBASECLASS.ZERO_ROTATION.z);
+				CompValuFloat s = new CompValuFloat (type, SCRIPTBASECLASS.ZERO_ROTATION.s);
+				return new CompValuRot (type, x, y, z, s);
+			}
+			if (type is TokenTypeStr) {
+				return new CompValuString (type, "");
+			}
+			if (type is TokenTypeVec) {
+				CompValuFloat x = new CompValuFloat (type, SCRIPTBASECLASS.ZERO_VECTOR.x);
+				CompValuFloat y = new CompValuFloat (type, SCRIPTBASECLASS.ZERO_VECTOR.y);
+				CompValuFloat z = new CompValuFloat (type, SCRIPTBASECLASS.ZERO_VECTOR.z);
+				return new CompValuVec (type, x, y, z);
+			}
+			if (type is TokenTypeInt) {
+				return new CompValuInteger (type, 0);
+			}
+			if (type is TokenTypeFloat) {
+				return new CompValuFloat (type, 0);
+			}
+			if (type is TokenTypeVoid) {
+				return new CompValuVoid (type);
+			}
+
+			/*
+			 * Default for 'object' type is 'undef'.
+			 * Likewise for script-defined classes and interfaces.
+			 */
+			if ((type is TokenTypeObject) || (type is TokenTypeSDTypeClass) || (type is TokenTypeSDTypeDelegate) || 
+			    (type is TokenTypeSDTypeInterface) || (type is TokenTypeExc)) {
+				return new CompValuNull (type);
+			}
+
+			/*
+			 * array and list
+			 */
+			CompValuTemp temp = new CompValuTemp (type, null, this);
+			PushDefaultValue (type);
+			temp.Pop (this, rValInitDef, type);
+			return temp;
 		}
 
 		/**

@@ -3208,6 +3208,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				 */
 				if (token is TokenKwSemi) {
 					token = token.nextToken;
+					if (initFunc != null) {
+						tokenDeclVar.init = TokenRValInitDef.Construct (tokenDeclVar);
+					}
 				} else if (token is TokenKwAssign) {
 					token = token.nextToken;
 					if (initFunc != null) {
@@ -6239,6 +6242,32 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			// gotta end somewhere
 			return this;
+		}
+	}
+
+	/**
+	 * @brief Default initialization value for the corresponding variable.
+	 */
+	public class TokenRValInitDef : TokenRVal {
+		public TokenType type;
+
+		public static TokenRValInitDef Construct (TokenDeclVar tokenDeclVar)
+		{
+			TokenRValInitDef zhis = new TokenRValInitDef (tokenDeclVar);
+			zhis.type = tokenDeclVar.type;
+			return zhis;
+		}
+		private TokenRValInitDef (Token original) : base (original) { }
+
+		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			return type;
+		}
+
+		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			// it's always just a constant so it's always very trivial
+			return true;
 		}
 	}
 
