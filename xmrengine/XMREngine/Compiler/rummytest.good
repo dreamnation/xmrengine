@@ -908,7 +908,6 @@ Running...
 "1102") touch_start()                     // discard
 "1102") llDetectedKey(0)
 "1102") llDetectedKey: "p0uuid"
-"1000") llRegionSayTo("p0uuid", 0, "end of turn")
 "1000") llSay(0, "It is Player1 Name's turn")
 "1000") llRegionSayTo("p1uuid", 0, "it's your turn; draw from stock or from discard pile")
 "1102") osSetDynamicTextureURL("", "image", "http://www.outerworldapps.com/cards-classic/qh.png", "", 0)
@@ -933,7 +932,6 @@ Running...
 "1102") touch_start()                     // discard
 "1102") llDetectedKey(0)
 "1102") llDetectedKey: "p1uuid"
-"1000") llRegionSayTo("p1uuid", 0, "end of turn")
 "1000") llSay(0, "It is Player0 Name's turn")
 "1000") llRegionSayTo("p0uuid", 0, "it's your turn; draw from stock or from discard pile")
 "1102") osSetDynamicTextureURL("", "image", "http://www.outerworldapps.com/cards-classic/td.png", "", 0)
@@ -988,6 +986,297 @@ Running...
 "2000") osSetDynamicTextureURL: "8d.png"
 "2001") osSetDynamicTextureURL: "9d.png"
 "2002") osSetDynamicTextureURL: "td.png"
+
+// player 1 clicks Start button to reshuffle and redeal
+// stack the deck so player 0 can go out right away
+"1105") touch_start()
+"1105") llDetectedKey(0)
+"1105") llDetectedKey: "p1uuid"
+"1000") llDialog("p1uuid", "Are you REALLY SURE you want to start the game?  All hands will be lost and deck will be reshuffled.", ["Shuffle","Never mind"], -646830961)
+"1000") listen(-646830961,"Player1 Name","p1uuid","Shuffle")
+"1000") llSay(0, "Player1 Name has started the game...")
+"1000") llListRandomize([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51], 1)
+"1102") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"2000") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"2001") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"2002") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"1000") llListRandomize: [ 0,26, 1,27, 2,28, 3,29, 4,30, 5,31, 6,32, 7,33, 8,34, 9,35,10,36,11,37,12,38,-
+                          13,39,14,40,15,41,16,42,17,43,18,44,19,45,20,46,21,47,22,48,23,49,24,50,25,51]
+"1000") llRegionSayTo("p0uuid", 0, "... Ace of Spades")
+"1000") llRegionSayTo("p1uuid", 0, "... Ace of Hearts")
+"1000") llRegionSayTo("p0uuid", 0, "... Two of Spades")
+"1000") llRegionSayTo("p1uuid", 0, "... Two of Hearts")
+"1000") llRegionSayTo("p0uuid", 0, "... Tree of Spades")
+"1000") llRegionSayTo("p1uuid", 0, "... Tree of Hearts")
+"1000") llRegionSayTo("p0uuid", 0, "... Four of Spades")
+"1000") llRegionSayTo("p1uuid", 0, "... Four of Hearts")
+"1000") llRegionSayTo("p0uuid", 0, "... Fife of Spades")
+"1000") llRegionSayTo("p1uuid", 0, "... Fife of Hearts")
+"1000") llRegionSayTo("p0uuid", 0, "... Six of Spades")
+"1000") llRegionSayTo("p1uuid", 0, "... Six of Hearts")
+"1000") llRegionSayTo("p0uuid", 0, "... Seven of Spades")
+"1000") llRegionSayTo("p1uuid", 0, "... Seven of Hearts")
+"1000") llRegionSayTo("p0uuid", 0, "... Eight of Spades")
+"1000") llRegionSayTo("p1uuid", 0, "... Eight of Hearts")
+"1000") llRegionSayTo("p0uuid", 0, "... Niner of Spades")
+"1000") llRegionSayTo("p1uuid", 0, "... Niner of Hearts")
+"1000") llRegionSayTo("p0uuid", 0, "... Ten of Spades")
+"1000") llRegionSayTo("p1uuid", 0, "... Ten of Hearts")
+"1000") llSay(0, "It is Player0 Name's turn")
+"1000") llRegionSayTo("p0uuid", 0, "it's your turn; draw from stock or from discard pile")
+"1102") osSetDynamicTextureURL("", "image", "http://www.outerworldapps.com/cards-classic/js.png", "", 0)
+"3000") llSetColor(<0,0,0>, -1)
+"3001") llSetColor(<0,0,0>, -1)
+"3002") llSetColor(<0,0,0>, -1)
+"3003") llSetColor(<0,0,0>, -1)
+"3004") llSetColor(<0,0,0>, -1)
+"3005") llSetColor(<0,0,0>, -1)
+"3006") llSetColor(<0,0,0>, -1)
+"3007") llSetColor(<0,0,0>, -1)
+"3008") llSetColor(<0,0,0>, -1)
+"3009") llSetColor(<0,0,0>, -1)
+"3010") llSetColor(<0,0,0>, -1)
+"3011") llSetColor(<0,0,0>, -1)
+"3012") llSetColor(<0,0,0>, -1)
+"3013") llSetColor(<0,0,0>, -1)
+"3014") llSetColor(<0,0,0>, -1)
+"3015") llSetColor(<0,0,0>, -1)
+"3016") llSetColor(<0,0,0>, -1)
+"3017") llSetColor(<0,0,0>, -1)
+"3018") llSetColor(<0,0,0>, -1)
+"3019") llSetColor(<0,0,0>, -1)
+"3100") llSetColor(<0,0,0>, -1)
+"3101") llSetColor(<0,0,0>, -1)
+"3102") llSetColor(<0,0,0>, -1)
+"3103") llSetColor(<0,0,0>, -1)
+"3104") llSetColor(<0,0,0>, -1)
+"3105") llSetColor(<0,0,0>, -1)
+"3106") llSetColor(<0,0,0>, -1)
+"3107") llSetColor(<0,0,0>, -1)
+"3108") llSetColor(<0,0,0>, -1)
+"3109") llSetColor(<0,0,0>, -1)
+"3110") llSetColor(<0,0,0>, -1)
+"3111") llSetColor(<0,0,0>, -1)
+"3112") llSetColor(<0,0,0>, -1)
+"3113") llSetColor(<0,0,0>, -1)
+"3114") llSetColor(<0,0,0>, -1)
+"3115") llSetColor(<0,0,0>, -1)
+"3116") llSetColor(<0,0,0>, -1)
+"3117") llSetColor(<0,0,0>, -1)
+"3118") llSetColor(<0,0,0>, -1)
+"3119") llSetColor(<0,0,0>, -1)
+"3000") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3001") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3002") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3003") llSetColor(<1,1,1>, -1)
+"3004") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3005") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3006") llSetColor(<1,1,1>, -1)
+"3007") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3008") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3009") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3100") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3101") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3102") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3103") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3104") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3105") llSetColor(<1,1,1>, -1)
+"3106") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3107") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3108") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3109") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3110") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3000") llSetColor(<1,1,1>, -1)
+"3001") llSetColor(<1,1,1>, -1)
+"3002") llSetColor(<1,1,1>, -1)
+"3003") osSetDynamicTextureURL("", "image", "http://www.outerworldapps.com/cards-classic/4s.png", "", 0)
+"3004") llSetColor(<1,1,1>, -1)
+"3005") llSetColor(<1,1,1>, -1)
+"3006") osSetDynamicTextureURL("", "image", "http://www.outerworldapps.com/cards-classic/7s.png", "", 0)
+"3007") llSetColor(<1,1,1>, -1)
+"3008") llSetColor(<1,1,1>, -1)
+"3009") llSetColor(<1,1,1>, -1)
+"3100") llSetColor(<1,1,1>, -1)
+"3101") llSetColor(<1,1,1>, -1)
+"3102") llSetColor(<1,1,1>, -1)
+"3103") llSetColor(<1,1,1>, -1)
+"3104") llSetColor(<1,1,1>, -1)
+"3105") osSetDynamicTextureURL("", "image", "http://www.outerworldapps.com/cards-classic/6h.png", "", 0)
+"3106") llSetColor(<1,1,1>, -1)
+"3107") llSetColor(<1,1,1>, -1)
+"3108") llSetColor(<1,1,1>, -1)
+"3109") llSetColor(<1,1,1>, -1)
+"3000") osSetDynamicTextureURL("", "image", "http://www.outerworldapps.com/cards-classic/as.png", "", 0)
+"3001") osSetDynamicTextureURL("", "image", "http://www.outerworldapps.com/cards-classic/2s.png", "", 0)
+"3002") osSetDynamicTextureURL("", "image", "http://www.outerworldapps.com/cards-classic/3s.png", "", 0)
+"3004") osSetDynamicTextureURL("", "image", "http://www.outerworldapps.com/cards-classic/5s.png", "", 0)
+"3005") osSetDynamicTextureURL("", "image", "http://www.outerworldapps.com/cards-classic/6s.png", "", 0)
+"3007") osSetDynamicTextureURL("", "image", "http://www.outerworldapps.com/cards-classic/8s.png", "", 0)
+"3008") osSetDynamicTextureURL("", "image", "http://www.outerworldapps.com/cards-classic/9s.png", "", 0)
+"3009") osSetDynamicTextureURL("", "image", "http://www.outerworldapps.com/cards-classic/ts.png", "", 0)
+"3100") osSetDynamicTextureURL("", "image", "http://www.outerworldapps.com/cards-classic/ah.png", "", 0)
+"3101") osSetDynamicTextureURL("", "image", "http://www.outerworldapps.com/cards-classic/2h.png", "", 0)
+"3102") osSetDynamicTextureURL("", "image", "http://www.outerworldapps.com/cards-classic/3h.png", "", 0)
+"3103") osSetDynamicTextureURL("", "image", "http://www.outerworldapps.com/cards-classic/4h.png", "", 0)
+"3104") osSetDynamicTextureURL("", "image", "http://www.outerworldapps.com/cards-classic/5h.png", "", 0)
+"3106") osSetDynamicTextureURL("", "image", "http://www.outerworldapps.com/cards-classic/7h.png", "", 0)
+"3107") osSetDynamicTextureURL("", "image", "http://www.outerworldapps.com/cards-classic/8h.png", "", 0)
+"3108") osSetDynamicTextureURL("", "image", "http://www.outerworldapps.com/cards-classic/9h.png", "", 0)
+"3109") osSetDynamicTextureURL("", "image", "http://www.outerworldapps.com/cards-classic/th.png", "", 0)
+
+// cards dealt to player 0
+"3000") osSetDynamicTextureURL: "as.png"  // p0 pcp0
+"3001") osSetDynamicTextureURL: "2s.png"  // p0 pcp1
+"3002") osSetDynamicTextureURL: "3s.png"  // p0 pcp2
+"3003") osSetDynamicTextureURL: "4s.png"  // p0 pcp3
+"3004") osSetDynamicTextureURL: "5s.png"  // p0 pcp4
+"3005") osSetDynamicTextureURL: "6s.png"  // p0 pcp5
+"3006") osSetDynamicTextureURL: "7s.png"  // p0 pcp6
+"3007") osSetDynamicTextureURL: "8s.png"  // p0 pcp7
+"3008") osSetDynamicTextureURL: "9s.png"  // p0 pcp8
+"3009") osSetDynamicTextureURL: "ts.png"  // p0 pcp9
+
+// cards dealt to player 1
+"3100") osSetDynamicTextureURL: "ah.png"  // p1 pcp0
+"3101") osSetDynamicTextureURL: "2h.png"  // p1 pcp1
+"3102") osSetDynamicTextureURL: "3h.png"  // p1 pcp2
+"3103") osSetDynamicTextureURL: "4h.png"  // p1 pcp3
+"3104") osSetDynamicTextureURL: "5h.png"  // p1 pcp4
+"3105") osSetDynamicTextureURL: "6h.png"  // p1 pcp5
+"3106") osSetDynamicTextureURL: "7h.png"  // p1 pcp6
+"3107") osSetDynamicTextureURL: "8h.png"  // p1 pcp7
+"3108") osSetDynamicTextureURL: "9h.png"  // p1 pcp8
+"3109") osSetDynamicTextureURL: "th.png"  // p1 pcp9
+
+// discard
+"1102") osSetDynamicTextureURL: "js.png"
+
+// player 0 clicks on discard, gets jack-spades
+"1102") touch_start()                     // discard
+"1102") llDetectedKey(0)
+"1102") llDetectedKey: "p0uuid"
+"1000") llRegionSayTo("p0uuid", 0, "... Jack of Spades")
+"1000") llRegionSayTo("p0uuid", 0, "now do any melding you want then put one card in discard pile")
+"1102") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3010") llSetColor(<1,1,1>, -1)
+"3010") osSetDynamicTextureURL("", "image", "http://www.outerworldapps.com/cards-classic/js.png", "", 0)
+"3010") osSetDynamicTextureURL: "js.png"  // p0 pcp10
+
+// player 0 selects everything for melding (ace-spades .. jack-spades)
+"3000") touch_start() ; llDetectedKey: "p0uuid"
+"3000") llDetectedKey(0)
+"1000") llRegionSayTo("p0uuid", 0, "... [ Ace of Spades ]")
+"3000") llSetColor(<0.75,0.75,1>, -1)
+"3001") touch_start() ; llDetectedKey: "p0uuid"
+"3001") llDetectedKey(0)
+"1000") llRegionSayTo("p0uuid", 0, "... [ Two of Spades ]")
+"3001") llSetColor(<0.75,0.75,1>, -1)
+"3002") touch_start() ; llDetectedKey: "p0uuid"
+"3002") llDetectedKey(0)
+"1000") llRegionSayTo("p0uuid", 0, "... [ Tree of Spades ]")
+"3002") llSetColor(<0.75,0.75,1>, -1)
+"3003") touch_start() ; llDetectedKey: "p0uuid"
+"3003") llDetectedKey(0)
+"1000") llRegionSayTo("p0uuid", 0, "... [ Four of Spades ]")
+"3003") llSetColor(<0.75,0.75,1>, -1)
+"3004") touch_start() ; llDetectedKey: "p0uuid"
+"3004") llDetectedKey(0)
+"1000") llRegionSayTo("p0uuid", 0, "... [ Fife of Spades ]")
+"3004") llSetColor(<0.75,0.75,1>, -1)
+"3005") touch_start() ; llDetectedKey: "p0uuid"
+"3005") llDetectedKey(0)
+"1000") llRegionSayTo("p0uuid", 0, "... [ Six of Spades ]")
+"3005") llSetColor(<0.75,0.75,1>, -1)
+"3006") touch_start() ; llDetectedKey: "p0uuid"
+"3006") llDetectedKey(0)
+"1000") llRegionSayTo("p0uuid", 0, "... [ Seven of Spades ]")
+"3006") llSetColor(<0.75,0.75,1>, -1)
+"3007") touch_start() ; llDetectedKey: "p0uuid"
+"3007") llDetectedKey(0)
+"1000") llRegionSayTo("p0uuid", 0, "... [ Eight of Spades ]")
+"3007") llSetColor(<0.75,0.75,1>, -1)
+"3008") touch_start() ; llDetectedKey: "p0uuid"
+"3008") llDetectedKey(0)
+"1000") llRegionSayTo("p0uuid", 0, "... [ Niner of Spades ]")
+"3008") llSetColor(<0.75,0.75,1>, -1)
+"3009") touch_start() ; llDetectedKey: "p0uuid"
+"3009") llDetectedKey(0)
+"1000") llRegionSayTo("p0uuid", 0, "... [ Ten of Spades ]")
+"3009") llSetColor(<0.75,0.75,1>, -1)
+"3010") touch_start() ; llDetectedKey: "p0uuid"
+"3010") llDetectedKey(0)
+"1000") llRegionSayTo("p0uuid", 0, "... [ Jack of Spades ]")
+"3010") llSetColor(<0.75,0.75,1>, -1)
+
+// this should meld and go out
+"1202") touch_start() ; llDetectedKey: "p0uuid"
+"1202") llDetectedKey(0)
+"1000") llSay(0, "Player0 Name just melded Ace of Spades, Two of Spades, Tree of Spades, Four of Spades, Fife of Spades, Six of Spades, Seven of Spades, Eight of Spades, Niner of Spades, Ten of Spades, Jack of Spades")
+"1000") llSay(0, "GAME OVER !!!  Hooray Player0 Name !!!")
+"1000") llSay(0, "... 1")
+"1000") llSay(0, "... 3")
+"1000") llSay(0, "... 6")
+"1000") llSay(0, "... 10")
+"1000") llSay(0, "... 15")
+"1000") llSay(0, "... 21")
+"1000") llSay(0, "... 28")
+"1000") llSay(0, "... 36")
+"1000") llSay(0, "... 45")
+"1000") llSay(0, "... 55")
+"2020") osSetDynamicTextureURL("", "image", "http://www.outerworldapps.com/cards-classic/as.png", "", 0)
+"2021") osSetDynamicTextureURL("", "image", "http://www.outerworldapps.com/cards-classic/2s.png", "", 0)
+"2023") osSetDynamicTextureURL("", "image", "http://www.outerworldapps.com/cards-classic/js.png", "", 0)
+"1300") osSetDynamicTextureData("", "vector", "FontSize 14; Text 0 : Player0 Name : 0; ", "width:512,height:64", 0)
+"1301") osSetDynamicTextureData("", "vector", "FontSize 14; Text 0 : Player1 Name : 0; ", "width:512,height:64", 0)
+"3000") llSetColor(<0,0,0>, -1)
+"3001") llSetColor(<0,0,0>, -1)
+"3002") llSetColor(<0,0,0>, -1)
+"3003") llSetColor(<0,0,0>, -1)
+"3004") llSetColor(<0,0,0>, -1)
+"3005") llSetColor(<0,0,0>, -1)
+"3006") llSetColor(<0,0,0>, -1)
+"3007") llSetColor(<0,0,0>, -1)
+"3008") llSetColor(<0,0,0>, -1)
+"3009") llSetColor(<0,0,0>, -1)
+"3010") llSetColor(<0,0,0>, -1)
+"3100") llSetColor(<0,0,0>, -1)
+"3101") llSetColor(<0,0,0>, -1)
+"3102") llSetColor(<0,0,0>, -1)
+"3103") llSetColor(<0,0,0>, -1)
+"3104") llSetColor(<0,0,0>, -1)
+"3105") llSetColor(<0,0,0>, -1)
+"3106") llSetColor(<0,0,0>, -1)
+"3107") llSetColor(<0,0,0>, -1)
+"3108") llSetColor(<0,0,0>, -1)
+"3109") llSetColor(<0,0,0>, -1)
+"3000") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3001") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3002") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3003") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3004") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3005") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3006") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3007") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3008") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3009") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3010") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3100") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3101") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3102") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3103") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3104") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3105") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3106") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3107") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3108") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"3109") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
+"1300") osSetDynamicTextureData: "0 : Player0 Name : 0"
+"1300") osSetDynamicTextureData("", "vector", "FontSize 14; Text 0 : Player0 Name : 55; ", "width:512,height:64", 0)
+"1301") osSetDynamicTextureData: "0 : Player1 Name : 0"
+"2020") osSetDynamicTextureURL: "as.png"
+"2021") osSetDynamicTextureURL: "2s.png"
+"2023") osSetDynamicTextureURL: "js.png"
+"1300") osSetDynamicTextureData: "0 : Player0 Name : 55"
 
 STATUS
 "1000") [RummyBoard:1000] [default] WAITINGFOREVENT

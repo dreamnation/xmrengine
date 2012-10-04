@@ -183,7 +183,7 @@ default {
                         Meld meld = Meld.Construct ("", meldno);
                         cp = MeldCardPanel.Construct (id, meld, cardno);
                     } else if (xmrSubstring (name, 0, 9) == "MeldPanel") {
-                        integer meldno = (integer)xmrSubstring (message, 9);
+                        integer meldno = (integer)xmrSubstring (name, 9);
                         cp = Meld.Construct (id, meldno);
                     } else if (xmrSubstring (name, 0, 15) == "PlayerCardPanel") {
                         key avuuid = xmrSubstring (message, 4);
@@ -324,7 +324,6 @@ SetCurrentPlayer (integer n)
 {
     if (currentPlayer != undef) {
         currentPlayer.UpdateDisplay ();
-        SendAvErrMsg (currentPlayer.avuuid, "end of turn");
     }
     do {
         if (n == playersByIndex.count) n = 0;
@@ -362,7 +361,7 @@ PlayerIsOut ()
             ps.UpdateDisplay ();
         }
     }
-
+    currentPlayer.UpdateDisplay ();
     currentPlayer = undef;
 }
 
