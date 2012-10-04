@@ -35,10 +35,10 @@ mono --debug xmrengtest.exe -eventio -ipcchannel -2135482309 \
 	-primname controller -primuuid 0000 ipctest0.lsl \
 	-primname player1 -primuuid 1111 ipctest1.lsl << EOF | tee ipctest.out
 1)touch_start(0)
-0)llListRandomize:69827238
-1)touch_start(0)
-1)touch_start(0)
-1)touch_start(0)
+"0000")llListRandomize:69827238
+"1111")touch_start(0)
+touch_start(0)
+touch_start(0)
 EOF
 diff ipctest.out ipctest.good
 
@@ -48,8 +48,8 @@ mono --debug xmrengtest.exe -eventio -ipcchannel -2135482309 -serialize \
 1)touch_start(0)
 0)llListRandomize:69827238
 1)touch_start(0)
-1)touch_start(0)
-1)touch_start(0)
+touch_start(0)
+touch_start(0)
 EOF
 diff ipctest.ser ipctest.gser
 

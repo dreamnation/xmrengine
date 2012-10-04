@@ -2,26 +2,26 @@ Compiling ipctest0.lsl ...
 Running...
 Compiling ipctest1.lsl ...
 Running...
-0) llOwnerSay: 0
-0) llOwnerSay: 1
-0) llOwnerSay: 2
-0) llOwnerSay: 3
-0) llOwnerSay: 4
-1) llOwnerSay: 0
-1) llOwnerSay: 1
-1) llOwnerSay: 2
-1) llOwnerSay: 3
-1) llOwnerSay: 4
-1) llSetTimerEvent(1)
-1) llSetTimerEvent(0)
+"0000") llOwnerSay: 0
+"0000") llOwnerSay: 1
+"0000") llOwnerSay: 2
+"0000") llOwnerSay: 3
+"0000") llOwnerSay: 4
+"1111") llOwnerSay: 0
+"1111") llOwnerSay: 1
+"1111") llOwnerSay: 2
+"1111") llOwnerSay: 3
+"1111") llOwnerSay: 4
+"1111") llSetTimerEvent(1)
+"1111") llSetTimerEvent(0)
 1)touch_start(0)
-0) llListRandomize([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51], 1)
-0)llListRandomize:69827238
-1) llOwnerSay: Deck has been shuffled
-1) llOwnerSay: Hand: 
-1)touch_start(0)
-1) llOwnerSay: Hand: 44,
-1)touch_start(0)
-1) llOwnerSay: Hand: 44,39,
-1)touch_start(0)
-1) llOwnerSay: Hand: 44,39,6,
+"0000") llListRandomize([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51], 1)
+"0000")llListRandomize:69827238
+"1111") llOwnerSay: Deck has been shuffled
+"1111") llOwnerSay: Hand: 
+"1111")touch_start(0)
+"1111") llOwnerSay: Hand: 44,
+touch_start(0)
+"1111") llOwnerSay: Hand: 44,39,
+touch_start(0)
+"1111") llOwnerSay: Hand: 44,39,6,

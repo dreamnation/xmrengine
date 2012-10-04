@@ -35,6 +35,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public static LinkedList<QueuedEvent> queuedEvents = new LinkedList<QueuedEvent> ();
         public static MemoryStream serializeStream = null;
         public static ScriptRoot[] scriptRoots;
+        public static Dictionary<string, ScriptRoot> scriptRootPrimUUIDs = new Dictionary<string, ScriptRoot> ();
 
         /**
          * @brief Stand-alone test program.
@@ -173,7 +174,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 new ScriptRoot (new TestInstance (scriptObjCode), i, perPrims[i]);
             }
 
+            /*
+             * Index the scripts by prim uuid if given.
+             */
+            foreach (ScriptRoot sr in scriptRoots) {
+                if (sr.primUUID != "") {
+                    if (scriptRootPrimUUIDs.ContainsKey (sr.primUUID)) {
+                        Console.WriteLine ("duplicate use of -primuuid " + sr.primUUID);
+                        Environment.Exit (1);
+                    }
+                    scriptRootPrimUUIDs.Add (sr.primUUID, sr);
+                }
+            }
+
             int index = 0;
+            ScriptRoot scriptRoot = scriptRoots[0];
             Token t = null;
             while (true) {
 
@@ -215,9 +230,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     do {
                         steppedSomething = false;
                         for (int i = 0; i < scriptRoots.Length; i ++) {
-                            ScriptRoot scriptRoot = scriptRoots[(index+i)%scriptRoots.Length];
-                            if (scriptRoot.iState == IState.YIELDING) {
-                                scriptRoot.StepScript ();
+                            ScriptRoot sr = scriptRoots[(index+i)%scriptRoots.Length];
+                            if (sr.iState == IState.YIELDING) {
+                                sr.StepScript ();
                                 steppedSomething = true;
                                 didSomething = true;
                             }
@@ -266,33 +281,40 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                         /*
                          * Get index token from first integer on line.
-                         * Can be optionally followed by a close parenthesis.
+                         * Can also be a string containing the prim uuid.
                          */
                         Token u = t;
-                        if (u is TokenInt) {
+                        if ((u is TokenInt) && (u.nextToken is TokenKwParClose)) {
                             index = ((TokenInt)u).val;
                             if ((index < 0) || (index >= scriptRoots.Length)) {
                                 u.ErrorMsg ("script index out of range 0.." + (scriptRoots.Length - 1));
                                 t = null;
                                 continue;
                             }
-                            u = u.nextToken;
-                            if (u is TokenKwParClose) {
-                                u = u.nextToken;
+                            scriptRoot = scriptRoots[index];
+                            u = u.nextToken.nextToken;
+                        } else if ((u is TokenStr) && (u.nextToken is TokenKwParClose)) {
+                            string uuid = ((TokenStr)u).val;
+                            if (!scriptRootPrimUUIDs.ContainsKey (uuid)) {
+                                u.ErrorMsg ("unknown script prim uuid");
+                                t = null;
+                                continue;
                             }
+                            scriptRoot = scriptRootPrimUUIDs[uuid];
+                            index = scriptRoot.index;
+                            u = u.nextToken.nextToken;
                         }
 
                         /*
                          * If that script isn't ready for input, step everything until it is.
                          */
-                        ScriptRoot scriptRoot = scriptRoots[index];
                         if ((scriptRoot.iState != IState.WAITINGFORINPUT) && 
                             (scriptRoot.iState != IState.WAITINGFOREVENT)) break;
 
                         /*
                          * Process the input, getting the script ready to run again.
                          */
-                        t = scriptRoots[index].ProcessInput (u);
+                        t = scriptRoot.ProcessInput (u);
                     }
 
                     /*
@@ -618,6 +640,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     public class ScriptRoot {
         public static object iStateLock = new object ();
 
+        public  int    index;
         public  int    linkNum;
         public  IState iState;
         public  Listener[] listeners = new Listener[65];
@@ -632,6 +655,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public ScriptRoot (TestInstance inst, int index, PerPrim perPrim)
         {
+            this.index    = index;
             this.inst     = inst;
             this.thread   = new Thread (ScriptThread);
             this.iState   = IState.YIELDING;
@@ -641,7 +665,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             this.msgPrefix = "";
             if (XMREngTest.scriptRoots.Length > 1) {
-                this.msgPrefix = index.ToString () + ") ";
+                if (primUUID != "") {
+                    StringBuilder sb = new StringBuilder ();
+                    SCRIPTBASECLASS.PrintParam (sb, primUUID);
+                    sb.Append (") ");
+                    this.msgPrefix = sb.ToString ();
+                } else {
+                    this.msgPrefix = index.ToString () + ") ";
+                }
             }
             XMREngTest.scriptRoots[index] = this;
 
