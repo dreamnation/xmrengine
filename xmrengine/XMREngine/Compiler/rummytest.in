@@ -3,6 +3,7 @@
 "1103") llGetOwner: "rbuuid"
 "1104") llGetOwner: "rbuuid"
 "1105") llGetOwner: "rbuuid"
+"1101") osSetDynamicTextureURL: "bluback.png"
 "1103") osSetDynamicTextureData: "HelpButtonTextUUID"
 "1104") osSetDynamicTextureData: "ResetButtonTextUUID"
 "1105") osSetDynamicTextureData: "StartButtonTextUUID"
@@ -276,6 +277,6 @@
 "2020") osSetDynamicTextureURL: "as.png"
 "2021") osSetDynamicTextureURL: "2s.png"
 "2023") osSetDynamicTextureURL: "js.png"
-"1300") osSetDynamicTextureData: "0 : Player0 Name : 55"
+"1300") osSetDynamicTextureData: "0 : Player0 Name : 110"
 
 STATUS

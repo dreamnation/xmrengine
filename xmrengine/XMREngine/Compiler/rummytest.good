@@ -1212,17 +1212,17 @@ Running...
 "1202") touch_start() ; llDetectedKey: "p0uuid"
 "1202") llDetectedKey(0)
 "1000") llSay(0, "Player0 Name just melded Ace of Spades, Two of Spades, Tree of Spades, Four of Spades, Fife of Spades, Six of Spades, Seven of Spades, Eight of Spades, Niner of Spades, Ten of Spades, Jack of Spades")
-"1000") llSay(0, "GAME OVER !!!  Hooray Player0 Name !!!")
-"1000") llSay(0, "... 1")
-"1000") llSay(0, "... 3")
-"1000") llSay(0, "... 6")
-"1000") llSay(0, "... 10")
-"1000") llSay(0, "... 15")
-"1000") llSay(0, "... 21")
-"1000") llSay(0, "... 28")
-"1000") llSay(0, "... 36")
-"1000") llSay(0, "... 45")
-"1000") llSay(0, "... 55")
+"1000") llSay(0, "GAME OVER !!!  Hooray Player0 Name has GONE RUMMY !!!")
+"1000") llSay(0, "... Player1 Name Ace of Hearts -> 2")
+"1000") llSay(0, "... Player1 Name Two of Hearts -> 6")
+"1000") llSay(0, "... Player1 Name Tree of Hearts -> 12")
+"1000") llSay(0, "... Player1 Name Four of Hearts -> 20")
+"1000") llSay(0, "... Player1 Name Fife of Hearts -> 30")
+"1000") llSay(0, "... Player1 Name Six of Hearts -> 42")
+"1000") llSay(0, "... Player1 Name Seven of Hearts -> 56")
+"1000") llSay(0, "... Player1 Name Eight of Hearts -> 72")
+"1000") llSay(0, "... Player1 Name Niner of Hearts -> 90")
+"1000") llSay(0, "... Player1 Name Ten of Hearts -> 110")
 "2020") osSetDynamicTextureURL("", "image", "http://www.outerworldapps.com/cards-classic/as.png", "", 0)
 "2021") osSetDynamicTextureURL("", "image", "http://www.outerworldapps.com/cards-classic/2s.png", "", 0)
 "2023") osSetDynamicTextureURL("", "image", "http://www.outerworldapps.com/cards-classic/js.png", "", 0)
@@ -1271,12 +1271,12 @@ Running...
 "3108") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
 "3109") llSetTexture("5748decc-f629-461c-9a36-a35a221fe21f", -1)
 "1300") osSetDynamicTextureData: "0 : Player0 Name : 0"
-"1300") osSetDynamicTextureData("", "vector", "FontSize 14; Text 0 : Player0 Name : 55; ", "width:512,height:64", 0)
+"1300") osSetDynamicTextureData("", "vector", "FontSize 14; Text 0 : Player0 Name : 110; ", "width:512,height:64", 0)
 "1301") osSetDynamicTextureData: "0 : Player1 Name : 0"
 "2020") osSetDynamicTextureURL: "as.png"
 "2021") osSetDynamicTextureURL: "2s.png"
 "2023") osSetDynamicTextureURL: "js.png"
-"1300") osSetDynamicTextureData: "0 : Player0 Name : 55"
+"1300") osSetDynamicTextureData: "0 : Player0 Name : 110"
 
 STATUS
 "1000") [RummyBoard:1000] [default] WAITINGFOREVENT

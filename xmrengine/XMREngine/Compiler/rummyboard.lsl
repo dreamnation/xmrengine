@@ -51,6 +51,9 @@ integer pingPlayerIndex;
 list sortedCards = [ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,
                     26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51];
 
+//                                     A 2 3 4 5 6 7 8 9 10 J  Q  K
+integer[] cardpoints = new integer[] { 1,2,3,4,5,6,7,8,9,10,10,10,10 };
+
 
 default {
     state_entry ()
@@ -318,6 +321,7 @@ StartGame ()
  */
 SelectNextPlayer ()
 {
+    currentPlayer.hasMeldedBeforeThisTurn = currentPlayer.hasEverMeldedThisHand;
     SetCurrentPlayer (currentPlayer.index + 1);
 }
 SetCurrentPlayer (integer n)
@@ -334,16 +338,22 @@ SetCurrentPlayer (integer n)
     phaseDrawing = 1;
 }
 
-//                  A 2 3 4 5 6 7 8 9 10 J  Q  K
-list cardpoints = [ 1,2,3,4,5,6,7,8,9,10,11,12,13 ];
 
 /**
  * @brief The current player is now out so the game is over.
  */
 PlayerIsOut ()
 {
-    llSay (PUBLIC_CHANNEL, "GAME OVER !!!  Hooray " + currentPlayer.avname + " !!!");
+    integer factor = 1;
+    string goneRummy = "";
+    if (!currentPlayer.hasMeldedBeforeThisTurn) {
+        factor = 2;
+        goneRummy = " has GONE RUMMY";
+    }
 
+    llSay (PUBLIC_CHANNEL, "GAME OVER !!!  Hooray " + currentPlayer.avname + goneRummy + " !!!");
+
+    integer score = 0;
     object v1;
     object v2;
     foreach (,v1 in playersByIndex) {
@@ -353,14 +363,15 @@ PlayerIsOut ()
             foreach (,v2 in player.cardPanels) {
                 PlayerCardPanel pcp = (PlayerCardPanel)v2;
                 if (pcp.cardno >= 0) {
-                    currentPlayer.score += (integer)cardpoints[pcp.cardno%13];
+                    score += cardpoints[pcp.cardno%13] * factor;
+                    llSay (PUBLIC_CHANNEL, "... " + player.avname + " " + CardName (pcp.cardno) + " -> " + score);
                     pcp.RemoveFromHand ();
-                    llSay (PUBLIC_CHANNEL, "... " + currentPlayer.score);
                 }
             }
             ps.UpdateDisplay ();
         }
     }
+    currentPlayer.score += score;
     currentPlayer.UpdateDisplay ();
     currentPlayer = undef;
 }
@@ -388,6 +399,10 @@ class StockCardPanel : CardPanel {
             singleton = new StockCardPanel ();
         }
         singleton.id = id;
+
+        string url = "http://www.outerworldapps.com/cards-classic/bluback.png";
+        llRegionSayTo (id, RUMMY_CHANNEL, "sdtu" + url);
+
         return singleton;
     }
 
@@ -822,6 +837,7 @@ class Meld : CardPanel {
                 pcp.RemoveFromHand ();
             }
             llSay (0, currentPlayer.avname + " just melded " + cardnames);
+            currentPlayer.hasEverMeldedThisHand = 1;
             if (currentPlayer.NumberCardsInHand () == 0) {
                 PlayerIsOut ();
             } else {
@@ -1019,6 +1035,8 @@ class MeldCardPanel : CardPanel {
  */
 class Player {
     public array cardPanels;        // integer 0..19 -> PlayerCardPanel
+    public integer hasMeldedBeforeThisTurn;
+    public integer hasEverMeldedThisHand;
     public integer index = -1;      // 0..5 (or -1 if not playing)
     public integer lastCardAdded;   // last card added to hand (ie, last card drawn)
     public integer score;           // accumulated score for all hands
@@ -1050,6 +1068,8 @@ class Player {
             PlayerCardPanel pcp = (PlayerCardPanel)v;
             pcp.RemoveFromHand ();
         }
+        hasMeldedBeforeThisTurn = 0;
+        hasEverMeldedThisHand   = 0;
     }
 
     /**
