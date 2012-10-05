@@ -4,6 +4,8 @@ xmroption objects;
 xmroption trycatch;
 xmrOPtion expIRYdays 5;
 
+/*/ an idiot way to make a comment /*/
+
 integer SomethingToCall ()
 {
     integer i = 0;

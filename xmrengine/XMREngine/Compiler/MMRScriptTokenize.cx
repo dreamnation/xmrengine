@@ -326,6 +326,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                     continue;
                 }
                 if ((i + 2 <= source.Length) && (source.Substring (i, 2).Equals ("/*"))) {
+                    i += 2;
                     while ((i + 1 < source.Length) && (((c = source[i]) != '*') || (source[i+1] != '/'))) {
                         if (c == '\n') {
                             lineNo ++;
