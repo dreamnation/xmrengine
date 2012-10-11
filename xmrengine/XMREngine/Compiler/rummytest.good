@@ -302,7 +302,7 @@ Running...
 "3119") llGetOwner()
 "1101") llGetOwner: "rbuuid"  // rummyboard
 "1101") llSetTimerEvent(0.25)
-"1101") llSetTimerEvent(0)
+"1101") osSetDynamicTextureURL("", "image", "http://www.outerworldapps.com/cards-classic/bluback.png", "", 0)
 "1102") llGetOwner: "rbuuid"
 "1102") llSetTimerEvent(0.25)
 "1102") llSetTimerEvent(0)
@@ -315,6 +315,8 @@ Running...
 "1105") llGetOwner: "rbuuid"
 "1105") llSetTimerEvent(0.25)
 "1105") osSetDynamicTextureData("", "vector", "FontSize 14; Text START; ", "width:128,height:64", 0)
+"1101") osSetDynamicTextureURL: "bluback.png"
+"1101") llSetTimerEvent(0)
 "1103") osSetDynamicTextureData: "HelpButtonTextUUID"
 "1103") llSetTimerEvent(0)
 "1104") osSetDynamicTextureData: "ResetButtonTextUUID"
