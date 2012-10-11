@@ -63,6 +63,7 @@ MMRScriptCompile.cs: ../Compiler/MMRScriptCompile.cx
 	cpp -I../Compiler -C -P -nostdinc -o $@ $<
 
 XMREngine_$(COMMITHASH)_$(COMMITCLEAN).cs: XMREngine.cx $(wildcard ../*/*.h)
+	rm -f XMREngine_*.cs
 	cpp -I../Compiler \
 		-DGITCOMMITHASH='"$(COMMITHASH)"' \
 		-DGITCOMMITDATE='"$(COMMITDATE)"' \

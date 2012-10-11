@@ -103,6 +103,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static MethodInfo stringConcat2MethodInfo     = GetStaticMethod (typeof (String), "Concat", new Type[] { typeof (string), typeof (string) });
 		private static MethodInfo stringConcat3MethodInfo     = GetStaticMethod (typeof (String), "Concat", new Type[] { typeof (string), typeof (string), typeof (string) });
 		private static MethodInfo stringConcat4MethodInfo     = GetStaticMethod (typeof (String), "Concat", new Type[] { typeof (string), typeof (string), typeof (string), typeof (string) });
+		private static MethodInfo lslRotationNegateMethodInfo = GetStaticMethod (typeof (ScriptCodeGen), 
+		                                                                         "LSLRotationNegate", 
+		                                                                         new Type[] { typeof (LSL_Rotation) });
 		private static MethodInfo lslVectorNegateMethodInfo = GetStaticMethod (typeof (ScriptCodeGen), 
 		                                                                       "LSLVectorNegate", 
 		                                                                       new Type[] { typeof (LSL_Vector) });
@@ -4140,27 +4143,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (opcodeIndex.EndsWith ("=")) {
 				key = leftIndex + opcodeIndex.Substring (0, opcodeIndex.Length - 1) + rightIndex;
 				if (BinOpStr.defined.TryGetValue (key, out binOpStr)) {
+					if (!(token.rValLeft is TokenLVal)) {
+						ErrorMsg (token, "invalid L-value for <op>=");
+						return GenerateFromRVal (token.rValLeft);
+					}
+					if (!binOpStr.rmwOK) {
+						ErrorMsg (token, "<op>= not allowed: " + leftIndex + " " + opcodeIndex + " " + rightIndex);
+						return new CompValuVoid (token);
+					}
 
 					/*
 					 * Now we know for something like %= that left%right is legal for the types given.
-					 * We can only actually process it if the resultant type is of the left type.
-					 * So for example, we can't do float += list, as float + list gives a list.
 					 */
+					left = GenerateFromLVal ((TokenLVal)token.rValLeft);
 					if (binOpStr.outtype == leftType.ToSysType ()) {
-
-						/*
-						 * Types are ok, see if the '=' (read/modify/write) form is allowed...
-						 */
-						if (binOpStr.rmwOK) {
-							if (!(token.rValLeft is TokenLVal)) {
-								ErrorMsg (token, "invalid L-value for <op>=");
-								return GenerateFromRVal (token.rValLeft);
-							}
-							left = GenerateFromLVal ((TokenLVal)token.rValLeft);
-							binOpStr.emitBO (this, token, left, right, left);
-							return left;
-						}
+						binOpStr.emitBO (this, token, left, right, left);
+					} else {
+						CompValu temp = new CompValuTemp (TokenType.FromSysType (token, binOpStr.outtype), 
+						                                  null, this);
+						binOpStr.emitBO (this, token, left, right, temp);
+						left.PopPre (this, token);
+						temp.PushVal (this, token, leftType);
+						left.PopPost (this, token);
 					}
+					return left;
 				}
 			}
 
@@ -4190,6 +4196,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			TokenType leftType  = leftRVal.GetRValType  (this, null);
 			TokenType rightType = rightRVal.GetRValType (this, null);
 			if (!(leftType is TokenTypeStr) && !(rightType is TokenTypeStr)) return false;
+
+			/*
+			 * Also, list+string => list so reject that too.
+			 * Also, string+list => list so reject that too.
+			 */
+			if (leftType  is TokenTypeList) return false;
+			if (rightType is TokenTypeList) return false;
 
 			/*
 			 * Append values to the end of the list in left-to-right order.
@@ -5252,6 +5265,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					outRVal.Pop (this, opcode);           // pop into result
 					return outRVal;                       // tell caller where we put it
 				}
+				if (inRVal.type is TokenTypeRot) {
+					CompValuTemp outRVal = new CompValuTemp (inRVal.type, null, this);
+					inRVal.PushVal (this, opcode);        // push rotation, then call negate routine
+					ilGen.Emit (opcode, OpCodes.Call, lslRotationNegateMethodInfo);
+					outRVal.Pop (this, opcode);           // pop into result
+					return outRVal;                       // tell caller where we put it
+				}
 				if (inRVal.type is TokenTypeVec) {
 					CompValuTemp outRVal = new CompValuTemp (inRVal.type, null, this);
 					inRVal.PushVal (this, opcode);        // push vector, then call negate routine
@@ -5866,7 +5886,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			return mi;
 		}
 
-		public static LSL_Vector LSLVectorNegate (LSL_Vector v) { return -v; }
+		// http://wiki.secondlife.com/wiki/Rotation 'negate a rotation' says just negate .s component
+		// but http://wiki.secondlife.com/wiki/LSL_Language_Test (lslangtest1.lsl) says negate all 4 values
+		public static LSL_Rotation LSLRotationNegate (LSL_Rotation r) { return new LSL_Rotation (-r.x,-r.y,-r.z,-r.s); }
+		public static LSL_Vector   LSLVectorNegate   (LSL_Vector v)   { return -v; }
 
 		/**
 		 * @brief Defines an internal label that is used as a target for 'break' and 'continue' statements.

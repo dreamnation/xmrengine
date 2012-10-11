@@ -6400,9 +6400,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 			/*
 			 * string+something or something+string is always string.
+			 * except list+something or something+list is always a list.
 			 */
 			string lType = rValLeft.GetRValType (scg, argsig).ToString ();
 			string rType = rValRight.GetRValType (scg, argsig).ToString ();
+			if ((opstr == "+") && ((lType == "list") || (rType == "list"))) {
+				return new TokenTypeList (opcode);
+			}
 			if ((opstr == "+") && ((lType == "string") || (rType == "string"))) {
 				return new TokenTypeStr (opcode);
 			}

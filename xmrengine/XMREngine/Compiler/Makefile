@@ -130,6 +130,7 @@ xmrengtest.exe: $(TESTSRCFILES) $(wildcard *.h)
 		$(TESTSRCFILES)
 
 xmrengtest_$(COMMITHASH)_$(COMMITCLEAN)_tester.cs: xmrengtest.cx makexmrengtestilslapi.inc $(wildcard *.h)
+	rm -f xmrengtest_*_tester.cs
 	cpp -C -P -nostdinc -DSCRIPTBASECLASS=TestScriptBaseClass \
 		-DGITCOMMITHASH='"$(COMMITHASH)"' \
 		-DGITCOMMITDATE='"$(COMMITDATE)"' \

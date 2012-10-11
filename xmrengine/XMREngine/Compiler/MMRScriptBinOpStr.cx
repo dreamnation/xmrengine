@@ -849,19 +849,29 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		private static void BinOpStrIntDivInt (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
+			// note that we must allow 0x800000/-1 -> 0x80000000 for lslangtest1.lsl
+			// so sign-extend the operands to 64-bit then divide and truncate result
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeInt);
+			scg.ilGen.Emit (errorAt, OpCodes.Conv_I8);
 			right.PushVal (scg, errorAt, tokenTypeInt);
+			scg.ilGen.Emit (errorAt, OpCodes.Conv_I8);
 			scg.ilGen.Emit (errorAt, OpCodes.Div);
+			scg.ilGen.Emit (errorAt, OpCodes.Conv_I4);
 			result.PopPost (scg, errorAt, tokenTypeInt);
 		}
 
 		private static void BinOpStrIntModInt (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
+			// note that we must allow 0x800000%-1 -> 0 for lslangtest1.lsl
+			// so sign-extend the operands to 64-bit then mod and truncate result
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeInt);
+			scg.ilGen.Emit (errorAt, OpCodes.Conv_I8);
 			right.PushVal (scg, errorAt, tokenTypeInt);
+			scg.ilGen.Emit (errorAt, OpCodes.Conv_I8);
 			scg.ilGen.Emit (errorAt, OpCodes.Rem);
+			scg.ilGen.Emit (errorAt, OpCodes.Conv_I4);
 			result.PopPost (scg, errorAt, tokenTypeInt);
 		}
 

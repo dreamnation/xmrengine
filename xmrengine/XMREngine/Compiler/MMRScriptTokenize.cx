@@ -447,6 +447,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                         TokenError (i, "name too long, max " + MAX_NAME_LEN);
                     } else {
                         string name = source.Substring (i, j - i);
+                        if (name == "quaternion") name = "rotation";  // see lslangtest1.lsl
                         if (keywords.ContainsKey (name)) {
                             Object[] args = new Object[] { emsg, filNam, lineNo, i - bolIdx };
                             AppendToken ((Token)keywords[name].Invoke (args));

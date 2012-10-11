@@ -39,6 +39,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static MethodInfo excToStringMethodInfo      = typeof (TypeCast).GetMethod ("ExceptionToString", new Type[] { typeof (Exception), typeof (XMRInstAbstract) });
 		private static MethodInfo floatToStringMethodInfo    = typeof (TypeCast).GetMethod ("FloatToString",     new Type[] { typeof (SCRIPTFLOAT) });
 		private static MethodInfo intToStringMethodInfo      = typeof (TypeCast).GetMethod ("IntegerToString",   new Type[] { typeof (int) });
+		private static MethodInfo listToBoolMethodInfo       = typeof (TypeCast).GetMethod ("ListToBool",        new Type[] { typeof (LSL_List) });
 		private static MethodInfo listToStringMethodInfo     = typeof (TypeCast).GetMethod ("ListToString",      new Type[] { typeof (LSL_List) });
 		private static MethodInfo objectToStringMethodInfo   = typeof (TypeCast).GetMethod ("ObjectToString",    new Type[] { typeof (object) });
 		private static MethodInfo rotationToBoolMethodInfo   = typeof (TypeCast).GetMethod ("RotationToBool",    new Type[] { typeof (LSL_Rotation) });
@@ -92,6 +93,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ltc.Add ("integer list",     TypeCastInteger2List);
 			ltc.Add ("integer object",   TypeCastInteger2Object);
 			ltc.Add ("integer string",   TypeCastInteger2String);
+			ltc.Add ("list bool",        TypeCastList2Bool);
 			ltc.Add ("list object",      TypeCastList2Object);
 			ltc.Add ("list string",      TypeCastList2String);
 			ltc.Add ("object*array",     TypeCastObject2Array);
@@ -504,6 +506,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Box, typeof (int));
 		}
+		private static void TypeCastList2Bool (IScriptCodeGen scg, Token errorAt)
+		{
+			scg.ilGen.Emit (errorAt, OpCodes.Call, listToBoolMethodInfo);
+		}
 		private static void TypeCastList2Object (IScriptCodeGen scg, Token errorAt)
 		{
 		}
@@ -652,6 +658,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public static string   ExceptionToString (Exception x, XMRInstAbstract inst) { return inst.XMRExceptionFixString (x.ToString (), true); }
 		public static string   FloatToString     (SCRIPTFLOAT x)  { return x.ToString ("0.000000"); }
 		public static string   IntegerToString   (int x)          { return x.ToString (); }
+		public static bool     ListToBool        (LSL_List x)     { return x.Length != 0; }
 		public static string   ListToString      (LSL_List x)     { return x.ToString (); }
 		public static string   ObjectToString    (object x)       { return (x == null) ? null : x.ToString (); }
 		public static string   RotationToString  (LSL_Rotation x) { return x.ToString (); }
