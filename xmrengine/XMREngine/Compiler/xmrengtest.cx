@@ -921,7 +921,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             while (true) {
                 try {
-                    inst.m_ObjCode.scriptEventHandlerTable[inst.stateCode,(int)inst.eventCode](inst);
+                    ScriptEventHandler seh = inst.m_ObjCode.scriptEventHandlerTable[inst.stateCode,(int)inst.eventCode];
+                    if (seh != null) {
+                        seh (inst);
+                    }
                     break;
                 } catch (StackCaptureException) {
 

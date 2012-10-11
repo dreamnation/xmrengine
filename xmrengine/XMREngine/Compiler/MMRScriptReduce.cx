@@ -6173,21 +6173,29 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				try {
 					object val = ((TokenRValConst)rVal).val;
 					if (castTo is TokenTypeChar) {
-						if (val is int)         val = (char)(int)val;
+						if (val is int)          val = (char)(int)val;
 					}
 					if (castTo is TokenTypeFloat) {
-						if (val is int)         val = (SCRIPTFLOAT)(int)val;
-						if (val is string)      val = new LSL_Float ((string)val).value;
+						if (val is int)          val = (SCRIPTFLOAT)(int)val;
+						if (val is string)       val = new LSL_Float ((string)val).value;
 					}
 					if (castTo is TokenTypeInt) {
-						if (val is char)        val = (int)(char)val;
-						if (val is SCRIPTFLOAT) val = (int)(SCRIPTFLOAT)val;
-						if (val is string)      val = new LSL_Integer ((string)val).value;
+						if (val is char)         val = (int)(char)val;
+						if (val is SCRIPTFLOAT)  val = (int)(SCRIPTFLOAT)val;
+						if (val is string)       val = new LSL_Integer ((string)val).value;
+					}
+					if (castTo is TokenTypeRot) {
+						if (val is string)       val = new LSL_Rotation ((string)val);
 					}
 					if (castTo is TokenTypeStr) {
-						if (val is char)        val = TypeCast.CharToString ((char)val);
-						if (val is SCRIPTFLOAT) val = TypeCast.FloatToString ((SCRIPTFLOAT)val);
-						if (val is int)         val = TypeCast.IntegerToString ((int)val);
+						if (val is char)         val = TypeCast.CharToString ((char)val);
+						if (val is SCRIPTFLOAT)  val = TypeCast.FloatToString ((SCRIPTFLOAT)val);
+						if (val is int)          val = TypeCast.IntegerToString ((int)val);
+						if (val is LSL_Rotation) val = TypeCast.RotationToString ((LSL_Rotation)val);
+						if (val is LSL_Vector)   val = TypeCast.VectorToString ((LSL_Vector)val);
+					}
+					if (castTo is TokenTypeVec) {
+						if (val is string)       val = new LSL_Vector ((string)val);
 					}
 					TokenRVal rValConst = new TokenRValConst (castTo, val);
 					didOne = true;

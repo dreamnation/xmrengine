@@ -31,6 +31,7 @@ testit typeassigntest
 testit partialtest
 testev statechange
 testev lslangtest1
+testev lslangtest2
 
 mono --debug xmrengtest.exe -eventio -ipcchannel -2135482309 \
 	-primname controller -primuuid 0000 ipctest0.lsl \
