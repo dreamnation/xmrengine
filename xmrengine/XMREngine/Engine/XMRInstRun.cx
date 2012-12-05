@@ -422,7 +422,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     if (throwIt) {
                         throw new Exception("CheckRunLockInvariants: eventcode=" + ec.ToString() + ", active=" + active.ToString());
                     }
-                    MMRUThread.tkill(MMRUThread.gettid(), 11); // SIGSEGV to get a core dump
                 }
                 lastEventCode = ec;
                 lastActive    = active;
