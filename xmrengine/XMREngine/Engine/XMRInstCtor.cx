@@ -41,15 +41,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         /**
          * @brief Initializer, loads script in memory and all ready for running.
-         * @param localID = ?
-         * @param itemID = UUID of this script instance
-         * @param sourceCode = script source code all in one string
-         * @param startParam = as passed to llRez() ???
-         * @param postOnRez = post an "on_rez" event to script
-         * @param stateSource = ?
          * @param engine = XMREngine instance this is part of
-         * @param part = the object the script is attached to ?
-         * @param item = ?
          * @param scriptBasePath = directory name where files are
          * @param stackSize = number of bytes to allocate for stacks
          * @param errors = return compiler errors in this array
@@ -57,12 +49,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          *                     (also forces recompilation if sourceCode != "")
          * Throws exception if any error, so it was successful if it returns.
          */
-        public void Initialize(uint localID, UUID itemID, string sourceCode,
-                               int startParam, bool postOnRez, int stateSource,
-                               XMREngine engine, SceneObjectPart part, 
-                               TaskInventoryItem item, string scriptBasePath,
-                               int stackSize, int heapSize, ArrayList errors, 
-                               bool forceReset)
+        public void Initialize(XMREngine engine, string scriptBasePath,
+                               int stackSize, int heapSize, ArrayList errors)
         {
             if (stackSize < 16384) stackSize = 16384;
             if (heapSize  < 16384) heapSize  = 16384;
@@ -70,27 +58,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Save all call parameters in instance vars for easy access.
              */
-            m_LocalID        = localID;
-            m_ItemID         = itemID;
-            m_SourceCode     = sourceCode;
-            m_StartParam     = startParam;
-            m_PostOnRez      = postOnRez;
-            m_StateSource    = (StateSource)stateSource;
             m_Engine         = engine;
-            m_Part           = part;
-            m_Item           = item;
-            m_AssetID        = item.AssetID;
             m_ScriptBasePath = scriptBasePath;
             m_StackSize      = stackSize;
             m_HeapSize       = heapSize;
             m_CompilerErrors = errors;
-            m_StateFileName  = GetStateFileName(scriptBasePath, itemID);
-            m_ForceReset     = forceReset;
-
-            /*
-             * Set up a descriptive name string for debug messages.
-             */
-            m_DescName = part.Name + ":" + item.Name;
+            m_StateFileName  = GetStateFileName(scriptBasePath, m_ItemID);
 
             /*
              * Maybe trace heap usage.
@@ -125,10 +98,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
 
                 m_Apis[api] = scriptApi;
-                scriptApi.Initialize(m_Engine, m_Part, m_LocalID, m_ItemID);
+                scriptApi.Initialize(m_Engine, m_Part, m_Item);
                 this.InitApi(api, scriptApi);
             }
-            m_XMRLSLApi.InitXMRLSLApi();
+            m_XMRLSLApi.InitXMRLSLApi(this);
 
             /*
              * Get object loaded, compiling script and reading .state file as
@@ -165,7 +138,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * There may already be an ScriptObjCode struct in memory that
                  * we can use.  If not, try to compile it.
                  */
-                if (!m_CompiledScriptObjCode.TryGetValue (m_AssetID, 
+                if (!m_CompiledScriptObjCode.TryGetValue (m_Item.AssetID, 
                                                           out objCode)) {
                     objCode = TryToCompile();
                     compiledIt = true;
@@ -202,10 +175,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * collected.
                  */
                 if (compiledIt) {
-                    m_CompiledScriptObjCode[m_AssetID]  = objCode;
-                    m_CompiledScriptRefCount[m_AssetID] = 0;
+                    m_CompiledScriptObjCode[m_Item.AssetID]  = objCode;
+                    m_CompiledScriptRefCount[m_Item.AssetID] = 0;
                 }
-                m_CompiledScriptRefCount[m_AssetID] ++;
+                m_CompiledScriptRefCount[m_Item.AssetID] ++;
             }
         }
 
@@ -220,7 +193,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * Otherwise, compile the source to create object file then create
              * ScriptObjCode from that.
              */
-            string assetID  = m_AssetID.ToString();
+            string assetID  = m_Item.AssetID.ToString();
             m_CameFrom = "asset://" + assetID;
             ScriptObjCode objCode = ScriptCompile.Compile(m_SourceCode, 
                                                           assetID, 

@@ -386,7 +386,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (b == null) {
                 return -1;
             }
-            return b.m_CPUTime - a.m_CPUTime;
+            if (b.m_CPUTime < a.m_CPUTime) return -1;
+            if (b.m_CPUTime > a.m_CPUTime) return  1;
+            return 0;
         }
 
         private void LsQueue(TextWriter outFile, string name, XMRInstQueue queue, string[] args, int indx)

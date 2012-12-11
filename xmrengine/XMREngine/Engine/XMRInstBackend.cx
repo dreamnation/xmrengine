@@ -38,30 +38,26 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     public class XMRLSL_Api : LSL_Api
     {
         public AsyncCommandManager acm;
+        private XMRInstance inst;
 
-        public void InitXMRLSLApi()
+        public void InitXMRLSLApi(XMRInstance i)
         {
             acm = AsyncCommands;
+            inst = i;
         }
 
         protected override void ScriptSleep(int ms)
         {
-            XMREngine e = (XMREngine)m_ScriptEngine;
-            XMRInstance inst = e.GetInstance(m_itemID);
             inst.Sleep(ms);
         }
 
         public override void llSleep(double sec)
         {
-            XMREngine e = (XMREngine)m_ScriptEngine;
-            XMRInstance inst = e.GetInstance(m_itemID);
             inst.Sleep((int)(sec * 1000.0));
         }
 
         public override void llDie()
         {
-            XMREngine e = (XMREngine)m_ScriptEngine;
-            XMRInstance inst = e.GetInstance(m_itemID);
             inst.Die();
         }
 
@@ -69,8 +65,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * Scripts can use xmrHeapLeft() and xmrStackLeft() if they want
         public override LSL_Integer llGetFreeMemory()
         {
-            XMREngine e = (XMREngine)m_ScriptEngine;
-            XMRInstance inst = e.GetInstance(m_itemID);
             return new LSL_Integer(inst.heapLeft);
         }*/
     }

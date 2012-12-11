@@ -90,13 +90,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 {
                     ScriptObjCode objCode;
 
-                    if (m_CompiledScriptObjCode.TryGetValue(m_AssetID, 
+                    if (m_CompiledScriptObjCode.TryGetValue(m_Item.AssetID, 
                                                             out objCode) &&
                         (objCode == m_ObjCode) && 
-                        (-- m_CompiledScriptRefCount[m_AssetID] == 0))
+                        (-- m_CompiledScriptRefCount[m_Item.AssetID] == 0))
                     {
-                        m_CompiledScriptObjCode.Remove(m_AssetID);
-                        m_CompiledScriptRefCount.Remove(m_AssetID);
+                        m_CompiledScriptObjCode.Remove(m_Item.AssetID);
+                        m_CompiledScriptRefCount.Remove(m_Item.AssetID);
                     }
                 }
                 m_ObjCode = null;
@@ -112,7 +112,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Console.WriteLine(m_DescName);
             Console.WriteLine("    m_LocalID       = " + m_LocalID);
             Console.WriteLine("    m_ItemID        = " + m_ItemID);
-            Console.WriteLine("    m_AssetID       = " + m_AssetID);
+            Console.WriteLine("    m_Item.AssetID  = " + m_Item.AssetID);
             Console.WriteLine("    m_StartParam    = " + m_StartParam);
             Console.WriteLine("    m_PostOnRez     = " + m_PostOnRez);
             Console.WriteLine("    m_StateSource   = " + m_StateSource);
@@ -138,7 +138,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 sb.AppendLine(m_DescName);
                 sb.AppendLine("    m_LocalID           = " + m_LocalID);
                 sb.AppendLine("    m_ItemID            = " + m_ItemID  + "  (.state file)");
-                sb.AppendLine("    m_AssetID           = " + m_AssetID + "  (source text)");
+                sb.AppendLine("    m_Item.AssetID           = " + m_Item.AssetID + "  (source text)");
                 sb.AppendLine("    m_StartParam        = " + m_StartParam);
                 sb.AppendLine("    m_PostOnRez         = " + m_PostOnRez);
                 sb.AppendLine("    m_StateSource       = " + m_StateSource);
@@ -253,7 +253,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public UUID AssetID
         {
-            get { return m_AssetID; }
+            get { return m_Item.AssetID; }
         }
 
         public bool Running

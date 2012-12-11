@@ -360,7 +360,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     e = StartEventHandler (evc, evt.Params);
                 }
                 m_RunOnePhase = "done running";
-                m_CPUTime    += (int)DateTime.UtcNow.Subtract(now).TotalMilliseconds;
+                m_CPUTime    += DateTime.UtcNow.Subtract(now).TotalMilliseconds;
 
                 /*
                  * Maybe it puqued.

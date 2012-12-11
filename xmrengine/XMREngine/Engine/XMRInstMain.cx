@@ -51,6 +51,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
      *   RESETTING->ONSTARTQ          : only by the thread that transitioned it to RESETTING
      */
     public enum XMRInstState {
+        COMPILING,  // it is being compiled
         CONSTRUCT,  // it is being constructed
         IDLE,       // nothing happening (finished last event and m_EventQueue is empty)
         ONSTARTQ,   // inserted on m_Engine.m_StartQueue
@@ -77,7 +78,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public static readonly ILog m_log =
             LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
-        // For a given m_AssetID, do we have the compiled object code and where
+        // For a given m_Item.AssetID, do we have the compiled object code and where
         // is it?  m_CompiledScriptRefCount keeps track of how many m_ObjCode
         // pointers are valid.
         public static object m_CompileLock = new object();
@@ -88,22 +89,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public  XMRInstance  m_PrevInst;
         public  XMRInstState m_IState;
 
+        public  bool m_ForceReset = false;
         public  SceneObjectPart m_Part = null;
         public  uint m_LocalID = 0;
         public  TaskInventoryItem m_Item = null;
-        private UUID m_ItemID;
-        private UUID m_AssetID;
+        public  UUID m_ItemID;
         private string m_CameFrom;
 
         private XMREngine m_Engine = null;
         private string m_ScriptBasePath;
         private string m_StateFileName;
-        private string m_SourceCode;
-        private bool m_PostOnRez;
+        public  string m_SourceCode;
+        public  bool m_PostOnRez;
         private DetectParams[] m_DetectParams = null;
         private bool m_Die = false;
-        private int m_StartParam = 0;
-        private StateSource m_StateSource;
+        public  int m_StartParam = 0;
+        public  StateSource m_StateSource;
         public  string m_DescName;
         private bool[] m_HaveEventHandlers;
         public  int m_StackSize;
@@ -115,9 +116,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private int m_CheckRunLine = 0;
         public  int m_InstEHEvent  = 0;  // number of events dequeued (StartEventHandler called)
         public  int m_InstEHSlice  = 0;  // number of times handler timesliced (ResumeEx called)
-        public  int m_CPUTime      = 0;  // accumulated CPU time (milliseconds)
-
-        public bool m_ForceReset;
+        public  double m_CPUTime   = 0;  // accumulated CPU time (milliseconds)
 
         // If code needs to have both m_QueueLock and m_RunLock,
         // be sure to lock m_RunLock first then m_QueueLock, as

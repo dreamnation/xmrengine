@@ -42,7 +42,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         /**
          * @brief Create an XML element that gives the current state of the script.
-         *   <ScriptState Engine="XMREngine" SourceHash=m_ObjCode.sourceHash Asset=m_AssetID>
+         *   <ScriptState Engine="XMREngine" SourceHash=m_ObjCode.sourceHash Asset=m_Item.AssetID>
          *     <Snapshot>globalsandstackdump</Snapshot>
          *     <Running>m_Running</Running>
          *     <DetectArray ...
@@ -65,7 +65,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             XmlElement scriptStateN = doc.CreateElement("", "ScriptState", "");
             scriptStateN.SetAttribute("Engine", m_Engine.ScriptEngineName);
-            scriptStateN.SetAttribute("Asset", m_AssetID.ToString());
+            scriptStateN.SetAttribute("Asset", m_Item.AssetID.ToString());
             scriptStateN.SetAttribute ("SourceHash", m_ObjCode.sourceHash);
 
             /*
