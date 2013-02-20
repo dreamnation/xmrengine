@@ -1,0 +1,277 @@
+/***************************************************\
+ *  COPYRIGHT 2013, Mike Rieker, Beverly, MA, USA  *
+ *  All rights reserved.                           *
+\***************************************************/
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
+using System.Reflection.Emit;
+using System.Runtime.Remoting;
+using System.Text;
+using System.Threading;
+using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
+
+#include "lsltypes.h"
+
+/*
+ *  XMRInstance.StartEventHandler()
+ *    MMRUThread.StartEx()
+ *      ScriptUThread.MainEx()
+ *        ScriptUThread.CallSEH()
+ *          scriptHandlerEventTable[state,event]()
+ *             XMRInstance.CheckRun()
+ *                throw StackCaptureException()
+ *                MMRUThread.Hiber()
+ */
+
+namespace OpenSim.Region.ScriptEngine.XMREngine {
+
+    /*************************************************************\
+     *  Wrapper around instance to enclose it in a microthread.  *
+    \*************************************************************/
+
+    public partial class XMRInstance {
+
+        public Mono.Tasklets.Continuation scrstack;
+
+        private const int SAVEENGINESTACK = 0;
+        private const int LOADENGINESTACK = 1;
+        private const int SAVESCRIPTSTACK = 2;
+        private const int LOADSCRIPTSTACK = 3;
+
+        private Exception except;
+        private int active;
+
+        /**
+         * @brief Start script event handler from the beginning.
+         *        Return when either the script event handler completes
+         *        or the script calls Hiber().
+         * @returns null: script did not throw any exception so far
+         *          else: script threw an exception
+         */
+        public Exception StartEx ()
+        {
+            active = 1;
+
+            /*
+             * Save engine stack so we know how to jump back to engine in case
+             * the script calls Hiber().
+             */
+            switch (m_Engine.engstack.Store (SAVEENGINESTACK)) {
+
+                /*
+                 * Engine stack has been saved, start running the event handler.
+                 */
+                case SAVEENGINESTACK: {
+
+                    /*
+                     * CALLMODE_NORMAL:  run event handler from the beginning normally
+                     * CALLMODE_RESTORE: restore event handler stack from stackFrames
+                     */
+                    callMode = (stackFrames == null) ? XMRInstAbstract.CALLMODE_NORMAL :
+                                                        XMRInstAbstract.CALLMODE_RESTORE;
+
+                    /*
+                     * Run event handler according to callMode.
+                     * In either case it is assumed that stateCode and eventCode
+                     * indicate which event handler is to be called and that ehArgs
+                     * points to the event handler argument list.
+                     */
+                    except = null;
+                    try {
+                        CallSEH ();
+                    } catch (Exception e) {
+                        except = e;
+                    }
+
+                    /*
+                     * We now want to return to the script engine.
+                     * Setting active = 0 means the microthread has exited.
+                     * We need to call engstack.Restore() in case the script called Hiber()
+                     * anywhere, we want to return out the corresponding Restore() and not the
+                     * Start().
+                     */
+                    active = 0;
+                    m_Engine.engstack.Restore (LOADENGINESTACK);
+                    throw new Exception ("returned from Restore()");
+                }
+
+                /*
+                 * Script called Hiber() somewhere so just return back out.
+                 */
+                case LOADENGINESTACK: {
+                    break;
+                }
+
+                default: throw new Exception ();
+            }
+
+            return except;
+        }
+
+        /**
+         * @brief Call script's event handler function from the very beginning.
+         * @param stateCode = which state the event is happening in
+         * @param eventCode = which event is happening in that state
+         * @returns when event handler has completed or throws an exception
+         *          with eventCode = ScriptEventCode.None
+         */
+        private void CallSEH ()
+        {
+            int newStateCode;
+            ScriptEventHandler seh;
+
+            while (true) {
+
+                /*
+                 * Process event given by 'stateCode' and 'eventCode'.
+                 * The event handler should call CheckRun() as often as convenient.
+                 */
+                newStateCode = this.stateCode;
+                seh = this.m_ObjCode.scriptEventHandlerTable[newStateCode,(int)this.eventCode];
+                if (seh != null) {
+                    try {
+                        seh (this);
+                    } catch (ScriptChangeStateException scse) {
+                        newStateCode = scse.newState;
+                    }
+                }
+                this.ehArgs = null;  // we are done with them and no args for
+                                     // exit_state()/enter_state() anyway
+
+                /*
+                 * The usual case is no state change.
+                 * Even a 'state <samestate>;' statement has no effect except to exit out.
+                 * See http://wiki.secondlife.com/wiki/State
+                 */
+                if (newStateCode == this.stateCode) break;
+
+                /*
+                 * Call old state's state_exit() handler.
+                 */
+                this.eventCode = ScriptEventCode.state_exit;
+                seh = this.m_ObjCode.scriptEventHandlerTable[this.stateCode,(int)ScriptEventCode.state_exit];
+                if (seh != null) {
+                    try {
+                        seh (this);
+                    } catch (ScriptChangeStateException scse) {
+                        newStateCode = scse.newState;
+                    }
+                }
+
+                /*
+                 * Now that the old state can't possibly start any more activity,
+                 * cancel any listening handlers, etc, of the old state.
+                 */
+                this.stateCode = newStateCode;
+                this.StateChange ();
+
+                /*
+                 * Loop back to call the new state's state_entry() handler.
+                 */
+                this.eventCode = ScriptEventCode.state_entry;
+            }
+
+            /*
+             * Event no longer being processed.
+             */
+            this.eventCode = ScriptEventCode.None;
+        }
+
+        /**
+         * @brief Determine if script is active.
+         * Returns: 0: nothing started or has returned
+         *             Wake() must not be called
+         *             Start() may be called
+         *             Hiber() must not be called
+         *         -1: thread has called Hiber()
+         *             Wake() may be called
+         *             Start() may be called
+         *             Hiber() must not be called
+         *          1: thread is running
+         *             Wake() must not be called
+         *             Start() must not be called
+         *             Hiber() may be called
+         */
+        public int Active ()
+        {
+            return active;
+        }
+
+        /**
+         * @brief Called by the script wherever it is to hibernate.
+         *        So this means to save the scripts stack in 'scrstack' then
+         *        restore the stack to cause us to return back to the engine.
+         */
+        public void Hiber ()
+        {
+            active = -1;
+
+            /*
+             * Save where we are in the script's code in 'scrstack'
+             * so we can wake the script when Wake() is called.
+             */
+            switch (scrstack.Store (SAVESCRIPTSTACK)) {
+
+                /*
+                 * Script's stack is now saved in 'scrstack'.
+                 * Reload the engine's stack from 'm_Engine.engstack' and jump to it.
+                 */
+                case SAVESCRIPTSTACK: {
+                    m_Engine.engstack.Restore (LOADENGINESTACK);
+                    throw new Exception ("returned from Restore()");
+                }
+
+                /*
+                 * Wake() was just called and we want to resume executing script code.
+                 */
+                case LOADSCRIPTSTACK: {
+                    break;
+                }
+
+                default: throw new Exception ();
+            }
+        }
+
+        /**
+         * @brief We now want to run some more script code from where it last hibernated
+         *        until it either finishes the script event handler or until the script
+         *        calls Hiber() again.
+         */
+        public Exception WakeEx ()
+        {
+            active = 1;
+
+            /*
+             * Save where we are in the engine's code in 'm_Engine.engstack'
+             * so if the script calls Hiber() again or exits, we know how to get
+             * back to the engine.
+             */
+            switch (m_Engine.engstack.Store (SAVEENGINESTACK)) {
+
+                /*
+                 * This is original call to Wake() from the engine,
+                 * jump to where we left off within Hiber().
+                 */
+                case SAVEENGINESTACK: {
+                    scrstack.Restore (LOADSCRIPTSTACK);
+                    throw new Exception ("returned from Restore()");
+                }
+
+                /*
+                 * Script has called Hiber() again, so return back to
+                 * script engine code.
+                 */
+                case LOADENGINESTACK: {
+                    break;
+                }
+
+                default: throw new Exception ();
+            }
+
+            return except;
+        }
+    }
+}

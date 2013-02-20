@@ -435,7 +435,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public override int xmrStackLeft()
         {
-            return (int)MMRUThread.StackLeft();
+            return 0x100000;//TODO (int)MMRUThread.StackLeft();
         }
     }
 

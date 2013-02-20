@@ -221,7 +221,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     // it should see captureStackFrames and throw StackCaptureException()
                     // ...generating XMRStackFrames as it unwinds
                     this.captureStackFrames = true;
-                    except = this.microthread.ResumeEx (null);
+                    except = this.WakeEx ();
                     this.captureStackFrames = false;
                     if (except == null) {
                         throw new Exception ("stack save did not complete");
@@ -243,9 +243,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * Now restore script stack.
                  * Microthread will suspend inside CheckRun() when restore is complete.
                  */
-        if (this.eventCode != ScriptEventCode.None) {
+                if (this.eventCode != ScriptEventCode.None) {
                     this.stackFramesRestored = false;
-                    except = this.microthread.StartEx ();
+                    except = this.StartEx ();
                     if (except != null) {
                         throw except;
                     }
@@ -256,7 +256,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             } finally {
 
                 // make sure CheckRunLockInvariants() won't puque
-                if (this.microthread.Active () == 0) {
+                if (this.Active () == 0) {
                     this.eventCode = ScriptEventCode.None;
                 }
             }

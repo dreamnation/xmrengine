@@ -18,8 +18,7 @@ ENGINECSFILES = XMREngine_$(COMMITHASH)_$(COMMITCLEAN).cs \
                 XMRInstMisc.cs \
                 XMRInstQueue.cs \
                 XMRInstRun.cs \
-                XMRScriptThread.cs \
-                XMRScriptUThread.cs \
+                XMRInstUThread.cs \
                 XMREngXmrTestLs.cs \
                 MMRScriptCompile.cs
 
@@ -38,7 +37,7 @@ REFERENCED = $(OPENSIMDLLDIR)/xmrengshare.dll \
              $(OPENSIMDLLDIR)/OpenSim.Region.ScriptEngine.Shared.dll \
              $(OPENSIMDLLDIR)/OpenSim.Region.ScriptEngine.Shared.Api.dll \
              $(OPENSIMDLLDIR)/OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll \
-             /home/kunta/mono64.2109/lib/mono/2.0/Mono.Tasklets.dll
+             /usr/lib/mono/2.0/Mono.Tasklets.dll
 
 default: \
 	$(OPENSIMDLLDIR)/xmrengshare.dll \

@@ -96,7 +96,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public  UUID m_ItemID;
         private string m_CameFrom;
 
-        private XMREngine m_Engine = null;
+        public  XMREngine m_Engine = null;
         private string m_ScriptBasePath;
         private string m_StateFileName;
         public  string m_SourceCode;
@@ -153,11 +153,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private XMRLSL_Api m_XMRLSLApi;
 
         public uint stackLimit;             // CheckRun() must always see this much stack available
-
-        /*
-         * We will use this microthread to run the scripts event handlers.
-         */
-        private ScriptUThread microthread;
 
         /*
          * Set to suspend microthread at next CheckRun() call.

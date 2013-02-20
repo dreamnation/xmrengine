@@ -239,7 +239,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * Maybe we have been disposed.
                  */
                 m_RunOnePhase = "check disposed";
-                if (microthread == null)
+                if (scrstack == null)
                 {
                     m_RunOnePhase = "return disposed";
                     return XMRInstState.DISPOSED;
@@ -266,7 +266,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_LastRanAt   = now;
                     m_InstEHSlice ++;
                     callMode = CALLMODE_NORMAL;
-                    e = microthread.ResumeEx (null);
+                    e = this.WakeEx ();
                 }
 
                 /*
@@ -409,9 +409,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * If not executing any event handler, active should be 0 indicating the microthread stack is not in use.
              * If executing an event handler, active should be -1 indicating stack is in use but suspended.
              */
-            ScriptUThread uth = microthread;
-            if (uth != null) {
-                int active = uth.Active ();
+            if (scrstack != null) {
+                int active = Active ();
                 ScriptEventCode ec = this.eventCode;
                 if (((ec == ScriptEventCode.None) && (active != 0)) ||
                     ((ec != ScriptEventCode.None) && (active >= 0))) {
@@ -467,7 +466,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (this.eventCode != ScriptEventCode.None) {
                 throw new Exception ("still processing event " + this.eventCode.ToString ());
             }
-            int active = microthread.Active ();
+            int active = Active ();
             if (active != 0) {
                 throw new Exception ("microthread is active " + active.ToString ());
             }
@@ -486,7 +485,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * without doing any stack frame restores first.
              */
             this.stackFrames = null;
-            return microthread.StartEx ();
+            return this.StartEx ();
         }
 
 
@@ -724,15 +723,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if (m_IState != XMRInstState.RESETTING) throw new Exception("bad state");
 
                 /*
-                 * If the microthread is active, that means it has call frame
-                 * context that we don't want.  Throw it out and get a fresh one.
-                 */
-                if (microthread.Active () < 0) {
-                    microthread.Dispose ();
-                    microthread = new ScriptUThread (this);
-                }
-
-                /*
                  * Mark it idle now so it can get queued to process new stuff.
                  */
                 m_IState = XMRInstState.IDLE;
@@ -840,9 +830,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Make sure script isn't about to run out of stack.
              */
-            if ((uint)MMRUThread.StackLeft () < stackLimit) {
-                throw ScriptCodeGen.outOfStackException;
-            }
+            //TODO  if ((uint)MMRUThread.StackLeft () < stackLimit) {
+            //TODO      throw ScriptCodeGen.outOfStackException;
+            //TODO  }
 
             /*
              * Stay stuck in this loop as long as something wants us suspended.
@@ -879,12 +869,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                 /*
                  * Now we are ready to suspend the microthread.
-                 * This is like a longjmp() to the most recent StartEx() or ResumeEx()
-                 * with a simultaneous setjmp() so ResumeEx() can longjmp() back here.
+                 * This is like a longjmp() to the most recent StartEx() or WakeEx()
+                 * with a simultaneous setjmp() so WakeEx() can longjmp() back here.
                  */
                 m_CheckRunPhase = "suspending";
                 suspendOnCheckRunTemp = false;
-                MMRUThread.Suspend ();
+                this.Hiber ();
                 m_CheckRunPhase = "resumed";
             }
 
@@ -897,7 +887,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (callMode != CALLMODE_NORMAL) throw new Exception ("bad callMode " + callMode);
         }
 
-        public void Resume()
+        public void ResumeIt()
         {
             lock (m_QueueLock)
             {
@@ -910,7 +900,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
         }
 
-        public void Suspend()
+        public void SuspendIt()
         {
             lock (m_QueueLock)
             {
