@@ -43,6 +43,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private static ArrayList noScriptErrors = new ArrayList();
         public  static readonly ILog m_log =
             LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly string[] scriptReferencedAssemblies = new string[0];
 
         private bool m_TraceCalls;
         private Scene m_Scene;
@@ -111,6 +112,26 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public string ScriptEnginePath
         {
             get { return m_ScriptBasePath; }
+        }
+
+        public string ScriptClassName
+        {
+            get { return "XMREngineScript"; }
+        }
+
+        public string ScriptBaseClassName
+        {
+            get { return typeof (XMRInstance).FullName; }
+        }
+
+        public ParameterInfo[] ScriptBaseClassParameters
+        {
+            get { return typeof(XMRInstance).GetConstructor (new Type[] { typeof (WaitHandle) }).GetParameters (); }
+        }
+
+        public string[] ScriptReferencedAssemblies
+        {
+            get { return scriptReferencedAssemblies; }
         }
 
         public void Initialise(IConfigSource config)
