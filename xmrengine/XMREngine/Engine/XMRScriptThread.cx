@@ -99,60 +99,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             XMRInstance inst;
 
-            /*
-             * Set affinity mask to the numThreadScriptCores highest numbered cores
-             * so we can't hog more than that many cores no matter what.
-             */
-            string soName = "./xmrhelpers" + (IntPtr.Size * 8) + ".so";
-
-            GetTid getTid = MMRDLOpen.GetDelegate<GetTid> (soName, "GetTid", null);
-            GetSetAffinity getAffinity = MMRDLOpen.GetDelegate<GetSetAffinity> (soName, "GetAffinity", null);
-            GetSetAffinity setAffinity = MMRDLOpen.GetDelegate<GetSetAffinity> (soName, "SetAffinity", null);
-
-            m_ScriptThreadTID = getTid();
-            XMREngine.m_log.DebugFormat("[XMREngine]: RunScriptThread tid: {0}", m_ScriptThreadTID);
-            do {
-                int rc = getAffinity (m_ScriptThreadTID, null);
-                if (rc < 0) {
-                    XMREngine.m_log.ErrorFormat("[XMREngine]: failed to get thread affinity size: errno={0}", rc);
-                    break;
-                }
-                byte[] affinity = new byte[rc];
-                rc = getAffinity (m_ScriptThreadTID, affinity);
-                if (rc != affinity.Length) {
-                    XMREngine.m_log.ErrorFormat("[XMREngine]: failed to get thread affinity mask: errno={0}", rc);
-                    break;
-                }
-                int n = engine.numThreadScriptCores;
-                for (int i = rc; -- i >= 0;) {
-                    for (byte j = 0x80; j != 0; j /= 2) {
-                        if (((affinity[i] & j) != 0) && (-- n < 0)) {
-                            affinity[i] -= j;
-                        }
-                    }
-                }
-                rc = setAffinity (m_ScriptThreadTID, affinity);
-                if (rc != affinity.Length) {
-                    XMREngine.m_log.ErrorFormat("[XMREngine]: failed to set thread affinity mask: errno={0}", rc);
-                    break;
-                }
-                rc = getAffinity (m_ScriptThreadTID, affinity);
-                if (rc != affinity.Length) {
-                    XMREngine.m_log.ErrorFormat("[XMREngine]: failed to get thread affinity mask: errno={0}", rc);
-                    break;
-                }
-                string mask = "";
-                for (int i = 0; i < rc; i ++) {
-                    for (int j = 0; j < 8; j ++) {
-                        if (((affinity[i] >> j) & 1) != 0) {
-                            if (mask != "") mask += ",";
-                            mask += (i * 8 + j).ToString();
-                        }
-                    }
-                }
-                XMREngine.m_log.DebugFormat("[XMREngine]: RunScriptThread affinity mask: {0}", mask);
-            } while (false);
-
             while (!m_Exiting) {
 
                 /*

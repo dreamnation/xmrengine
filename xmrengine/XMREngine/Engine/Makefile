@@ -38,12 +38,10 @@ REFERENCED = $(OPENSIMDLLDIR)/xmrengshare.dll \
              $(OPENSIMDLLDIR)/OpenSim.Region.ScriptEngine.Shared.dll \
              $(OPENSIMDLLDIR)/OpenSim.Region.ScriptEngine.Shared.Api.dll \
              $(OPENSIMDLLDIR)/OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll \
-             /home/kunta/mono32.267/lib/mono/2.0/Mono.Tasklets.dll
+             /home/kunta/mono64.2109/lib/mono/2.0/Mono.Tasklets.dll
 
 default: \
 	$(OPENSIMDLLDIR)/xmrengshare.dll \
-	$(OPENSIMDLLDIR)/xmrhelpers32.so \
-	$(OPENSIMDLLDIR)/xmrhelpers64.so \
 	$(OPENSIMDLLDIR)/OpenSim.Region.ScriptEngine.XMREngine.dll
 
 # ------------------------------------------------------------------------------
@@ -71,23 +69,6 @@ XMREngine_$(COMMITHASH)_$(COMMITCLEAN).cs: XMREngine.cx $(wildcard ../*/*.h)
 
 %.cs: %.cx $(wildcard ../*/*.h)
 	cpp -I../Compiler -C -P -nostdinc -o $@ $<
-
-# ------------------------------------------------------------------------------
-
-.PHONY: xmrhelpers
-xmrhelpers: $(OPENSIMDLLDIR)/xmrhelpers32.so $(OPENSIMDLLDIR)/xmrhelpers64.so
-
-$(OPENSIMDLLDIR)/xmrhelpers32.so: xmrhelpers32.o
-	ld -m elf_i386 -share -g -o $(OPENSIMDLLDIR)/xmrhelpers32.so xmrhelpers32.o
-
-xmrhelpers32.o: xmrhelpers.c
-	$(GCC) -m32 -c -o xmrhelpers32.o xmrhelpers.c
-
-$(OPENSIMDLLDIR)/xmrhelpers64.so: xmrhelpers64.o
-	ld -m elf_x86_64 -share -g -o $(OPENSIMDLLDIR)/xmrhelpers64.so xmrhelpers64.o
-
-xmrhelpers64.o: xmrhelpers.c
-	$(GCC) -m64 -fPIC -c -o xmrhelpers64.o xmrhelpers.c
 
 # ------------------------------------------------------------------------------
 
