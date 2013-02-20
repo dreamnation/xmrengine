@@ -1,13 +1,12 @@
 /////////////////////////////////////////////////////////////
 //
 // Copyright (c)2009 Careminster Limited and Melanie Thielker
-// Copyright (c) 2010 Mike Rieker, Beverly, MA, USA
+// Copyright (c) 2010,2013 Mike Rieker, Beverly, MA, USA
 //
 // All rights reserved
 //
 
-#define DBP m_log.DebugFormat
-#define TCP if (m_TraceCalls) m_log.DebugFormat
+#define TCP if (m_TraceCalls) NoPrint // m_log.DebugFormat
 
 using log4net;
 using Mono.Addins;
@@ -246,6 +245,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Directory.CreateDirectory(m_ScriptBasePath);
 
             m_Scene.EventManager.OnRezScript += OnRezScript;
+
+            m_Scene.StackModuleInterface<IScriptModule>(this);
         }
 
         /**
@@ -318,6 +319,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void StartProcessing()
         {
+            TCP("[XMREngine]: XMREngine.StartProcessing()");
             m_ScriptThread = new Thread(RunScriptThread);
             m_SleepThread  = new Thread(RunSleepThread);
             m_SliceThread  = new Thread(RunSliceThread);
@@ -836,12 +838,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Queue script in a thread that will compile and load it.
              */
-            lock (m_LoadQueue) {
-                if (m_LoadQueue.Count == 0) {
-                    new System.Threading.Thread (LoadThread).Start ();
-                }
-                m_LoadQueue.Enqueue (instance);
-            }
+////TODO            lock (m_LoadQueue) {
+////TODO                if (m_LoadQueue.Count == 0) {
+////TODO                    new System.Threading.Thread (LoadThread).Start ();
+////TODO                }
+////TODO                m_LoadQueue.Enqueue (instance);
+////TODO            }
+            LoadThreadWork (instance);  ////TODO -- compile and load synchronovsly
         }
 
         /**
@@ -1546,5 +1549,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_ObjectInstArray[partUUID] = a;
             return a;
         }
+
+        public static void NoPrint (params string[] list)
+        { }
     }
 }
