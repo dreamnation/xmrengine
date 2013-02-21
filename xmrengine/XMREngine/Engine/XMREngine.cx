@@ -63,7 +63,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private int m_StackSize;
         private int m_HeapSize;
         private object m_WakeUpLock = new object ();
-        private Thread m_ScriptThread = null;
+        public  Thread m_ScriptThread = null;
         private Thread m_SleepThread  = null;
         private Thread m_SliceThread  = null;
         private XMRInstance m_RunInstance = null;

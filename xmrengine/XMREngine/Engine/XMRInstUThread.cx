@@ -59,6 +59,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
              * Save engine stack so we know how to jump back to engine in case
              * the script calls Hiber().
              */
+            if (Thread.CurrentThread != m_Engine.m_ScriptThread) {
+                throw new Exception ("wrong thread");
+            }
             switch (m_Engine.engstack.Store (SAVEENGINESTACK)) {
 
                 /*
@@ -93,6 +96,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                      * anywhere, we want to return out the corresponding Restore() and not the
                      * Start().
                      */
+                    if (Thread.CurrentThread != m_Engine.m_ScriptThread) {
+                        throw new Exception ("wrong thread");
+                    }
                     active = 0;
                     m_Engine.engstack.Restore (LOADENGINESTACK);
                     throw new Exception ("returned from Restore()");
@@ -105,7 +111,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                     break;
                 }
 
-                default: throw new Exception ();
+                default: throw new Exception ("bad engstack code");
             }
 
             return except;
@@ -213,6 +219,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
              * Save where we are in the script's code in 'scrstack'
              * so we can wake the script when Wake() is called.
              */
+            if (Thread.CurrentThread != m_Engine.m_ScriptThread) {
+                throw new Exception ("wrong thread");
+            }
             switch (scrstack.Store (SAVESCRIPTSTACK)) {
 
                 /*
@@ -220,6 +229,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                  * Reload the engine's stack from 'm_Engine.engstack' and jump to it.
                  */
                 case SAVESCRIPTSTACK: {
+                    if (Thread.CurrentThread != m_Engine.m_ScriptThread) {
+                        throw new Exception ("wrong thread");
+                    }
                     m_Engine.engstack.Restore (LOADENGINESTACK);
                     throw new Exception ("returned from Restore()");
                 }
@@ -231,7 +243,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                     break;
                 }
 
-                default: throw new Exception ();
+                default: throw new Exception ("bad scrstack code");
             }
         }
 
@@ -249,6 +261,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
              * so if the script calls Hiber() again or exits, we know how to get
              * back to the engine.
              */
+            if (Thread.CurrentThread != m_Engine.m_ScriptThread) {
+                throw new Exception ("wrong thread");
+            }
             switch (m_Engine.engstack.Store (SAVEENGINESTACK)) {
 
                 /*
@@ -256,6 +271,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                  * jump to where we left off within Hiber().
                  */
                 case SAVEENGINESTACK: {
+                    if (Thread.CurrentThread != m_Engine.m_ScriptThread) {
+                        throw new Exception ("wrong thread");
+                    }
                     scrstack.Restore (LOADSCRIPTSTACK);
                     throw new Exception ("returned from Restore()");
                 }
@@ -268,7 +286,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                     break;
                 }
 
-                default: throw new Exception ();
+                default: throw new Exception ("bad engstack code");
             }
 
             return except;
