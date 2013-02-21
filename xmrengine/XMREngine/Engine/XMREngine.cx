@@ -800,7 +800,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Put on object/instance lists.
              */
-            XMRInstance instance = new XMRInstance();
+            XMRInstance instance   = new XMRInstance();
             instance.m_ForceReset  = restof1st.Contains (",forcereset,");
             instance.m_LocalID     = localID;
             instance.m_ItemID      = itemID;
@@ -809,6 +809,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             instance.m_PostOnRez   = postOnRez;
             instance.m_StateSource = (StateSource)stateSource;
             instance.m_Part        = part;
+            instance.m_PartUUID    = part.UUID;
             instance.m_Item        = item;
             instance.m_DescName    = part.Name + ":" + item.Name;
             instance.m_IState      = XMRInstState.COMPILING;
@@ -821,15 +822,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                 // Insert on internal list of all scripts being handled by this engine instance
                 // that are part of the object.
-                UUID partUUID = instance.m_Part.UUID;
                 List<UUID> itemIDList;
-                if (!m_ObjectItemList.TryGetValue(partUUID, out itemIDList)) {
+                if (!m_ObjectItemList.TryGetValue(instance.m_PartUUID, out itemIDList)) {
                     itemIDList = new List<UUID>();
-                    m_ObjectItemList[partUUID] = itemIDList;
+                    m_ObjectItemList[instance.m_PartUUID] = itemIDList;
                 }
                 if (!itemIDList.Contains(instance.m_ItemID)) {
                     itemIDList.Add(instance.m_ItemID);
-                    m_ObjectInstArray[partUUID] = null;
+                    m_ObjectInstArray[instance.m_PartUUID] = null;
                 }
 
                 m_LockedDict = "~RegisterInstance";
@@ -838,13 +838,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Queue script in a thread that will compile and load it.
              */
-////TODO            lock (m_LoadQueue) {
-////TODO                if (m_LoadQueue.Count == 0) {
-////TODO                    new System.Threading.Thread (LoadThread).Start ();
-////TODO                }
-////TODO                m_LoadQueue.Enqueue (instance);
-////TODO            }
-            LoadThreadWork (instance);  ////TODO -- compile and load synchronovsly
+            lock (m_LoadQueue) {
+                if (m_LoadQueue.Count == 0) {
+                    new System.Threading.Thread (LoadThread).Start ();
+                }
+                m_LoadQueue.Enqueue (instance);
+            }
         }
 
         /**
@@ -979,16 +978,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  */
                 m_InstancesDict.Remove(itemID);
 
-                SceneObjectPart part = m_Scene.GetSceneObjectPart (instance.m_LocalID);
-                UUID partUUID = part.UUID;
                 List<UUID> itemIDList;
-                if (m_ObjectItemList.TryGetValue (partUUID, out itemIDList)) {
+                if (m_ObjectItemList.TryGetValue (instance.m_PartUUID, out itemIDList)) {
                     itemIDList.Remove(itemID);
                     if (itemIDList.Count == 0) {
-                        m_ObjectItemList.Remove(partUUID);
-                        m_ObjectInstArray.Remove(partUUID);
+                        m_ObjectItemList.Remove(instance.m_PartUUID);
+                        m_ObjectInstArray.Remove(instance.m_PartUUID);
                     } else {
-                        m_ObjectInstArray[partUUID] = null;
+                        m_ObjectInstArray[instance.m_PartUUID] = null;
                     }
                 }
 
