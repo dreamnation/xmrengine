@@ -61,12 +61,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
             lock (m_RunLock)
             {
-                if (scrstack != null)
+                if (microthread != null)
                 {
                     m_RunOnePhase = "disposing";
                     CheckRunLockInvariants(true);
-                    scrstack.Dispose ();
-                    scrstack = null;
+                    microthread.Dispose ();
+                    microthread = null;
                 }
             }
 

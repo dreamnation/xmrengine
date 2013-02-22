@@ -247,6 +247,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * This is how many total heap bytes script is allowed to use.
              */
             this.heapLimit  = m_HeapSize;
+
+            /*
+             * Set up microthread object which actually calls the script event handler functions.
+             */
+            this.microthread = new ScriptUThread (this);
         }
 
         //  LoadInitialState()
@@ -615,17 +620,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (this.eventCode != ScriptEventCode.None) {
 
                 /*
-                 * So Start() calls the event handler function.  The event handler function 
-                 * sees the stack frames in this.stackFrames and restores its args and locals, 
-                 * then calls whatever it was calling when the snapshot was taken.  That function 
-                 * also sees this.stackFrames and restores its args and locals, and so on...
+                 * So microthread.Start() calls XMRScriptUThread.Main() which calls the
+                 * event handler function.  The event handler function sees the stack
+                 * frames in this.stackFrames and restores its args and locals, then calls
+                 * whatever it was calling when the snapshot was taken.  That function also
+                 * sees this.stackFrames and restores its args and locals, and so on...
                  * Eventually it gets to the point of calling CheckRun() which sees we are
-                 * doing a restore and it suspends, returning here with the microthread stack
-                 * all restored.  It shouldn't ever throw an exception, just maybe return one.
+                 * doing a restore and it suspends, returning here with the microthread
+                 * stack all restored.  It shouldn't ever throw an exception.
                  */
                 this.stackFramesRestored = false;
-                Exception e = this.StartEx ();
-                if (e != null) throw e;
+                microthread.Start ();
                 if (!this.stackFramesRestored) throw new Exception ("migrate in did not complete");
             }
         }
