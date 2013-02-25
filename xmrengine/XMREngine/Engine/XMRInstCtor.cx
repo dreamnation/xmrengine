@@ -98,7 +98,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
 
                 m_Apis[api] = scriptApi;
-                scriptApi.Initialize(m_Engine, m_Part, m_Item, null);
+                scriptApi.Initialize(m_Engine, m_Part, m_Item);
                 this.InitApi(api, scriptApi);
             }
             m_XMRLSLApi.InitXMRLSLApi(this);
