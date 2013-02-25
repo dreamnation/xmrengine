@@ -189,6 +189,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if (retType == typeof (int)) {
                     stubname = "return StubSysInteger";
                 }
+                if (retType == typeof (object)) {
+                    stubname = "return StubSysObject";
+                }
                 if (retType == typeof (string)) {
                     stubname = "return StubSysString";
                 }
