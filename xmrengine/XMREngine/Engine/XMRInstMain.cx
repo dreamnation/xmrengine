@@ -94,6 +94,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public  uint m_LocalID = 0;
         public  TaskInventoryItem m_Item = null;
         public  UUID m_ItemID;
+        public  UUID m_PartUUID;
         private string m_CameFrom;
 
         private XMREngine m_Engine = null;

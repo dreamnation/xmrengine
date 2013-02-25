@@ -902,7 +902,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             lock (m_QueueLock)
             {
                 m_Suspended = false;
-                if (m_EventQueue.First != null && m_IState == XMRInstState.IDLE) {
+                if ((m_EventQueue != null) &&
+                    (m_EventQueue.First != null) &&
+                    (m_IState == XMRInstState.IDLE)) {
                     m_IState = XMRInstState.ONSTARTQ;
                     m_Engine.QueueToStart(this);
                 }
