@@ -61,12 +61,33 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             inst.Die();
         }
 
-        /* Can't override in latest OpenSim ---
-         * Scripts can use xmrHeapLeft() and xmrStackLeft() if they want
         public override LSL_Integer llGetFreeMemory()
         {
-            return new LSL_Integer(inst.heapLeft);
-        }*/
+            if (m_ScriptEngine is XMREngine)
+            {
+                XMREngine e = (XMREngine)m_ScriptEngine;
+
+                return new LSL_Integer(e.GetInstance(m_item.ItemID).heapLimit - e.GetInstance(m_item.ItemID).heapTotal);
+            }
+            else
+            {
+                return base.llGetFreeMemory();
+            }
+        }
+
+        public override LSL_Integer llGetUsedMemory()
+        {
+            if (m_ScriptEngine is XMREngine)
+            {
+                XMREngine e = (XMREngine)m_ScriptEngine;
+
+                return new LSL_Integer(e.GetInstance(m_item.ItemID).heapTotal);
+            }
+            else
+            {
+                return base.llGetUsedMemory();
+            }
+        }
     }
 
     public partial class XMRInstance
