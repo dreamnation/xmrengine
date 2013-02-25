@@ -111,28 +111,32 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      * before attach(NULL_KEY) is executed.
                      */
                     case ScriptEventCode.attach: {
-                        LinkedListNode<EventParams> lln2 = null;
-                        for (lln2 = m_EventQueue.First; lln2 != null; lln2 = lln2.Next) {
-                            EventParams evt2 = lln2.Value;
-                            ScriptEventCode evc2 = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), 
-                                                                     evt2.EventName);
-                            if ((evc2 != ScriptEventCode.state_entry) &&
-                                (evc2 != ScriptEventCode.attach)) break;
-                        }
-                        if (lln2 == null) {
-                            m_EventQueue.AddLast(lln);
-                        } else {
-                            m_EventQueue.AddBefore(lln2, lln);
-                        }
-
-                        /* If we're detaching, limit the qantum. This will also
-                         * cause the script to self-suspend after running this
-                         * event
-                         */
                         if (evt.Params[0].ToString() == UUID.Zero.ToString())
                         {
+                            LinkedListNode<EventParams> lln2 = null;
+                            for (lln2 = m_EventQueue.First; lln2 != null; lln2 = lln2.Next) {
+                                EventParams evt2 = lln2.Value;
+                                ScriptEventCode evc2 = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), 
+                                                                         evt2.EventName);
+                                if ((evc2 != ScriptEventCode.state_entry) &&
+                                    (evc2 != ScriptEventCode.attach)) break;
+                            }
+                            if (lln2 == null) {
+                                m_EventQueue.AddLast(lln);
+                            } else {
+                                m_EventQueue.AddBefore(lln2, lln);
+                            }
+                            /* If we're detaching, limit the qantum. This will also
+                             * cause the script to self-suspend after running this
+                             * event
+                             */
+
                             m_DetachReady.Reset();
                             m_DetachQuantum = 100;
+                        }
+                        else
+                        {
+                            m_EventQueue.AddLast(lln);
                         }
                         break;
                     }
