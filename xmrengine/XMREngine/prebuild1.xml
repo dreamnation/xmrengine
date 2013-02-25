@@ -23,6 +23,8 @@
      <Reference name="OpenSim.Region.ScriptEngine.Shared"/>
      <Reference name="OpenSim.Region.ScriptEngine.Shared.Api"/>
      <Reference name="OpenSim.Region.ScriptEngine.Shared.Api.Runtime"/>
+     <Reference name="OpenSim.Region.ClientStack" />
+     <Reference name="OpenSim.Region.ClientStack.LindenCaps" />
      <Reference name="xmrengshare"/>
      <Reference name="Mono.Tasklets" />
      <Reference name="Mono.Addins" />
