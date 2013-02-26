@@ -20,6 +20,7 @@ using System.Text;
 using Mono.Tasklets;
 using OpenMetaverse;
 using OpenSim.Framework;
+using OpenSim.Region.Framework.Interfaces;
 using OpenSim.Region.ScriptEngine.Interfaces;
 using OpenSim.Region.ScriptEngine.Shared;
 using OpenSim.Region.ScriptEngine.Shared.Api;
@@ -766,6 +767,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_RunOnePhase = "ResetLocked: removing script";
             m_Part.Inventory.GetInventoryItem(m_ItemID).PermsMask = 0;
             m_Part.Inventory.GetInventoryItem(m_ItemID).PermsGranter = UUID.Zero;
+            IUrlModule urlModule = m_Engine.World.RequestModuleInterface<IUrlModule>();
+            if (urlModule != null)
+                urlModule.ScriptRemoved(m_ItemID);
+
             AsyncCommandManager.RemoveScript(m_Engine, m_LocalID, m_ItemID);
 
             m_RunOnePhase = "ResetLocked: clearing event queue";

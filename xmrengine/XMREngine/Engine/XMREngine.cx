@@ -587,6 +587,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             XMRInstance instance = GetInstance (itemID);
             if (instance != null) {
+                IUrlModule urlModule = m_Scene.RequestModuleInterface<IUrlModule>();
+                if (urlModule != null)
+                    urlModule.ScriptRemoved(itemID);
+
                 instance.Reset();
             }
         }
