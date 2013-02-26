@@ -886,11 +886,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			for (int i = 0; i < nArgs; i ++) {
 
 				/*
-				 * Say that the argument variable is going to be located in a temp var.
+				 * Say that the argument variable is going to be located in a local var.
 				 */
 				TokenDeclVar argVar = argDecl.vars[i];
 				TokenType argTokType = argVar.type;
-				CompValuTemp local = new CompValuTemp (argTokType, argVar.name.val, this);
+				CompValuLocalVar local = new CompValuLocalVar (argTokType, argVar.name.val, this);
 				argVar.location = local;
 
 				/*
@@ -1350,7 +1350,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				/*
 				 * Get a stack location for it and fill in with default value.
 				 */
-				CompValuTemp localLoc = new CompValuTemp (localVar.type, localVar.name.val, this);
+				CompValuLocalVar localLoc = new CompValuLocalVar (localVar.type, localVar.name.val, this);
 				localVar.location = localLoc;
 				PushVarDefaultValue (localVar);
 				localLoc.Pop (this, localVar.name);
@@ -1858,7 +1858,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			curBreakTarg = new BreakContTarg (this, "foreachbreak_" + forEachStmt.Unique);
 			curContTarg  = new BreakContTarg (this, "foreachcont_"  + forEachStmt.Unique);
 
-			CompValuTemp indexVar = new CompValuTemp (new TokenTypeInt (forEachStmt), "foreachloop_index_" + forEachStmt.Unique, this);
+			CompValuTemp indexVar = new CompValuTemp (new TokenTypeInt (forEachStmt), this);
 			ScriptMyLabel loopLabel = ilGen.DefineLabel ("foreachloop_" + forEachStmt.Unique);
 			ScriptMyLocal objectVar = ((keyLVal == null) || (valLVal == null)) ? ilGen.DeclareLocal (typeof (object), "foreachobj_" + forEachStmt.Unique) : null;
 
@@ -2514,7 +2514,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Make sure value is in a temp so we don't compute it more than once.
 			 */
 			if (!(testRVal is CompValuTemp)) {
-				CompValuTemp temp = new CompValuTemp (testRVal.type, null, this);
+				CompValuTemp temp = new CompValuTemp (testRVal.type, this);
 				testRVal.PushVal (this, switchStmt);
 				temp.Pop (this, switchStmt);
 				testRVal = temp;
@@ -2774,7 +2774,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			CompValuTemp cmpv1 = null;
 			if (thisCase.str1 == thisCase.str2) {
-				cmpv1 = new CompValuTemp (tokenTypeInt, null, this);
+				cmpv1 = new CompValuTemp (tokenTypeInt, this);
 			}
 
 			/*
@@ -2931,9 +2931,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void GenerateStmtTryCatch (TokenStmtTry tryStmt)
 		{
-			CompValuTemp tryCallNo = new CompValuTemp (tokenTypeInt, "__tryCallNo_" + tryStmt.Unique, this);
-			CompValuTemp catCallNo = new CompValuTemp (tokenTypeInt, "__catCallNo_" + tryStmt.Unique, this);
-			CompValuTemp catThrown = new CompValuTemp (tokenTypeObj, "__catThrown_" + tryStmt.Unique, this);
+			CompValuTemp tryCallNo = new CompValuTemp (tokenTypeInt, this);
+			CompValuTemp catCallNo = new CompValuTemp (tokenTypeInt, this);
+			CompValuTemp catThrown = new CompValuTemp (tokenTypeObj, this);
 
 			ScriptMyLabel tryCallSw   = ilGen.DefineLabel ("__tryCallSw_"   + tryStmt.Unique);
 			ScriptMyLabel catchRetro  = ilGen.DefineLabel ("__catchRetro_"  + tryStmt.Unique);
@@ -3017,7 +3017,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 #endif
 			OutputCallNoSwitchStmt ();				//         switch (tryCallNo) ...
 
-			CompValuTemp catchVarLoc = new CompValuTemp (tryStmt.catchVar.type, tryStmt.catchVar.name.val, this);
+			CompValuLocalVar catchVarLoc = new CompValuLocalVar (tryStmt.catchVar.type, tryStmt.catchVar.name.val, this);
 			tryStmt.catchVar.location = catchVarLoc;
 
 			ilGen.BeginCatchBlock (typeof (object));		// start of the catch block that can catch anything
@@ -3140,9 +3140,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void GenerateStmtTryFinally (TokenStmtTry tryStmt)
 		{
-			CompValuTemp finCallNo = new CompValuTemp (tokenTypeInt, "__finCallNo_" + tryStmt.Unique, this);
-			CompValuTemp tryCallNo = new CompValuTemp (tokenTypeInt, "__tryCallNo_" + tryStmt.Unique, this);
-			CompValuTemp catThrown = new CompValuTemp (tokenTypeObj, "__catThrown_" + tryStmt.Unique, this);
+			CompValuTemp finCallNo = new CompValuTemp (tokenTypeInt, this);
+			CompValuTemp tryCallNo = new CompValuTemp (tokenTypeInt, this);
+			CompValuTemp catThrown = new CompValuTemp (tokenTypeObj, this);
 
 			ScriptMyLabel tryCallSw   = ilGen.DefineLabel (       "__tryCallSw_"   + tryStmt.Unique);
 			ScriptMyLabel catchRetro  = ilGen.DefineLabel (       "__catchRetro_"  + tryStmt.Unique);
@@ -3920,7 +3920,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 */
 					CompValu retcv;
 					if (opcodeIndex == "+") {
-						retcv = new CompValuTemp (new TokenTypeStr (token.opcode), null, this);
+						retcv = new CompValuTemp (new TokenTypeStr (token.opcode), this);
 					} else {
 						retcv = GenerateFromLVal ((TokenLVal)token.rValLeft);
 					}
@@ -3982,7 +3982,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					ilGen.MarkLabel (falseLabel);
 					ilGen.Emit (token, OpCodes.Ldc_I4_0);
 					ilGen.MarkLabel (doneLabel);
-					CompValuTemp retRVal = new CompValuTemp (new TokenTypeInt (token), null, this);
+					CompValuTemp retRVal = new CompValuTemp (new TokenTypeInt (token), this);
 					retRVal.Pop (this, token);
 					return retRVal;
 				}
@@ -3994,7 +3994,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				right = GenerateFromRVal (token.rValRight);
 				if (!IsConstBoolExpr (right, out rightVal)) {
 					right.PushVal (this, tokenTypeBool);
-					CompValuTemp retRVal = new CompValuTemp (new TokenTypeInt (token), null, this);
+					CompValuTemp retRVal = new CompValuTemp (new TokenTypeInt (token), this);
 					retRVal.Pop (this, token);
 					return retRVal;
 				}
@@ -4028,7 +4028,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					ilGen.MarkLabel (trueLabel);
 					ilGen.Emit (token, OpCodes.Ldc_I4_1);
 					ilGen.MarkLabel (doneLabel);
-					CompValuTemp retRVal = new CompValuTemp (new TokenTypeInt (token), null, this);
+					CompValuTemp retRVal = new CompValuTemp (new TokenTypeInt (token), this);
 					retRVal.Pop (this, token);
 					return retRVal;
 				}
@@ -4040,7 +4040,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				right = GenerateFromRVal (token.rValRight);
 				if (!IsConstBoolExpr (right, out rightVal)) {
 					right.PushVal (this, tokenTypeBool);
-					CompValuTemp retRVal = new CompValuTemp (new TokenTypeInt (token), null, this);
+					CompValuTemp retRVal = new CompValuTemp (new TokenTypeInt (token), this);
 					retRVal.Pop (this, token);
 					return retRVal;
 				}
@@ -4110,7 +4110,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				 * Compute left, perform operation then put result in a temp.
 				 */
 				left = GenerateFromRVal (token.rValLeft);
-				CompValu retRVal = new CompValuTemp (TokenType.FromSysType (token.opcode, binOpStr.outtype), null, this);
+				CompValu retRVal = new CompValuTemp (TokenType.FromSysType (token.opcode, binOpStr.outtype), this);
 				binOpStr.emitBO (this, token, left, right, retRVal);
 				return retRVal;
 			}
@@ -4121,7 +4121,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * It will show equal iff the memory addresses are equal and that is good enough.
 			 */
 			if (!leftType.ToSysType().IsValueType && !right.type.ToSysType().IsValueType && ((opcodeIndex == "==") || (opcodeIndex == "!="))) {
-				CompValuTemp retRVal = new CompValuTemp (new TokenTypeInt (token), null, this);
+				CompValuTemp retRVal = new CompValuTemp (new TokenTypeInt (token), this);
 				left = GenerateFromRVal (token.rValLeft);
 				left.PushVal (this, token.rValLeft);
 				right.PushVal (this, token.rValRight);
@@ -4159,8 +4159,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					if (binOpStr.outtype == leftType.ToSysType ()) {
 						binOpStr.emitBO (this, token, left, right, left);
 					} else {
-						CompValu temp = new CompValuTemp (TokenType.FromSysType (token, binOpStr.outtype), 
-						                                  null, this);
+						CompValu temp = new CompValuTemp (TokenType.FromSysType (token, binOpStr.outtype), this);
 						binOpStr.emitBO (this, token, left, right, temp);
 						left.PopPre (this, token);
 						temp.PushVal (this, token, leftType);
@@ -4300,7 +4299,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Make up a temp to save original value in.
 			 */
-			CompValuTemp result = new CompValuTemp (lVal.type, null, this);
+			CompValuTemp result = new CompValuTemp (lVal.type, this);
 
 			/*
 			 * Prepare to pop incremented value back into variable being incremented.
@@ -4356,7 +4355,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Make up a temp to put result in.
 			 */
-			CompValuTemp result = new CompValuTemp (lVal.type, null, this);
+			CompValuTemp result = new CompValuTemp (lVal.type, this);
 
 			/*
 			 * Prepare to pop incremented value back into variable being incremented.
@@ -4473,7 +4472,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (retType is TokenTypeVoid) {
 				result = new CompValuVoid (call);
 			} else {
-				result = new CompValuTemp (retType, null, this);
+				result = new CompValuTemp (retType, this);
 			}
 
 			/*
@@ -4534,7 +4533,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public CompValu Trivialize (CompValu operand, Token errorAt)
 		{
 			if (operand.IsReadTrivial (this)) return operand;
-			CompValuTemp temp = new CompValuTemp (operand.type, null, this);
+			CompValuTemp temp = new CompValuTemp (operand.type, this);
 			operand.PushVal (this, errorAt);
 			temp.Pop (this, errorAt);
 			return temp;
@@ -4569,7 +4568,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Different type, generate casting code, putting the result in a temp of the output type.
 			 */
-			CompValu outRVal = new CompValuTemp (outType, null, this);
+			CompValu outRVal = new CompValuTemp (outType, this);
 			outRVal.PopPre (this, cast);
 			inRVal.PushVal (this, cast, outType, true);
 			outRVal.PopPost (this, cast);
@@ -4622,7 +4621,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * This is the temp that will hold the created list.
 			 */
-			CompValuTemp newList = new CompValuTemp (new TokenTypeList (rValList.rVal), null, this);
+			CompValuTemp newList = new CompValuTemp (new TokenTypeList (rValList.rVal), this);
 
 			/*
 			 * Create a temp object[] array to hold all the initial values.
@@ -4719,7 +4718,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			// Output a call to malloc the array with all default values
 			//    array = ArrayType.$new (dimSizes[0], dimSizes[1], ...)
-			CompValuTemp array = new CompValuTemp (arrayType, "$newarini", this);
+			CompValuTemp array = new CompValuTemp (arrayType, this);
 			PushXMRInst ();
 			for (int k = 0; k < rank; k ++) {
 				ilGen.Emit (values, OpCodes.Ldc_I4, dimSizes[k]);
@@ -4957,7 +4956,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * array and list
 			 */
-			CompValuTemp temp = new CompValuTemp (type, null, this);
+			CompValuTemp temp = new CompValuTemp (type, this);
 			PushDefaultValue (type);
 			temp.Pop (this, rValInitDef, type);
 			return temp;
@@ -4990,7 +4989,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (typeExp is TokenTypeExpBinOp) {
 				CompValu left  = GenerateFromTypeExp (val, ((TokenTypeExpBinOp)typeExp).leftOp);
 				CompValu right = GenerateFromTypeExp (val, ((TokenTypeExpBinOp)typeExp).rightOp);
-				CompValuTemp result = new CompValuTemp (tokenTypeBool, null, this);
+				CompValuTemp result = new CompValuTemp (tokenTypeBool, this);
 				Token op = ((TokenTypeExpBinOp)typeExp).binOp;
 				left.PushVal (this, ((TokenTypeExpBinOp)typeExp).leftOp);
 				right.PushVal (this, ((TokenTypeExpBinOp)typeExp).rightOp);
@@ -5006,7 +5005,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 			if (typeExp is TokenTypeExpNot) {
 				CompValu interm = GenerateFromTypeExp (val, ((TokenTypeExpNot)typeExp).typeExp);
-				CompValuTemp result = new CompValuTemp (tokenTypeBool, null, this);
+				CompValuTemp result = new CompValuTemp (tokenTypeBool, this);
 				interm.PushVal (this, ((TokenTypeExpNot)typeExp).typeExp, tokenTypeBool);
 				ilGen.Emit (typeExp, OpCodes.Ldc_I4_1);
 				ilGen.Emit (typeExp, OpCodes.Xor);
@@ -5017,7 +5016,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				return GenerateFromTypeExp (val, ((TokenTypeExpPar)typeExp).typeExp);
 			}
 			if (typeExp is TokenTypeExpType) {
-				CompValuTemp result = new CompValuTemp (tokenTypeBool, null, this);
+				CompValuTemp result = new CompValuTemp (tokenTypeBool, this);
 				val.PushVal (this, typeExp);
 				ilGen.Emit (typeExp, OpCodes.Isinst, ((TokenTypeExpType)typeExp).typeToken.ToSysType ());
 				ilGen.Emit (typeExp, OpCodes.Ldnull);
@@ -5028,7 +5027,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				return result;
 			}
 			if (typeExp is TokenTypeExpUndef) {
-				CompValuTemp result = new CompValuTemp (tokenTypeBool, null, this);
+				CompValuTemp result = new CompValuTemp (tokenTypeBool, this);
 				val.PushVal (this, typeExp);
 				ilGen.Emit (typeExp, OpCodes.Ldnull);
 				ilGen.Emit (typeExp, OpCodes.Ceq);
@@ -5252,28 +5251,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			if (opcode is TokenKwSub) {
 				if (inRVal.type is TokenTypeFloat) {
-					CompValuTemp outRVal = new CompValuTemp (new TokenTypeFloat (opcode), null, this);
+					CompValuTemp outRVal = new CompValuTemp (new TokenTypeFloat (opcode), this);
 					inRVal.PushVal (this, opcode, outRVal.type);  // push value to negate, make sure not LSL-boxed
 					ilGen.Emit (opcode, OpCodes.Neg);     // compute the negative
 					outRVal.Pop (this, opcode);           // pop into result
 					return outRVal;                       // tell caller where we put it
 				}
 				if (inRVal.type is TokenTypeInt) {
-					CompValuTemp outRVal = new CompValuTemp (new TokenTypeInt (opcode), null, this);
+					CompValuTemp outRVal = new CompValuTemp (new TokenTypeInt (opcode), this);
 					inRVal.PushVal (this, opcode, outRVal.type);  // push value to negate, make sure not LSL-boxed
 					ilGen.Emit (opcode, OpCodes.Neg);     // compute the negative
 					outRVal.Pop (this, opcode);           // pop into result
 					return outRVal;                       // tell caller where we put it
 				}
 				if (inRVal.type is TokenTypeRot) {
-					CompValuTemp outRVal = new CompValuTemp (inRVal.type, null, this);
+					CompValuTemp outRVal = new CompValuTemp (inRVal.type, this);
 					inRVal.PushVal (this, opcode);        // push rotation, then call negate routine
 					ilGen.Emit (opcode, OpCodes.Call, lslRotationNegateMethodInfo);
 					outRVal.Pop (this, opcode);           // pop into result
 					return outRVal;                       // tell caller where we put it
 				}
 				if (inRVal.type is TokenTypeVec) {
-					CompValuTemp outRVal = new CompValuTemp (inRVal.type, null, this);
+					CompValuTemp outRVal = new CompValuTemp (inRVal.type, this);
 					inRVal.PushVal (this, opcode);        // push vector, then call negate routine
 					ilGen.Emit (opcode, OpCodes.Call, lslVectorNegateMethodInfo);
 					outRVal.Pop (this, opcode);           // pop into result
@@ -5288,7 +5287,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			if (opcode is TokenKwTilde) {
 				if (inRVal.type is TokenTypeInt) {
-					CompValuTemp outRVal = new CompValuTemp (new TokenTypeInt (opcode), null, this);
+					CompValuTemp outRVal = new CompValuTemp (new TokenTypeInt (opcode), this);
 					inRVal.PushVal (this, opcode, outRVal.type);  // push value to negate, make sure not LSL-boxed
 					ilGen.Emit (opcode, OpCodes.Not);     // compute the complement
 					outRVal.Pop (this, opcode);           // pop into result
@@ -5306,7 +5305,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * everything like that.
 			 */
 			if (opcode is TokenKwExclam) {
-				CompValuTemp outRVal = new CompValuTemp (new TokenTypeInt (opcode), null, this);
+				CompValuTemp outRVal = new CompValuTemp (new TokenTypeInt (opcode), this);
 				inRVal.PushVal (this, opcode, tokenTypeBool);  // anything converts to boolean
 				ilGen.Emit (opcode, OpCodes.Ldc_I4_1);         // then XOR with 1 to flip it
 				ilGen.Emit (opcode, OpCodes.Xor);
@@ -5618,7 +5617,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				TokenType subIntfType = impl.MakeRefToken (name);
 
 				// make a temp variable of the secondary interface type
-				CompValuTemp castBase = new CompValuTemp (subIntfType, null, this);
+				CompValuTemp castBase = new CompValuTemp (subIntfType, this);
 
 				// output code to cast from the primary interface to the secondary interface
 				// this is 2 basic steps:

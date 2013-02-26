@@ -253,6 +253,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Call, setByKeyMethodInfo);
 		}
+
+		// non-trivial because it needs to be copied into a temp
+		// in case the idiot does dumb-ass side effects tricks
+		//   eg,  (x = 0) + x + 2
+		//   should read old value of x not 0
+		public override bool IsReadTrivial (ScriptCodeGen scg)
+		{
+			return false;
+		}
 	}
 
 	// The value is kept in the current function's argument list
@@ -292,6 +301,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				scg.ErrorMsg (errorAt, "location cannot be written to");
 			}
 			scg.ilGen.Emit (errorAt, OpCodes.Starg, index);
+		}
+
+		// non-trivial because it needs to be copied into a temp
+		// in case the idiot does dumb-ass side effects tricks
+		//   eg,  (x = 0) + x + 2
+		//   should read old value of x not 0
+		public override bool IsReadTrivial (ScriptCodeGen scg)
+		{
+			return false;
 		}
 	}
 
@@ -359,6 +377,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Stfld, field);
+		}
+
+		// non-trivial because it needs to be copied into a temp
+		// in case the idiot does dumb-ass side effects tricks
+		//   eg,  (x = 0) + x + 2
+		//   should read old value of x not 0
+		public override bool IsReadTrivial (ScriptCodeGen scg)
+		{
+			return false;
 		}
 	}
 
@@ -467,6 +494,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 			TokenDeclVar getFunc = scg.FindThisMember (sdtDecl, name, argsig);
 			return getFunc.retType;
+		}
+
+		// non-trivial because it needs to be copied into a temp
+		// in case the idiot does dumb-ass side effects tricks
+		//   eg,  (x = 0) + x + 2
+		//   should read old value of x not 0
+		public override bool IsReadTrivial (ScriptCodeGen scg)
+		{
+			return false;
 		}
 	}
 
@@ -620,9 +656,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				scg.ilGen.Emit (errorAt, OpCodes.Pop);
 			}
 		}
+
+		// non-trivial because it needs to be copied into a temp
+		// in case the idiot does dumb-ass side effects tricks
+		//   eg,  (x = 0) + x + 2
+		//   should read old value of x not 0
 		public override bool IsReadTrivial (ScriptCodeGen scg)
 		{
-			return (declVar.getProp == null) || declVar.getProp.IsFuncTrivial (scg);
+			return false;
 		}
 	}
 
@@ -1023,7 +1064,26 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			// getter() method is non-trivial.  reading a method means getting a delegate 
 			// which is always trivial, and reading a simple field is alwasy trivial, ie, no 
 			// CheckRun() call can possibly be involved.
-			return (declVar.getProp == null) || declVar.getProp.IsFuncTrivial (scg);
+			if (declVar.retType != null) {
+				// a method's value, ie, without applying the (arglist), is a delegate...
+				return true;
+			}
+			if (declVar.vTableArray != null) {
+				// a field's value is its XMRSDTypeClObj.instVars array element
+
+				// non-trivial because it needs to be copied into a temp
+				// in case the idiot does dumb-ass side effects tricks
+				//   eg,  (x = 0) + x + 2
+				//   should read old value of x not 0
+				return false;
+			}
+			if (declVar.getProp != null) {
+				// a property's value is calling its get method with no arguments
+				return declVar.getProp.IsFuncTrivial (scg);
+			}
+
+			// write-only property
+			return true;
 		}
 
 		public override void CallPre (ScriptCodeGen scg, Token errorAt)
@@ -1178,6 +1238,47 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 	}
 
+	// The value is kept in a script-addressable local variable
+	public class CompValuLocalVar : CompValu {
+		public ScriptMyLocal localBuilder;
+
+		public CompValuLocalVar (TokenType type, string name, ScriptCodeGen scg) : base (type)
+		{
+			this.localBuilder = scg.ilGen.DeclareLocal (ToSysType(), name);
+		}
+
+		public override void PushVal (ScriptCodeGen scg, Token errorAt)
+		{
+			scg.ilGen.Emit (errorAt, OpCodes.Ldloc, localBuilder);
+		}
+		public override void PushRef (ScriptCodeGen scg, Token errorAt)
+		{
+			scg.ilGen.Emit (errorAt, OpCodes.Ldloca, localBuilder);
+		}
+		public override void PopPost (ScriptCodeGen scg, Token errorAt)
+		{
+			scg.ilGen.Emit (errorAt, OpCodes.Stloc, localBuilder);
+		}
+		public void Pop (ScriptCodeGen scg, Token errorAt, TokenType stackType)
+		{
+			TypeCast.CastTopOfStack (scg, errorAt, stackType, this.type, false);
+			this.PopPost (scg, errorAt);  // in case PopPost() overridden eg by CompValuVoid
+		}
+		public void Pop (ScriptCodeGen scg, Token errorAt)
+		{
+			this.PopPost (scg, errorAt);  // in case PopPost() overridden eg by CompValuVoid
+		}
+
+		// non-trivial because it needs to be copied into a temp
+		// in case the idiot does dumb-ass side effects tricks
+		//   eg,  (x = 0) + x + 2
+		//   should read old value of x not 0
+		public override bool IsReadTrivial (ScriptCodeGen scg)
+		{
+			return false;
+		}
+	}
+
 	// The value is a null
 	public class CompValuNull : CompValu {
 		public CompValuNull (TokenType type) : base (type) { }
@@ -1235,6 +1336,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			throw new Exception ("cannot store into constant");
 		}
+
+		// non-trivial because it needs to be copied into a temp
+		// in case the idiot does dumb-ass side effects tricks
+		//   eg,  (x = 0) + x + 2
+		//   should read old value of x not 0
+		public override bool IsReadTrivial (ScriptCodeGen scg)
+		{
+			return false;
+		}
 	}
 
 	// The value is in a static field of a class
@@ -1291,6 +1401,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				throw new Exception ("can't write a constant");
 			}
 			scg.ilGen.Emit (errorAt, OpCodes.Stsfld, field);
+		}
+
+		// non-trivial because it needs to be copied into a temp
+		// in case the idiot does dumb-ass side effects tricks
+		//   eg,  (x = 0) + x + 2
+		//   should read old value of x not 0
+		public override bool IsReadTrivial (ScriptCodeGen scg)
+		{
+			return false;
 		}
 	}
 
@@ -1358,11 +1477,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	public class CompValuTemp : CompValu {
 		public ScriptMyLocal localBuilder;
 
-		public CompValuTemp (TokenType type, string name, ScriptCodeGen scg) : base (type)
+		public CompValuTemp (TokenType type, ScriptCodeGen scg) : base (type)
 		{
-			if (name == null) {
-				name = "__tmp_" + (++ scg.tempCompValuNum);
-			}
+			string name = "__tmp_" + (++ scg.tempCompValuNum);
 			this.localBuilder = scg.ilGen.DeclareLocal (ToSysType(), name);
 		}
 		protected CompValuTemp (TokenType type) : base (type) { }  // CompValuVoid uses this
@@ -1424,6 +1541,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
 			throw new Exception ("cannot store into constant");
+		}
+
+		// non-trivial because it needs to be copied into a temp
+		// in case the idiot does dumb-ass side effects tricks
+		//   eg,  (x = 0) + x + 2
+		//   should read old value of x not 0
+		public override bool IsReadTrivial (ScriptCodeGen scg)
+		{
+			return false;
 		}
 	}
 
