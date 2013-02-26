@@ -1195,14 +1195,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			base.ChainLin ();
 
 			switch (opcode.ToString ()) {
-				case "ldfld":   coll.stackDepth.Pop  (field.DeclaringType); coll.stackDepth.Push (field.FieldType);                  break;
-				case "ldflda":  coll.stackDepth.Pop  (field.DeclaringType); coll.stackDepth.Push (field.FieldType.MakeByRefType ()); break;
-				case "stfld":   coll.stackDepth.Pop  (field.FieldType);     coll.stackDepth.Pop  (field.DeclaringType);              break;
-				case "ldsfld":                                              coll.stackDepth.Push (field.FieldType);                  break;
-				case "ldsflda":                                             coll.stackDepth.Push (field.FieldType.MakeByRefType ()); break;
-				case "stsfld":                                              coll.stackDepth.Pop  (field.FieldType);                  break;
+				case "ldfld":   PopPointer ();                         coll.stackDepth.Push (field.FieldType);                  break;
+				case "ldflda":  PopPointer ();                         coll.stackDepth.Push (field.FieldType.MakeByRefType ()); break;
+				case "stfld":   coll.stackDepth.Pop (field.FieldType); PopPointer ();                                           break;
+				case "ldsfld":                                         coll.stackDepth.Push (field.FieldType);                  break;
+				case "ldsflda":                                        coll.stackDepth.Push (field.FieldType.MakeByRefType ()); break;
+				case "stsfld":                                         coll.stackDepth.Pop  (field.FieldType);                  break;
 				default: throw new Exception ("unknown opcode " + opcode.ToString ());
 			}
+		}
+		private void PopPointer ()
+		{
+			Type t = field.DeclaringType;               // get class/field type
+			if (t.IsValueType) {
+				Type brt = t.MakeByRefType ();      // if value type, eg Vector, it can be pushed by reference or by value
+				int c = coll.stackDepth.Count;
+				if ((c > 0) && (coll.stackDepth[c-1] == brt)) t = brt;
+			}
+			coll.stackDepth.Pop (t);                    // type of what should be on the stack pointing to object or struct
 		}
 
 		public override void DebString (StringBuilder sb)
