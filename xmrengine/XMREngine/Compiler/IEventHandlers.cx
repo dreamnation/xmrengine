@@ -37,5 +37,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         void touch (int num_detected);
         void touch_start (int num_detected);
         void touch_end (int num_detected);
+        void transaction_result(string id, int success, string data);
+        void path_update(int type, LSL_List data);
     }
 }
