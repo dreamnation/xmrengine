@@ -845,12 +845,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Queue script in a thread that will compile and load it.
              */
-            lock (m_LoadQueue) {
-                if (m_LoadQueue.Count == 0) {
-                    new System.Threading.Thread (LoadThread).Start ();
-                }
-                m_LoadQueue.Enqueue (instance);
-            }
+//            lock (m_LoadQueue) {
+//                if (m_LoadQueue.Count == 0) {
+//                    new System.Threading.Thread (LoadThread).Start ();
+//                }
+//                m_LoadQueue.Enqueue (instance);
+//            }
+            LoadThreadWork(instance);
         }
 
         /**
