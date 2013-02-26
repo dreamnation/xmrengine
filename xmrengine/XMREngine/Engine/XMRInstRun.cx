@@ -745,9 +745,39 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 /*
                  * Reset everything and queue up default's start_entry() event.
                  */
+                ClearQueue();
                 ResetLocked("external Reset");
 
                 CheckRunLockInvariants(true);
+            }
+        }
+
+        private void ClearQueueExceptLinkMessages()
+        {
+            List<EventParams> linkMessages = new List<EventParams>();
+
+            LinkedListNode<EventParams> lln2 = null;
+            for (lln2 = m_EventQueue.First; lln2 != null; lln2 = lln2.Next) {
+                EventParams evt2 = lln2.Value;
+                ScriptEventCode evc2 = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), 
+                                                                     evt2.EventName);
+                if (evc2 == ScriptEventCode.link_message)
+                    linkMessages.Add(evt2);
+            }
+            ClearQueue();
+
+            foreach (EventParams evt in linkMessages)
+                m_EventQueue.AddLast(evt);
+
+            m_EventCounts[(int)ScriptEventCode.link_message] = linkMessages.Count;
+        }
+
+        private void ClearQueue()
+        {
+            lock (m_QueueLock)
+            {
+                m_EventQueue.Clear();               // no events queued
+                for (int i = m_EventCounts.Length; -- i >= 0;) m_EventCounts[i] = 0;
             }
         }
 
@@ -773,12 +803,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             AsyncCommandManager.RemoveScript(m_Engine, m_LocalID, m_ItemID);
 
-            m_RunOnePhase = "ResetLocked: clearing event queue";
-            lock (m_QueueLock)
-            {
-                m_EventQueue.Clear();               // no events queued
-                for (int i = m_EventCounts.Length; -- i >= 0;) m_EventCounts[i] = 0;
-            }
+            m_RunOnePhase = "ResetLocked: clearing current event";
             this.eventCode = ScriptEventCode.None;  // not processing an event
             m_DetectParams = null;                  // not processing an event
             m_SleepUntil   = DateTime.MinValue;     // not doing llSleep()

@@ -100,6 +100,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public void ApiReset()
         {
+            ClearQueueExceptLinkMessages();
+
             throw new ScriptResetException();
         }
 
