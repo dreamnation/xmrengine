@@ -30,7 +30,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public bool doCheckRun;       // valid for CodeGenBEApi only
 		public int keepNulls;         // valid for CodeGenLLParseString2List only
 
-		private static TokenTypeFloat tokenTypeFloat  = new TokenTypeFloat (null);
+		private static TokenTypeFloat tokenTypeFloat = new TokenTypeFloat (null);
+		private static TokenTypeInt   tokenTypeInt   = new TokenTypeInt   (null);
 
 		private static MethodInfo roundMethInfo = ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Round", 
 				new Type[] { typeof (double), typeof (MidpointRounding) });
@@ -40,6 +41,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		private static readonly MethodInfo fixLLParcelMediaCommandList = ScriptCodeGen.GetStaticMethod 
 				(typeof (XMRInstAbstract), "FixLLParcelMediaCommandList", new Type[] { typeof (LSL_List) });
+
+		private static readonly MethodInfo getFreeMemMethInfo = typeof (XMRInstAbstract).GetMethod ("xmrHeapLeft", new Type[] { });
+		private static readonly MethodInfo getUsedMemMethInfo = typeof (XMRInstAbstract).GetMethod ("xmrHeapUsed", new Type[] { });
 
 		/**
 		 * @brief Create a dictionary of inline backend API functions.
@@ -68,6 +72,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			inf = new TokenDeclInline (ifd, false, "llSin(float)",         typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Sin",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
 			inf = new TokenDeclInline (ifd, false, "llSqrt(float)",        typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Sqrt",    oneDoub));  inf.codeGen = inf.CodeGenStatic;
 			inf = new TokenDeclInline (ifd, false, "llTan(float)",         typeof (SCRIPTFLOAT), ScriptCodeGen.GetStaticMethod (typeof (System.Math), "Tan",     oneDoub));  inf.codeGen = inf.CodeGenStatic;
+
+			/*
+			 * Something weird about the code generation for these calls, so they all have their own handwritten code generators.
+			 */
+			inf = new TokenDeclInline (ifd, false, "llGetFreeMemory()", typeof (int), null); inf.codeGen = inf.CodeGenGetFreeMemory;
+			inf = new TokenDeclInline (ifd, false, "llGetUsedMemory()", typeof (int), null); inf.codeGen = inf.CodeGenGetUsedMemory;
 
 			/*
 			 * Finally for any API functions defined by SCRIPTBASECLASS that are not overridden 
@@ -304,6 +314,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4, (int)System.MidpointRounding.AwayFromZero);
 			scg.ilGen.Emit (errorAt, OpCodes.Call, roundMethInfo);
 			result.Pop (scg, errorAt, tokenTypeFloat);
+		}
+
+		// appears as llGetFreeMemory() in script source code
+		// but actually calls xmrHeapLeft()
+		private void CodeGenGetFreeMemory (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
+		{
+			scg.PushXMRInst ();
+			scg.ilGen.Emit (errorAt, OpCodes.Call, getFreeMemMethInfo);
+			result.Pop (scg, errorAt, tokenTypeInt);
+		}
+
+		// appears as llGetUsedMemory() in script source code
+		// but actually calls xmrHeapUsed()
+		private void CodeGenGetUsedMemory (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
+		{
+			scg.PushXMRInst ();
+			scg.ilGen.Emit (errorAt, OpCodes.Call, getUsedMemMethInfo);
+			result.Pop (scg, errorAt, tokenTypeInt);
 		}
 
 		/**

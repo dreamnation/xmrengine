@@ -336,9 +336,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return s.GetHashCode ();
         }
 
+        // aliased in script as llGetFreeMemory()
         public int xmrHeapLeft ()
         {
             return heapLimit - heapTotal;
+        }
+
+        // aliased in script as llGetUsedMemory()
+        public int xmrHeapUsed ()
+        {
+            return heapTotal;
         }
 
         public string xmrTypeName (object o)
