@@ -11,6 +11,7 @@ using System.IO;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Text;
+using System.Text.RegularExpressions;
 #include "lsltypes.h"
 
 namespace OpenSim.Region.ScriptEngine.XMREngine {
@@ -187,15 +188,36 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				BinOpStr val = kvp.Value;
 				bos2.Add (key, val);
 			}
+            Regex wordReg = new Regex("\\w+");
+            Regex opReg = new Regex("\\W+");
 			foreach (KeyValuePair<string, BinOpStr> kvp in bos) {
 				string   key  = kvp.Key;
 				BinOpStr val  = kvp.Value;
-				string   key2 = key.Replace ("integer", "bool");
-				if (!bos2.ContainsKey (key2)) {
-					bos2.Add (key2, val);
-				}
-			}
-
+                MatchCollection matches = wordReg.Matches(key);
+                if (matches.Count != 2)
+                    continue;
+                Match opM = opReg.Match(key);
+                if (!opM.Success)
+                    continue;
+                string left = matches[0].Value;
+                string right = matches[1].Value;
+                string op = opM.Value;
+                string key2;
+                if (left == "integer" && right == "integer")
+                {
+                    key2 = "bool"+op+"bool";
+                    if (!bos2.ContainsKey (key2)) bos2.Add (key2, val);
+                    key2 = "bool"+op+"integer";
+                    if (!bos2.ContainsKey (key2)) bos2.Add (key2, val);
+                    key2 = "integer"+op+"bool";
+                    if (!bos2.ContainsKey (key2)) bos2.Add (key2, val);
+                }
+                else
+                {
+                    key2 = key.Replace("integer", "bool");
+                    if (!bos2.ContainsKey (key2)) bos2.Add (key2, val);
+                }
+            }
 			return bos2;
 		}
 
