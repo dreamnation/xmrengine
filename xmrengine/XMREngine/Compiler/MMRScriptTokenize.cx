@@ -1788,6 +1788,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public TokenTypeLSLInt (Token original) : base (original) { }
         public override Type ToLSLWrapType () { return typeof (LSL_Integer); }
     }
+    public class TokenTypeLSLKey : TokenTypeKey {
+        public TokenTypeLSLKey (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
+        public TokenTypeLSLKey (Token original) : base (original) { }
+        public override Type ToLSLWrapType () { return typeof (LSL_Key); }
+    }
     public class TokenTypeLSLString : TokenTypeStr {
         public TokenTypeLSLString (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
         public TokenTypeLSLString (Token original) : base (original) { }

@@ -1,9 +1,14 @@
 #!/bin/bash -v
 
 function testit {
-    mono --debug xmrengtest.exe $1.lsl 2>&1 | tee $1.out
+    input=/dev/null
+    if [ -f $1.in ]
+    then
+        input=$1.in
+    fi
+    mono --debug xmrengtest.exe $1.lsl < $input 2>&1 | tee $1.out
     diff $1.out $1.good
-    mono --debug xmrengtest.exe -serialize $1.lsl 2>&1 | tee $1.ser
+    mono --debug xmrengtest.exe -serialize $1.lsl < $input 2>&1 | tee $1.ser
     diff $1.ser $1.good
 }
 

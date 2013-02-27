@@ -31,6 +31,12 @@ default {
             } else {
                 llOwnerSay ("string var cast to key is null");
             }
+
+            if (llGetOwnerKey (s)) {
+                llOwnerSay ("llGetOwnerKey not null");
+            } else {
+                llOwnerSay ("llGetOwnerKey is null");
+            }
         }
     }
 }

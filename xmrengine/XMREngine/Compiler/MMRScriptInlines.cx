@@ -45,11 +45,90 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static readonly MethodInfo getFreeMemMethInfo = typeof (XMRInstAbstract).GetMethod ("xmrHeapLeft", new Type[] { });
 		private static readonly MethodInfo getUsedMemMethInfo = typeof (XMRInstAbstract).GetMethod ("xmrHeapUsed", new Type[] { });
 
+		private static string[] noCheckRuns;
+		private static string[] keyReturns;
+
 		/**
 		 * @brief Create a dictionary of inline backend API functions.
 		 */
 		private static VarDict CreateDictionary ()
 		{
+			/*
+			 * For those listed in noCheckRun, we just generate the call (simple computations).
+			 * For all others, we generate the call then a call to CheckRun().
+			 */
+			noCheckRuns = new string[] {
+				"llBase64ToString",
+				"llCSV2List",
+				"llDeleteSubList",
+				"llDeleteSubString",
+				"llDumpList2String",
+				"llEscapeURL",
+				"llEuler2Rot",
+				"llGetListEntryType",
+				"llGetListLength",
+				"llGetSubString",
+				"llGetUnixTime",
+				"llInsertString",
+				"llList2CSV",
+				"llList2Float",
+				"llList2Integer",
+				"llList2Key",
+				"llList2List",
+				"llList2ListStrided",
+				"llList2Rot",
+				"llList2String",
+				"llList2Vector",
+				"llListFindList",
+				"llListInsertList",
+				"llListRandomize",
+				"llListReplaceList",
+				"llListSort",
+				"llListStatistics",
+				"llMD5String",
+				"llParseString2List",
+				"llParseStringKeepNulls",
+				"llStringLength",
+				"llStringToBase64",
+				"llStringTrim",
+				"llSubStringIndex",
+				"llUnescapeURL"
+			};
+
+			/*
+			 * These functions really return a 'key' even though we see them as
+			 * returning 'string' because OpenSim has key and string as same type.
+			 */
+			keyReturns = new string[] {
+				"llAvatarOnLinkSitTarget",
+				"llAvatarOnSitTarget",
+				"llDetectedKey",
+				"llDetectedOwner",
+				"llGenerateKey",
+				"llGetCreator",
+				"llGetInventoryCreator",
+				"llGetInventoryKey",
+				"llGetKey",
+				"llGetLandOwnerAt",
+				"llGetLinkKey",
+				"llGetNotecardLine",
+				"llGetNumberOfNotecardLines",
+				"llGetOwner",
+				"llGetOwnerKey",
+				"llGetPermissionsKey",
+				"llHTTPRequest",
+				"llList2Key",
+				"llRequestAgentData",
+				"llRequestDisplayName",
+				"llRequestInventoryData",
+				"llRequestSecureURL",
+				"llRequestSimulatorData",
+				"llRequestURL",
+				"llRequestUsername",
+				"llSendRemoteData",
+				"llTransferLindenDollars"
+			};
+
 			VarDict ifd = new VarDict ();
 			TokenDeclInline inf;
 
@@ -98,48 +177,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		public static void AddInterfaceMethods (VarDict ifd, Type ifaceType)
 		{
-			/*
-			 * For those listed in noCheckRun, we just generate the call (simple computations).
-			 * For all others, we generate the call then a call to CheckRun().
-			 */
-			string[] noCheckRuns = new string[] {
-				"llBase64ToString",
-				"llCSV2List",
-				"llDeleteSubList",
-				"llDeleteSubString",
-				"llDumpList2String",
-				"llEscapeURL",
-				"llEuler2Rot",
-				"llGetListEntryType",
-				"llGetListLength",
-				"llGetSubString",
-				"llGetUnixTime",
-				"llInsertString",
-				"llList2CSV",
-				"llList2Float",
-				"llList2Integer",
-				"llList2Key",
-				"llList2List",
-				"llList2ListStrided",
-				"llList2Rot",
-				"llList2String",
-				"llList2Vector",
-				"llListFindList",
-				"llListInsertList",
-				"llListRandomize",
-				"llListReplaceList",
-				"llListSort",
-				"llListStatistics",
-				"llMD5String",
-				"llParseString2List",
-				"llParseStringKeepNulls",
-				"llStringLength",
-				"llStringToBase64",
-				"llStringTrim",
-				"llSubStringIndex",
-				"llUnescapeURL"
-			};
-
 			MethodInfo[] ifaceMethods = ifaceType.GetMethods ();
 			foreach (MethodInfo ifaceMethod in ifaceMethods) {
 				string key = ifaceMethod.Name;
@@ -158,8 +195,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 * Otherwise, assume we will call CheckRun()
 					 */
 					bool dcr = !key.StartsWith ("xmr");
-					for (int i = noCheckRuns.Length; -- i >= 0;) {
-						if (noCheckRuns[i] == key) {
+					foreach (string ncr in noCheckRuns) {
+						if (ncr == key) {
 							dcr = false;
 							break;
 						}
@@ -170,9 +207,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 */
 					ParameterInfo[] parameters = ifaceMethod.GetParameters ();
 					TokenArgDecl argDecl = new TokenArgDecl (null);
-					for (int i = 0; i < parameters.Length; i ++) {
-						TokenType type = TokenType.FromSysType (null, parameters[i].ParameterType);
-						TokenName name = new TokenName (null, parameters[i].Name);
+					foreach (ParameterInfo pi in parameters) {
+						TokenType type = TokenType.FromSysType (null, pi.ParameterType);
+						TokenName name = new TokenName (null, pi.Name);
 						argDecl.AddArg (type, name);
 					}
 
@@ -183,11 +220,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					TokenDeclInline inlfun = new TokenDeclInline (ifd, dcr, key, retType, argDecl, ifaceMethod);
 					inlfun.codeGen         = inlfun.CodeGenBEApi;
 				} catch {
-
-					///??? string msg = except.ToString ();
-					///??? int i = msg.IndexOf ("\n");
-					///??? if (i > 0) msg = msg.Substring (0, i);
-
 					///??? IGNORE ANY THAT FAIL - LIKE UNRECOGNIZED TYPE ???///
 					///???                          and OVERLOADED NAMES ???///
 				}
@@ -209,7 +241,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		                         MethodInfo methInfo)
 			: base (null, null, null)
 		{
-			this.retType     = TokenType.FromSysType (null, retType);
+			this.retType     = GetRetType (methInfo, TokenType.FromSysType (null, retType));
 			this.methInfo    = methInfo;
 			this.doCheckRun  = doCheckRun;
 			this.triviality  = (doCheckRun || IsTaggedComplex (methInfo)) ? Triviality.complex : Triviality.trivial;
@@ -250,7 +282,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			: base (null, null, null)
 		{
 			this.name        = new TokenName (null, name);
-			this.retType     = retType;
+			this.retType     = GetRetType (methInfo, retType);
 			this.methInfo    = methInfo;
 			this.argDecl     = argDecl;
 			this.doCheckRun  = doCheckRun;
@@ -275,6 +307,41 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				}
 			}
 			return false;
+		}
+
+		/**
+		 * @brief The dumbass OpenSim has key and string as the same type so non-ll
+		 *        methods must be tagged with xmrMethodReturnsKeyAttribute if we
+		 *        are to think they return a key type, otherwise we will think they
+		 *        return string.
+		 */
+		private static TokenType GetRetType (MethodInfo methInfo, TokenType retType)
+		{
+			if ((methInfo != null) && (retType != null) && (retType is TokenTypeStr)) {
+				foreach (Attribute attr in Attribute.GetCustomAttributes (methInfo)) {
+					if (attr is xmrMethodReturnsKeyAttribute) {
+						return ChangeToKeyType (retType);
+					}
+				}
+
+				string mn = methInfo.Name;
+				foreach (string kr in keyReturns) {
+					if (kr == mn) {
+						return ChangeToKeyType (retType);
+					}
+				}
+
+			}
+			return retType;
+		}
+		private static TokenType ChangeToKeyType (TokenType retType)
+		{
+			if (retType is TokenTypeLSLString) {
+				retType = new TokenTypeLSLKey (null);
+			} else {
+				retType = new TokenTypeKey (null);
+			}
+			return retType;
 		}
 
 		/**

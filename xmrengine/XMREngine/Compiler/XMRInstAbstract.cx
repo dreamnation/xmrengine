@@ -1547,6 +1547,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     // they are a stub function.
     public class xmrMethodIsNoisyAttribute : Attribute { }
 
+    // Any script callable methods that really return a key not a string should be
+    // tagged with this attribute so the compiler will know they return type key and
+    // not type string.
+    public class xmrMethodReturnsKeyAttribute : Attribute { }
+
     [SerializableAttribute]
     public class OutOfHeapException : Exception, ISerializable {
         public OutOfHeapException(int heapNeeded, int heapLeft)
