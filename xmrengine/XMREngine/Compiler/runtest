@@ -22,6 +22,7 @@ export PATH=~/mono64.267/bin:$PATH
 testit arraytest
 testit chartest
 testit fieldtest
+testit keytest
 testit objectest
 testit proptest
 testit trycatchexample

@@ -349,7 +349,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.excBlock = coll.curExcBlock;
 
 #if DEBUG & 1
-			StringBuilder sb = new StringBuilder ("ChainLin*: ");
+			StringBuilder sb = new StringBuilder ("ChainLin*:");
+			sb.Append (coll.stackDepth.Count.ToString("D2"));
+			sb.Append (' ');
 			this.DebString (sb);
 			Console.WriteLine (sb.ToString ());
 #endif

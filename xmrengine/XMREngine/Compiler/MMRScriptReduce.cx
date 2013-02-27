@@ -5670,7 +5670,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			/*
 			 * Maybe referencing single character of a string.
 			 */
-			if (baseType is TokenTypeStr) {
+			if ((baseType is TokenTypeKey) || (baseType is TokenTypeStr)) {
 				return new TokenTypeChar (this);
 			}
 
@@ -6172,34 +6172,43 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			if (rVal is TokenRValConst) {
 				try {
 					object val = ((TokenRValConst)rVal).val;
+					object nval = null;
 					if (castTo is TokenTypeChar) {
-						if (val is int)          val = (char)(int)val;
+						if (val is char)         return rVal;
+						if (val is int)          nval = (char)(int)val;
 					}
 					if (castTo is TokenTypeFloat) {
-						if (val is int)          val = (SCRIPTFLOAT)(int)val;
-						if (val is string)       val = new LSL_Float ((string)val).value;
+						if (val is SCRIPTFLOAT)  return rVal;
+						if (val is int)          nval = (SCRIPTFLOAT)(int)val;
+						if (val is string)       nval = new LSL_Float ((string)val).value;
 					}
 					if (castTo is TokenTypeInt) {
-						if (val is char)         val = (int)(char)val;
-						if (val is SCRIPTFLOAT)  val = (int)(SCRIPTFLOAT)val;
-						if (val is string)       val = new LSL_Integer ((string)val).value;
+						if (val is int)          return rVal;
+						if (val is char)         nval = (int)(char)val;
+						if (val is SCRIPTFLOAT)  nval = (int)(SCRIPTFLOAT)val;
+						if (val is string)       nval = new LSL_Integer ((string)val).value;
 					}
 					if (castTo is TokenTypeRot) {
-						if (val is string)       val = new LSL_Rotation ((string)val);
+						if (val is LSL_Rotation) return rVal;
+						if (val is string)       nval = new LSL_Rotation ((string)val);
 					}
-					if (castTo is TokenTypeStr) {
-						if (val is char)         val = TypeCast.CharToString ((char)val);
-						if (val is SCRIPTFLOAT)  val = TypeCast.FloatToString ((SCRIPTFLOAT)val);
-						if (val is int)          val = TypeCast.IntegerToString ((int)val);
-						if (val is LSL_Rotation) val = TypeCast.RotationToString ((LSL_Rotation)val);
-						if (val is LSL_Vector)   val = TypeCast.VectorToString ((LSL_Vector)val);
+					if ((castTo is TokenTypeKey) || (castTo is TokenTypeStr)) {
+						if (val is string)       nval = val;  // in case of key/string conversion
+						if (val is char)         nval = TypeCast.CharToString ((char)val);
+						if (val is SCRIPTFLOAT)  nval = TypeCast.FloatToString ((SCRIPTFLOAT)val);
+						if (val is int)          nval = TypeCast.IntegerToString ((int)val);
+						if (val is LSL_Rotation) nval = TypeCast.RotationToString ((LSL_Rotation)val);
+						if (val is LSL_Vector)   nval = TypeCast.VectorToString ((LSL_Vector)val);
 					}
 					if (castTo is TokenTypeVec) {
-						if (val is string)       val = new LSL_Vector ((string)val);
+						if (val is LSL_Vector)   return rVal;
+						if (val is string)       nval = new LSL_Vector ((string)val);
 					}
-					TokenRVal rValConst = new TokenRValConst (castTo, val);
-					didOne = true;
-					return rValConst;
+					if (nval != null) {
+						TokenRVal rValConst = new TokenRValConst (castTo, nval);
+						didOne = true;
+						return rValConst;
+					}
 				} catch {
 				}
 			}
@@ -6210,19 +6219,37 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	/**
 	 * @brief all constants supposed to end up here
 	 */
-	public enum TokenRValConstType : byte { CHAR = 0, FLOAT = 1, INT = 2, STRING = 3 };
+	public enum TokenRValConstType : byte { CHAR = 0, FLOAT = 1, INT = 2, KEY = 3, STRING = 4 };
 	public class TokenRValConst : TokenRVal {
 		public object val;	// always a system type (char, int, SCRIPTFLOAT, string), never LSL-wrapped
 		public TokenRValConstType type;
 		public TokenType tokType;
 
-		public TokenRValConst (Token original, object value) : base (original) {
+		public TokenRValConst (Token original, object value) : base (original)
+		{
 			val = value;
-			     if (val is char)        { type = TokenRValConstType.CHAR;   tokType = new TokenTypeChar  (this); }
-			else if (val is int)         { type = TokenRValConstType.INT;    tokType = new TokenTypeInt   (this); }
-			else if (val is SCRIPTFLOAT) { type = TokenRValConstType.FLOAT;  tokType = new TokenTypeFloat (this); }
-			else if (val is string)      { type = TokenRValConstType.STRING; tokType = new TokenTypeStr   (this); }
-			else throw new Exception ("invalid constant type " + val.GetType ());
+
+			TokenType tt = null;
+			if (val is char) {
+				type = TokenRValConstType.CHAR;
+				tt = new TokenTypeChar (this);
+			} else if (val is int) {
+				type = TokenRValConstType.INT;
+				tt = new TokenTypeInt (this);
+			} else if (val is SCRIPTFLOAT) {
+				type = TokenRValConstType.FLOAT;
+				tt = new TokenTypeFloat (this);
+			} else if (val is string) {
+				type = TokenRValConstType.STRING;
+				tt = new TokenTypeStr (this);
+			} else {
+				throw new Exception ("invalid constant type " + val.GetType ());
+			}
+
+			tokType = (original is TokenType) ? (TokenType)original : tt;
+			if (tokType is TokenTypeKey) {
+				type = TokenRValConstType.KEY;
+			}
 		}
 
 		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
@@ -6241,6 +6268,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				case TokenRValConstType.CHAR:   { return new CompValuChar    (tokType, (char)val);        }
 				case TokenRValConstType.FLOAT:  { return new CompValuFloat   (tokType, (SCRIPTFLOAT)val); }
 				case TokenRValConstType.INT:    { return new CompValuInteger (tokType, (int)val);         }
+				case TokenRValConstType.KEY:
 				case TokenRValConstType.STRING: { return new CompValuString  (tokType, (string)val);      }
 				default: throw new Exception ("unknown type");
 			}
@@ -6415,7 +6443,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			if ((opstr == "+") && ((lType == "list") || (rType == "list"))) {
 				return new TokenTypeList (opcode);
 			}
-			if ((opstr == "+") && ((lType == "string") || (rType == "string"))) {
+			if ((opstr == "+") && ((lType == "key") || (lType == "string") ||
+			                       (rType == "key") || (rType == "string"))) {
 				return new TokenTypeStr (opcode);
 			}
 

@@ -913,6 +913,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			right.PushVal (scg, errorAt, tokenTypeStr);
 			scg.ilGen.Emit (errorAt, OpCodes.Call, stringCmpStringMethInfo);
 			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_0);
+			scg.ilGen.Emit (errorAt, OpCodes.Ceq);
 			result.PopPost (scg, errorAt, tokenTypeBool);
 		}
 
@@ -922,6 +923,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			left.PushVal (scg, errorAt, tokenTypeStr);
 			right.PushVal (scg, errorAt, tokenTypeStr);
 			scg.ilGen.Emit (errorAt, OpCodes.Call, stringCmpStringMethInfo);
+			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_0);
 			scg.ilGen.Emit (errorAt, OpCodes.Ceq);
 			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_1);
 			scg.ilGen.Emit (errorAt, OpCodes.Xor);

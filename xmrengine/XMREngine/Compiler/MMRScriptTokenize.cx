@@ -897,7 +897,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             kws.Add ("integer",  GetTokenCtor (typeof (TokenTypeInt)));
             kws.Add ("list",     GetTokenCtor (typeof (TokenTypeList)));
             kws.Add ("jump",     GetTokenCtor (typeof (TokenKwJump)));
-            kws.Add ("key",      GetTokenCtor (typeof (TokenTypeStr)));
+            kws.Add ("key",      GetTokenCtor (typeof (TokenTypeKey)));
             kws.Add ("return",   GetTokenCtor (typeof (TokenKwRet)));
             kws.Add ("rotation", GetTokenCtor (typeof (TokenTypeRot)));
             kws.Add ("state",    GetTokenCtor (typeof (TokenKwState)));
@@ -1547,7 +1547,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             if (typ == "vector")    return new TokenTypeVec    (original);
             if (typ == "float")     return new TokenTypeFloat  (original);
             if (typ == "integer")   return new TokenTypeInt    (original);
-            if (typ == "key")       return new TokenTypeStr    (original);
+            if (typ == "key")       return new TokenTypeKey    (original);
             if (typ == "string")    return new TokenTypeStr    (original);
             if (typ == "object")    return new TokenTypeObject (original);
             if (typ == "array")     return new TokenTypeArray  (original);
@@ -1685,6 +1685,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         {
             declVar.vTableArray = iarIntegersFieldInfo;
             declVar.vTableIndex = arSizes.iasIntegers ++;
+        }
+    }
+    public class TokenTypeKey : TokenType {
+        private static readonly FieldInfo iarStringsFieldInfo = typeof (XMRInstArrays).GetField ("iarStrings");
+
+        public TokenTypeKey (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
+        public TokenTypeKey (Token original) : base (original) { }
+        public override Type ToSysType () { return typeof (string); }
+        public override string ToString () { return "key"; }
+        public override void AssignVarSlot (TokenDeclVar declVar, ref XMRInstArSizes arSizes)
+        {
+            declVar.vTableArray = iarStringsFieldInfo;
+            declVar.vTableIndex = arSizes.iasStrings ++;
         }
     }
     public class TokenTypeList : TokenType {

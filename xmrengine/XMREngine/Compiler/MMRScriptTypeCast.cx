@@ -39,6 +39,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static MethodInfo excToStringMethodInfo      = typeof (TypeCast).GetMethod ("ExceptionToString", new Type[] { typeof (Exception), typeof (XMRInstAbstract) });
 		private static MethodInfo floatToStringMethodInfo    = typeof (TypeCast).GetMethod ("FloatToString",     new Type[] { typeof (SCRIPTFLOAT) });
 		private static MethodInfo intToStringMethodInfo      = typeof (TypeCast).GetMethod ("IntegerToString",   new Type[] { typeof (int) });
+		private static MethodInfo keyToBoolMethodInfo        = typeof (TypeCast).GetMethod ("KeyToBool",         new Type[] { typeof (string) });
 		private static MethodInfo listToBoolMethodInfo       = typeof (TypeCast).GetMethod ("ListToBool",        new Type[] { typeof (LSL_List) });
 		private static MethodInfo listToStringMethodInfo     = typeof (TypeCast).GetMethod ("ListToString",      new Type[] { typeof (LSL_List) });
 		private static MethodInfo objectToStringMethodInfo   = typeof (TypeCast).GetMethod ("ObjectToString",    new Type[] { typeof (object) });
@@ -198,6 +199,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			CastDelegate castDelegate;
 			string oldString = oldType.ToString ();
 			string newString = newType.ToString ();
+
+			/*
+			 * 'key' -> 'bool' is the only time we care about key being different than string.
+			 */
+			if ((oldString == "key") && (newString == "bool")) {
+				LSLUnwrap (scg, errorAt, oldType);
+				scg.ilGen.Emit (errorAt, OpCodes.Call, keyToBoolMethodInfo);
+				LSLWrap (scg, errorAt, newType);
+				return;
+			}
+
+			/*
+			 * Treat key and string as same type for all other type casts.
+			 */
+			if (oldString == "key") oldString = "string";
+			if (newString == "key") newString = "string";
 
 			/*
 			 * If the types are the same, there is no conceptual casting needed.
@@ -658,6 +675,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public static string   ExceptionToString (Exception x, XMRInstAbstract inst) { return inst.XMRExceptionFixString (x.ToString (), true); }
 		public static string   FloatToString     (SCRIPTFLOAT x)  { return x.ToString ("0.000000"); }
 		public static string   IntegerToString   (int x)          { return x.ToString (); }
+		public static bool     KeyToBool         (string x)       { return (x != "") && (x != SCRIPTBASECLASS.NULL_KEY); }
 		public static bool     ListToBool        (LSL_List x)     { return x.Length != 0; }
 		public static string   ListToString      (LSL_List x)     { return x.ToString (); }
 		public static string   ObjectToString    (object x)       { return (x == null) ? null : x.ToString (); }

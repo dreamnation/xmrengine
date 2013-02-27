@@ -1,0 +1,15 @@
+Compiling...
+Running...
+llOwnerSay: const is null
+llOwnerSay: trying <>
+llOwnerSay: string var is null
+llOwnerSay: key var is null
+llOwnerSay: string var cast to key is null
+llOwnerSay: trying <00000000-0000-0000-0000-000000000000>
+llOwnerSay: string var not null
+llOwnerSay: key var is null
+llOwnerSay: string var cast to key is null
+llOwnerSay: trying <12345678-1234-1234-1234-123456789abc>
+llOwnerSay: string var not null
+llOwnerSay: key var not null
+llOwnerSay: string var cast to key not null

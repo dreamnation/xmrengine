@@ -2280,7 +2280,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Generate code based on string or integer index.
 			 */
-			if (testRVal.type is TokenTypeStr) {
+			if ((testRVal.type is TokenTypeKey) || (testRVal.type is TokenTypeStr)) {
 				GenerateStmtSwitchStr (testRVal, switchStmt);
 			} else {
 				GenerateStmtSwitchInt (testRVal, switchStmt);
@@ -3462,7 +3462,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Maybe it is extracting a character from a string.
 			 */
-			if (baseCompValu.type is TokenTypeStr) {
+			if ((baseCompValu.type is TokenTypeKey) || (baseCompValu.type is TokenTypeStr)) {
 				subCompValu = GenerateFromRVal (lVal.subRVal);
 				return new CompValuStrChr (new TokenTypeChar (lVal), baseCompValu, subCompValu);
 			}
@@ -3835,7 +3835,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				if (cValType == "bool") cValType = "integer";
 				if (rValType == "bool") rValType = "integer";
 				if (cValType != rValType) {
-					throw new Exception ("cVal.type " + cValType + " != rVal.type " + rValType);
+					throw new Exception ("cVal.type " + cValType + " != rVal.type " + rValType +
+					                     "  (" + rVal.GetType ().Name + " " + rVal.SrcLoc + ")");
 				}
 			}
 
@@ -4581,17 +4582,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private CompValu GenerateFromRValConst (TokenRValConst rValConst)
 		{
-			if (rValConst.val is char) {
-				return new CompValuChar (new TokenTypeChar (rValConst), (char)(rValConst.val));
-			}
-			if (rValConst.val is SCRIPTFLOAT) {
-				return new CompValuFloat (new TokenTypeFloat (rValConst), (SCRIPTFLOAT)(rValConst.val));
-			}
-			if (rValConst.val is int) {
-				return new CompValuInteger (new TokenTypeInt (rValConst), (int)(rValConst.val));
-			}
-			if (rValConst.val is string) {
-				return new CompValuString (new TokenTypeStr (rValConst), (string)(rValConst.val));
+			switch (rValConst.type) {
+				case TokenRValConstType.CHAR: {
+					return new CompValuChar (new TokenTypeChar (rValConst), (char)(rValConst.val));
+				}
+				case TokenRValConstType.FLOAT: {
+					return new CompValuFloat (new TokenTypeFloat (rValConst), (SCRIPTFLOAT)(rValConst.val));
+				}
+				case TokenRValConstType.INT: {
+					return new CompValuInteger (new TokenTypeInt (rValConst), (int)(rValConst.val));
+				}
+				case TokenRValConstType.KEY: {
+					return new CompValuString (new TokenTypeKey (rValConst), (string)(rValConst.val));
+				}
+				case TokenRValConstType.STRING: {
+					return new CompValuString (new TokenTypeStr (rValConst), (string)(rValConst.val));
+				}
 			}
 			throw new Exception ("unknown constant type " + rValConst.val.GetType ());
 		}
@@ -4663,7 +4669,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					} else if (eRVal.type is TokenTypeInt) {
 						ilGen.Emit (val, OpCodes.Newobj, lslIntegerConstructorInfo);
 						ilGen.Emit (val, OpCodes.Box, typeof (LSL_Integer));
-					} else if (eRVal.type is TokenTypeStr) {
+					} else if ((eRVal.type is TokenTypeKey) || (eRVal.type is TokenTypeStr)) {
 						ilGen.Emit (val, OpCodes.Newobj, lslStringConstructorInfo);
 						ilGen.Emit (val, OpCodes.Box, typeof (LSL_String));
 					} else if (eRVal.type.ToSysType ().IsValueType) {
@@ -4925,7 +4931,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				CompValuFloat s = new CompValuFloat (type, SCRIPTBASECLASS.ZERO_ROTATION.s);
 				return new CompValuRot (type, x, y, z, s);
 			}
-			if (type is TokenTypeStr) {
+			if ((type is TokenTypeKey) || (type is TokenTypeStr)) {
 				return new CompValuString (type, "");
 			}
 			if (type is TokenTypeVec) {
@@ -5072,7 +5078,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ilGen.Emit (type, OpCodes.Newobj, lslRotationConstructorInfo);
 				return;
 			}
-			if (type is TokenTypeStr) {
+			if ((type is TokenTypeKey) || (type is TokenTypeStr)) {
 				ilGen.Emit (type, OpCodes.Ldstr, "");
 				return;
 			}
@@ -5136,12 +5142,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		private bool IsConstBoolExpr (CompValu expr, out bool constVal)
 		{
+			if (expr is CompValuChar) {
+				constVal = ((CompValuChar)expr).x != 0;
+				return true;
+			}
 			if (expr is CompValuFloat) {
 				constVal = ((CompValuFloat)expr).x != (SCRIPTFLOAT)0;
 				return true;
 			}
 			if (expr is CompValuInteger) {
 				constVal = ((CompValuInteger)expr).x != 0;
+				return true;
+			}
+			if (expr is CompValuString) {
+				string s = ((CompValuString)expr).x;
+				constVal = s != "";
+				if (constVal && (expr.type is TokenTypeKey)) {
+					constVal = s != SCRIPTBASECLASS.NULL_KEY;
+				}
 				return true;
 			}
 

@@ -80,7 +80,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Methods always have a non-null argument list, even if only 0 entries long.
 			 */
 			ArgTypes types;
-			types.argTypes = (var.argDecl == null) ? null : var.argDecl.types;
+			types.argTypes = (var.argDecl == null) ? null : KeyTypesToStringTypes (var.argDecl.types);
 			if (typedic.ContainsKey (types)) return false;
 
 			/*
@@ -105,6 +105,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private List<TokenDeclVar> found = new List<TokenDeclVar> ();
 		public TokenDeclVar[] FindCallables (string name, TokenType[] argTypes)
 		{
+			argTypes = KeyTypesToStringTypes (argTypes);
 			TokenDeclVar var = FindExact (name, argTypes);
 			if (var != null) return new TokenDeclVar[] { var };
 
@@ -131,10 +132,39 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			Dictionary<ArgTypes, TokenDeclVar> typedic;
 			if (!master.TryGetValue (name, out typedic)) return null;
 			ArgTypes types;
-			types.argTypes = argTypes;
+			types.argTypes = KeyTypesToStringTypes (argTypes);
 			TokenDeclVar var;
 			if (!typedic.TryGetValue (types, out var)) return null;
 			return var;
+		}
+
+		/**
+		 * @brief Replace any TokenTypeKey elements with TokenTypeStr so that
+		 *        it doesn't matter if functions are declared with key or string,
+		 *        they will accept either.
+		 * @param argTypes = argument types as declared in source code
+		 * @returns argTypes with any key replaced by string
+		 */
+		private static TokenType[] KeyTypesToStringTypes (TokenType[] argTypes)
+		{
+			if (argTypes != null) {
+				int i;
+				int nats = argTypes.Length;
+				for (i = nats; -- i >= 0;) {
+					if (argTypes[i] is TokenTypeKey) break;
+				}
+				if (i >= 0) {
+					TokenType[] at = new TokenType[nats];
+					for (i = nats; -- i >= 0;) {
+						at[i] = argTypes[i];
+						if (argTypes[i] is TokenTypeKey) {
+							at[i] = new TokenTypeStr (argTypes[i]);
+						}
+					}
+					return at;
+				}
+			}
+			return argTypes;
 		}
 
 		// foreach goes through all the TokenDeclVars that were added

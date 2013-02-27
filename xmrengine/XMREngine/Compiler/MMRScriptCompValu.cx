@@ -1448,14 +1448,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 	}
 
-	// The value is a string constant
+	// The value is a key or string constant
 	public class CompValuString : CompValu {
 		public string x;
 
 		public CompValuString (TokenType type, string x) : base (type)
 		{
-			if (!(this.type is TokenTypeStr)) {
-				this.type = new TokenTypeStr (this.type);
+			if (!(type is TokenTypeKey) && !(this.type is TokenTypeStr)) {
+				throw new Exception ("bad type " + type.ToString ());
 			}
 			this.x = x;
 		}

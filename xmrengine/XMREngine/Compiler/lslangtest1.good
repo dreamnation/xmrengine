@@ -1,7 +1,6 @@
 Compiling...
 Running...
 llResetTime()
-llSay(0, "FAILED!: if((key)NULL_KEY) (TRUE expected FALSE)")
 llSay(0, "Float equality delta 140.000000")
 llSay(0, "Float equality delta 16.000000")
 llSay(0, "Float equality delta 32.000000")
@@ -11,4 +10,4 @@ llSay(0, "FAILED!: ((string) <1,2,3,4>) (<1.000000,2.000000,3.000000,4.000000> e
 llSay(0, "FAILED!: ((string) [1,2.5,<1,2,3>]) (12.500000<1.000000,2.000000,3.000000> expected 12.500000<1.000000, 2.000000, 3.000000>)")
 llGetTime()
 llGetTime:0.123
-llSay(0, "Ran 173 tests in 0.123000 seconds with 5 failures")
+llSay(0, "Ran 173 tests in 0.123000 seconds with 4 failures")
