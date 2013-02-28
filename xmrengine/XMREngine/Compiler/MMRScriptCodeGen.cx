@@ -4492,7 +4492,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			if (method is CompValuInline) {
 				CompValuInline inline = (CompValuInline)method;
-				inline.declInline.codeGen (this, call, result, argRVals);
+				inline.declInline.CodeGen (this, call, result, argRVals);
 				return result;
 			}
 

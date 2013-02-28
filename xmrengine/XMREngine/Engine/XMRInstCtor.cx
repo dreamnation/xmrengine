@@ -85,7 +85,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * This also gets the API modules ready to accept setup data, such as
              * active listeners being restored.
              */
-            m_Apis = new Dictionary<string,IScriptApi>();
             ApiManager am = new ApiManager();
             foreach (string api in am.GetApis())
             {
@@ -96,8 +95,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 } else {
                     scriptApi = m_XMRLSLApi = new XMRLSL_Api();
                 }
+                if (scriptApi is MOD_Api) {
+                    m_ModApiCtx = (MOD_Api)scriptApi;
+                }
 
-                m_Apis[api] = scriptApi;
                 scriptApi.Initialize(m_Engine, m_Part, m_Item, null);
                 this.InitApi(api, scriptApi);
             }

@@ -42,6 +42,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public static void Main (string[] args)
         {
+            /*
+             * Define methods and connect up the APIs.
+             */
+            ScriptConst.AddInterfaceConstants   (null, typeof (XMRInstAbstract).GetFields ());
+            TokenDeclInline.AddInterfaceMethods (null, typeof (XMRInstAbstract).GetMethods ());
+            ScriptConst.AddInterfaceConstants   (null, typeof (SCRIPTBASECLASS).GetFields ());
+            TokenDeclInline.AddInterfaceMethods (null, typeof (SCRIPTBASECLASS).GetMethods ());
+            ScriptConst.AddInterfaceConstants   (null, typeof (OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.IOSSL_Api).GetFields ());
+            TokenDeclInline.AddInterfaceMethods (null, typeof (OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.IOSSL_Api).GetMethods ());
+
+            /*
+             * Parse command-line arguments.
+             */
             bool eventIO      = false;
             List<PerPrim> perPrims = new List<PerPrim> ();
             int linkNum       = 0;

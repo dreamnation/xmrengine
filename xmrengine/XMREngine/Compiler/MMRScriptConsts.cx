@@ -7,7 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
-using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
+
 #include "lsltypes.h"
 
 
@@ -35,56 +35,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			Dictionary<string, ScriptConst> sc = new Dictionary<string, ScriptConst> ();
 
 			/*
-			 * Scan through all fields defined by SCRIPTBASECLASS.
-			 * Specifically, we want the ones defined in LSL_Constants.cs.
-			 */
-			FieldInfo[] constFields = typeof (SCRIPTBASECLASS).GetFields ();
-
-			foreach (FieldInfo constField in constFields) {
-
-				/*
-				 * Only deal with constants named with all uppercase letters, numbers and underscores.
-				 * Anything with anything else is ignored.
-				 */
-				string fieldName = constField.Name;
-				int i;
-				for (i = fieldName.Length; -- i >= 0;) {
-					if ("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_".IndexOf (fieldName[i]) < 0) break;
-				}
-				if (i < 0) {
-					Type fieldType = constField.FieldType;
-
-					/*
-					 * The location of a simple number is the number itself.
-					 */
-					if (fieldType == typeof (double)) {
-						new ScriptConst (sc, 
-						                 fieldName, 
-						                 new CompValuFloat (new TokenTypeFloat (null),
-						                                    (SCRIPTFLOAT)(double)constField.GetValue (null)));
-					} else if (fieldType == typeof (int)) {
-						new ScriptConst (sc, 
-						                 fieldName, 
-						                 new CompValuInteger (new TokenTypeInt (null),
-						                                      (int)constField.GetValue (null)));
-					} else if (fieldType == typeof (LSL_Integer)) {
-						new ScriptConst (sc, 
-						                 fieldName, 
-						                 new CompValuInteger (new TokenTypeInt (null),
-						                                      ((LSL_Integer)constField.GetValue (null)).value));
-					}
-
-					/*
-					 * The location of everything else (objects) is the static field in the SCRIPTBASECLASS definition.
-					 */
-					else new ScriptConst (sc, 
-					                      fieldName, 
-					                      new CompValuSField (TokenType.FromSysType (null, fieldType),
-					                                          constField));
-				}
-			}
-
-			/*
 			 * For every event code, define XMREVENTCODE_<eventname> and XMREVENTMASKn_<eventname> symbols.
 			 */
 			for (int i = 0; i < 64; i ++) {
@@ -104,6 +54,111 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			}
 
 			return sc;
+		}
+
+		/**
+		 * @brief Add all constants defined by the given interface.
+		 */
+		// this one accepts only upper-case named fields
+		public static void AddInterfaceConstants (Dictionary<string, ScriptConst> sc, FieldInfo[] allFields)
+		{
+			List<FieldInfo> ucfs = new List<FieldInfo> (allFields.Length);
+			foreach (FieldInfo f in allFields) {
+				string fieldName = f.Name;
+				int i;
+				for (i = fieldName.Length; -- i >= 0;) {
+					if ("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_".IndexOf (fieldName[i]) < 0) break;
+				}
+				if (i < 0) ucfs.Add (f);
+			}
+			AddInterfaceConstants (sc, ucfs.GetEnumerator ());
+		}
+
+		// this one accepts all fields given to it
+		public static void AddInterfaceConstants (Dictionary<string, ScriptConst> sc, IEnumerator<FieldInfo> fields)
+		{
+			if (sc == null) sc = scriptConstants;
+
+			for (fields.Reset (); fields.MoveNext ();) {
+				FieldInfo constField = fields.Current;
+				Type fieldType = constField.FieldType;
+				CompValu cv;
+
+				/*
+				 * The location of a simple number is the number itself.
+				 */
+				if (fieldType == typeof (double)) {
+					cv = new CompValuFloat (new TokenTypeFloat (null),
+					                        (SCRIPTFLOAT)(double)constField.GetValue (null));
+				} else if (fieldType == typeof (int)) {
+					cv = new CompValuInteger (new TokenTypeInt (null),
+					                          (int)constField.GetValue (null));
+				} else if (fieldType == typeof (LSL_Integer)) {
+					cv = new CompValuInteger (new TokenTypeInt (null),
+					                          ((LSL_Integer)constField.GetValue (null)).value);
+				}
+
+				/*
+				 * The location of everything else (objects) is the static field in the interface definition.
+				 */
+				else {
+					cv = new CompValuSField (TokenType.FromSysType (null, fieldType), constField);
+				}
+
+				/*
+				 * Add to dictionary.
+				 */
+				new ScriptConst (sc, constField.Name, cv);
+			}
+		}
+
+		/**
+		 * @brief Add arbitrary constant available to script compilation.
+		 * CAUTION: These values get compiled-in to a script and must not
+		 *          change over time as previously compiled scripts will
+		 *          still have the old values.
+		 */
+		public static ScriptConst AddConstant (string name, object value)
+		{
+			CompValu cv = null;
+			if (value is char) {
+				cv = new CompValuChar (new TokenTypeChar (null), (char)value);
+			}
+			if (value is double) {
+				cv = new CompValuFloat (new TokenTypeFloat (null), (SCRIPTFLOAT)(double)value);
+			}
+			if (value is float) {
+				cv = new CompValuFloat (new TokenTypeFloat (null), (SCRIPTFLOAT)(float)value);
+			}
+			if (value is int) {
+				cv = new CompValuInteger (new TokenTypeInt (null), (int)value);
+			}
+			if (value is LSL_Integer) {
+				cv = new CompValuInteger (new TokenTypeInt (null), ((LSL_Integer)value).value);
+			}
+			if (value is LSL_Rotation) {
+				LSL_Rotation r = (LSL_Rotation)value;
+				CompValu x = new CompValuFloat (new TokenTypeFloat (null), r.x);
+				CompValu y = new CompValuFloat (new TokenTypeFloat (null), r.y);
+				CompValu z = new CompValuFloat (new TokenTypeFloat (null), r.z);
+				CompValu s = new CompValuFloat (new TokenTypeFloat (null), r.s);
+				cv = new CompValuRot (new TokenTypeRot (null), x, y, z, s);
+			}
+			if (value is LSL_String) {
+				cv = new CompValuString (new TokenTypeStr (null), (string)(LSL_String)value);
+			}
+			if (value is LSL_Vector) {
+				LSL_Vector v = (LSL_Vector)value;
+				CompValu x = new CompValuFloat (new TokenTypeFloat (null), v.x);
+				CompValu y = new CompValuFloat (new TokenTypeFloat (null), v.y);
+				CompValu z = new CompValuFloat (new TokenTypeFloat (null), v.z);
+				cv = new CompValuVec (new TokenTypeVec (null), x, y, z);
+			}
+			if (value is string) {
+				cv = new CompValuString (new TokenTypeStr (null), (string)value);
+			}
+			if (cv == null) throw new Exception ("bad type " + value.GetType ().Name);
+			return new ScriptConst (scriptConstants, name, cv);
 		}
 
 		/*

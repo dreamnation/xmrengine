@@ -19,12 +19,14 @@ using OpenSim.Region.Framework.Interfaces;
 using OpenSim.Region.Framework.Scenes;
 using OpenSim.Region.ScriptEngine.Interfaces;
 using OpenSim.Region.ScriptEngine.Shared;
+using OpenSim.Region.ScriptEngine.Shared.Api;
 using OpenMetaverse;
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Reflection.Emit;
 using System.Threading;
 using System.Timers;
 using System.Xml;
@@ -245,6 +247,147 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_Scene.EventManager.OnRezScript += OnRezScript;
 
             m_Scene.StackModuleInterface<IScriptModule>(this);
+
+            /*
+             * Add standard APIs to the compiler.
+             */
+            ScriptConst.AddInterfaceConstants   (null, typeof (XMRLSL_Api).GetFields ());
+            TokenDeclInline.AddInterfaceMethods (null, typeof (XMRLSL_Api).GetMethods ());
+            ApiManager am = new ApiManager ();
+            foreach (string api in am.GetApis ()) {
+                if (api != "LSL") {
+                    IScriptApi scriptApi = am.CreateApi (api);
+                    ScriptConst.AddInterfaceConstants   (null, scriptApi.GetType ().GetFields ());
+                    TokenDeclInline.AddInterfaceMethods (null, scriptApi.GetType ().GetMethods ());
+                }
+            }
+
+            /*
+             * Add sim-specific APIs to the compiler.
+             */
+            IScriptModuleComms comms = m_Scene.RequestModuleInterface<IScriptModuleComms> ();
+            if (comms != null) {
+
+                /*
+                 * Add methods to list of built-in functions.
+                 */
+                Delegate[] methods = comms.GetScriptInvocationList ();
+                foreach (Delegate m in methods) {
+                    MethodInfo mi = m.Method;
+                    try {
+                        CommsCallCodeGen cccg = new CommsCallCodeGen (mi, comms);
+                        m_log.Debug ("[XMREngine]: comms function " + cccg.fullName);
+                    } catch (Exception e) {
+                        m_log.Error ("[XMREngine]: failed to add comms function " + mi.Name);
+                        m_log.Error ("[XMREngine]: - " + e.Message);
+                    }
+                }
+
+                /*
+                 * Add constants to list of built-in constants.
+                 */
+                Dictionary<string,object> consts = comms.GetConstants ();
+                foreach (KeyValuePair<string,object> kvp in consts) {
+                    try {
+                        ScriptConst sc = ScriptConst.AddConstant (kvp.Key, kvp.Value);
+                        m_log.Debug ("[XMREngine]: comms constant " + sc.name);
+                    } catch (Exception e) {
+                        m_log.Error ("[XMREngine]: failed to add comms constant " + kvp.Key);
+                        m_log.Error ("[XMREngine]: - " + e.Message);
+                    }
+                }
+            }
+        }
+
+        /**
+         * @brief Generate code for the calls to the comms functions.
+         *        It is a tRUlY EvIL interface.
+         *        The supplied mi describes the function as seen by the script.
+         *        To call the function we must call an XMRInstance.m_ModApiCtx.modInvoker?()
+         *        method passing it the name of the function as a string and the script
+         *        argument list wrapped up in an object[] array (with m_PartUUID and m_ItemID
+         *        stuck in front).  The modInvoker?() methods do some sick type conversions
+         *        (with corresponding mallocs) so we can't call the methods directly.
+         */
+        private class CommsCallCodeGen : TokenDeclInline {
+            private static FieldInfo xmrInstItemUUIDField  = typeof (XMRInstance).GetField ("m_ItemID");
+            private static FieldInfo xmrInstModApiCtxField = typeof (XMRInstance).GetField ("m_ModApiCtx");
+            private static FieldInfo xmrInstPartUUIDField  = typeof (XMRInstance).GetField ("m_PartUUID");
+            private static Type[] modInvokerArgTypes = new Type[] { typeof (string), typeof (object[]) };
+
+            private MethodInfo modInvokerMeth;
+
+            public CommsCallCodeGen (MethodInfo mi, IScriptModuleComms comms) : base (null, false, mi)
+            {
+                string modInvokerName = comms.LookupModInvocation (mi.Name);
+                modInvokerMeth = typeof (MOD_Api).GetMethod (modInvokerName, modInvokerArgTypes);
+            }
+
+            public override void CodeGen (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
+            {
+                /*
+                 * Set up 'this' pointer for modInvoker?() = value from ApiManager.CreateApi("MOD").
+                 */
+                scg.PushXMRInst ();
+                scg.ilGen.Emit (errorAt, OpCodes.Ldfld, xmrInstModApiCtxField);
+
+                /*
+                 * Set up 'fname' argument to modInvoker?() = name of the function to be called.
+                 */
+                scg.ilGen.Emit (errorAt, OpCodes.Ldstr, methInfo.Name);
+
+                /*
+                 * Set up 'parms' argument to modInvoker?() =
+                 *      [0]: inst.m_PartUUID
+                 *      [1]: inst.m_ItemID
+                 *   [2...]: script-visible arguments
+                 */
+                int nargs = args.Length;
+                scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4, nargs + 2);
+                scg.ilGen.Emit (errorAt, OpCodes.Newarr, typeof (object));
+
+                scg.ilGen.Emit (errorAt, OpCodes.Dup);
+                scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_0);
+                scg.PushXMRInst ();
+                scg.ilGen.Emit (errorAt, OpCodes.Ldfld, xmrInstPartUUIDField);
+                scg.ilGen.Emit (errorAt, OpCodes.Box, typeof (UUID));
+                scg.ilGen.Emit (errorAt, OpCodes.Stelem, typeof (object));
+
+                scg.ilGen.Emit (errorAt, OpCodes.Dup);
+                scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_1);
+                scg.PushXMRInst ();
+                scg.ilGen.Emit (errorAt, OpCodes.Ldfld, xmrInstItemUUIDField);
+                scg.ilGen.Emit (errorAt, OpCodes.Box, typeof (UUID));
+                scg.ilGen.Emit (errorAt, OpCodes.Stelem, typeof (object));
+
+                TokenType tto = new TokenTypeObject (errorAt);
+                for (int i = 0; i < nargs; i ++) {
+                    scg.ilGen.Emit (errorAt, OpCodes.Dup);
+                    scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4, i + 2);
+                    args[i].PushVal (scg, errorAt, tto);
+                    scg.ilGen.Emit (errorAt, OpCodes.Stelem, typeof (object));
+                }
+
+                /*
+                 * Call the modInvoker?() method.
+                 */
+                if (modInvokerMeth.IsVirtual) {
+                    scg.ilGen.Emit (errorAt, OpCodes.Callvirt, modInvokerMeth);
+                } else {
+                    scg.ilGen.Emit (errorAt, OpCodes.Call, modInvokerMeth);
+                }
+
+                /*
+                 * There are various horrid return types.
+                 * The 3rd arg to Pop() is the type on the stack, 
+                 * ie, what modInvoker?() actually returns.
+                 * The Pop() method will wrap/unwrap as needed.
+                 */
+                Type retSysType = modInvokerMeth.ReturnType;
+                if (retSysType == null) retSysType = typeof (void);
+                TokenType retTokType = TokenType.FromSysType (errorAt, retSysType);
+                result.Pop (scg, errorAt, retTokType);
+            }
         }
 
         /**
