@@ -20,6 +20,7 @@ using OpenSim.Region.Framework.Scenes;
 using OpenSim.Region.ScriptEngine.Interfaces;
 using OpenSim.Region.ScriptEngine.Shared;
 using OpenSim.Region.ScriptEngine.Shared.Api;
+using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 using OpenMetaverse;
 using System;
 using System.Collections;
@@ -27,9 +28,12 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Text;
 using System.Threading;
 using System.Timers;
 using System.Xml;
+
+#include "lsltypes.h"
 
 [assembly: Addin("XMREngine", "0.1")]
 [assembly: AddinDependency("OpenSim", "0.5")]
@@ -46,6 +50,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
         private static readonly string[] scriptReferencedAssemblies = new string[0];
 
+        private bool m_LateInit;
         private bool m_TraceCalls;
         private Scene m_Scene;
         private IConfigSource m_ConfigSource;
@@ -58,6 +63,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 new Dictionary<UUID, List<UUID>>();
         private Dictionary<UUID, XMRInstance[]> m_ObjectInstArray =
                 new Dictionary<UUID, XMRInstance[]>();
+        public  Dictionary<string,FieldInfo> m_XMRInstanceApiCtxFieldInfos =
+                new Dictionary<string,FieldInfo> ();
         private int m_StackSize;
         private int m_HeapSize;
         private XMRScriptThread[] m_ScriptThreads;
@@ -65,6 +72,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private Thread m_SliceThread = null;
         private bool m_Exiting = false;
         private long m_InitializedAt = 0;
+        private Type m_xmrInstanceSuperType;
 
         private int m_MaintenanceInterval = 10;
         public  int numThreadScriptCores = 2;
@@ -247,19 +255,82 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_Scene.EventManager.OnRezScript += OnRezScript;
 
             m_Scene.StackModuleInterface<IScriptModule>(this);
+        }
+
+        private void OneTimeLateInitialization ()
+        {
+            /*
+             * These constants just need to get stuffed in the compiler.
+             */
+            ScriptConst.AddInterfaceConstants (null, typeof (ScriptBaseClass).GetFields ());
 
             /*
-             * Add standard APIs to the compiler.
+             * Start creating type XMRInstanceSuperType that contains a field
+             * m_ApiManager_<APINAME> that points to the per-instance context
+             * struct for that API, ie, the 'this' value passed to all methods
+             * in that API.  It is in essence:
+             *
+             *  public class XMRInstanceSuperType : XMRInstance {
+             *      public XMRLSL_Api m_ApiManager_LSL;   // 'this' value for all ll...() functions
+             *      public MOD_Api    m_ApiManager_MOD;   // 'this' value for all mod...() functions
+             *      public OSSL_Api   m_ApiManager_OSSL;  // 'this' value for all os...() functions
+             *              ....
+             *  }
              */
-            ScriptConst.AddInterfaceConstants   (null, typeof (XMRLSL_Api).GetFields ());
-            TokenDeclInline.AddInterfaceMethods (null, typeof (XMRLSL_Api).GetMethods ());
+            AssemblyName assemblyName = new AssemblyName ();
+            assemblyName.Name = "XMRInstanceSuperAssembly";
+            AssemblyBuilder assemblyBuilder = Thread.GetDomain ().DefineDynamicAssembly (assemblyName, AssemblyBuilderAccess.Run);
+            ModuleBuilder moduleBuilder = assemblyBuilder.DefineDynamicModule ("XMRInstanceSuperModule");
+            TypeBuilder typeBuilder = moduleBuilder.DefineType ("XMRInstanceSuperType", TypeAttributes.Public | TypeAttributes.Class);
+            typeBuilder.SetParent (typeof (XMRInstance));
+
+            /*
+             * Build list of defined APIs and their 'this' types and define a field in XMRInstanceSuperType.
+             */
             ApiManager am = new ApiManager ();
+            Dictionary<string,Type> apiCtxTypes = new Dictionary<string,Type> ();
             foreach (string api in am.GetApis ()) {
-                if (api != "LSL") {
-                    IScriptApi scriptApi = am.CreateApi (api);
-                    ScriptConst.AddInterfaceConstants   (null, scriptApi.GetType ().GetFields ());
-                    TokenDeclInline.AddInterfaceMethods (null, scriptApi.GetType ().GetMethods ());
-                }
+                m_log.Debug ("[XMREngine]: adding api " + api);
+                IScriptApi scriptApi = am.CreateApi (api);
+                Type apiCtxType = scriptApi.GetType ();
+                if (api == "LSL") apiCtxType = typeof (XMRLSL_Api);
+                string fieldName = "m_ApiManager_" + api;
+                typeBuilder.DefineField (fieldName, apiCtxType, FieldAttributes.Public);
+                apiCtxTypes[api] = apiCtxType;
+            }
+
+            /*
+             * Finalize definition of XMRInstanceSuperType.
+             * Give the compiler a short name to reference it by,
+             * otherwise it will try to use the AssemblyQualifiedName
+             * and fail miserably.
+             */
+            m_xmrInstanceSuperType = typeBuilder.CreateType ();
+            ScriptObjWriter.DefineInternalType ("xmrsuper", m_xmrInstanceSuperType);
+
+            /*
+             * Tell the compiler about all the constants and methods for each API.
+             * We also tell the compiler how to get the per-instance context for each API
+             * by reading the corresponding m_ApiManager_<APINAME> field of XMRInstanceSuperType.
+             */
+            foreach (KeyValuePair<string,Type> kvp in apiCtxTypes) {
+
+                // get API name and the corresponding per-instance context type
+                string api = kvp.Key;
+                Type apiCtxType = kvp.Value;
+
+                // give script compiler an abbreviated name for the API context type
+                ScriptObjWriter.DefineInternalType ("apimanager_" + api, apiCtxType);
+
+                // this field tells the compiled code where the per-instance API context object is
+                // eg, for the OSSL API, it is in ((XMRInstanceSuperType)inst).m_ApiManager_OSSL
+                string fieldName = "m_ApiManager_" + api;
+                FieldInfo fieldInfo = m_xmrInstanceSuperType.GetField (fieldName);
+                m_XMRInstanceApiCtxFieldInfos[api] = fieldInfo;
+
+                // now tell the compiler about the constants and methods for the API
+                ScriptConst.AddInterfaceConstants   (null, apiCtxType.GetFields ());
+                TokenDeclInline.AddInterfaceMethods (null, apiCtxType.GetMethods (), fieldInfo);
             }
 
             /*
@@ -275,11 +346,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 foreach (Delegate m in methods) {
                     MethodInfo mi = m.Method;
                     try {
-                        CommsCallCodeGen cccg = new CommsCallCodeGen (mi, comms);
-                        m_log.Debug ("[XMREngine]: comms function " + cccg.fullName);
+                        CommsCallCodeGen cccg = new CommsCallCodeGen (mi, comms, m_XMRInstanceApiCtxFieldInfos["MOD"]);
+                        m_log.Debug ("[XMREngine]: added comms function " + cccg.fullName);
                     } catch (Exception e) {
                         m_log.Error ("[XMREngine]: failed to add comms function " + mi.Name);
-                        m_log.Error ("[XMREngine]: - " + e.Message);
+                        m_log.Error ("[XMREngine]: - " + e.ToString ());
                     }
                 }
 
@@ -290,86 +361,206 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 foreach (KeyValuePair<string,object> kvp in consts) {
                     try {
                         ScriptConst sc = ScriptConst.AddConstant (kvp.Key, kvp.Value);
-                        m_log.Debug ("[XMREngine]: comms constant " + sc.name);
+                        m_log.Debug ("[XMREngine]: added comms constant " + sc.name);
                     } catch (Exception e) {
                         m_log.Error ("[XMREngine]: failed to add comms constant " + kvp.Key);
                         m_log.Error ("[XMREngine]: - " + e.Message);
                     }
                 }
+            } else {
+                m_log.Debug ("[XMREngine]: comms not enabled");
             }
         }
 
         /**
          * @brief Generate code for the calls to the comms functions.
          *        It is a tRUlY EvIL interface.
-         *        The supplied mi describes the function as seen by the script.
-         *        To call the function we must call an XMRInstance.m_ModApiCtx.modInvoker?()
+         *        To call the function we must call an XMRInstanceSuperType.m_ApiManager_MOD.modInvoker?()
          *        method passing it the name of the function as a string and the script
-         *        argument list wrapped up in an object[] array (with m_PartUUID and m_ItemID
-         *        stuck in front).  The modInvoker?() methods do some sick type conversions
-         *        (with corresponding mallocs) so we can't call the methods directly.
+         *        argument list wrapped up in an object[] array.  The modInvoker?() methods 
+         *        do some sick type conversions (with corresponding mallocs) so we can't 
+         *        call the methods directly.
          */
         private class CommsCallCodeGen : TokenDeclInline {
-            private static FieldInfo xmrInstItemUUIDField  = typeof (XMRInstance).GetField ("m_ItemID");
-            private static FieldInfo xmrInstModApiCtxField = typeof (XMRInstance).GetField ("m_ModApiCtx");
-            private static FieldInfo xmrInstPartUUIDField  = typeof (XMRInstance).GetField ("m_PartUUID");
             private static Type[] modInvokerArgTypes = new Type[] { typeof (string), typeof (object[]) };
+            public  static FieldInfo xmrInstModApiCtxField;
 
             private MethodInfo modInvokerMeth;
+            private string methName;
 
-            public CommsCallCodeGen (MethodInfo mi, IScriptModuleComms comms) : base (null, false, mi)
+            /**
+             * @brief Constructor
+             * @param mi = method to make available to scripts
+             *        mi.Name = name that is used by scripts
+             *        mi.GetParameters() = parameter list as defined by module
+             *                             includes the 'UUID host','UUID script' parameters that script does not see
+             *                             allowed types for script-visible parameters are as follows:
+             *                                    Single -> float
+             *                                     Int32 -> integer
+             *                        OpenMetaverse.UUID -> key
+             *                                  Object[] -> list
+             *                  OpenMetaverse.Quaternion -> rotation
+             *                                    String -> string
+             *                     OpenMetaverse.Vector3 -> vector
+             *        mi.ReturnType = return type as defined by module
+             *                        types are same as allowed for parameters
+             * @param comms = comms module the method came from
+             * @param apictxfi = what field in XMRInstanceSuperType the 'this' value is for this method
+             */
+            public CommsCallCodeGen (MethodInfo mi, IScriptModuleComms comms, FieldInfo apictxfi)
+                    : base (null, false, NameArgSig (mi), RetType (mi))
             {
-                string modInvokerName = comms.LookupModInvocation (mi.Name);
+                methName = mi.Name;
+                string modInvokerName = comms.LookupModInvocation (methName);
+                if (modInvokerName == null) throw new Exception ("cannot find comms method " + methName);
                 modInvokerMeth = typeof (MOD_Api).GetMethod (modInvokerName, modInvokerArgTypes);
+                xmrInstModApiCtxField = apictxfi;
             }
 
+            // script-visible name(argtype,...) signature string
+            private static string NameArgSig (MethodInfo mi)
+            {
+                StringBuilder sb = new StringBuilder ();
+                sb.Append (mi.Name);
+                sb.Append ('(');
+                ParameterInfo[] mps = mi.GetParameters ();
+                for (int i = 2; i < mps.Length; i ++) {
+                    ParameterInfo pi = mps[i];
+                    if (i > 2) sb.Append (',');
+                    sb.Append (ParamType (pi.ParameterType));
+                }
+                sb.Append (')');
+                return sb.ToString ();
+            }
+
+            // script-visible return type
+            // note that although we support void, the comms stuff does not
+            private static TokenType RetType (MethodInfo mi)
+            {
+                Type rt = mi.ReturnType;
+                if (rt == typeof (float))                    return new TokenTypeFloat (null);
+                if (rt == typeof (int))                      return new TokenTypeInt   (null);
+                if (rt == typeof (object[]))                 return new TokenTypeList  (null);
+                if (rt == typeof (OpenMetaverse.UUID))       return new TokenTypeKey   (null);
+                if (rt == typeof (OpenMetaverse.Quaternion)) return new TokenTypeRot   (null);
+                if (rt == typeof (string))                   return new TokenTypeStr   (null);
+                if (rt == typeof (OpenMetaverse.Vector3))    return new TokenTypeVec   (null);
+                if (rt == null || rt == typeof (void))       return new TokenTypeVoid  (null);
+                throw new Exception ("unsupported return type " + rt.Name);
+            }
+
+            // script-visible parameter type
+            private static string ParamType (Type t)
+            {
+                if (t == typeof (float))                    return "float";
+                if (t == typeof (int))                      return "integer";
+                if (t == typeof (OpenMetaverse.UUID))       return "key";
+                if (t == typeof (object[]))                 return "list";
+                if (t == typeof (OpenMetaverse.Quaternion)) return "rotation";
+                if (t == typeof (string))                   return "string";
+                if (t == typeof (OpenMetaverse.Vector3))    return "vector";
+                throw new Exception ("unsupported parameter type " + t.Name);
+            }
+
+            /**
+             * @brief Called by the compiler to generate a call to the comms function.
+             * @param scg = which script is being compiled
+             * @param errorAt = where in the source code the call is being made (for error messages)
+             * @param result = a temp location to put the return value in if any
+             * @param args = array of script-visible arguments being passed to the function
+             */
             public override void CodeGen (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
             {
                 /*
                  * Set up 'this' pointer for modInvoker?() = value from ApiManager.CreateApi("MOD").
                  */
                 scg.PushXMRInst ();
+                scg.ilGen.Emit (errorAt, OpCodes.Castclass, xmrInstModApiCtxField.DeclaringType);
                 scg.ilGen.Emit (errorAt, OpCodes.Ldfld, xmrInstModApiCtxField);
 
                 /*
                  * Set up 'fname' argument to modInvoker?() = name of the function to be called.
                  */
-                scg.ilGen.Emit (errorAt, OpCodes.Ldstr, methInfo.Name);
+                scg.ilGen.Emit (errorAt, OpCodes.Ldstr, methName);
 
                 /*
-                 * Set up 'parms' argument to modInvoker?() =
-                 *      [0]: inst.m_PartUUID
-                 *      [1]: inst.m_ItemID
-                 *   [2...]: script-visible arguments
+                 * Set up 'parms' argument to modInvoker?() = object[] of the script-visible parameters,
+                 * in their LSL-wrapped form.  Of course, the modInvoker?() method will malloc yet another 
+                 * object[] and type-convert these parameters one-by-one with another round of unwrapping 
+                 * and wrapping.
+                 * Types allowed in this object[]:
+                 *    LSL_Float, LSL_Integer, LSL_Key, LSL_List, LSL_Rotation, LSL_String, LSL_Vector
                  */
                 int nargs = args.Length;
-                scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4, nargs + 2);
+                scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4, nargs);
                 scg.ilGen.Emit (errorAt, OpCodes.Newarr, typeof (object));
 
-                scg.ilGen.Emit (errorAt, OpCodes.Dup);
-                scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_0);
-                scg.PushXMRInst ();
-                scg.ilGen.Emit (errorAt, OpCodes.Ldfld, xmrInstPartUUIDField);
-                scg.ilGen.Emit (errorAt, OpCodes.Box, typeof (UUID));
-                scg.ilGen.Emit (errorAt, OpCodes.Stelem, typeof (object));
-
-                scg.ilGen.Emit (errorAt, OpCodes.Dup);
-                scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_1);
-                scg.PushXMRInst ();
-                scg.ilGen.Emit (errorAt, OpCodes.Ldfld, xmrInstItemUUIDField);
-                scg.ilGen.Emit (errorAt, OpCodes.Box, typeof (UUID));
-                scg.ilGen.Emit (errorAt, OpCodes.Stelem, typeof (object));
-
-                TokenType tto = new TokenTypeObject (errorAt);
                 for (int i = 0; i < nargs; i ++) {
                     scg.ilGen.Emit (errorAt, OpCodes.Dup);
-                    scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4, i + 2);
-                    args[i].PushVal (scg, errorAt, tto);
+                    scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4, i);
+
+                    // get location and type of argument
+
+                    CompValu arg = args[i];
+                    TokenType argtype = arg.type;
+
+                    // if already in a form acceptable to modInvoker?(),
+                    // just push it to the stack and convert to object
+                    // by boxing it if necessary
+
+                    // but if something like a double, int, string, etc
+                    // push to stack converting to the LSL-wrapped type
+                    // then convert to object by boxing if necessary
+
+                    Type boxit = null;
+                    if (argtype is TokenTypeLSLFloat) {
+                        args[i].PushVal (scg, errorAt);
+                        boxit = typeof (LSL_Float);
+                    } else if (argtype is TokenTypeLSLInt) {
+                        args[i].PushVal (scg, errorAt);
+                        boxit = typeof (LSL_Integer);
+                    } else if (argtype is TokenTypeLSLKey) {
+                        args[i].PushVal (scg, errorAt);
+                        boxit = typeof (LSL_Key);
+                    } else if (argtype is TokenTypeList) {
+                        args[i].PushVal (scg, errorAt);
+                        boxit = typeof (LSL_List);
+                    } else if (argtype is TokenTypeRot) {
+                        args[i].PushVal (scg, errorAt);
+                        boxit = typeof (LSL_Rotation);
+                    } else if (argtype is TokenTypeLSLString) {
+                        args[i].PushVal (scg, errorAt);
+                        boxit = typeof (LSL_String);
+                    } else if (argtype is TokenTypeVec) {
+                        args[i].PushVal (scg, errorAt);
+                        boxit = typeof (LSL_Vector);
+                    } else if (argtype is TokenTypeFloat) {
+                        args[i].PushVal (scg, errorAt, new TokenTypeLSLFloat (argtype));
+                        boxit = typeof (LSL_Float);
+                    } else if (argtype is TokenTypeInt) {
+                        args[i].PushVal (scg, errorAt, new TokenTypeLSLInt (argtype));
+                        boxit = typeof (LSL_Integer);
+                    } else if (argtype is TokenTypeKey) {
+                        args[i].PushVal (scg, errorAt, new TokenTypeLSLKey (argtype));
+                        boxit = typeof (LSL_Key);
+                    } else if (argtype is TokenTypeStr) {
+                        args[i].PushVal (scg, errorAt, new TokenTypeLSLString (argtype));
+                        boxit = typeof (LSL_String);
+                    } else {
+                        throw new Exception ("unsupported arg type " + argtype.GetType ().Name);
+                    }
+                    if (boxit.IsValueType) {
+                        scg.ilGen.Emit (errorAt, OpCodes.Box, boxit);
+                    }
+
+                    // pop the object into the object[]
+
                     scg.ilGen.Emit (errorAt, OpCodes.Stelem, typeof (object));
                 }
 
                 /*
                  * Call the modInvoker?() method.
+                 * It leaves an LSL-wrapped type on the stack.
                  */
                 if (modInvokerMeth.IsVirtual) {
                     scg.ilGen.Emit (errorAt, OpCodes.Callvirt, modInvokerMeth);
@@ -378,7 +569,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
 
                 /*
-                 * There are various horrid return types.
                  * The 3rd arg to Pop() is the type on the stack, 
                  * ie, what modInvoker?() actually returns.
                  * The Pop() method will wrap/unwrap as needed.
@@ -895,6 +1085,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             SceneObjectPart part = m_Scene.GetSceneObjectPart(localID);
             TaskInventoryItem item = part.Inventory.GetInventoryItem(itemID);
 
+            if (!m_LateInit) {
+                m_LateInit = true;
+                OneTimeLateInitialization ();
+            }
+
             TCP("[XMREngine]: OnRezScript(...,{0},...)", itemID.ToString());
 
             /*
@@ -950,7 +1145,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Put on object/instance lists.
              */
-            XMRInstance instance   = new XMRInstance();
+            XMRInstance instance   = (XMRInstance)Activator.CreateInstance (m_xmrInstanceSuperType);
             instance.m_ForceReset  = restof1st.Contains (",forcereset,");
             instance.m_LocalID     = localID;
             instance.m_ItemID      = itemID;

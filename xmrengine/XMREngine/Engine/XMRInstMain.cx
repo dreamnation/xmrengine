@@ -150,7 +150,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public int m_SleepEventMask1 = 0;
         public int m_SleepEventMask2 = 0;
 
-        public  MOD_Api    m_ModApiCtx;
         private XMRLSL_Api m_XMRLSLApi;
 
         public uint stackLimit;             // CheckRun() must always see this much stack available

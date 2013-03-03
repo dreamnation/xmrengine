@@ -45,12 +45,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Define methods and connect up the APIs.
              */
-            ScriptConst.AddInterfaceConstants   (null, typeof (XMRInstAbstract).GetFields ());
-            TokenDeclInline.AddInterfaceMethods (null, typeof (XMRInstAbstract).GetMethods ());
             ScriptConst.AddInterfaceConstants   (null, typeof (SCRIPTBASECLASS).GetFields ());
-            TokenDeclInline.AddInterfaceMethods (null, typeof (SCRIPTBASECLASS).GetMethods ());
+            TokenDeclInline.AddInterfaceMethods (null, typeof (SCRIPTBASECLASS).GetMethods (), typeof (TestInstance).GetField ("m_ApiManager_LSL"));
             ScriptConst.AddInterfaceConstants   (null, typeof (OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.IOSSL_Api).GetFields ());
-            TokenDeclInline.AddInterfaceMethods (null, typeof (OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.IOSSL_Api).GetMethods ());
+            TokenDeclInline.AddInterfaceMethods (null, typeof (OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.IOSSL_Api).GetMethods (), typeof (TestInstance).GetField ("m_ApiManager_OSSL"));
 
             /*
              * Parse command-line arguments.
@@ -433,7 +431,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 bifs.Add (bif.fullName, (TokenDeclInline)bif);
             }
             foreach (TokenDeclInline bif in bifs.Values) {
-                char noisy = !IsTaggedNoisy (bif.methInfo) ? ' ' : (bif.retType is TokenTypeVoid) ? 'N' : 'R';
+                char noisy = !IsTaggedNoisy (bif.GetMethodInfo ()) ? ' ' : (bif.retType is TokenTypeVoid) ? 'N' : 'R';
                 Console.WriteLine (noisy + "   " + bif.retType.ToString ().PadLeft (8) + " " + bif.fullName);
             }
             Console.WriteLine ("\nN - stub that writes name and arguments to stdout");
@@ -996,6 +994,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
      */
     public class TestInstance : XMRInstAbstract {
         private const int HEAPLIMIT = 50000;
+
+        public SCRIPTBASECLASS m_ApiManager_LSL;
+        public OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.IOSSL_Api m_ApiManager_OSSL;
 
         /**
          * @brief Initial instance for the given script

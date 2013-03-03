@@ -958,6 +958,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			return t2s;
 		}
 
+		/**
+		 * @brief Add to list of internally recognized types.
+		 */
+		public static void DefineInternalType (string name, Type type)
+		{
+			string2Type.Add (name, type);
+			type2String.Add (type, name);
+		}
+
 		private string GetStrFromType (Type t)
 		{
 			string s = GetStrFromTypeWork (t);

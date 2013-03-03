@@ -90,18 +90,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             {
                 IScriptApi scriptApi;
 
+                /*
+                 * Instantiate the API for this script instance.
+                 */
                 if (api != "LSL") {
                     scriptApi = am.CreateApi(api);
                 } else {
                     scriptApi = m_XMRLSLApi = new XMRLSL_Api();
                 }
-                if (scriptApi is MOD_Api) {
-                    m_ModApiCtx = (MOD_Api)scriptApi;
-                }
 
+                /*
+                 * Set up m_ApiManager_<APINAME> = instance pointer.
+                 */
+                engine.m_XMRInstanceApiCtxFieldInfos[api].SetValue (this, scriptApi);
+
+                /*
+                 * Initialize the API instance.
+                 */
                 scriptApi.Initialize(m_Engine, m_Part, m_Item, null);
                 this.InitApi(api, scriptApi);
             }
+
             m_XMRLSLApi.InitXMRLSLApi(this);
 
             /*
@@ -165,7 +174,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_ObjCode = null;
                     throw;
                 }
-                m_log.Debug("[XMREngine]: " + m_ItemID + " load successful");
 
                 /*
                  * Loaded successfully, increment reference count.
@@ -275,7 +283,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
             m_EventCounts = new int[(int)ScriptEventCode.Size];
             if (!File.Exists(m_StateFileName)) {
-                m_log.Debug("[XMREngine]: " + m_ItemID + " starting with reset state");
                 m_Running = true;                  // event processing is enabled
                 eventCode = ScriptEventCode.None;  // not processing any event
 
@@ -288,7 +295,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                                           zeroObjectArray,
                                           zeroDetectParams));
             } else {
-                m_log.Debug("[XMREngine]: " + m_ItemID + " restoring from .state file");
                 FileStream fs = File.Open(m_StateFileName, 
                                           FileMode.Open, 
                                           FileAccess.Read);
