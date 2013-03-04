@@ -43,6 +43,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public static void Main (string[] args)
         {
             /*
+             * Tell code generator what type we do a 'new' of for script context.
+             * Must be descended from XMRInstAbstract.
+             */
+            ScriptCodeGen.xmrInstSuperType = typeof (TestInstance);
+
+            /*
              * Define methods and connect up the APIs.
              */
             ScriptConst.AddInterfaceConstants   (null, typeof (SCRIPTBASECLASS).GetFields ());

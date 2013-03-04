@@ -471,10 +471,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public override void CodeGen (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
 		{
 			if (!methInfo.IsStatic) {
-				scg.PushXMRInst ();                       // XMRInstAbstract pointer
+				scg.PushXMRInst ();                       // XMRInstanceSuperType pointer
 				if (apiContextField != null) {
-					scg.ilGen.Emit (errorAt, OpCodes.Castclass, apiContextField.DeclaringType);
-				                                          // cast to XMRInstanceSuperType
 					scg.ilGen.Emit (errorAt, OpCodes.Ldfld, apiContextField);
 				                                          // 'this' pointer for API function
 				}

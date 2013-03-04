@@ -43,6 +43,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public static readonly int STRING_LEN_TO_MEMUSE = 2;
 
 		public static Exception outOfStackException = new OutOfStackException ();
+		public static Type xmrInstSuperType;  // typeof whatever is actually malloc'd for script instances
+		                                      // - must inherit from XMRInstAbstract
 
 		/*
 		 * Static tables that there only needs to be one copy of for all.
@@ -151,6 +153,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public ScriptObjCode scriptObjCode = null;
 
 		// These get cleared at beginning of every function definition
+		private ScriptMyLocal instancePointer;   // holds XMRInstanceSuperType pointer
 		private ScriptMyLabel retLabel  = null;  // where to jump to exit function
 		private ScriptMyLocal retValue  = null;
 		private ScriptMyLocal actCallNo = null;  // for the active try/catch/finally stack or the big one outside them all
@@ -868,7 +871,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Output function header.
-			 * They just have the XMRInstance pointer as the one argument.
+			 * They just have the XMRInstAbstract pointer as the one argument.
 			 */
 			string functionName = statename + " " + eventname;
 			_ilGen = new ScriptObjWriter (tokenScript, 
@@ -877,6 +880,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			                              instanceTypeArg,
 			                              objFileWriter);
 			StartFunctionBody (declFunc);
+
+			/*
+			 * Create a temp to hold XMRInstanceSuperType version of arg 0.
+			 */
+			instancePointer = ilGen.DeclareLocal (xmrInstSuperType, "__xmrinst");
+			ilGen.Emit (declFunc, OpCodes.Ldarg_0);
+			ilGen.Emit (declFunc, OpCodes.Castclass, xmrInstSuperType);
+			ilGen.Emit (declFunc, OpCodes.Stloc, instancePointer);
 
 			/*
 			 * Output args as variable definitions and initialize each from __sw.ehArgs[].
@@ -946,7 +957,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * Make up array of all argument types as seen by the code generator.
-			 * We splice in XMRInstance or XMRSDTypeClObj for the first 
+			 * We splice in XMRInstanceSuperType or XMRSDTypeClObj for the first 
 			 * arg as the function itself is static, followed by script-visible
 			 * arg types.
 			 */
@@ -956,7 +967,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (IsSDTInstMethod ()) {
 				argTypes[0] = typeof (XMRSDTypeClObj);
 			} else {
-				argTypes[0] = typeof (XMRInstAbstract);
+				argTypes[0] = xmrInstSuperType;
 			}
 			for (int i = 0; i < nArgs; i ++) {
 				argTypes[i+1] = argDecl.vars[i].type.ToSysType ();
@@ -995,6 +1006,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			StartFunctionBody (declFunc);
 
 			/*
+			 * Create a temp to hold XMRInstanceSuperType version of arg 0.
+			 * For most functions, arg 0 is already XMRInstanceSuperType.
+			 * But for script-defined class instance methods, arg 0 holds
+			 * the XMRSDTypeClObj pointer and so we read the XMRInstAbstract
+			 * pointer from its XMRSDTypeClObj.xmrInst field then cast it to
+			 * XMRInstanceSuperType.
+			 */
+			if (IsSDTInstMethod ()) {
+				instancePointer = ilGen.DeclareLocal (xmrInstSuperType, "__xmrinst");
+				ilGen.Emit (declFunc, OpCodes.Ldarg_0);
+				ilGen.Emit (declFunc, OpCodes.Ldfld, sdtXMRInstFieldInfo);
+				ilGen.Emit (declFunc, OpCodes.Castclass, xmrInstSuperType);
+				ilGen.Emit (declFunc, OpCodes.Stloc, instancePointer);
+			}
+
+			/*
 			 * Define location of all script-level arguments so script body can access them.
 			 * The argument indices need to have +1 added to them because XMRInstance or 
 			 * XMRSDTypeClObj is spliced in at arg 0.
@@ -1018,10 +1045,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Start current function being processed.
 			 * Set 'mightGetHere' as the code at the top is always executed.
 			 */
-			mightGetHere = true;
-			curBreakTarg = null;
-			curContTarg  = null;
-			curDeclFunc  = declFunc;
+			instancePointer = null;
+			mightGetHere    = true;
+			curBreakTarg    = null;
+			curContTarg     = null;
+			curDeclFunc     = declFunc;
 
 			/*
 			 * Start generating code.
@@ -5501,21 +5529,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 
 		/**
-		 * @brief Generate code to push XMR_Instance pointer on stack.
+		 * @brief Generate code to push XMRInstanceSuperType pointer on stack.
 		 */
 		public void PushXMRInst ()
 		{
-			// for everything except script-defined class instance methods,
-			// arg 0 holds the XMR_Instance pointer
-			ilGen.Emit (null, OpCodes.Ldarg_0);
-
-			if (IsSDTInstMethod ()) {
-
-				// for script-defined class instance methods,
-				// arg 0 holds the XMRSDTypeClObj pointer
-				// and so we read the XMR_Instance pointer from
-				// its XMRSDTypeClObj.xmrInst field
-				ilGen.Emit (null, OpCodes.Ldfld, sdtXMRInstFieldInfo);
+			if (instancePointer == null) {
+				ilGen.Emit (null, OpCodes.Ldarg_0);
+			} else {
+				ilGen.Emit (null, OpCodes.Ldloc, instancePointer);
 			}
 		}
 

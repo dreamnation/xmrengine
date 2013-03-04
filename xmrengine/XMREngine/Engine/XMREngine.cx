@@ -72,7 +72,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private Thread m_SliceThread = null;
         private bool m_Exiting = false;
         private long m_InitializedAt = 0;
-        private Type m_xmrInstanceSuperType;
 
         private int m_MaintenanceInterval = 10;
         public  int numThreadScriptCores = 2;
@@ -305,8 +304,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * otherwise it will try to use the AssemblyQualifiedName
              * and fail miserably.
              */
-            m_xmrInstanceSuperType = typeBuilder.CreateType ();
-            ScriptObjWriter.DefineInternalType ("xmrsuper", m_xmrInstanceSuperType);
+            ScriptCodeGen.xmrInstSuperType = typeBuilder.CreateType ();
+            ScriptObjWriter.DefineInternalType ("xmrsuper", ScriptCodeGen.xmrInstSuperType);
 
             /*
              * Tell the compiler about all the constants and methods for each API.
@@ -325,7 +324,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 // this field tells the compiled code where the per-instance API context object is
                 // eg, for the OSSL API, it is in ((XMRInstanceSuperType)inst).m_ApiManager_OSSL
                 string fieldName = "m_ApiManager_" + api;
-                FieldInfo fieldInfo = m_xmrInstanceSuperType.GetField (fieldName);
+                FieldInfo fieldInfo = ScriptCodeGen.xmrInstSuperType.GetField (fieldName);
                 m_XMRInstanceApiCtxFieldInfos[api] = fieldInfo;
 
                 // now tell the compiler about the constants and methods for the API
@@ -1145,7 +1144,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Put on object/instance lists.
              */
-            XMRInstance instance   = (XMRInstance)Activator.CreateInstance (m_xmrInstanceSuperType);
+            XMRInstance instance   = (XMRInstance)Activator.CreateInstance (ScriptCodeGen.xmrInstSuperType);
             instance.m_ForceReset  = restof1st.Contains (",forcereset,");
             instance.m_LocalID     = localID;
             instance.m_ItemID      = itemID;
