@@ -121,6 +121,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public static ScriptConst AddConstant (string name, object value)
 		{
 			CompValu cv = null;
+
 			if (value is char) {
 				cv = new CompValuChar (new TokenTypeChar (null), (char)value);
 			}
@@ -133,6 +134,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			if (value is int) {
 				cv = new CompValuInteger (new TokenTypeInt (null), (int)value);
 			}
+			if (value is string) {
+				cv = new CompValuString (new TokenTypeStr (null), (string)value);
+			}
+
 			if (value is LSL_Integer) {
 				cv = new CompValuInteger (new TokenTypeInt (null), ((LSL_Integer)value).value);
 			}
@@ -154,9 +159,26 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				CompValu z = new CompValuFloat (new TokenTypeFloat (null), v.z);
 				cv = new CompValuVec (new TokenTypeVec (null), x, y, z);
 			}
-			if (value is string) {
-				cv = new CompValuString (new TokenTypeStr (null), (string)value);
+
+			if (value is OpenMetaverse.Quaternion) {
+				OpenMetaverse.Quaternion r = (OpenMetaverse.Quaternion)value;
+				CompValu x = new CompValuFloat (new TokenTypeFloat (null), r.X);
+				CompValu y = new CompValuFloat (new TokenTypeFloat (null), r.Y);
+				CompValu z = new CompValuFloat (new TokenTypeFloat (null), r.Z);
+				CompValu s = new CompValuFloat (new TokenTypeFloat (null), r.W);
+				cv = new CompValuRot (new TokenTypeRot (null), x, y, z, s);
 			}
+			if (value is OpenMetaverse.UUID) {
+				cv = new CompValuString (new TokenTypeKey (null), value.ToString ());
+			}
+			if (value is OpenMetaverse.Vector3) {
+				OpenMetaverse.Vector3 v = (OpenMetaverse.Vector3)value;
+				CompValu x = new CompValuFloat (new TokenTypeFloat (null), v.X);
+				CompValu y = new CompValuFloat (new TokenTypeFloat (null), v.Y);
+				CompValu z = new CompValuFloat (new TokenTypeFloat (null), v.Z);
+				cv = new CompValuVec (new TokenTypeVec (null), x, y, z);
+			}
+
 			if (cv == null) throw new Exception ("bad type " + value.GetType ().Name);
 			return new ScriptConst (scriptConstants, name, cv);
 		}
