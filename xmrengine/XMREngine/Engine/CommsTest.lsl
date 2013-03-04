@@ -3,6 +3,7 @@ default {
     {
         llOwnerSay (xmrTypeName (COMMSTEST_F1) + " COMMSTEST_F1 = " + (string)COMMSTEST_F1);
         llOwnerSay (xmrTypeName (COMMSTEST_F2) + " COMMSTEST_F2 = " + (string)COMMSTEST_F2);
+        llOwnerSay (xmrTypeName (COMMSTEST_F3) + " COMMSTEST_F3 = " + (string)COMMSTEST_F3);
         llOwnerSay (xmrTypeName (COMMSTEST_I1) + " COMMSTEST_I1 = " + (string)COMMSTEST_I1);
         llOwnerSay (xmrTypeName (COMMSTEST_I2) + " COMMSTEST_I2 = " + (string)COMMSTEST_I2);
         llOwnerSay (xmrTypeName (COMMSTEST_K1) + " COMMSTEST_K1 = " + (string)COMMSTEST_K1);

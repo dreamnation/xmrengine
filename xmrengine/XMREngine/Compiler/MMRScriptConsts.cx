@@ -138,6 +138,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				cv = new CompValuString (new TokenTypeStr (null), (string)value);
 			}
 
+			if (value is LSL_Float) {
+				cv = new CompValuFloat (new TokenTypeFloat (null), (SCRIPTFLOAT)((LSL_Float)value).value);
+			}
 			if (value is LSL_Integer) {
 				cv = new CompValuInteger (new TokenTypeInt (null), ((LSL_Integer)value).value);
 			}
