@@ -143,11 +143,43 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 ScriptObjCode objCode;
 
                 /*
+                 * If source code string is empty, use the asset ID as the object file name.
+                 */
+                string sct = m_SourceCode.Trim ();
+                if (sct == "") {
+                    m_ScriptObjCodeKey = m_Item.AssetID.ToString ();
+                } else {
+
+                    /*
+                     * Make up dictionary key for the object code.
+                     * Use the same object code for identical source code
+                     * regardless of asset ID, so we don't care if they
+                     * copy scripts or not.
+                     */
+                    byte[] scbytes   = System.Text.Encoding.UTF8.GetBytes (m_SourceCode);
+                    StringBuilder sb = new StringBuilder ((256 + 5) / 6);
+                    ByteArrayToSixbitStr (sb, System.Security.Cryptography.SHA256.Create ().ComputeHash (scbytes));
+                    m_ScriptObjCodeKey = sb.ToString ();
+
+                    /*
+                     * But source code can be the exact sixbit string itself.
+                     */
+                    if (sct.Length == m_ScriptObjCodeKey.Length) {
+                        int i;
+                        for (i = sct.Length; -- i >= 0;) {
+                            if (sixbit.IndexOf (sct[i]) < 0) break;
+                        }
+                        if (i < 0) {
+                            m_ScriptObjCodeKey = sct;
+                        }
+                    }
+                }
+
+                /*
                  * There may already be an ScriptObjCode struct in memory that
                  * we can use.  If not, try to compile it.
                  */
-                if (!m_CompiledScriptObjCode.TryGetValue (m_Item.AssetID, 
-                                                          out objCode)) {
+                if (!m_CompiledScriptObjCode.TryGetValue (m_ScriptObjCodeKey, out objCode)) {
                     objCode = TryToCompile();
                     compiledIt = true;
                 }
@@ -178,14 +210,33 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  *
                  * If we just compiled it though, reset count to 0 first as
                  * this is the one-and-only existance of this objCode struct,
-                 * and we want any old ones for this assetID to be garbage
+                 * and we want any old ones for this source code to be garbage
                  * collected.
                  */
                 if (compiledIt) {
-                    m_CompiledScriptObjCode[m_Item.AssetID]  = objCode;
-                    m_CompiledScriptRefCount[m_Item.AssetID] = 0;
+                    m_CompiledScriptObjCode[m_ScriptObjCodeKey] = objCode;
+                    objCode.refCount = 0;
                 }
-                m_CompiledScriptRefCount[m_Item.AssetID] ++;
+                objCode.refCount ++;
+            }
+        }
+
+        private const string sixbit = "0123456789_abcdefghijklmnopqrstuvwxyz@ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        private static void ByteArrayToSixbitStr (StringBuilder sb, byte[] bytes)
+        {
+            int bit = 0;
+            int val = 0;
+            foreach (byte b in bytes) {
+                val |= (int)((uint)b << bit);
+                bit += 8;
+                while (bit >= 6) {
+                    sb.Append (sixbit[val&63]);
+                    val >>= 6;
+                    bit  -= 6;
+                }
+            }
+            if (bit > 0) {
+                sb.Append (sixbit[val&63]);
             }
         }
 
@@ -203,7 +254,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             string assetID  = m_Item.AssetID.ToString();
             m_CameFrom = "asset://" + assetID;
             ScriptObjCode objCode = ScriptCompile.Compile(m_SourceCode, 
-                                                          assetID, 
+                                                          m_ScriptObjCodeKey, 
                                                           m_CameFrom, 
                                                           m_ScriptBasePath, 
                                                           m_ForceReset, 

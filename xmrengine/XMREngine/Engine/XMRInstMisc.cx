@@ -90,13 +90,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 {
                     ScriptObjCode objCode;
 
-                    if (m_CompiledScriptObjCode.TryGetValue(m_Item.AssetID, 
+                    if (m_CompiledScriptObjCode.TryGetValue(m_ScriptObjCodeKey, 
                                                             out objCode) &&
                         (objCode == m_ObjCode) && 
-                        (-- m_CompiledScriptRefCount[m_Item.AssetID] == 0))
+                        (-- objCode.refCount == 0))
                     {
-                        m_CompiledScriptObjCode.Remove(m_Item.AssetID);
-                        m_CompiledScriptRefCount.Remove(m_Item.AssetID);
+                        m_CompiledScriptObjCode.Remove(m_ScriptObjCodeKey);
                     }
                 }
                 m_ObjCode = null;
@@ -138,7 +137,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 sb.AppendLine(m_DescName);
                 sb.AppendLine("    m_LocalID           = " + m_LocalID);
                 sb.AppendLine("    m_ItemID            = " + m_ItemID  + "  (.state file)");
-                sb.AppendLine("    m_Item.AssetID           = " + m_Item.AssetID + "  (source text)");
+                sb.AppendLine("    m_Item.AssetID      = " + m_Item.AssetID);
+                sb.AppendLine("    m_ScriptObjCodeKey  = " + m_ScriptObjCodeKey + "  (source text)");
                 sb.AppendLine("    m_StartParam        = " + m_StartParam);
                 sb.AppendLine("    m_PostOnRez         = " + m_PostOnRez);
                 sb.AppendLine("    m_StateSource       = " + m_StateSource);

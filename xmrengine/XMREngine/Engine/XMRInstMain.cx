@@ -78,11 +78,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
 
         // For a given m_Item.AssetID, do we have the compiled object code and where
-        // is it?  m_CompiledScriptRefCount keeps track of how many m_ObjCode
-        // pointers are valid.
+        // is it?
         public static object m_CompileLock = new object();
-        private static Dictionary<UUID, ScriptObjCode> m_CompiledScriptObjCode = new Dictionary<UUID, ScriptObjCode>();
-        private static Dictionary<UUID, int> m_CompiledScriptRefCount = new Dictionary<UUID, int>();
+        private static Dictionary<string,ScriptObjCode> m_CompiledScriptObjCode = new Dictionary<string,ScriptObjCode>();
 
         public  XMRInstance  m_NextInst;  // used by XMRInstQueue
         public  XMRInstance  m_PrevInst;
@@ -95,6 +93,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public  UUID m_ItemID;
         public  UUID m_PartUUID;
         private string m_CameFrom;
+        private string m_ScriptObjCodeKey;
 
         private XMREngine m_Engine = null;
         private string m_ScriptBasePath;

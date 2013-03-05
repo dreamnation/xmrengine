@@ -50,6 +50,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public Dictionary<string, KeyValuePair<int, ScriptSrcLoc>[]> scriptSrcLocss;
                                           // method,iloffset -> source file,line,posn
 
+        public int refCount;              // used by engine to keep track of number of 
+                                          // instances that are using this object code
+
         public DateTime fileDateUtc;
         public int expiryDays = Int32.MaxValue;
         public bool IsExpired ()
