@@ -73,12 +73,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             /*
-             * Not in any XMRInstQueue, and it is being constructed so don't
-             * try to run it yet.
+             * Not in any XMRInstQueue.
              */
             m_NextInst = this;
             m_PrevInst = this;
-            m_IState   = XMRInstState.CONSTRUCT;
 
             /*
              * Set up list of API calls it has available.
@@ -281,7 +279,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * If no .state file exists, start from default state
              * Otherwise, read initial state from the .state file
              */
-            m_EventCounts = new int[(int)ScriptEventCode.Size];
             if (!File.Exists(m_StateFileName)) {
                 m_Running = true;                  // event processing is enabled
                 eventCode = ScriptEventCode.None;  // not processing any event
@@ -290,7 +287,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 doGblInit = true;
                 stateCode = 0;
 
-                m_EventQueue = new LinkedList<EventParams>();
                 PostEvent(new EventParams("state_entry", 
                                           zeroObjectArray,
                                           zeroDetectParams));
@@ -452,8 +448,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             MigrateInEventHandler(ms);
             ms.Close();
 
-            // Restore event queues
+            // Restore event queues, preserving any events that queued
+            // whilst we were restoring the state
             m_DetectParams = detParams;
+            foreach (EventParams evt in m_EventQueue) {
+                eventQueue.AddLast (evt);
+            }
             m_EventQueue   = eventQueue;
             for (int i = m_EventCounts.Length; -- i >= 0;) m_EventCounts[i] = 0;
             foreach (EventParams evt in m_EventQueue)

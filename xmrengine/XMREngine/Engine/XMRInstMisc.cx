@@ -266,11 +266,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_Running = value;
                     if (!value)
                     {
-                        m_EventQueue.Clear();
-                        for (int i = m_EventCounts.Length; -- i >= 0;) m_EventCounts[i] = 0;
+                        EmptyEventQueues ();
                     }
                 }
             }
+        }
+
+        /**
+         * @brief Empty out the event queues.
+         *        Assumes caller has the m_QueueLock locked.
+         */
+        public void EmptyEventQueues ()
+        {
+            m_EventQueue.Clear();
+            for (int i = m_EventCounts.Length; -- i >= 0;) m_EventCounts[i] = 0;
         }
 
         /**

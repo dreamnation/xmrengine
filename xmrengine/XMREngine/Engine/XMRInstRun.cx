@@ -47,16 +47,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public void PostEvent(EventParams evt)
         {
-            /*
-             * Ignore event if we don't even have such an handler in any state.
-             * We can't be state-specific here because state might be different
-             * by the time this event is dequeued and delivered to the script.
-             */
             ScriptEventCode evc = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), 
-                                                                     evt.EventName);
-            if (((int)evc >= 0) && !m_HaveEventHandlers[(int)evc]) {
-                return;
-            }
+                                                                 evt.EventName);
 
             /*
              * Put event on end of event queue.
@@ -65,11 +57,25 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             bool wakeIt  = false;
             lock (m_QueueLock)
             {
+                bool construct = (m_IState == XMRInstState.CONSTRUCT);
+
+                /*
+                 * Ignore event if we don't even have such an handler in any state.
+                 * We can't be state-specific here because state might be different
+                 * by the time this event is dequeued and delivered to the script.
+                 */
+                if (!construct &&                      // make sure m_HaveEventHandlers is filled in 
+                    ((int)evc >= 0) &&                 // make sure event code is in range
+                    ((int)evc < m_HaveEventHandlers.Length) &&
+                    !m_HaveEventHandlers[(int)evc]) {  // don't bother if we don't have such a handler in any state
+                    return;
+                }
+
                 /*
                  * Not running means we ignore any incoming events.
+                 * But queue if still constructing because m_Running is not yet valid.
                  */
-                if (!m_Running)
-                {
+                if (!m_Running && !construct) {
                     return;
                 }
 
@@ -89,7 +95,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 /*
                  * Put event on end of instance's event queue.
                  */
-
                 LinkedListNode<EventParams> lln = new LinkedListNode<EventParams>(evt);
                 switch (evc) {
 

@@ -38,7 +38,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
      *        ie, m_StartQueue, m_YieldQueue, m_SleepQueue, etc.
      * Allowed transitions:
      *   Starts in CONSTRUCT when constructed
-     *   CONSTRUCT->ONSTARTQ          : only by thread that constructed it
+     *   CONSTRUCT->ONSTARTQ          : only by thread that constructed and compiled it
      *   IDLE->ONSTARTQ,RESETTING     : by any thread but must have m_QueueLock when transitioning
      *   ONSTARTQ->RUNNING,RESETTING  : only by thread that removed it from m_StartQueue
      *   ONYIELDQ->RUNNING,RESETTING  : only by thread that removed it from m_YieldQueue
@@ -51,7 +51,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
      *   RESETTING->ONSTARTQ          : only by the thread that transitioned it to RESETTING
      */
     public enum XMRInstState {
-        COMPILING,  // it is being compiled
         CONSTRUCT,  // it is being constructed
         IDLE,       // nothing happening (finished last event and m_EventQueue is empty)
         ONSTARTQ,   // inserted on m_Engine.m_StartQueue
@@ -130,13 +129,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public Object m_QueueLock = new Object();
 
         // true iff allowed to accept new events
-        private bool m_Running = true;
+        public bool m_Running = true;
 
         // queue of events that haven't been acted upon yet
-        public LinkedList<EventParams> m_EventQueue;
+        public LinkedList<EventParams> m_EventQueue = new LinkedList<EventParams> ();
 
         // number of events of each code currently in m_EventQueue.
-        private int[] m_EventCounts;
+        private int[] m_EventCounts = new int[(int)ScriptEventCode.Size];
 
         // locked whilst running on the microthread stack (or about to run on it or just ran on it)
         private Object m_RunLock = new Object();

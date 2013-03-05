@@ -1156,7 +1156,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             instance.m_PartUUID    = part.UUID;
             instance.m_Item        = item;
             instance.m_DescName    = part.Name + ":" + item.Name;
-            instance.m_IState      = XMRInstState.COMPILING;
+            instance.m_IState      = XMRInstState.CONSTRUCT;
 
             lock (m_InstancesDict) {
                 m_LockedDict = "RegisterInstance";
@@ -1182,13 +1182,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Queue script in a thread that will compile and load it.
              */
-//            lock (m_LoadQueue) {
-//                if (m_LoadQueue.Count == 0) {
-//                    new System.Threading.Thread (LoadThread).Start ();
-//                }
-//                m_LoadQueue.Enqueue (instance);
-//            }
-            LoadThreadWork(instance);
+            lock (m_LoadQueue) {
+                if (m_LoadQueue.Count == 0) {
+                    new System.Threading.Thread (LoadThread).Start ();
+                }
+                m_LoadQueue.Enqueue (instance);
+            }
         }
 
         /**
@@ -1196,7 +1195,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         private void LoadThread ()
         {
-            m_log.Debug ("[XMREngine]: LoadThread entered");
             long when = DateTime.UtcNow.Ticks - 100000000;  // 10sec
             if (when < m_InitializedAt) {
                 long msec = (m_InitializedAt - when) / 10000;
@@ -1212,7 +1210,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 m_LoadQueue.Dequeue ();
             }
             Monitor.Exit (m_LoadQueue);
-            m_log.Debug ("[XMREngine]: LoadThread exiting");
             m_Scene.EventManager.TriggerEmptyScriptCompileQueue (0, "");
         }
 
@@ -1285,8 +1282,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * such as state_entry() or on_rez().  If there aren't any queued, it
              * will just go to idle state when RunOne() tries to dequeue an event.
              */
-            if (instance.m_IState != XMRInstState.CONSTRUCT) throw new Exception("bad state");
-            instance.m_IState = XMRInstState.ONSTARTQ;
+            lock (instance.m_QueueLock) {
+                if (instance.m_IState != XMRInstState.CONSTRUCT) throw new Exception("bad state");
+                instance.m_IState = XMRInstState.ONSTARTQ;
+                if (!instance.m_Running) {
+                    instance.EmptyEventQueues ();
+                }
+            }
             QueueToStart(instance);
         }
 
@@ -1319,7 +1321,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 instance.suspendOnCheckRunHold = true;
 
                 /*
-                 * Remove it from our list of known script instances.
+                 * Remove it from our list of known script instances
+                 * mostly so no more events can queue to it.
                  */
                 m_InstancesDict.Remove(itemID);
 
@@ -1653,6 +1656,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
         }
 
+        /**
+         * @brief Get specific script instance for which OnRezScript()
+         *        has been called for an XMREngine script, and that
+         *        OnRemoveScript() has not been called since.
+         * @param itemID = as passed to OnRezScript() identifying a specific script instance
+         * @returns null: not one of our scripts (maybe XEngine etc)
+         *          else: points to the script instance
+         */
         public XMRInstance GetInstance(UUID itemID)
         {
             XMRInstance instance;
@@ -1758,7 +1769,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 TCP("[XMREngine]: XMREngine.ResumeScript({0})", itemID.ToString());
                 instance.Resume();
             } else {
-                m_log.ErrorFormat("[XMREngine]: ResumeScript called for {0}, which was not found", itemID.ToString());
+                // probably an XEngine script
             }
         }
 
