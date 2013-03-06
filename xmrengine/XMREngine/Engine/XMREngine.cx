@@ -259,11 +259,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private void OneTimeLateInitialization ()
         {
             /*
-             * These constants just need to get stuffed in the compiler.
-             */
-            ScriptConst.AddInterfaceConstants (null, typeof (ScriptBaseClass).GetFields ());
-
-            /*
              * Start creating type XMRInstanceSuperType that contains a field
              * m_ApiManager_<APINAME> that points to the per-instance context
              * struct for that API, ie, the 'this' value passed to all methods

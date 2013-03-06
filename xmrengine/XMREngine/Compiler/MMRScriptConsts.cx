@@ -53,6 +53,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				} catch { }
 			}
 
+			/*
+			 * Also get all the constants from XMRInstAbstract and ScriptBaseClass etc as well.
+			 */
+			for (Type t = typeof (XMRInstAbstract); t != typeof (object); t = t.BaseType) {
+				AddInterfaceConstants (sc, t.GetFields ());
+			}
+
 			return sc;
 		}
 

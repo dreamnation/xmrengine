@@ -49,14 +49,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             ScriptCodeGen.xmrInstSuperType = typeof (TestInstance);
 
             /*
-             * Define methods and connect up the APIs.
-             */
-            ScriptConst.AddInterfaceConstants   (null, typeof (SCRIPTBASECLASS).GetFields ());
-            TokenDeclInline.AddInterfaceMethods (null, typeof (SCRIPTBASECLASS).GetMethods (), typeof (TestInstance).GetField ("m_ApiManager_LSL"));
-            ScriptConst.AddInterfaceConstants   (null, typeof (OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.IOSSL_Api).GetFields ());
-            TokenDeclInline.AddInterfaceMethods (null, typeof (OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.IOSSL_Api).GetMethods (), typeof (TestInstance).GetField ("m_ApiManager_OSSL"));
-
-            /*
              * Parse command-line arguments.
              */
             bool eventIO      = false;
@@ -949,7 +941,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      * Make sure we were called because CheckRun() threw and 
                      * the code built inst.StackFrames.
                      */
-                    if (inst.callMode != XMRInstAbstract.CALLMODE_SAVE) throw;
+                    if (inst.callMode != XMRInstAbstract.CallMode_SAVE) throw;
 
                     /*
                      * Time-slice to another script.
@@ -989,7 +981,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     /*
                      * Tell code to restore from inst.stackFrames when it is called back.
                      */
-                    inst.callMode = XMRInstAbstract.CALLMODE_RESTORE;
+                    inst.callMode = XMRInstAbstract.CallMode_RESTORE;
                 }
             }
         }
@@ -1044,8 +1036,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      * Code was running normally.
                      * Suspend and write stack frames to this.StackFrames.
                      */
-                    case CALLMODE_NORMAL: {
-                        this.callMode = CALLMODE_SAVE;
+                    case CallMode_NORMAL: {
+                        this.callMode = CallMode_SAVE;
                         this.stackFrames = null;
                         throw new StackCaptureException ();
                     }
@@ -1054,9 +1046,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      * Code just restored itself from this.StackFrames.
                      * Resume where it left off until it calls CheckRun() again.
                      */
-                    case CALLMODE_RESTORE: {
+                    case CallMode_RESTORE: {
                         if (this.stackFrames != null) throw new Exception ("frames left over");
-                        this.callMode = CALLMODE_NORMAL;
+                        this.callMode = CallMode_NORMAL;
                         break;
                     }
 

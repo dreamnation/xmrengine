@@ -168,9 +168,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
      */
     public abstract class XMRInstAbstract : SCRIPTBASECLASS
     {
-        public const int CALLMODE_NORMAL  = 0;  // when function is called, it proceeds normally
-        public const int CALLMODE_SAVE    = 1;  // StackSaveException() was thrown, push args/locals to stackFrames
-        public const int CALLMODE_RESTORE = 2;  // when function is called, it pops state from stackFrames
+        public const int CallMode_NORMAL  = 0;  // when function is called, it proceeds normally
+        public const int CallMode_SAVE    = 1;  // StackSaveException() was thrown, push args/locals to stackFrames
+        public const int CallMode_RESTORE = 2;  // when function is called, it pops state from stackFrames
 
         public ScriptObjCode m_ObjCode;     // script object code this instance was created from
 
@@ -187,14 +187,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public ScriptEventCode eventCode = ScriptEventCode.None;
                                             // what event handler is executing (or None if not)
 
-        public int callMode = CALLMODE_NORMAL;
+        public int callMode = CallMode_NORMAL;
                                             // to capture stack frames on stackFrames:
-                                            //    set to CALLMODE_SAVE just before throwing StackSaveException()
-                                            //    from within CheckRun() and cleared to CALLMODE_NORMAL when
+                                            //    set to CallMode_SAVE just before throwing StackSaveException()
+                                            //    from within CheckRun() and cleared to CallMode_NORMAL when
                                             //    the exception is caught
                                             // to restore stack frames from stackFrames:
-                                            //    set to CALLMODE_RESTORE just before calling CallSEH() and 
-                                            //    cleared to CALLMODE_NORMAL by CheckRun()
+                                            //    set to CallMode_RESTORE just before calling CallSEH() and 
+                                            //    cleared to CallMode_NORMAL by CheckRun()
         public XMRStackFrame stackFrames;   // stack frames being saved/restored
 
         /*
@@ -232,7 +232,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         \**************************************************/
 
         /**
-         * @brief Called during CALLMODE_SAVE to create a stackframe save object that saves 
+         * @brief Called during CallMode_SAVE to create a stackframe save object that saves 
          *        local variables and calling point within the function.
          * @param funcName = name of function whose frame is being saved
          * @param callNo = call number (ie, return address) within function to restart at
@@ -251,7 +251,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         /**
-         * @brief Called during CALLMODE_RESTORE to pop a stackframe object to restore 
+         * @brief Called during CallMode_RESTORE to pop a stackframe object to restore 
          *        local variables and calling point within the function.
          * @param funcName = name of function whose frame is being restored
          * @returns the object[nSaves] where function can retrieve variables

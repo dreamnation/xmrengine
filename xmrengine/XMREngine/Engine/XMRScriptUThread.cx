@@ -51,11 +51,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public override Exception MainEx ()
         {
             /*
-             * CALLMODE_NORMAL:  run event handler from the beginning normally
-             * CALLMODE_RESTORE: restore event handler stack from stackFrames
+             * CallMode_NORMAL:  run event handler from the beginning normally
+             * CallMode_RESTORE: restore event handler stack from stackFrames
              */
-            instance.callMode = (instance.stackFrames == null) ? XMRInstAbstract.CALLMODE_NORMAL :
-                                                                 XMRInstAbstract.CALLMODE_RESTORE;
+            instance.callMode = (instance.stackFrames == null) ? XMRInstAbstract.CallMode_NORMAL :
+                                                                 XMRInstAbstract.CallMode_RESTORE;
 
             /*
              * Run event handler according to callMode.

@@ -275,7 +275,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_RunOnePhase = "resume old event handler";
                     m_LastRanAt   = now;
                     m_InstEHSlice ++;
-                    callMode = CALLMODE_NORMAL;
+                    callMode = CallMode_NORMAL;
                     e = microthread.ResumeEx (null);
                 }
 
@@ -900,7 +900,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      * But otherwise, our state remains intact.
                      */
                     m_CheckRunPhase = "saving";
-                    this.callMode = CALLMODE_SAVE;
+                    this.callMode = CallMode_SAVE;
                     this.stackFrames = null;
                     throw new StackCaptureException ();
                 }
@@ -911,9 +911,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * within the functions should do their normal processing instead of trying to 
                  * restore their state.
                  */
-                if (this.callMode == CALLMODE_RESTORE) {
+                if (this.callMode == CallMode_RESTORE) {
                     stackFramesRestored = true;
-                    this.callMode = CALLMODE_NORMAL;
+                    this.callMode = CallMode_NORMAL;
                 }
 
                 /*
@@ -933,7 +933,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * Upon return from CheckRun() it should always be the case that the script is
              * going to process calls normally, neither saving nor restoring stack frame state.
              */
-            if (callMode != CALLMODE_NORMAL) throw new Exception ("bad callMode " + callMode);
+            if (callMode != CallMode_NORMAL) throw new Exception ("bad callMode " + callMode);
         }
 
         public void Resume()

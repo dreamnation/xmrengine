@@ -136,6 +136,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			/*
 			 * These are all the xmr...() calls directly in XMRInstAbstract.
+			 * Includes the calls from ScriptBaseClass that has all the stubs
+			 * which convert XMRInstAbstract to the various <NAME>_Api contexts.
 			 */
 			List<MethodInfo> lcms = new List<MethodInfo> ();
 			foreach (MethodInfo meth in typeof (XMRInstAbstract).GetMethods ()) {

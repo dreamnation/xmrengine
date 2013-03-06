@@ -1184,7 +1184,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Output:
 			 *    int __mainCallNo = -1;
-			 *    if (instance.callMode != CALLMODE_NORMAL) goto __cmRestore;
+			 *    if (instance.callMode != CallMode_NORMAL) goto __cmRestore;
 			 *    try {
 			 */
 			actCallNo = null;
@@ -1196,7 +1196,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				cmRestore = ilGen.DefineLabel ("__cmRestore");
 				PushXMRInst ();
 				ilGen.Emit (curDeclFunc, OpCodes.Ldfld, ScriptCodeGen.callModeFieldInfo);
-				ilGen.Emit (curDeclFunc, OpCodes.Ldc_I4, XMRInstAbstract.CALLMODE_NORMAL);
+				ilGen.Emit (curDeclFunc, OpCodes.Ldc_I4, XMRInstAbstract.CallMode_NORMAL);
 				ilGen.Emit (curDeclFunc, OpCodes.Bne_Un, cmRestore);
 				ilGen.BeginExceptionBlock ();
 			}
@@ -1306,10 +1306,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			collector = null;
 
 			/*
-			 * Output epilog that saves stack frame state if CALLMODE_SAVE.
+			 * Output epilog that saves stack frame state if CallMode_SAVE.
 			 *
 			 *   finally {
-			 *      if (instance.callMode == CALLMODE_NORMAL) goto __endFin;
+			 *      if (instance.callMode == CallMode_NORMAL) goto __endFin;
 			 *      GenerateFrameCaptureCode();
 			 *   __endFin:
 			 *   }
@@ -1321,7 +1321,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				endFin = ilGen.DefineLabel ("__endFin");
 				PushXMRInst ();
 				ilGen.Emit (curDeclFunc, OpCodes.Ldfld, callModeFieldInfo);
-				ilGen.Emit (curDeclFunc, OpCodes.Ldc_I4, XMRInstAbstract.CALLMODE_NORMAL);
+				ilGen.Emit (curDeclFunc, OpCodes.Ldc_I4, XMRInstAbstract.CallMode_NORMAL);
 				ilGen.Emit (curDeclFunc, OpCodes.Beq, endFin);
 				activeTemps = GenerateFrameCaptureCode ();
 				ilGen.MarkLabel (endFin);
@@ -1575,7 +1575,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 *        will restore our args, locals & temps, then jump to __call_5, which will then 
 		 *        call SomethingThatCallsCheckRun() again, which will restore its stuff likewise.
 		 *        When eventually the actual CheckRun() call is restored, it will turn off restore 
-		 *        mode (by changing callMode from CALLMODE_RESTORE to CALLMODE_NORMAL) and return, 
+		 *        mode (by changing callMode from CallMode_RESTORE to CallMode_NORMAL) and return, 
 		 *        allowing the code to run normally from that point.
 		 */
 		public class CallLabel {
@@ -3149,14 +3149,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 *                                                                   // ... maybe to a leave if we were doing finally { } subblock
 		 *          } catch (object exc) {                                   // in case we're getting to finally { } via a thrown exception:
 		 *              exc = ScriptRestoreCatchException.Unwrap(exc);       // unwrap possible ScriptRestoreCatchException
-		 *              if (callMode == CALLMODE_SAVE) goto catchRetro;      // don't touch anything if capturing stack
+		 *              if (callMode == CallMode_SAVE) goto catchRetro;      // don't touch anything if capturing stack
 		 *              __catThrown = exc;                                   // save exception so try { } can throw it on restore
 		 *              __tryCallNo = tryThrow:<tryCallLabel>;               // tell try { } to throw it on restore
 		 *            catchRetro:
 		 *              rethrow;                                             // in any case, go on to finally { } subblock now
 		 *          }
 		 *      } finally {
-		 *          if (callMode == CALLMODE_SAVE) goto finEnd;              // don't touch anything if capturing stack
+		 *          if (callMode == CallMode_SAVE) goto finEnd;              // don't touch anything if capturing stack
 		 *          if (__finCallNo >= 0) goto finCallSw;                    // maybe go do restore
 		 *          <finally body using __finCallNo>                         // normal, execute script-defined code
 		 *        finEnd:
@@ -3270,9 +3270,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ilGen.Emit (tryStmt, OpCodes.Call, consoleWriteMethodInfo);
 #endif
 			ilGen.Emit (tryStmt, OpCodes.Call, scriptRestoreCatchExceptionUnwrap);  // exc = ScriptRestoreCatchException.Unwrap (exc);
-			PushXMRInst ();						// if (callMode == CALLMODE_SAVE) goto catchRetro;
+			PushXMRInst ();						// if (callMode == CallMode_SAVE) goto catchRetro;
 			ilGen.Emit (tryStmt, OpCodes.Ldfld, callModeFieldInfo);
-			ilGen.Emit (tryStmt, OpCodes.Ldc_I4, XMRInstAbstract.CALLMODE_SAVE);
+			ilGen.Emit (tryStmt, OpCodes.Ldc_I4, XMRInstAbstract.CallMode_SAVE);
 			ilGen.Emit (tryStmt, OpCodes.Beq, catchRetro);
 
 			catThrown.Pop (this, tryStmt);				// __catThrown = exc;
@@ -3288,9 +3288,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			ilGen.BeginFinallyBlock ();				// start of the finally block
 
-			PushXMRInst ();						// if (callMode == CALLMODE_SAVE) goto finEnd;
+			PushXMRInst ();						// if (callMode == CallMode_SAVE) goto finEnd;
 			ilGen.Emit (tryStmt, OpCodes.Ldfld, callModeFieldInfo);
-			ilGen.Emit (tryStmt, OpCodes.Ldc_I4, XMRInstAbstract.CALLMODE_SAVE);
+			ilGen.Emit (tryStmt, OpCodes.Ldc_I4, XMRInstAbstract.CallMode_SAVE);
 			ilGen.Emit (tryStmt, OpCodes.Beq, finEnd.label);
 
 			finCallNo.PushVal (this, tryStmt);			// if (__finCallNo >= 0) goto finCallSw;
