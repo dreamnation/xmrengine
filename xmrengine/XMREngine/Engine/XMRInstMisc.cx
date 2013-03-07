@@ -121,7 +121,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Console.WriteLine("    m_StateCode     = " + GetStateName(stateCode));
             Console.WriteLine("    eventCode       = " + eventCode.ToString());
             Console.WriteLine("    m_LastRanAt     = " + m_LastRanAt.ToString());
-            Console.WriteLine("    heapTotal/Limit = " + heapTotal + "/" + heapLimit);
+            Console.WriteLine("    heapUsed/Limit  = " + xmrHeapUsed () + "/" + heapLimit);
             Console.WriteLine("    m_InstEHEvent   = " + m_InstEHEvent.ToString());
             Console.WriteLine("    m_InstEHSlice   = " + m_InstEHSlice.ToString());
           }
@@ -154,7 +154,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 sb.AppendLine("    suspOnCkRunHold     = " + suspendOnCheckRunHold);
                 sb.AppendLine("    suspOnCkRunTemp     = " + suspendOnCheckRunTemp);
                 sb.AppendLine("    m_CheckRunPhase     = " + m_CheckRunPhase);
-                sb.AppendLine("    heapTotal/Limit     = " + heapTotal + "/" + heapLimit);
+                sb.AppendLine("    heapUsed/Limit      = " + xmrHeapUsed () + "/" + heapLimit);
                 sb.AppendLine("    m_InstEHEvent       = " + m_InstEHEvent.ToString());
                 sb.AppendLine("    m_InstEHSlice       = " + m_InstEHSlice.ToString());
                 sb.AppendLine("    m_CPUTime           = " + m_CPUTime);

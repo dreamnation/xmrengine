@@ -39,7 +39,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private static readonly LSL_Vector[]     noVectors     = new LSL_Vector[0];
         private static readonly XMRSDTypeClObj[] noSDTClObjs   = new XMRSDTypeClObj[0];
         private static readonly Delegate[][]     noSDTIntfObjs = new Delegate[0][];
-        public int AllocVarArrays (ref XMRInstArSizes ars)
+        public void AllocVarArrays (ref XMRInstArSizes ars)
         {
             iarArrays      = (ars.iasArrays      > 0) ? new XMR_Array     [ars.iasArrays]        : noArrays;
             iarChars       = (ars.iasChars       > 0) ? new char          [ars.iasChars]         : noChars;
@@ -52,10 +52,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             iarVectors     = (ars.iasVectors     > 0) ? new LSL_Vector    [ars.iasVectors]       : noVectors;
             iarSDTClObjs   = (ars.iasSDTClObjs   > 0) ? new XMRSDTypeClObj[ars.iasSDTClObjs]     : noSDTClObjs;
             iarSDTIntfObjs = (ars.iasSDTIntfObjs > 0) ? new Delegate      [ars.iasSDTIntfObjs][] : noSDTIntfObjs;
-
-            return (ars.iasArrays + ars.iasChars + ars.iasFloats + ars.iasIntegers + ars.iasLists + 
-                    ars.iasObjects + ars.iasRotations + ars.iasStrings + ars.iasVectors + ars.iasSDTClObjs + 
-                    ars.iasSDTIntfObjs + 12) * 8;
         }
 
         public delegate void Sender (object value);
@@ -75,7 +71,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         public delegate object Recver ();
-        public int RecvArrays (Recver recver)
+        public void RecvArrays (Recver recver)
         {
             iarArrays      = (XMR_Array[])      recver ();
             iarChars       = (char[])           recver ();
@@ -88,10 +84,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             iarVectors     = (LSL_Vector[])     recver ();
             iarSDTClObjs   = (XMRSDTypeClObj[]) recver ();
             iarSDTIntfObjs = (Delegate[][])     recver ();
-
-            return (iarArrays.Length + iarChars.Length + iarFloats.Length + iarIntegers.Length + iarLists.Length + 
-                    iarObjects.Length + iarRotations.Length + iarStrings.Length + iarVectors.Length + iarSDTClObjs.Length + 
-                    iarSDTIntfObjs.Length + 12) * 8;
         }
     }
 
@@ -176,13 +168,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public object[] ehArgs;             // event handler argument array
         public bool doGblInit = true;       // default state_entry() needs to initialize global variables
-        public int heapLimit = Int32.MaxValue;
-                                            // let script use this many bytes of heap maximum
-                                            // includes global vars, local vars, that reference heap
-                                            // does not include value-type vars, they are part of stackLimit
-        public int heapTotal;               // total heap usage for the whole script
-                                            // ...atomic updates only
-        public string traceHeapUse = null;  // null: quiet; else: name of script
         public int stateCode = 0;           // state the script is in (0 = 'default')
         public ScriptEventCode eventCode = ScriptEventCode.None;
                                             // what event handler is executing (or None if not)
@@ -211,6 +196,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public abstract void CheckRun (int line);
         public abstract int  xmrStackLeft ();
+        public abstract int  xmrHeapLeft ();    // aliased in script as llGetFreeMemory()
+        public abstract int  xmrHeapUsed ();    // aliased in script as llGetUsedMemory()
 
         [xmrMethodIsComplexAttribute] // calls CheckRun()
         [xmrMethodIsNoisyAttribute]   // calls Stub<somethingorother>()
@@ -334,18 +321,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public static int xmrHashCode (string s)
         {
             return s.GetHashCode ();
-        }
-
-        // aliased in script as llGetFreeMemory()
-        public int xmrHeapLeft ()
-        {
-            return heapLimit - heapTotal;
-        }
-
-        // aliased in script as llGetUsedMemory()
-        public int xmrHeapUsed ()
-        {
-            return heapTotal;
         }
 
         public string xmrTypeName (object o)
@@ -1055,37 +1030,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         /**
-         * @brief An heap referencing variable was just set to a new object so we need to
-         *        update instance.heapTotal to reflect the new amount of heap available
-         *        to the script.
-         * @param newHeapUse = what is now to be debited by the struct
-         * @param oldHeapUse = what was previously debited by the struct
-         * @param value = object (for debugging)
-         * @returns newHeapUse for convenience
-         *          instance.heapTotal = adjusted to reflect new heap avaialbe to script
-         * Throws exception if the new value exceeds available amount.
-         */
-        public int UpdateHeapLeft (int newHeapUse, int oldHeapUse, object value)
-        {
-            int heapNeeded  = newHeapUse - oldHeapUse;
-            if (heapNeeded != 0) {
-                int newHeapTotal = System.Threading.Interlocked.Add (ref this.heapTotal, heapNeeded);
-                int oldHeapTotal = newHeapTotal - heapNeeded;
-
-                if (newHeapTotal > this.heapLimit) {
-                    GC.Collect ();
-                    GC.WaitForPendingFinalizers ();
-                    if (this.heapTotal > this.heapLimit) {
-                        System.Threading.Interlocked.Add (ref this.heapTotal, -heapNeeded);
-                        throw new OutOfHeapException (heapNeeded, this.heapLimit - oldHeapTotal);
-                    }
-                }
-            }
-
-            return newHeapUse;
-        }
-
-        /**
          * @brief types of data we serialize
          */
         private enum Ser : byte {
@@ -1387,7 +1331,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 this.doGblInit = mir.ReadBoolean ();
                 this.stateCode = mir.ReadInt32 ();
                 this.eventCode = (ScriptEventCode)mir.ReadInt32 ();
-                this.heapTotal = this.glblVars.RecvArrays (this.RecvObjValue);
+                this.glblVars.RecvArrays (this.RecvObjValue);
                 XMRStackFrame lastSF = null;
                 string funcName;
                 while ((funcName = mir.ReadString ()) != "") {
@@ -1551,13 +1495,4 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     // tagged with this attribute so the compiler will know they return type key and
     // not type string.
     public class xmrMethodReturnsKeyAttribute : Attribute { }
-
-    [SerializableAttribute]
-    public class OutOfHeapException : Exception, ISerializable {
-        public OutOfHeapException(int heapNeeded, int heapLeft)
-            : base ("need " + heapNeeded + " additional, have only " + heapLeft)
-        { }
-        protected OutOfHeapException (SerializationInfo info, StreamingContext context) : base (info, context)
-        { }
-    }
 }

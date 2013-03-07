@@ -18,7 +18,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     /**
      * @brief Array objects.
      */
-    public class XMR_Array : IComparer<object>, IDisposable {
+    public class XMR_Array : IComparer<object> {
         private const int EMPTYHEAP = 64;
         private const int ENTRYHEAP = 24;
 
@@ -28,7 +28,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private SortedDictionary<object, object>.Enumerator enumr;
                                                               // enumerator used to fill 'array' past arrayValid to end of dictionary
         private int arrayValid;                               // number of elements in 'array' that have been filled in
-        private int heapUse = 0;                              // approx number of bytes of heap used by the array
         private KeyValuePair<object, object>[] array;         // list of kvp's that have been returned by ForEach() since last modification
         private XMRInstAbstract inst;                         // script instance debited with heap use
 
@@ -40,23 +39,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public XMR_Array (XMRInstAbstract inst)
         {
             this.inst = inst;
-            heapUse = inst.UpdateHeapLeft (EMPTYHEAP, heapUse, this);
             dnary = new SortedDictionary<object, object> (this);  // IComparer<object>
-        }
-
-        ~XMR_Array ()
-        {
-            Dispose ();
-        }
-
-        public void Dispose ()
-        {
-            if (inst != null) {
-                heapUse = inst.UpdateHeapLeft (0, heapUse, this);
-                dnary   = null;
-                array   = null;
-                inst    = null;
-            }
         }
 
         public static TokenType GetRValType (TokenName name)
@@ -84,23 +67,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public void SetByKey(object key, object value)
         {
             key = FixKey (key);
-
-            /*
-             * Update heap use based on old vs new value.
-             * Might throw an OutOfHeapException.
-             */
-            if (inst != null) {
-                int newHeapUse = heapUse;
-                if (dnary.ContainsKey (key)) {
-                    newHeapUse -= ENTRYHEAP;
-                }
-                if (value != null) {
-                    newHeapUse += ENTRYHEAP;
-                }
-                if (newHeapUse != heapUse) {
-                    heapUse = inst.UpdateHeapLeft (newHeapUse, heapUse, this);
-                }
-            }
 
             /*
              * Save new value in array, replacing one of same key if there.
@@ -160,7 +126,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public void __pub_clear ()
         {
-            heapUse = inst.UpdateHeapLeft (EMPTYHEAP, heapUse, this);
             dnary.Clear ();
             enumrValid = false;
             arrayValid = 0;
@@ -280,8 +245,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public delegate object RecvArrayObjDelegate ();
         public void RecvArrayObj (RecvArrayObjDelegate recvObj)
         {
-            int newHeapUse = EMPTYHEAP;
-
             /*
              * Cause any enumeration to refill the array from the sorted dictionary.
              * Since it is a sorted dictionary, any enumerations will be in the same 
@@ -299,9 +262,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 object key = FixKey (recvObj ());
                 object val = recvObj ();
                 dnary.Add (key, val);
-                newHeapUse += ENTRYHEAP;
             }
-            heapUse = inst.UpdateHeapLeft (newHeapUse, heapUse, this);
         }
 
         /**

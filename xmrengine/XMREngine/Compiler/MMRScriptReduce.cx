@@ -5331,9 +5331,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenDeclVar getProp;           // if property, function that reads value
 		public TokenDeclVar setProp;           // if property, function that writes value
 
-		public TokenDeclVar heapTracker;       // shadow variable that keeps track of this var's heap usage
-		                                       // ... or null if not necessary
-
 		public TokenScript tokenScript;        // what script this function is part of
 		public TokenDeclSDType sdtClass;       // null: script global member
 		                                       // else: member is part of this script-defined type

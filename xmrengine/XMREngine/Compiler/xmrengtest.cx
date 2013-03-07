@@ -1003,7 +1003,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             m_ObjCode = soc;
             heapLimit = HEAPLIMIT;
-            heapTotal = glblVars.AllocVarArrays (ref m_ObjCode.glblSizes);
+            glblVars.AllocVarArrays (ref m_ObjCode.glblSizes);
 
             /*
              * Run default state_entry() handler until it is ready for more input.

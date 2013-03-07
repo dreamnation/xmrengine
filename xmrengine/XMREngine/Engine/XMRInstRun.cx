@@ -276,7 +276,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_LastRanAt   = now;
                     m_InstEHSlice ++;
                     callMode = CallMode_NORMAL;
-                    e = microthread.ResumeEx (null);
+                    try {
+                        heapTracker.Enable ();
+                        e = microthread.ResumeEx (null);
+                    } finally {
+                        HeapTracker.Disable ();
+                    }
                 }
 
                 /*
@@ -496,7 +501,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * without doing any stack frame restores first.
              */
             this.stackFrames = null;
-            return microthread.StartEx ();
+            Exception e;
+            try {
+                heapTracker.Enable ();
+                e = microthread.StartEx ();
+            } finally {
+                HeapTracker.Disable ();
+            }
+            return e;
         }
 
 
@@ -873,14 +885,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public override void CheckRun (int line)
         {
-            m_CheckRunPhase = "entered";
             m_CheckRunLine = line;
+            m_CheckRunPhase = "entered";
 
             /*
-             * Make sure script isn't about to run out of stack.
+             * Make sure script hasn't run out of heap or stack.
              */
-            if ((uint)MMRUThread.StackLeft () < stackLimit) {
-                throw ScriptCodeGen.outOfStackException;
+            if ((ulong)heapTracker.Used () > heapLimit) {
+                System.GC.Collect ();
+                System.GC.WaitForPendingFinalizers ();
+                if ((ulong)heapTracker.Used () > heapLimit) {
+                    throw outOfHeapException;
+                }
+            }
+            if ((ulong)MMRUThread.StackLeft () < stackLimit) {
+                throw outOfStackException;
             }
 
             /*

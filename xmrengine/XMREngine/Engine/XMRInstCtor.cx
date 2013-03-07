@@ -66,13 +66,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_StateFileName  = GetStateFileName(scriptBasePath, m_ItemID);
 
             /*
-             * Maybe trace heap usage.
-             */
-            if ((engine.m_traceHeapUse != null) && m_DescName.Contains(engine.m_traceHeapUse)) {
-                this.traceHeapUse = m_DescName;
-            }
-
-            /*
              * Not in any XMRInstQueue.
              */
             m_NextInst = this;
@@ -280,9 +273,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (objCode  == null) throw new ArgumentNullException ("objCode");
 
             /*
+             * Script must leave this much stack remaining on calls to CheckRun().
+             */
+            this.stackLimit = (uint)(m_StackSize / 2);
+
+            /*
+             * This is how many total heap bytes script is allowed to use.
+             */
+            this.heapLimit  = (uint)m_HeapSize;
+
+            /*
              * Allocate global variable arrays.
              */
-            this.glblVars.AllocVarArrays (ref objCode.glblSizes);
+            try {
+                this.heapTracker.Enable ();
+                this.glblVars.AllocVarArrays (ref objCode.glblSizes);
+            } finally {
+                HeapTracker.Disable ();
+            }
 
             /*
              * Script can handle these event codes.
@@ -295,16 +303,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     }
                 }
             }
-
-            /*
-             * Script must leave this much stack remaining on calls to CheckRun().
-             */
-            this.stackLimit = (uint)(m_StackSize / 2);
-
-            /*
-             * This is how many total heap bytes script is allowed to use.
-             */
-            this.heapLimit  = m_HeapSize;
 
             /*
              * Set up microthread object which actually calls the script event handler functions.
@@ -670,7 +668,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * And it also marks us busy (by setting this.eventCode) so we can't be
              * started again and this event lost.
              */
-            this.MigrateIn (new BinaryReader (stream));
+            BinaryReader br = new BinaryReader (stream);
+            try {
+                this.heapTracker.Enable ();
+                this.MigrateIn (br);
+            } finally {
+                HeapTracker.Disable ();
+            }
 
             /*
              * If eventCode is None, it means the script was idle when migrated.
@@ -688,7 +692,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * stack all restored.  It shouldn't ever throw an exception.
                  */
                 this.stackFramesRestored = false;
-                microthread.Start ();
+                try {
+                    this.heapTracker.Enable ();
+                    microthread.Start ();
+                } finally {
+                    HeapTracker.Disable ();
+                }
                 if (!this.stackFramesRestored) throw new Exception ("migrate in did not complete");
             }
         }

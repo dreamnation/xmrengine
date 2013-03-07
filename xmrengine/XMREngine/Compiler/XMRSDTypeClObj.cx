@@ -10,7 +10,7 @@ using System.Reflection.Emit;
 
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
-    public class XMRSDTypeClObj : IDisposable
+    public class XMRSDTypeClObj
     {
         /*
          * Which script instance we are part of so we can access
@@ -38,32 +38,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public XMRInstArrays instVars;
 
-        /*
-         * Number of bytes debited from xmrInst.heapLeft.
-         */
-        private int heapUse = 0;
-
         /**
          * @brief Called by script's $new() to initialize a new object.
          */
         public XMRSDTypeClObj (XMRInstAbstract inst, int classindex)
         {
-            int newHeapUse = Construct (inst, classindex);
-            newHeapUse    += instVars.AllocVarArrays (ref sdtcClass.instSizes);
-            heapUse = xmrInst.UpdateHeapLeft (newHeapUse, heapUse, this);
-        }
-
-        /**
-         * @brief Credit back any heap usage on disposal.
-         */
-        ~XMRSDTypeClObj ()
-        {
-            Dispose ();
-        }
-
-        public void Dispose ()
-        {
-            heapUse = xmrInst.UpdateHeapLeft (0, heapUse, this);
+            Construct (inst, classindex);
+            instVars.AllocVarArrays (ref sdtcClass.instSizes);
         }
 
         /**
@@ -72,15 +53,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * @param classindex = which script-defined type class this object is an onstance of
          * @returns with the vtables filled in
          */
-        private int Construct (XMRInstAbstract inst, int classindex)
+        private void Construct (XMRInstAbstract inst, int classindex)
         {
             Delegate[] thisMid = null;
-            int newHeapUse;
             TokenDeclSDTypeClass clas = (TokenDeclSDTypeClass)inst.m_ObjCode.sdObjTypesIndx[classindex];
 
-            xmrInst    = inst;
-            sdtcClass  = clas;
-            newHeapUse = 128;
+            xmrInst   = inst;
+            sdtcClass = clas;
 
             /*
              * VTable consists of delegates built from DynamicMethods and the 'this' pointer.
@@ -94,7 +73,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 for (int i = 0; i < n; i ++) {
                     sdtcVTable[i] = vDynMeths[i].CreateDelegate (vMethTypes[i], this);
                 }
-                newHeapUse += 40 * n + 32;
             }
 
             /*
@@ -110,7 +88,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (clas.iDynMeths != null) {
                 int nIFaces = clas.iDynMeths.Length;
                 sdtcITable = new Delegate[nIFaces][];
-                newHeapUse += 40 * nIFaces + 32;
                 for (int i = 0; i < nIFaces; i ++) {
 
                     // get vector of entrypoints of our instance methods that implement that interface
@@ -121,7 +98,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     int nMeths = iDynMeths.Length;
                     Delegate[] ivec;
                     if (nMeths > 0) {
-                        newHeapUse += 40 * nMeths + 32;
                         // fill in the array with delegates that reference back to this class instance
                         ivec = new Delegate[nMeths];
                         for (int j = 0; j < nMeths; j ++) {
@@ -144,8 +120,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     sdtcITable[i] = ivec;
                 }
             }
-
-            return newHeapUse;
         }
 
         private delegate void MarkerInterfaceDummy ();
@@ -249,9 +223,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public void Restore (XMRInstAbstract inst, XMRInstArrays.Recver recvValue)
         {
             int classindex = (int)recvValue ();
-            int newHeapUse = Construct (inst, classindex);
-            newHeapUse    += this.instVars.RecvArrays (recvValue);
-            heapUse = xmrInst.UpdateHeapLeft (newHeapUse, heapUse, this);
+            Construct (inst, classindex);
+            this.instVars.RecvArrays (recvValue);
         }
     }
 }

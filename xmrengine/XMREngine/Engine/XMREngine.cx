@@ -78,8 +78,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public  int numThreadScriptWorkers = 1;
         private System.Timers.Timer m_MaintenanceTimer;
 
-        public string m_traceHeapUse = null;
-
         /*
          * Various instance lists:
          *   m_InstancesDict = all known instances
@@ -705,7 +703,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_log.Info ("[XMREngine]: xmr reset [-help ...]");
                     m_log.Info ("[XMREngine]: xmr resume - resume script processing");
                     m_log.Info ("[XMREngine]: xmr suspend - suspend script processing");
-                    m_log.Info ("[XMREngine]: xmr traceheapuse [<scriptname>] - trace heap usage");
                     break;
                 }
                 case "ls": {
@@ -755,23 +752,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_log.Info ("[XMREngine]: suspending scripts");
                     for (int i = 0; i < numThreadScriptWorkers; i ++) {
                         m_ScriptThreads[i].SuspendThread();
-                    }
-                    break;
-                }
-                case "traceheapuse": {
-                    switch (args.Length) {
-                        case 2: {
-                            m_traceHeapUse = null;
-                            break;
-                        }
-                        case 3: {
-                            m_traceHeapUse = args[2];
-                            break;
-                        }
-                        default: {
-                            m_log.Error ("[XMREngine]: usage: xmr traceheapuse [<scriptname>]");
-                            break;
-                        }
                     }
                     break;
                 }
