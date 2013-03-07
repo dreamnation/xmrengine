@@ -440,7 +440,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public override int xmrHeapUsed()
         {
+#if HAVE_HEAPTRACKER
             return (int)heapTracker.Used();
+#else
+            return 100;
+#endif
         }
     }
 

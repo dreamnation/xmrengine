@@ -27,6 +27,7 @@ using OpenSim.Region.ScriptEngine.XMREngine;
 using OpenSim.Region.Framework.Scenes;
 using log4net;
 
+#include "heaptracker.h"
 #include "lsltypes.h"
 
 namespace OpenSim.Region.ScriptEngine.XMREngine
@@ -285,12 +286,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Allocate global variable arrays.
              */
-            try {
-                this.heapTracker.Enable ();
-                this.glblVars.AllocVarArrays (ref objCode.glblSizes);
-            } finally {
-                HeapTracker.Disable ();
-            }
+            HEAPTRACKED (this.glblVars.AllocVarArrays (ref objCode.glblSizes));
 
             /*
              * Script can handle these event codes.
@@ -669,12 +665,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * started again and this event lost.
              */
             BinaryReader br = new BinaryReader (stream);
-            try {
-                this.heapTracker.Enable ();
-                this.MigrateIn (br);
-            } finally {
-                HeapTracker.Disable ();
-            }
+            HEAPTRACKED (this.MigrateIn (br));
 
             /*
              * If eventCode is None, it means the script was idle when migrated.
@@ -692,12 +683,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * stack all restored.  It shouldn't ever throw an exception.
                  */
                 this.stackFramesRestored = false;
-                try {
-                    this.heapTracker.Enable ();
-                    microthread.Start ();
-                } finally {
-                    HeapTracker.Disable ();
-                }
+                HEAPTRACKED (microthread.Start ());
                 if (!this.stackFramesRestored) throw new Exception ("migrate in did not complete");
             }
         }

@@ -29,6 +29,7 @@ using OpenSim.Region.ScriptEngine.XMREngine;
 using OpenSim.Region.Framework.Scenes;
 using log4net;
 
+#include "heaptracker.h"
 #include "lsltypes.h"
 
 namespace OpenSim.Region.ScriptEngine.XMREngine
@@ -276,12 +277,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_LastRanAt   = now;
                     m_InstEHSlice ++;
                     callMode = CallMode_NORMAL;
-                    try {
-                        heapTracker.Enable ();
-                        e = microthread.ResumeEx (null);
-                    } finally {
-                        HeapTracker.Disable ();
-                    }
+                    HEAPTRACKED (e = microthread.ResumeEx (null));
                 }
 
                 /*
@@ -891,6 +887,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Make sure script hasn't run out of heap or stack.
              */
+#if HAVE_HEAPTRACKER
             if ((ulong)heapTracker.Used () > heapLimit) {
                 System.GC.Collect ();
                 System.GC.WaitForPendingFinalizers ();
@@ -898,6 +895,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     throw outOfHeapException;
                 }
             }
+#endif
             if ((ulong)MMRUThread.StackLeft () < stackLimit) {
                 throw outOfStackException;
             }

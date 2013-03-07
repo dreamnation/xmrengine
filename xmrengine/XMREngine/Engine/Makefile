@@ -1,7 +1,8 @@
 CFLAGS := `pkg-config --cflags mono`
 LFLAGS := `pkg-config --libs mono`
 
-GCC := gcc $(CFLAGS) -Wall -O2 -g
+DEFS := -DHAVE_HEAPTRACKER=1 -DHAVE_MMRUTHREADS=1
+GCC  := gcc $(CFLAGS) -Wall -O2 -g
 
 COMMITHASH  := $(strip $(shell git log -1 | grep ^commit | sed 's/commit//g'))
 COMMITDATE  := $(strip $(shell git log -1 --date=iso | grep ^Date: | sed 's/Date://g'))
@@ -58,17 +59,17 @@ $(OPENSIMDLLDIR)/xmrengshare.dll: $(wildcard ../*/*.cx) $(wildcard ../*/*.h)
 	make -C ../Compiler $(OPENSIMDLLDIR)/xmrengshare.dll
 
 MMRScriptCompile.cs: ../Compiler/MMRScriptCompile.cx
-	cpp -I../Compiler -C -P -nostdinc -o $@ $<
+	cpp -I../Compiler $(DEFS) -C -P -nostdinc -o $@ $<
 
 XMREngine_$(COMMITHASH)_$(COMMITCLEAN).cs: XMREngine.cx $(wildcard ../*/*.h)
 	rm -f XMREngine_*.cs
-	cpp -I../Compiler \
+	cpp -I../Compiler $(DEFS) \
 		-DGITCOMMITHASH='"$(COMMITHASH)"' \
 		-DGITCOMMITDATE='"$(COMMITDATE)"' \
 		-DGITCOMMITCLEAN=$(COMMITCLEAN) -C -P -nostdinc -o $@ $<
 
 %.cs: %.cx $(wildcard ../*/*.h)
-	cpp -I../Compiler -C -P -nostdinc -o $@ $<
+	cpp -I../Compiler $(DEFS) -C -P -nostdinc -o $@ $<
 
 # ------------------------------------------------------------------------------
 

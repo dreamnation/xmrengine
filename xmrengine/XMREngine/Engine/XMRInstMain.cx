@@ -153,7 +153,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public uint stackLimit;             // CheckRun() must always see this much stack available
         public uint heapLimit;
+#if HAVE_HEAPTRACKER
         public HeapTracker heapTracker = new HeapTracker (UIntPtr.Zero);
+#endif
 
         /*
          * We will use this microthread to run the scripts event handlers.
