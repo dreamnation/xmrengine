@@ -118,7 +118,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Console.WriteLine("    m_SuspendCount  = " + m_SuspendCount);
             Console.WriteLine("    m_SleepUntil    = " + m_SleepUntil);
             Console.WriteLine("    m_IState        = " + m_IState.ToString());
-            Console.WriteLine("    m_Die           = " + m_Die);
             Console.WriteLine("    m_StateCode     = " + GetStateName(stateCode));
             Console.WriteLine("    eventCode       = " + eventCode.ToString());
             Console.WriteLine("    m_LastRanAt     = " + m_LastRanAt.ToString());
@@ -147,7 +146,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 sb.AppendLine("    m_SleepEvMask1      = 0x" + m_SleepEventMask1.ToString("X"));
                 sb.AppendLine("    m_SleepEvMask2      = 0x" + m_SleepEventMask2.ToString("X"));
                 sb.AppendLine("    m_IState            = " + m_IState.ToString());
-                sb.AppendLine("    m_Die               = " + m_Die);
                 sb.AppendLine("    m_StateCode         = " + GetStateName(stateCode));
                 sb.AppendLine("    eventCode           = " + eventCode.ToString());
                 sb.AppendLine("    m_LastRanAt         = " + m_LastRanAt.ToString());

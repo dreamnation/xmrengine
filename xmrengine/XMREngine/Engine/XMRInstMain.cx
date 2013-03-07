@@ -101,7 +101,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public  string m_SourceCode;
         public  bool m_PostOnRez;
         private DetectParams[] m_DetectParams = null;
-        private bool m_Die = false;
         public  int m_StartParam = 0;
         public  StateSource m_StateSource;
         public  string m_DescName;
