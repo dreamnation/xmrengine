@@ -991,8 +991,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
      * @brief This stuff is re-instantiated on serialization.
      */
     public class TestInstance : XMRInstAbstract {
-        private const int HEAPLIMIT = 50000;
-
         public SCRIPTBASECLASS m_ApiManager_LSL;
         public OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.IOSSL_Api m_ApiManager_OSSL;
 
@@ -1002,7 +1000,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public TestInstance (ScriptObjCode soc)
         {
             m_ObjCode = soc;
-            heapLimit = HEAPLIMIT;
             glblVars.AllocVarArrays (ref m_ObjCode.glblSizes);
 
             /*
@@ -1020,12 +1017,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             scriptRoot = inst.scriptRoot;
             m_ObjCode  = inst.m_ObjCode;
-            heapLimit  = inst.heapLimit;
         }
 
         /*********************\
          *  XMRInstAbstract  *
         \*********************/
+
+        public override int xmrHeapLeft ()
+        {
+            return 49900;
+        }
+        public override int xmrHeapUsed ()
+        {
+            return   100;
+        }
 
         public override void CheckRun (int line)
         {
