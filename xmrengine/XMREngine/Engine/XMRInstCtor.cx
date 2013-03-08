@@ -650,41 +650,78 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         private void MigrateInEventHandler (Stream stream)
         {
-            int mv = stream.ReadByte ();
-            int cv = stream.ReadByte ();
-            if (mv != migrationVersion) {
-                throw new Exception ("incoming migration version " + mv + " but accept only " + migrationVersion);
+            miehexcep = null;
+
+            // do all the work in the MigrateInEventHandlerThread() method below
+            miehstream = stream;
+            lock (m_Engine.m_MIEHQueue) {
+                m_Engine.m_MIEHQueue.Enqueue (this);
             }
-            if (cv != ScriptCodeGen.COMPILED_VERSION_VALUE) {
-                throw new Exception ("incoming compilation version " + cv + " but accept only " + ScriptCodeGen.COMPILED_VERSION_VALUE);
+            XMRScriptThread.WakeUpOne ();
+
+            // wait for it to complete
+            lock (miehdone) {
+                while (miehstream != null) {
+                    Monitor.Wait (miehdone);
+                }
             }
 
-            /*
-             * Restore script variables and stack and other state from stream.
-             * And it also marks us busy (by setting this.eventCode) so we can't be
-             * started again and this event lost.
-             */
-            BinaryReader br = new BinaryReader (stream);
-            HEAPTRACKED (this.MigrateIn (br));
-
-            /*
-             * If eventCode is None, it means the script was idle when migrated.
-             */
-            if (this.eventCode != ScriptEventCode.None) {
+            // maybe it threw up
+            if (miehexcep != null) throw miehexcep;
+        }
+        private Exception miehexcep;
+        private object miehdone = new object ();
+        private Stream miehstream;
+        public void MigrateInEventHandlerThread ()
+        {
+            try {
+                int mv = miehstream.ReadByte ();
+                int cv = miehstream.ReadByte ();
+                if (mv != migrationVersion) {
+                    throw new Exception ("incoming migration version " + mv + " but accept only " + migrationVersion);
+                }
+                if (cv != ScriptCodeGen.COMPILED_VERSION_VALUE) {
+                    throw new Exception ("incoming compilation version " + cv + " but accept only " + ScriptCodeGen.COMPILED_VERSION_VALUE);
+                }
 
                 /*
-                 * So microthread.Start() calls XMRScriptUThread.Main() which calls the
-                 * event handler function.  The event handler function sees the stack
-                 * frames in this.stackFrames and restores its args and locals, then calls
-                 * whatever it was calling when the snapshot was taken.  That function also
-                 * sees this.stackFrames and restores its args and locals, and so on...
-                 * Eventually it gets to the point of calling CheckRun() which sees we are
-                 * doing a restore and it suspends, returning here with the microthread
-                 * stack all restored.  It shouldn't ever throw an exception.
+                 * Restore script variables and stack and other state from stream.
+                 * And it also marks us busy (by setting this.eventCode) so we can't be
+                 * started again and this event lost.
                  */
-                this.stackFramesRestored = false;
-                HEAPTRACKED (microthread.Start ());
-                if (!this.stackFramesRestored) throw new Exception ("migrate in did not complete");
+                BinaryReader br = new BinaryReader (miehstream);
+                HEAPTRACKED (this.MigrateIn (br));
+
+                /*
+                 * If eventCode is None, it means the script was idle when migrated.
+                 */
+                if (this.eventCode != ScriptEventCode.None) {
+
+                    /*
+                     * So microthread.Start() calls XMRScriptUThread.Main() which calls the
+                     * event handler function.  The event handler function sees the stack
+                     * frames in this.stackFrames and restores its args and locals, then calls
+                     * whatever it was calling when the snapshot was taken.  That function also
+                     * sees this.stackFrames and restores its args and locals, and so on...
+                     * Eventually it gets to the point of calling CheckRun() which sees we are
+                     * doing a restore and it suspends, returning here with the microthread
+                     * stack all restored.  It shouldn't ever throw an exception.
+                     */
+                    this.stackFramesRestored = false;
+                    HEAPTRACKED (microthread.Start ());
+                    if (!this.stackFramesRestored) throw new Exception ("migrate in did not complete");
+                }
+            } catch (Exception e) {
+                miehexcep = e;
+            } finally {
+
+                /*
+                 * Wake the MigrateInEventHandler() method above.
+                 */
+                lock (miehdone) {
+                    miehstream = null;
+                    Monitor.Pulse (miehdone);
+                }
             }
         }
     }

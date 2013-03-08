@@ -1,8 +1,10 @@
 CFLAGS := `pkg-config --cflags mono`
 LFLAGS := `pkg-config --libs mono`
+GCC    := gcc $(CFLAGS) -Wall -O2 -g
 
+# HAVE_HEAPTRACKER = if Mono.Tasklets.HeapTracker available
+# HAVE_MMRUTHREADS = if Mono.Tasklets.MMRUthread available
 DEFS := -DHAVE_HEAPTRACKER=1 -DHAVE_MMRUTHREADS=1
-GCC  := gcc $(CFLAGS) -Wall -O2 -g
 
 COMMITHASH  := $(strip $(shell git log -1 | grep ^commit | sed 's/commit//g'))
 COMMITDATE  := $(strip $(shell git log -1 --date=iso | grep ^Date: | sed 's/Date://g'))

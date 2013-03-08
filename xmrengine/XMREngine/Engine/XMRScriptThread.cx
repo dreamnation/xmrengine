@@ -8,6 +8,17 @@ using System;
 using System.Threading;
 using log4net;
 
+#if HAVE_MMRUTHREADS
+#define INITMONOCONTS do { } while (false)
+#else
+#define INITMONOCONTS \
+    do if (inst.scrstack == null) {                         \
+        inst.engstack = engstack;                           \
+        inst.scrstack = new Mono.Tasklets.Continuation ();  \
+        inst.scrstack.Mark ();                              \
+    } while (false)
+#endif
+
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
 
@@ -17,7 +28,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
      *        a script to run and calls the script as a microthread.
      */
     public class XMRScriptThread {
-
         private static int    m_WakeUpOne  = 0;
         private static object m_WakeUpLock = new object();
 
@@ -93,11 +103,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /**
          * @brief Thread that runs the scripts.
          */
-        delegate int GetTid();
-        delegate int GetSetAffinity(int tid, byte[] maskArray);
         private void RunScriptThread()
         {
             XMRInstance inst;
+#if !HAVE_MMRUTHREADS
+            Mono.Tasklets.Continuation engstack = new Mono.Tasklets.Continuation ();
+            engstack.Mark ();
+#endif
 
             while (!m_Exiting) {
 
@@ -118,6 +130,31 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 m_ScriptExecTime -= (long)(m_LastRanAt - DateTime.MinValue).TotalMilliseconds;
 
                 /*
+                 * Maybe there are some scripts waiting to be migrated in or out.
+                 */
+                inst = null;
+                lock (engine.m_MIEHQueue) {
+                    if (engine.m_MIEHQueue.Count > 0) {
+                        inst = engine.m_MIEHQueue.Dequeue ();
+                    }
+                }
+                if (inst != null) {
+                    INITMONOCONTS;
+                    inst.MigrateInEventHandlerThread ();
+                    continue;
+                }
+                lock (engine.m_MOEHQueue) {
+                    if (engine.m_MOEHQueue.Count > 0) {
+                        inst = engine.m_MOEHQueue.Dequeue ();
+                    }
+                }
+                if (inst != null) {
+                    INITMONOCONTS;
+                    inst.MigrateOutEventHandlerThread ();
+                    continue;
+                }
+
+                /*
                  * If event just queued to any idle scripts
                  * start them right away.  But only start so
                  * many so we can make some progress on yield
@@ -130,6 +167,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     }
                     if (inst == null) break;
                     if (inst.m_IState != XMRInstState.ONSTARTQ) throw new Exception("bad state");
+                    INITMONOCONTS;
                     RunInstance (inst);
                 }
 

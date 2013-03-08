@@ -74,9 +74,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private long m_InitializedAt = 0;
 
         private int m_MaintenanceInterval = 10;
-        public  int numThreadScriptCores = 2;
-        public  int numThreadScriptWorkers = 1;
         private System.Timers.Timer m_MaintenanceTimer;
+        public  int numThreadScriptWorkers;
 
         /*
          * Various instance lists:
@@ -91,6 +90,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private Dictionary<UUID, XMRInstance> m_InstancesDict =
                 new Dictionary<UUID, XMRInstance>();
         private Queue<XMRInstance> m_LoadQueue = new Queue<XMRInstance> ();
+        public  Queue<XMRInstance> m_MOEHQueue = new Queue<XMRInstance> ();
+        public  Queue<XMRInstance> m_MIEHQueue = new Queue<XMRInstance> ();
         public  XMRInstQueue m_StartQueue = new XMRInstQueue();
         public  XMRInstQueue m_YieldQueue = new XMRInstQueue();
         public  XMRInstQueue m_SleepQueue = new XMRInstQueue();
@@ -99,6 +100,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public XMREngine()
         {
             m_log.Info ("[XMREngine]: commit " + GITCOMMITHASH + ((GITCOMMITCLEAN != 0) ? "" : "(dirty)") + " " + GITCOMMITDATE);
+            m_log.Info ("[XMREngine]: HAVE_HEAPTRACKER=" + ((HAVE_HEAPTRACKER != 0) ? "Yes" : "No") +
+                                    " HAVE_MMRUTHREADS=" + ((HAVE_MMRUTHREADS != 0) ? "Yes" : "No"));
             string envar = Environment.GetEnvironmentVariable("XMREngineTraceCalls");
             m_TraceCalls = (envar != null) && ((envar[0] & 1) != 0);
             m_log.DebugFormat("[XMREngine]: m_TraceCalls={0}", m_TraceCalls);
@@ -163,8 +166,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 return;
             }
 
-            numThreadScriptCores   = m_Config.GetInt ("NumThreadScriptCores",   numThreadScriptCores);
-            numThreadScriptWorkers = m_Config.GetInt ("NumThreadScriptWorkers", numThreadScriptWorkers);
+            numThreadScriptWorkers = (HAVE_MMRUTHREADS != 0) ? m_Config.GetInt ("NumThreadScriptWorkers", 1) : 1;
             m_ScriptThreads        = new XMRScriptThread[numThreadScriptWorkers];
 
             /*
@@ -1728,21 +1730,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return time;
         }
 
+        /**
+         * @brief Block script from dequeuing events.
+         */
         public void SuspendScript(UUID itemID)
         {
             XMRInstance instance = GetInstance (itemID);
             if (instance != null) {
                 TCP("[XMREngine]: XMREngine.SuspendScript({0})", itemID.ToString());
-                instance.Suspend();
+                instance.SuspendIt();
             }
         }
 
+        /**
+         * @brief Allow script to dequeue events.
+         */
         public void ResumeScript(UUID itemID)
         {
             XMRInstance instance = GetInstance (itemID);
             if (instance != null) {
                 TCP("[XMREngine]: XMREngine.ResumeScript({0})", itemID.ToString());
-                instance.Resume();
+                instance.ResumeIt();
             } else {
                 // probably an XEngine script
             }

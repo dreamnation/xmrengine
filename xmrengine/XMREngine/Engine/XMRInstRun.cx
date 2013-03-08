@@ -37,9 +37,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     public partial class XMRInstance
     {
         /************************************************************************************\
-         * This module contains two externally useful methods:                              *
+         * This module contains these externally useful methods:                            *
          *   PostEvent() - queues an event to script and wakes script thread to process it  *
          *   RunOne() - runs script for a time slice or until it volunteers to give up cpu  *
+         *   CallSEH() - runs in the microthread to call the event handler                  *
         \************************************************************************************/
 
         /**
@@ -874,6 +875,82 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         /**
+         * @brief Call script's event handler function from the very beginning.
+         * @param instance.stateCode = which state the event is happening in
+         * @param instance.eventCode = which event is happening in that state
+         * @returns when event handler has completed or throws an exception
+         *          with instance.eventCode = ScriptEventCode.None
+         */
+        public void CallSEH ()
+        {
+            int newStateCode;
+            ScriptEventHandler seh;
+
+            /*
+             * CallMode_NORMAL:  run event handler from the beginning normally
+             * CallMode_RESTORE: restore event handler stack from stackFrames
+             */
+            callMode = (stackFrames == null) ? XMRInstAbstract.CallMode_NORMAL :
+                                               XMRInstAbstract.CallMode_RESTORE;
+
+            while (true) {
+
+                /*
+                 * Process event given by 'stateCode' and 'eventCode'.
+                 * The event handler should call CheckRun() as often as convenient.
+                 */
+                newStateCode = this.stateCode;
+                seh = this.m_ObjCode.scriptEventHandlerTable[newStateCode,(int)this.eventCode];
+                if (seh != null) {
+                    try {
+                        seh (this);
+                    } catch (ScriptChangeStateException scse) {
+                        newStateCode = scse.newState;
+                    }
+                }
+                this.ehArgs = null;  // we are done with them and no args for
+                                     // exit_state()/enter_state() anyway
+
+                /*
+                 * The usual case is no state change.
+                 * Even a 'state <samestate>;' statement has no effect except to exit out.
+                 * See http://wiki.secondlife.com/wiki/State
+                 */
+                if (newStateCode == this.stateCode) break;
+
+                /*
+                 * Call old state's state_exit() handler.
+                 */
+                this.eventCode = ScriptEventCode.state_exit;
+                seh = this.m_ObjCode.scriptEventHandlerTable[this.stateCode,(int)ScriptEventCode.state_exit];
+                if (seh != null) {
+                    try {
+                        seh (this);
+                    } catch (ScriptChangeStateException scse) {
+                        newStateCode = scse.newState;
+                    }
+                }
+
+                /*
+                 * Now that the old state can't possibly start any more activity,
+                 * cancel any listening handlers, etc, of the old state.
+                 */
+                this.stateCode = newStateCode;
+                this.StateChange ();
+
+                /*
+                 * Loop back to call the new state's state_entry() handler.
+                 */
+                this.eventCode = ScriptEventCode.state_entry;
+            }
+
+            /*
+             * Event no longer being processed.
+             */
+            this.eventCode = ScriptEventCode.None;
+        }
+
+        /**
          * @brief The script code should call this routine whenever it is
          *        convenient to perform a migation or switch microthreads.
          *
@@ -940,7 +1017,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  */
                 m_CheckRunPhase = "suspending";
                 suspendOnCheckRunTemp = false;
-                MMRUThread.Suspend ();
+                microthread.Hiber ();
                 m_CheckRunPhase = "resumed";
             }
 
@@ -953,7 +1030,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (callMode != CallMode_NORMAL) throw new Exception ("bad callMode " + callMode);
         }
 
-        public void Resume()
+        /**
+         * @brief Allow script to dequeue events.
+         */
+        public void ResumeIt()
         {
             lock (m_QueueLock)
             {
@@ -968,7 +1048,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
         }
 
-        public void Suspend()
+        /**
+         * @brief Block script from dequeuing events.
+         */
+        public void SuspendIt()
         {
             lock (m_QueueLock)
             {

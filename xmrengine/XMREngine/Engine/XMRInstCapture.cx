@@ -204,6 +204,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         private void MigrateOutEventHandler (Stream stream)
         {
+            moehexcep = null;
+
+            // do all the work in the MigrateOutEventHandlerThread() method below
+            moehstream = stream;
+            lock (m_Engine.m_MOEHQueue) {
+                m_Engine.m_MOEHQueue.Enqueue (this);
+            }
+            XMRScriptThread.WakeUpOne ();
+
+            // wait for it to complete
+            lock (moehdone) {
+                while (moehstream != null) {
+                    Monitor.Wait (moehdone);
+                }
+            }
+
+            // maybe it threw up
+            if (moehexcep != null) throw moehexcep;
+        }
+        private Exception moehexcep;
+        private object moehdone = new object ();
+        private Stream moehstream;
+        public void MigrateOutEventHandlerThread ()
+        {
             Exception except;
 
             try {
@@ -235,15 +259,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * Write script state out, frames and all, to the stream.
                  * Does not change script state.
                  */
-                stream.WriteByte (migrationVersion);
-                stream.WriteByte ((byte)ScriptCodeGen.COMPILED_VERSION_VALUE);
-                this.MigrateOut (new BinaryWriter (stream));
+                moehstream.WriteByte (migrationVersion);
+                moehstream.WriteByte ((byte)ScriptCodeGen.COMPILED_VERSION_VALUE);
+                this.MigrateOut (new BinaryWriter (moehstream));
 
                 /*
                  * Now restore script stack.
                  * Microthread will suspend inside CheckRun() when restore is complete.
                  */
-        if (this.eventCode != ScriptEventCode.None) {
+                if (this.eventCode != ScriptEventCode.None) {
                     this.stackFramesRestored = false;
                     except = this.microthread.StartEx ();
                     if (except != null) {
@@ -253,11 +277,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         throw new Exception ("restore after save did not complete");
                     }
                 }
+            } catch (Exception e) {
+                moehexcep = e;
             } finally {
 
                 // make sure CheckRunLockInvariants() won't puque
                 if (this.microthread.Active () == 0) {
                     this.eventCode = ScriptEventCode.None;
+                }
+
+                // wake the MigrateOutEventHandler() method above
+                lock (moehdone) {
+                    moehstream = null;
+                    Monitor.Pulse (moehdone);
                 }
             }
         }
