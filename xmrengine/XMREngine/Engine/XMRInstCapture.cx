@@ -208,7 +208,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             // do all the work in the MigrateOutEventHandlerThread() method below
             moehstream = stream;
-            lock (m_Engine.m_MOEHQueue) {
+            lock (XMRScriptThread.m_WakeUpLock) {
                 m_Engine.m_MOEHQueue.Enqueue (this);
             }
             XMRScriptThread.WakeUpOne ();
