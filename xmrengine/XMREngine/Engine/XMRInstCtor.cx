@@ -138,10 +138,29 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                 /*
                  * If source code string is empty, use the asset ID as the object file name.
+                 * Allow lines of // comments at the beginning (for such as engine selection).
                  */
-                string sct = m_SourceCode.Trim ();
-                if (sct == "") {
+                int i, j, len;
+                for (len = m_SourceCode.Length; len > 0; -- len) {
+                    if (m_SourceCode[len-1] > ' ') break;
+                }
+                for (i = 0; i < len; i ++) {
+                    char c = m_SourceCode[i];
+                    if (c <= ' ') continue;
+                    if (c != '/') break;
+                    if ((i + 1 >= len) || (m_SourceCode[i+1] != '/')) break;
+                    i = m_SourceCode.IndexOf ('\n', i);
+                    if (i < 0) i = len - 1;
+                }
+                if ((i >= len) || !m_Engine.m_UseSourceHashCode) {
+ 
+                    /*
+                     * Source consists of nothing but // comments and whitespace,
+                     * or we are being forced to use the asset-id as the key, to
+                     * open an already existing object code file.
+                     */
                     m_ScriptObjCodeKey = m_Item.AssetID.ToString ();
+                    if (i >= len) m_SourceCode = "";
                 } else {
 
                     /*
@@ -156,15 +175,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_ScriptObjCodeKey = sb.ToString ();
 
                     /*
-                     * But source code can be the exact sixbit string itself.
+                     * But source code can be just a sixbit string itself
+                     * that identifies an already existing object code file.
                      */
-                    if (sct.Length == m_ScriptObjCodeKey.Length) {
-                        int i;
-                        for (i = sct.Length; -- i >= 0;) {
-                            if (sixbit.IndexOf (sct[i]) < 0) break;
+                    if (len - i == m_ScriptObjCodeKey.Length) {
+                        for (j = len; -- j >= i;) {
+                            if (sixbit.IndexOf (m_SourceCode[j]) < 0) break;
                         }
-                        if (i < 0) {
-                            m_ScriptObjCodeKey = sct;
+                        if (j < i) {
+                            m_ScriptObjCodeKey = m_SourceCode.Substring (i, len - i);
+                            m_SourceCode = "";
                         }
                     }
                 }

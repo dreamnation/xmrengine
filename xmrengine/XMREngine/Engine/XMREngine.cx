@@ -57,6 +57,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private IConfig m_Config;
         private string m_ScriptBasePath;
         private bool m_Enabled = false;
+        public  bool m_UseSourceHashCode = false;
         private Dictionary<UUID, ArrayList> m_ScriptErrors =
                 new Dictionary<UUID, ArrayList>();
         private Dictionary<UUID, List<UUID>> m_ObjectItemList =
@@ -166,6 +167,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 return;
             }
 
+            m_UseSourceHashCode    = m_Config.GetBoolean ("UseSourceHashCode", false);
             numThreadScriptWorkers = (HAVE_MMRUTHREADS != 0) ? m_Config.GetInt ("NumThreadScriptWorkers", 1) : 1;
             m_ScriptThreads        = new XMRScriptThread[numThreadScriptWorkers];
 
@@ -1210,7 +1212,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
             if ((initerr != null) && !instance.m_ForceReset) {
                 UUID itemID = instance.m_ItemID;
-                m_log.DebugFormat("[XMREngine]: {0} first load failed ({1}), retrying after reset", itemID.ToString(), initerr.Message);
+                m_log.DebugFormat("[XMREngine]: {0}/{2} first load failed ({1}), retrying after reset", 
+                        itemID.ToString(), initerr.Message, instance.m_Item.AssetID.ToString());
                 m_log.DebugFormat("[XMREngine]:\n{0}", initerr.ToString ());
                 initerr = null;
                 errors = new ArrayList();
@@ -1223,8 +1226,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
             if (initerr != null) {
                 UUID itemID = instance.m_ItemID;
-                m_log.DebugFormat("[XMREngine]: Error starting script {0}: {1}",
-                                  itemID.ToString(), initerr.Message);
+                m_log.DebugFormat("[XMREngine]: Error starting script {0}/{2}: {1}",
+                                  itemID.ToString(), initerr.Message, instance.m_Item.AssetID.ToString());
                 if (initerr.Message != "compilation errors") {
                     m_log.DebugFormat("[XMREngine]:   exception:\n{0}", initerr.ToString());
                 }
