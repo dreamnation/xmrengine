@@ -114,7 +114,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static MethodInfo catchTryCastToSDTypeMethodInfo = GetStaticMethod (typeof (XMRInstAbstract), "XMRSDTypeCatchTryCastToSDType", new Type[] { typeof (object), typeof (XMRInstAbstract), typeof (int) });
 		private static MethodInfo thrownExceptionWrapMethodInfo  = GetStaticMethod (typeof (ScriptThrownException), "Wrap", new Type[] { typeof (object) });
 		private static MethodInfo heapTrackerListPush   = typeof (HeapTrackerList).  GetMethod ("Push", new Type[0]);
-		private static MethodInfo heapTrackerLSLStrPush = typeof (HeapTrackerLSLStr).GetMethod ("Push", new Type[0]);
 		private static MethodInfo heapTrackerStringPush = typeof (HeapTrackerString).GetMethod ("Push", new Type[0]);
 
 		public static bool CodeGen (TokenScript tokenScript, BinaryWriter objFileWriter, string sourceHash)
@@ -1451,10 +1450,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					ilGen.Emit (curDeclFunc, OpCodes.Call, heapTrackerListPush);
 					t = typeof (LSL_List);
 				}
-				if (t == typeof (HeapTrackerLSLStr)) {
-					ilGen.Emit (curDeclFunc, OpCodes.Call, heapTrackerLSLStrPush);
-					t = typeof (LSL_String);
-				}
 				if (t == typeof (HeapTrackerString)) {
 					ilGen.Emit (curDeclFunc, OpCodes.Call, heapTrackerStringPush);
 					t = typeof (string);
@@ -1531,7 +1526,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				Type t = lcl.type;
 				Type u = t;
 				if (t == typeof (HeapTrackerList))   u = typeof (LSL_List);
-				if (t == typeof (HeapTrackerLSLStr)) u = typeof (LSL_String);
 				if (t == typeof (HeapTrackerString)) u = typeof (string);
 				if (u != t) {
 					ilGen.Emit (curDeclFunc, OpCodes.Ldloc, lcl);

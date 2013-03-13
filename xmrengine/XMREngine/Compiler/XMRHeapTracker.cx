@@ -53,25 +53,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
     }
 
-    public class HeapTrackerLSLStr : HeapTrackerBase {
-        public const int HT_STEP = 2;
-
-        private LSL_String value;
-
-        public HeapTrackerLSLStr (XMRInstAbstract inst) : base (inst) { }
-
-        public void Pop (LSL_String str)
-        {
-            NewUse ((str.m_string == null) ? 0 : str.m_string.Length * HT_STEP);
-            value = str;
-        }
-
-        public LSL_String Push ()
-        {
-            return value;
-        }
-    }
-
     public class HeapTrackerString : HeapTrackerBase {
         public const int HT_STEP = 2;
 

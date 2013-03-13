@@ -1828,16 +1828,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public override Type ToLSLWrapType () { return typeof (LSL_Key); }
     }
     public class TokenTypeLSLString : TokenTypeStr {
-        private static readonly ConstructorInfo htLSLStrCtor = typeof (HeapTrackerLSLStr).GetConstructor (new Type [] { typeof (XMRInstAbstract) });
-        private static readonly MethodInfo htLSLStrPopMeth   = typeof (HeapTrackerLSLStr).GetMethod ("Pop", new Type[] { typeof (LSL_String) });
-        private static readonly MethodInfo htLSLStrPushMeth  = typeof (HeapTrackerLSLStr).GetMethod ("Push", new Type[0]);
-
         public TokenTypeLSLString (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
         public TokenTypeLSLString (Token original) : base (original) { }
         public override Type ToLSLWrapType () { return typeof (LSL_String); }
-        public override Type ToHeapTrackerType () { return typeof (HeapTrackerLSLStr); }
-        public override ConstructorInfo GetHeapTrackerCtor () { return htLSLStrCtor; }
-        public override MethodInfo GetHeapTrackerPopMeth ()   { return htLSLStrPopMeth; }
-        public override MethodInfo GetHeapTrackerPushMeth ()  { return htLSLStrPushMeth; }
     }
 }
