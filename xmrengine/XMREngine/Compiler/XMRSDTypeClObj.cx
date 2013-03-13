@@ -60,6 +60,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             xmrInst   = inst;
             sdtcClass = clas;
+            instVars  = new XMRInstArrays (inst);
 
             /*
              * VTable consists of delegates built from DynamicMethods and the 'this' pointer.

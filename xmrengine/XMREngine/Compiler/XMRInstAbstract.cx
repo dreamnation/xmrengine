@@ -15,7 +15,7 @@ using System.Text;
 
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
-    public struct XMRInstArrays {
+    public class XMRInstArrays {
         public XMR_Array[]      iarArrays;
         public char[]           iarChars;
         public SCRIPTFLOAT[]    iarFloats;
@@ -28,6 +28,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public XMRSDTypeClObj[] iarSDTClObjs;
         public Delegate[][]     iarSDTIntfObjs;
 
+        private XMRInstAbstract instance;
+        private int heapUse;
+
         private static readonly XMR_Array[]      noArrays      = new XMR_Array[0];
         private static readonly char[]           noChars       = new char[0];
         private static readonly SCRIPTFLOAT[]    noFloats      = new SCRIPTFLOAT[0];
@@ -39,6 +42,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private static readonly LSL_Vector[]     noVectors     = new LSL_Vector[0];
         private static readonly XMRSDTypeClObj[] noSDTClObjs   = new XMRSDTypeClObj[0];
         private static readonly Delegate[][]     noSDTIntfObjs = new Delegate[0][];
+
+        public XMRInstArrays (XMRInstAbstract inst)
+        {
+            instance = inst;
+        }
+
+        ~XMRInstArrays ()
+        {
+            instance.UpdateHeapUse (heapUse, 0);
+        }
+
         public void AllocVarArrays (ref XMRInstArSizes ars)
         {
             iarArrays      = (ars.iasArrays      > 0) ? new XMR_Array     [ars.iasArrays]        : noArrays;
@@ -54,6 +68,31 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             iarSDTIntfObjs = (ars.iasSDTIntfObjs > 0) ? new Delegate      [ars.iasSDTIntfObjs][] : noSDTIntfObjs;
         }
 
+        /**
+         * @brief Do not write directly to iarLists[index], rather use this method.
+         */
+        public void PopList (int index, LSL_List lis)
+        {
+            LSL_List old = iarLists[index];
+            int newheapuse = heapUse + ((lis == null) ? 0 : lis.Size) - ((old == null) ? 0 : old.Size);
+            heapUse = instance.UpdateHeapUse (heapUse, newheapuse);
+            iarLists[index] = lis;
+        }
+
+        /**
+         * @brief Do not write directly to iarStrings[index], rather use this method.
+         */
+        public void PopString (int index, string str)
+        {
+            string old = iarStrings[index];
+            int newheapuse = heapUse + ((str == null) ? 0 : str.Length + ((old == null) ? 0 : old.Length)) * HeapTrackerString.HT_STEP;
+            heapUse = instance.UpdateHeapUse (heapUse, newheapuse);
+            iarStrings[index] = str;
+        }
+
+        /**
+         * @brief Write all arrays out to a file.
+         */
         public delegate void Sender (object value);
         public void SendArrays (Sender sender)
         {
@@ -70,20 +109,55 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             sender (iarSDTIntfObjs);
         }
 
+        /**
+         * @brief Read all arrays in from a file.
+         */
         public delegate object Recver ();
         public void RecvArrays (Recver recver)
         {
-            iarArrays      = (XMR_Array[])      recver ();
-            iarChars       = (char[])           recver ();
-            iarFloats      = (SCRIPTFLOAT[])    recver ();
-            iarIntegers    = (int[])            recver ();
-            iarLists       = (LSL_List[])       recver ();
-            iarObjects     = (object[])         recver ();
-            iarRotations   = (LSL_Rotation[])   recver ();
-            iarStrings     = (string[])         recver ();
-            iarVectors     = (LSL_Vector[])     recver ();
-            iarSDTClObjs   = (XMRSDTypeClObj[]) recver ();
-            iarSDTIntfObjs = (Delegate[][])     recver ();
+            int newheapuse = heapUse;
+            if (iarLists != null) {
+                foreach (LSL_List lis in iarLists) {
+                    if (lis != null) {
+                        newheapuse -= lis.Size;
+                    }
+                }
+            }
+            if (iarStrings != null) {
+                foreach (string str in iarStrings) {
+                    if (str != null) {
+                        newheapuse -= str.Length * HeapTrackerString.HT_STEP;
+                    }
+                }
+            }
+
+            iarArrays       = (XMR_Array[])      recver ();
+            iarChars        = (char[])           recver ();
+            iarFloats       = (SCRIPTFLOAT[])    recver ();
+            iarIntegers     = (int[])            recver ();
+            LSL_List[] liss = (LSL_List[])       recver ();
+            iarObjects      = (object[])         recver ();
+            iarRotations    = (LSL_Rotation[])   recver ();
+            string[] strs   = (string[])         recver ();
+            iarVectors      = (LSL_Vector[])     recver ();
+            iarSDTClObjs    = (XMRSDTypeClObj[]) recver ();
+            iarSDTIntfObjs  = (Delegate[][])     recver ();
+
+            foreach (LSL_List lis in liss) {
+                if (lis != null) {
+                    newheapuse += lis.Size;
+                }
+            }
+            foreach (string str in strs) {
+                if (str != null) {
+                    newheapuse += str.Length * HeapTrackerString.HT_STEP;
+                }
+            }
+
+            heapUse = instance.UpdateHeapUse (heapUse, newheapuse);
+
+            iarLists   = liss;
+            iarStrings = strs;
         }
     }
 
@@ -189,8 +263,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public XMRInstArrays glblVars;
 
+        public XMRInstAbstract ()
+        {
+            glblVars = new XMRInstArrays (this);
+        }
+
         /****************************************************************\
-         *  Function prototypes.                                        *
+         *  Abstract function prototypes.                               *
          *  These functions require access to the OpenSim environment.  *
         \****************************************************************/
 

@@ -616,7 +616,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			if ((declVar.getProp == null) && (declVar.setProp == null)) {
 				scg.PushXMRInst ();
-				scg.ilGen.Emit (errorAt, OpCodes.Ldflda, glblVarsFieldInfo);
+				scg.ilGen.Emit (errorAt, OpCodes.Ldfld, glblVarsFieldInfo);
 				EmitFieldPushVal (scg, errorAt, declVar);
 			} else if (declVar.getProp != null) {
 				declVar.getProp.location.CallPre  (scg, errorAt);
@@ -630,7 +630,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			if ((declVar.getProp == null) && (declVar.setProp == null)) {
 				scg.PushXMRInst ();
-				scg.ilGen.Emit (errorAt, OpCodes.Ldflda, glblVarsFieldInfo);
+				scg.ilGen.Emit (errorAt, OpCodes.Ldfld, glblVarsFieldInfo);
 				EmitFieldPushRef (scg, errorAt, declVar);
 			} else {
 				scg.ErrorMsg (errorAt, "cannot get address of property");
@@ -640,7 +640,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			if ((declVar.getProp == null) && (declVar.setProp == null)) {
 				scg.PushXMRInst ();
-				scg.ilGen.Emit (errorAt, OpCodes.Ldflda, glblVarsFieldInfo);
+				scg.ilGen.Emit (errorAt, OpCodes.Ldfld, glblVarsFieldInfo);
 				EmitFieldPopPre (scg, errorAt, declVar);
 			} else if (declVar.setProp == null) {
 				scg.ErrorMsg (errorAt, "property not writable");
@@ -1006,7 +1006,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			} else if (declVar.vTableArray != null) {
 				// a field's value is its XMRSDTypeClObj.instVars array element
 				baseRVal.PushVal (scg, errorAt);
-				scg.ilGen.Emit (errorAt, OpCodes.Ldflda, instVarsFieldInfo);
+				scg.ilGen.Emit (errorAt, OpCodes.Ldfld, instVarsFieldInfo);
 				EmitFieldPushVal (scg, errorAt, declVar);
 			} else if (declVar.getProp != null) {
 				// a property's value is calling its get method with no arguments
@@ -1024,7 +1024,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (declVar.vTableArray != null) {
 				// a field's value is its XMRSDTypeClObj.instVars array element
 				baseRVal.PushVal (scg, errorAt);
-				scg.ilGen.Emit (errorAt, OpCodes.Ldflda, instVarsFieldInfo);
+				scg.ilGen.Emit (errorAt, OpCodes.Ldfld, instVarsFieldInfo);
 				EmitFieldPushRef (scg, errorAt, declVar);
 			} else {
 				scg.ErrorMsg (errorAt, "member has no address");
@@ -1036,7 +1036,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (declVar.vTableArray != null) {
 				// a field's value is its XMRSDTypeClObj.instVars array element
 				baseRVal.PushVal (scg, errorAt);
-				scg.ilGen.Emit (errorAt, OpCodes.Ldflda, instVarsFieldInfo);
+				scg.ilGen.Emit (errorAt, OpCodes.Ldfld, instVarsFieldInfo);
 				EmitFieldPopPre (scg, errorAt, declVar);
 			} else if (declVar.setProp == null) {
 				// read-only property
