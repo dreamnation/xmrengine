@@ -27,7 +27,6 @@ using OpenSim.Region.ScriptEngine.XMREngine;
 using OpenSim.Region.Framework.Scenes;
 using log4net;
 
-#include "heaptracker.h"
 #include "lsltypes.h"
 
 namespace OpenSim.Region.ScriptEngine.XMREngine
@@ -194,7 +193,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * we can use.  If not, try to compile it.
                  */
                 if (!m_CompiledScriptObjCode.TryGetValue (m_ScriptObjCodeKey, out objCode)) {
-                    objCode = TryToCompile();
+                    try {
+                        objCode = TryToCompile (m_ForceReset);
+                    } catch (Exception e) {
+                        if (m_ForceReset) throw;
+
+                        m_log.Info ("[XMREngine]: attempting recompile " + m_Item.AssetID.ToString() + " after exception " + e.Message);
+
+                        // might be something like mismatched compiled code version
+                        // try deleting object code only (leaving .state file intact)
+                        // ... and recompile
+                        objCode = TryToCompile (true);
+                    }
                     compiledIt = true;
                 }
 
@@ -256,7 +266,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         // Try to create object code from source code
         // If error, just throw exception
-        private ScriptObjCode TryToCompile()
+        private ScriptObjCode TryToCompile(bool forceRecompile)
         {
             m_CompilerErrors.Clear();
 
@@ -271,7 +281,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                                                           m_ScriptObjCodeKey, 
                                                           m_CameFrom, 
                                                           m_ScriptBasePath, 
-                                                          m_ForceReset, 
+                                                          forceRecompile, 
                                                           ErrorHandler);
             if (m_CompilerErrors.Count != 0)
             {
@@ -301,12 +311,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * This is how many total heap bytes script is allowed to use.
              */
-            this.heapLimit  = (uint)m_HeapSize;
+            this.heapLimit = m_HeapSize;
 
             /*
              * Allocate global variable arrays.
              */
-            HEAPTRACKED (this.glblVars.AllocVarArrays (ref objCode.glblSizes));
+            this.glblVars.AllocVarArrays (ref objCode.glblSizes);
 
             /*
              * Script can handle these event codes.
@@ -696,13 +706,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             try {
                 int mv = miehstream.ReadByte ();
-                int cv = miehstream.ReadByte ();
                 if (mv != migrationVersion) {
                     throw new Exception ("incoming migration version " + mv + " but accept only " + migrationVersion);
                 }
-                if (cv != ScriptCodeGen.COMPILED_VERSION_VALUE) {
-                    throw new Exception ("incoming compilation version " + cv + " but accept only " + ScriptCodeGen.COMPILED_VERSION_VALUE);
-                }
+                miehstream.ReadByte ();  // ignored
 
                 /*
                  * Restore script variables and stack and other state from stream.
@@ -710,7 +717,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * started again and this event lost.
                  */
                 BinaryReader br = new BinaryReader (miehstream);
-                HEAPTRACKED (this.MigrateIn (br));
+                this.MigrateIn (br);
 
                 /*
                  * If eventCode is None, it means the script was idle when migrated.
@@ -728,7 +735,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      * stack all restored.  It shouldn't ever throw an exception.
                      */
                     this.stackFramesRestored = false;
-                    HEAPTRACKED (microthread.Start ());
+                    microthread.Start ();
                     if (!this.stackFramesRestored) throw new Exception ("migrate in did not complete");
                 }
             } catch (Exception e) {

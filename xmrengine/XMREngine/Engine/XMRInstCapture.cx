@@ -260,7 +260,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * Does not change script state.
                  */
                 moehstream.WriteByte (migrationVersion);
-                moehstream.WriteByte ((byte)ScriptCodeGen.COMPILED_VERSION_VALUE);
+                moehstream.WriteByte ((byte)16);
                 this.MigrateOut (new BinaryWriter (moehstream));
 
                 /*

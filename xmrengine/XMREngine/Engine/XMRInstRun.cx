@@ -29,7 +29,6 @@ using OpenSim.Region.ScriptEngine.XMREngine;
 using OpenSim.Region.Framework.Scenes;
 using log4net;
 
-#include "heaptracker.h"
 #include "lsltypes.h"
 
 namespace OpenSim.Region.ScriptEngine.XMREngine
@@ -104,7 +103,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      * These need to go first.  The only time we manually
                      * queue them is for the default state_entry() and we
                      * need to make sure they go before any attach() events
-                     * so the heapLeft value gets properly initialized.
+                     * so the heapLimit value gets properly initialized.
                      */
                     case ScriptEventCode.state_entry: {
                         m_EventQueue.AddFirst(lln);
@@ -278,7 +277,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_LastRanAt   = now;
                     m_InstEHSlice ++;
                     callMode = CallMode_NORMAL;
-                    HEAPTRACKED (e = microthread.ResumeEx (null));
+                    e = microthread.ResumeEx (null);
                 }
 
                 /*
@@ -499,12 +498,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
             this.stackFrames = null;
             Exception e;
-            try {
-                heapTracker.Enable ();
-                e = microthread.StartEx ();
-            } finally {
-                HeapTracker.Disable ();
-            }
+            e = microthread.StartEx ();
             return e;
         }
 
@@ -962,17 +956,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_CheckRunPhase = "entered";
 
             /*
-             * Make sure script hasn't run out of heap or stack.
+             * Make sure script hasn't run out of stack.
              */
-#if HAVE_HEAPTRACKER
-            if ((ulong)heapTracker.Used () > heapLimit) {
-                System.GC.Collect ();
-                System.GC.WaitForPendingFinalizers ();
-                if ((ulong)heapTracker.Used () > heapLimit) {
-                    throw outOfHeapException;
-                }
-            }
-#endif
             if ((ulong)MMRUThread.StackLeft () < stackLimit) {
                 throw outOfStackException;
             }

@@ -101,8 +101,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public XMREngine()
         {
             m_log.Info ("[XMREngine]: commit " + GITCOMMITHASH + ((GITCOMMITCLEAN != 0) ? "" : "(dirty)") + " " + GITCOMMITDATE);
-            m_log.Info ("[XMREngine]: HAVE_HEAPTRACKER=" + ((HAVE_HEAPTRACKER != 0) ? "Yes" : "No") +
-                                    " HAVE_MMRUTHREADS=" + ((HAVE_MMRUTHREADS != 0) ? "Yes" : "No"));
+            m_log.Info ("[XMREngine]: HAVE_MMRUTHREADS=" + ((HAVE_MMRUTHREADS != 0) ? "Yes" : "No"));
             string envar = Environment.GetEnvironmentVariable("XMREngineTraceCalls");
             m_TraceCalls = (envar != null) && ((envar[0] & 1) != 0);
             m_log.DebugFormat("[XMREngine]: m_TraceCalls={0}", m_TraceCalls);
@@ -1014,6 +1013,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             // Write out the .state file with the <ScriptState ...>...</ScriptState> XML text
             string statePath = XMRInstance.GetStateFileName(m_ScriptBasePath, itemID);
+            m_log.Debug ("[XMREngine]: writing " + itemID.ToString () + ".state file from XML");
             FileStream ss = File.Create(statePath);
             StreamWriter sw = new StreamWriter(ss);
             sw.Write(scriptStateN.OuterXml);

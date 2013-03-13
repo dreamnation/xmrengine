@@ -72,7 +72,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public const int MAXEVENTQUEUE = 64;
 
         public static readonly DetectParams[] zeroDetectParams = new DetectParams[0];
-        public static readonly Exception outOfHeapException  = new OutOfHeapException ();
         public static readonly Exception outOfStackException = new OutOfStackException ();
         public static readonly object[] zeroObjectArray = new object[0];
 
@@ -152,10 +151,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private XMRLSL_Api m_XMRLSLApi;
 
         public uint stackLimit;             // CheckRun() must always see this much stack available
-        public uint heapLimit;
-#if HAVE_HEAPTRACKER
-        public HeapTracker heapTracker = new HeapTracker (UIntPtr.Zero);
-#endif
 
         /*
          * We will use this microthread to run the scripts event handlers.
@@ -218,9 +213,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         // It will then be set again on suspend/completion
         private ManualResetEvent m_DetachReady = new ManualResetEvent(true);
     }
-
-    [SerializableAttribute]
-    public class OutOfHeapException : Exception { }
 
     [SerializableAttribute]
     public class OutOfStackException : Exception { }

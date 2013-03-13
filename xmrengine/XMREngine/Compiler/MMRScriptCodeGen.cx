@@ -37,7 +37,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	public class ScriptCodeGen : IScriptCodeGen
 	{
 		public static readonly string OBJECT_CODE_MAGIC = "XMRObjectCode";
-		public static int COMPILED_VERSION_VALUE = 16;  // incremented when compiler changes for compatibility testing
+		public static int COMPILED_VERSION_VALUE = 17;  // incremented when compiler changes for compatibility testing
 
 		public static readonly int CALL_FRAME_MEMUSE = 64;
 		public static readonly int STRING_LEN_TO_MEMUSE = 2;
@@ -6003,8 +6003,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 			int cvv = objFileReader.ReadInt32 ();
 			if (cvv != COMPILED_VERSION_VALUE) {
-				throw new Exception ("object version is " + cvv.ToString () + 
-				                     " but accept only " + COMPILED_VERSION_VALUE.ToString ());
+				throw new CVVMismatchException (cvv, COMPILED_VERSION_VALUE);
 			}
 
 			/*
@@ -6226,5 +6225,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public ScriptBadCallNoException (int callNo) : base ("bad callNo " + callNo) { }
 		protected ScriptBadCallNoException (SerializationInfo info, StreamingContext context) : base (info, context)
 		{ }
+	}
+
+	public class CVVMismatchException : Exception {
+		public int oldcvv;
+		public int newcvv;
+
+		public CVVMismatchException (int oldcvv, int newcvv) : base ("object version is " + oldcvv.ToString () + 
+				                                             " but accept only " + newcvv.ToString ())
+		{
+			this.oldcvv = oldcvv;
+			this.newcvv = newcvv;
+		}
 	}
 }

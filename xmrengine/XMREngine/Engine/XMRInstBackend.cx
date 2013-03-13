@@ -432,20 +432,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             return (int)MMRUThread.StackLeft();
         }
-
-        public override int xmrHeapLeft()
-        {
-            return (int)heapLimit - xmrHeapUsed();
-        }
-
-        public override int xmrHeapUsed()
-        {
-#if HAVE_HEAPTRACKER
-            return (int)heapTracker.Used();
-#else
-            return 100;
-#endif
-        }
     }
 
     /**
