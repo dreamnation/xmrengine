@@ -30,6 +30,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     {
         public static bool doCheckRun = false;
         public static bool haveLinkNums = false;
+        public static bool printPeakHeap = false;
         public static int consoleLine = 0;
         public static LinkedList<int> ipcChannels = new LinkedList<int> ();
         public static LinkedList<QueuedEvent> queuedEvents = new LinkedList<QueuedEvent> ();
@@ -88,6 +89,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         goto usage;
                     }
                     haveLinkNums = true;
+                    continue;
+                }
+                if (arg == "-peakheap") {
+                    printPeakHeap = true;
                     continue;
                 }
                 if (arg == "-primname") {
@@ -338,6 +343,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     }
                 }
             }
+            if (printPeakHeap) {
+                foreach (ScriptRoot sr in scriptRoots) {
+                    Console.WriteLine (sr.msgPrefix + "PeakHeapUsed = " + sr.GetPeakHeapUsed ());
+                }
+            }
             Environment.Exit (0);
 
         usage:
@@ -349,6 +359,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Console.WriteLine ("                   example:  http_response(\"firstone\",3,[0,<1,2,3>,\"456\"],\"body\")");
             Console.WriteLine ("   -ipcchannel : channel number for which llListen/llListenControl/llListenRemove/llRegionSay/llRegionSayTo/llSay are handled internally");
             Console.WriteLine ("      -linknum : link number returned by llGetLinkNumber() and used by llMessageLinked()");
+            Console.WriteLine ("     -peakheap : print peak heap used");
             Console.WriteLine ("     -primname : give prim name for subsequent script(s) (returned by llGetKey())");
             Console.WriteLine ("     -primuuid : give prim uuid for subsequent script(s) (returned by llGetObjectName())");
             Console.WriteLine ("    -serialize : serialize and deserialize stack at every opportunity");
@@ -651,6 +662,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public  int    index;
         public  int    linkNum;
+        private int    peakHeapUsed;
         public  IState iState;
         public  Listener[] listeners = new Listener[65];
         public  object wfiValue;
@@ -723,6 +735,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 sb.Append (wfiName);
             }
             Console.WriteLine (sb.ToString ());
+        }
+
+        public int GetPeakHeapUsed ()
+        {
+            if (peakHeapUsed < inst.peakHeapUsed) {
+                peakHeapUsed = inst.peakHeapUsed;
+            }
+            return peakHeapUsed;
         }
 
         /**
@@ -960,6 +980,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      * If -serialize, make sure script instance serialization works.
                      */
                     if (XMREngTest.serializeStream != null) {
+                        if (peakHeapUsed < inst.peakHeapUsed) {
+                            peakHeapUsed = inst.peakHeapUsed;
+                        }
 
                         /*
                          * Write global variables and stack frames out and discard them.
@@ -992,8 +1015,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
      * @brief This stuff is re-instantiated on serialization.
      */
     public class TestInstance : XMRInstAbstract {
+        public const int HEAPLIMIT = 65536;
         public SCRIPTBASECLASS m_ApiManager_LSL;
         public OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.IOSSL_Api m_ApiManager_OSSL;
+
+        public int peakHeapUsed = 0;
 
         /**
          * @brief Initial instance for the given script
@@ -1001,6 +1027,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public TestInstance (ScriptObjCode soc)
         {
             m_ObjCode = soc;
+            heapLimit = HEAPLIMIT;
             glblVars.AllocVarArrays (ref m_ObjCode.glblSizes);
 
             /*
@@ -1018,11 +1045,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             scriptRoot = inst.scriptRoot;
             m_ObjCode  = inst.m_ObjCode;
+            heapLimit  = HEAPLIMIT;
         }
 
         /*********************\
          *  XMRInstAbstract  *
         \*********************/
+
+        public override int UpdateHeapUse (int olduse, int newuse)
+        {
+            int rc = base.UpdateHeapUse (olduse, newuse);
+            int hu = xmrHeapUsed ();
+            if (peakHeapUsed < hu) peakHeapUsed = hu;
+            return rc;
+        }
 
         public override void CheckRun (int line)
         {

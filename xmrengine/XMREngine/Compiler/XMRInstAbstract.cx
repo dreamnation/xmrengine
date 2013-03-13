@@ -12,6 +12,7 @@ using System.IO;
 using System.Reflection.Emit;
 using System.Runtime.Serialization;
 using System.Text;
+using System.Threading;
 
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
@@ -50,11 +51,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         ~XMRInstArrays ()
         {
-            instance.UpdateHeapUse (heapUse, 0);
+            heapUse = instance.UpdateHeapUse (heapUse, 0);
         }
 
         public void AllocVarArrays (ref XMRInstArSizes ars)
         {
+            ClearOldArrays ();
+
+            heapUse = instance.UpdateHeapUse (heapUse,
+                ars.iasChars       * HeapTrackerObject.HT_CHAR +
+                ars.iasFloats      * HeapTrackerObject.HT_SFLT +
+                ars.iasIntegers    * HeapTrackerObject.HT_INT +
+                ars.iasRotations   * HeapTrackerObject.HT_ROT +
+                ars.iasVectors     * HeapTrackerObject.HT_VEC +
+                ars.iasSDTIntfObjs * HeapTrackerObject.HT_DELE);
+
             iarArrays      = (ars.iasArrays      > 0) ? new XMR_Array     [ars.iasArrays]        : noArrays;
             iarChars       = (ars.iasChars       > 0) ? new char          [ars.iasChars]         : noChars;
             iarFloats      = (ars.iasFloats      > 0) ? new SCRIPTFLOAT   [ars.iasFloats]        : noFloats;
@@ -126,36 +137,31 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public delegate object Recver ();
         public void RecvArrays (Recver recver)
         {
+            ClearOldArrays ();
+
+            iarArrays           = (XMR_Array[])      recver ();
+            char[] chrs         = (char[])           recver ();
+            SCRIPTFLOAT[] flts  = (SCRIPTFLOAT[])    recver ();
+            int[] ints          = (int[])            recver ();
+            LSL_List[] liss     = (LSL_List[])       recver ();
+            object[] objs       = (object[])         recver ();
+            LSL_Rotation[] rots = (LSL_Rotation[])   recver ();
+            string[] strs       = (string[])         recver ();
+            LSL_Vector[] vecs   = (LSL_Vector[])     recver ();
+            iarSDTClObjs        = (XMRSDTypeClObj[]) recver ();
+            Delegate[][] dels   = (Delegate[][])     recver ();
+
             int newheapuse = heapUse;
 
-            if (iarLists != null) {
-                foreach (LSL_List lis in iarLists) {
-                    newheapuse -= HeapTrackerList.Size (lis);
-                }
-            }
-            if (iarObjects != null) {
-                foreach (object obj in iarObjects) {
-                    newheapuse -= HeapTrackerObject.Size (obj);
-                }
-            }
-            if (iarStrings != null) {
-                foreach (string str in iarStrings) {
-                    newheapuse -= HeapTrackerString.Size (str);
-                }
-            }
+            // value types simply are the size of the value * number of values
+            newheapuse += chrs.Length * HeapTrackerObject.HT_CHAR;
+            newheapuse += flts.Length * HeapTrackerObject.HT_SFLT;
+            newheapuse += ints.Length * HeapTrackerObject.HT_INT;
+            newheapuse += rots.Length * HeapTrackerObject.HT_ROT;
+            newheapuse += vecs.Length * HeapTrackerObject.HT_VEC;
+            newheapuse += dels.Length * HeapTrackerObject.HT_DELE;
 
-            iarArrays       = (XMR_Array[])      recver ();
-            iarChars        = (char[])           recver ();
-            iarFloats       = (SCRIPTFLOAT[])    recver ();
-            iarIntegers     = (int[])            recver ();
-            LSL_List[] liss = (LSL_List[])       recver ();
-            object[] objs   = (object[])         recver ();
-            iarRotations    = (LSL_Rotation[])   recver ();
-            string[] strs   = (string[])         recver ();
-            iarVectors      = (LSL_Vector[])     recver ();
-            iarSDTClObjs    = (XMRSDTypeClObj[]) recver ();
-            iarSDTIntfObjs  = (Delegate[][])     recver ();
-
+            // lists, objects, strings are the sum of the size of each element
             foreach (LSL_List lis in liss) {
                 newheapuse += HeapTrackerList.Size (lis);
             }
@@ -166,11 +172,72 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 newheapuse += HeapTrackerString.Size (str);
             }
 
+            // others (XMR_Array, XMRSDTypeClObj) keep track of their own heap usage
+
+            // update script heap usage, throwing an exception before finalizing changes
             heapUse = instance.UpdateHeapUse (heapUse, newheapuse);
 
-            iarLists   = liss;
-            iarObjects = objs;
-            iarStrings = strs;
+            iarChars       = chrs;
+            iarFloats      = flts;
+            iarIntegers    = ints;
+            iarLists       = liss;
+            iarObjects     = objs;
+            iarRotations   = rots;
+            iarStrings     = strs;
+            iarVectors     = vecs;
+            iarSDTIntfObjs = dels;
+        }
+
+        private void ClearOldArrays ()
+        {
+            int newheapuse = heapUse;
+
+            iarArrays = null;
+            if (iarChars != null) {
+                newheapuse -= iarChars.Length * HeapTrackerObject.HT_CHAR;
+                iarChars = null;
+            }
+            if (iarFloats != null) {
+                newheapuse -= iarFloats.Length * HeapTrackerObject.HT_SFLT;
+                iarFloats = null;
+            }
+            if (iarIntegers != null) {
+                newheapuse -= iarIntegers.Length * HeapTrackerObject.HT_INT;
+                iarIntegers = null;
+            }
+            if (iarLists != null) {
+                foreach (LSL_List lis in iarLists) {
+                    newheapuse -= HeapTrackerList.Size (lis);
+                }
+                iarLists = null;
+            }
+            if (iarObjects != null) {
+                foreach (object obj in iarObjects) {
+                    newheapuse -= HeapTrackerObject.Size (obj);
+                }
+                iarObjects = null;
+            }
+            if (iarRotations != null) {
+                newheapuse -= iarRotations.Length * HeapTrackerObject.HT_ROT;
+                iarRotations = null;
+            }
+            if (iarStrings != null) {
+                foreach (string str in iarStrings) {
+                    newheapuse -= HeapTrackerString.Size (str);
+                }
+                iarStrings = null;
+            }
+            if (iarVectors != null) {
+                newheapuse -= iarVectors.Length * HeapTrackerObject.HT_VEC;
+                iarVectors = null;
+            }
+            iarSDTClObjs = null;
+            if (iarSDTIntfObjs != null) {
+                newheapuse -= iarSDTIntfObjs.Length * HeapTrackerObject.HT_DELE;
+                iarSDTIntfObjs = null;
+            }
+
+            heapUse = instance.UpdateHeapUse (heapUse, newheapuse);
         }
     }
 
@@ -308,16 +375,33 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          *  beyond what the compiler provides.            *
         \**************************************************/
 
-        private int heapLimit = 0x100000;
-        private int heapUsed;
+        protected int heapLimit;
+        private   int heapUsed;
 
-        public int UpdateHeapUse (int olduse, int newuse)
+        public virtual int UpdateHeapUse (int olduse, int newuse)
         {
-            int newused = heapUsed + newuse - olduse;
-            if (newused > heapLimit) throw new OutOfHeapException ();
-            heapUsed = newused;
+            if (newuse <= olduse) {
+                Interlocked.Add (ref heapUsed, newuse - olduse);
+            } else {
+                int newtotal, oldtotal;
+                do {
+                    oldtotal = Interlocked.Add (ref heapUsed, 0);
+                    newtotal = oldtotal + newuse - olduse;
+                    if (newtotal > heapLimit) {
+                        System.GC.Collect ();
+                        System.GC.WaitForPendingFinalizers ();
+                        oldtotal = Interlocked.Add (ref heapUsed, 0);
+                        newtotal = oldtotal + newuse - olduse;
+                        if (newtotal > heapLimit) {
+                            throw new OutOfHeapException (oldtotal, newtotal, heapLimit);
+                        }
+                    }
+                } while (Interlocked.CompareExchange (ref heapUsed, newtotal, oldtotal) != oldtotal);
+            }
+
             return newuse;
         }
+
         public int xmrHeapLeft ()
         {
             return heapLimit - heapUsed;
@@ -1605,5 +1689,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     // not type string.
     public class xmrMethodReturnsKeyAttribute : Attribute { }
 
-    public class OutOfHeapException : Exception { }
+    public class OutOfHeapException : Exception {
+        public OutOfHeapException (int oldtotal, int newtotal, int limit)
+                : base ("oldtotal=" + oldtotal + ", newtotal=" + newtotal + ", limit=" + limit)
+        { }
+    }
 }

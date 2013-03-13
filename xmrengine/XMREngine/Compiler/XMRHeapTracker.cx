@@ -27,7 +27,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         ~HeapTrackerBase ()
         {
-            instance.UpdateHeapUse (usage, 0);
+            usage = instance.UpdateHeapUse (usage, 0);
         }
 
         protected void NewUse (int newuse)
