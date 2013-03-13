@@ -1742,6 +1742,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
     }
     public class TokenTypeObject : TokenType {
         private static readonly FieldInfo iarObjectsFieldInfo = typeof (XMRInstArrays).GetField ("iarObjects");
+        private static readonly ConstructorInfo htObjectCtor  = typeof (HeapTrackerObject).GetConstructor (new Type [] { typeof (XMRInstAbstract) });
+        private static readonly MethodInfo htObjectPopMeth    = typeof (HeapTrackerObject).GetMethod ("Pop", new Type[] { typeof (object) });
+        private static readonly MethodInfo htObjectPushMeth   = typeof (HeapTrackerObject).GetMethod ("Push", new Type[0]);
 
         public TokenTypeObject (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
         public TokenTypeObject (Token original) : base (original) { }
@@ -1752,6 +1755,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             declVar.vTableArray = iarObjectsFieldInfo;
             declVar.vTableIndex = arSizes.iasObjects ++;
         }
+        public override Type ToHeapTrackerType () { return typeof (HeapTrackerObject); }
+        public override ConstructorInfo GetHeapTrackerCtor () { return htObjectCtor; }
+        public override MethodInfo GetHeapTrackerPopMeth ()   { return htObjectPopMeth; }
+        public override MethodInfo GetHeapTrackerPushMeth ()  { return htObjectPushMeth; }
     }
     public class TokenTypeRot : TokenType {
         private static readonly FieldInfo iarRotationsFieldInfo = typeof (XMRInstArrays).GetField ("iarRotations");

@@ -921,6 +921,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			s2t.Add ("exceptn",  typeof (Exception));
 			s2t.Add ("float",    typeof (float));
 			s2t.Add ("htlist",   typeof (HeapTrackerList));
+			s2t.Add ("htobject", typeof (HeapTrackerObject));
 			s2t.Add ("htstring", typeof (HeapTrackerString));
 			s2t.Add ("inlfunc",  typeof (CompValuInline));
 			s2t.Add ("int",      typeof (int));

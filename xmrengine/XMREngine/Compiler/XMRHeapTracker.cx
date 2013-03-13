@@ -51,6 +51,48 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             return value;
         }
+
+        public static int Size (LSL_List lis)
+        {
+            return (lis == null) ? 0 : lis.Size;
+        }
+    }
+
+    public class HeapTrackerObject : HeapTrackerBase {
+        private object value;
+
+        public HeapTrackerObject (XMRInstAbstract inst) : base (inst) { }
+
+        public void Pop (object obj)
+        {
+            NewUse (Size (obj));
+            value = obj;
+        }
+
+        public object Push ()
+        {
+            return value;
+        }
+
+        public static int Size (object obj)
+        {
+            if (obj != null) {
+                if (obj is char)         return HeapTrackerString.HT_STEP;
+                if (obj is double)       return 8;
+                if (obj is float)        return 4;
+                if (obj is int)          return 4;
+                if (obj is LSL_List)     return ((LSL_List)obj).Size;
+                if (obj is LSL_String)   return ((LSL_String)obj).m_string.Length * HeapTrackerString.HT_STEP;
+                if (obj is LSL_Float)    return 8;
+                if (obj is LSL_Vector)   return 8*3;
+                if (obj is LSL_Rotation) return 8*4;
+                if (obj is string)       return ((string)obj).Length * HeapTrackerString.HT_STEP;
+
+                // assume any other type keeps track of its own heap usage
+                // eg, XMR_Array
+            }
+            return 0;
+        }
     }
 
     public class HeapTrackerString : HeapTrackerBase {
@@ -62,13 +104,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void Pop (string str)
         {
-            NewUse ((str == null) ? 0 : str.Length * HT_STEP);
+            NewUse (Size (str));
             value = str;
         }
 
         public string Push ()
         {
             return value;
+        }
+
+        public static int Size (string str)
+        {
+            return (str == null) ? 0 : str.Length * HT_STEP;
         }
     }
 }

@@ -94,10 +94,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static MethodInfo ehArgUnwrapRotation    = GetStaticMethod (typeof (TypeCast), "EHArgUnwrapRotation", new Type[] { typeof (object) });
 		private static MethodInfo ehArgUnwrapString      = GetStaticMethod (typeof (TypeCast), "EHArgUnwrapString",   new Type[] { typeof (object) });
 		private static MethodInfo ehArgUnwrapVector      = GetStaticMethod (typeof (TypeCast), "EHArgUnwrapVector",   new Type[] { typeof (object) });
-		private static MethodInfo forEachMethodInfo      = typeof (XMR_Array).GetMethod ("ForEach", 
-		                                                                               new Type[] { typeof (int),
-		                                                                                            typeof (object).MakeByRefType (),
-		                                                                                            typeof (object).MakeByRefType () });
+		private static MethodInfo xmrArrPubIndexMethod   = typeof (XMR_Array).GetMethod ("__pub_index", new Type[] { typeof (int) });
+		private static MethodInfo xmrArrPubValueMethod   = typeof (XMR_Array).GetMethod ("__pub_value", new Type[] { typeof (int) });
 		private static MethodInfo captureStackFrameMethodInfo = typeof (XMRInstAbstract).GetMethod ("CaptureStackFrame", new Type[] { typeof (string), typeof (int), typeof (int) });
 		private static MethodInfo restoreStackFrameMethodInfo = typeof (XMRInstAbstract).GetMethod ("RestoreStackFrame", new Type[] { typeof (string), typeof (int).MakeByRefType () });
 		private static MethodInfo stringCompareMethodInfo     = GetStaticMethod (typeof (String), "Compare", new Type[] { typeof (string), typeof (string), typeof (StringComparison) });
@@ -114,6 +112,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static MethodInfo catchTryCastToSDTypeMethodInfo = GetStaticMethod (typeof (XMRInstAbstract), "XMRSDTypeCatchTryCastToSDType", new Type[] { typeof (object), typeof (XMRInstAbstract), typeof (int) });
 		private static MethodInfo thrownExceptionWrapMethodInfo  = GetStaticMethod (typeof (ScriptThrownException), "Wrap", new Type[] { typeof (object) });
 		private static MethodInfo heapTrackerListPush   = typeof (HeapTrackerList).  GetMethod ("Push", new Type[0]);
+		private static MethodInfo heapTrackerObjectPush = typeof (HeapTrackerObject).GetMethod ("Push", new Type[0]);
 		private static MethodInfo heapTrackerStringPush = typeof (HeapTrackerString).GetMethod ("Push", new Type[0]);
 
 		public static bool CodeGen (TokenScript tokenScript, BinaryWriter objFileWriter, string sourceHash)
@@ -1450,6 +1449,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					ilGen.Emit (curDeclFunc, OpCodes.Call, heapTrackerListPush);
 					t = typeof (LSL_List);
 				}
+				if (t == typeof (HeapTrackerObject)) {
+					ilGen.Emit (curDeclFunc, OpCodes.Call, heapTrackerObjectPush);
+					t = typeof (object);
+				}
 				if (t == typeof (HeapTrackerString)) {
 					ilGen.Emit (curDeclFunc, OpCodes.Call, heapTrackerStringPush);
 					t = typeof (string);
@@ -1526,6 +1529,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				Type t = lcl.type;
 				Type u = t;
 				if (t == typeof (HeapTrackerList))   u = typeof (LSL_List);
+				if (t == typeof (HeapTrackerObject)) u = typeof (object);
 				if (t == typeof (HeapTrackerString)) u = typeof (string);
 				if (u != t) {
 					ilGen.Emit (curDeclFunc, OpCodes.Ldloc, lcl);
@@ -1922,44 +1926,56 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			ilGen.MarkLabel (loopLabel);
 
-			// ForEach arg 0: arrayRVal
-			arrayRVal.PushVal (this, forEachStmt.arrayRVal);
+			// key = array.__pub_index (indexVar);
+			// if (key == null) goto curBreakTarg;
+			if (keyLVal != null) {
+				keyLVal.PopPre (this, forEachStmt.keyLVal);
+				arrayRVal.PushVal (this, forEachStmt.arrayRVal);
+				indexVar.PushVal (this, forEachStmt);
+				ilGen.Emit (forEachStmt, OpCodes.Call, xmrArrPubIndexMethod);
+				keyLVal.PopPost (this, forEachStmt.keyLVal);
+				keyLVal.PushVal (this, forEachStmt.keyLVal);
+				ilGen.Emit (forEachStmt, OpCodes.Brfalse, curBreakTarg.label);
+				curBreakTarg.used = true;
+			}
 
-			// ForEach arg 1: indexVar ++
+			// val = array._pub_value (indexVar);
+			// if (val == null) goto curBreakTarg;
+			if (valLVal != null) {
+				valLVal.PopPre (this, forEachStmt.valLVal);
+				arrayRVal.PushVal (this, forEachStmt.arrayRVal);
+				indexVar.PushVal (this, forEachStmt);
+				ilGen.Emit (forEachStmt, OpCodes.Call, xmrArrPubValueMethod);
+				valLVal.PopPost (this, forEachStmt.valLVal);
+				if (keyLVal == null) {
+					valLVal.PushVal (this, forEachStmt.valLVal);
+					ilGen.Emit (forEachStmt, OpCodes.Brfalse, curBreakTarg.label);
+					curBreakTarg.used = true;
+				}
+			}
+
+			// indexVar ++;
 			indexVar.PushVal (this, forEachStmt);
-			ilGen.Emit (forEachStmt, OpCodes.Dup);
 			ilGen.Emit (forEachStmt, OpCodes.Ldc_I4_1);
 			ilGen.Emit (forEachStmt, OpCodes.Add);
 			indexVar.Pop (this, forEachStmt);
 
-			// ForEach arg 2: ref keyLVal
-			if (keyLVal == null) {
-				ilGen.Emit (forEachStmt, OpCodes.Ldloca, objectVar);
-			} else {
-				keyLVal.PushRef (this, forEachStmt.keyLVal);
-			}
-
-			// ForEach arg 3: ref valLVal
-			if (valLVal == null) {
-				ilGen.Emit (forEachStmt, OpCodes.Ldloca, objectVar);
-			} else {
-				valLVal.PushRef (this, forEachStmt.valLVal);
-			}
-
-			// Call XMR_Array.ForEach (arrayRVal, index, ref keyLVal, ref valLVal)
-			ilGen.Emit (forEachStmt, OpCodes.Callvirt, forEachMethodInfo);
-			ilGen.Emit (forEachStmt, OpCodes.Brfalse, curBreakTarg.label);
-			curBreakTarg.used = true;
-
+			// body statement
 			GenerateStmt (forEachStmt.bodyStmt);
+
+			// continue label
 			if (curContTarg.used) {
 				ilGen.MarkLabel (curContTarg.label);
 				mightGetHere = true;
 			}
+
+			// call CheckRun()
 			if (mightGetHere) {
 				EmitCallCheckRun (forEachStmt);
 				ilGen.Emit (forEachStmt, OpCodes.Br, loopLabel);
 			}
+
+			// break label
 			ilGen.MarkLabel (curBreakTarg.label);
 			mightGetHere = true;
 

@@ -74,9 +74,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public void PopList (int index, LSL_List lis)
         {
             LSL_List old = iarLists[index];
-            int newheapuse = heapUse + ((lis == null) ? 0 : lis.Size) - ((old == null) ? 0 : old.Size);
+            int newheapuse = heapUse + HeapTrackerList.Size (lis) - HeapTrackerList.Size (old);
             heapUse = instance.UpdateHeapUse (heapUse, newheapuse);
             iarLists[index] = lis;
+        }
+
+        /**
+         * @brief Do not write directly to iarObjects[index], rather use this method.
+         */
+        public void PopObject (int index, object obj)
+        {
+            object old = iarObjects[index];
+            int newheapuse = heapUse + HeapTrackerObject.Size (obj) - HeapTrackerObject.Size (old);
+            heapUse = instance.UpdateHeapUse (heapUse, newheapuse);
+            iarObjects[index] = obj;
         }
 
         /**
@@ -85,7 +96,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public void PopString (int index, string str)
         {
             string old = iarStrings[index];
-            int newheapuse = heapUse + ((str == null) ? 0 : str.Length + ((old == null) ? 0 : old.Length)) * HeapTrackerString.HT_STEP;
+            int newheapuse = heapUse + HeapTrackerString.Size (str) - HeapTrackerString.Size (old);
             heapUse = instance.UpdateHeapUse (heapUse, newheapuse);
             iarStrings[index] = str;
         }
@@ -116,18 +127,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public void RecvArrays (Recver recver)
         {
             int newheapuse = heapUse;
+
             if (iarLists != null) {
                 foreach (LSL_List lis in iarLists) {
-                    if (lis != null) {
-                        newheapuse -= lis.Size;
-                    }
+                    newheapuse -= HeapTrackerList.Size (lis);
+                }
+            }
+            if (iarObjects != null) {
+                foreach (object obj in iarObjects) {
+                    newheapuse -= HeapTrackerObject.Size (obj);
                 }
             }
             if (iarStrings != null) {
                 foreach (string str in iarStrings) {
-                    if (str != null) {
-                        newheapuse -= str.Length * HeapTrackerString.HT_STEP;
-                    }
+                    newheapuse -= HeapTrackerString.Size (str);
                 }
             }
 
@@ -136,7 +149,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             iarFloats       = (SCRIPTFLOAT[])    recver ();
             iarIntegers     = (int[])            recver ();
             LSL_List[] liss = (LSL_List[])       recver ();
-            iarObjects      = (object[])         recver ();
+            object[] objs   = (object[])         recver ();
             iarRotations    = (LSL_Rotation[])   recver ();
             string[] strs   = (string[])         recver ();
             iarVectors      = (LSL_Vector[])     recver ();
@@ -144,19 +157,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             iarSDTIntfObjs  = (Delegate[][])     recver ();
 
             foreach (LSL_List lis in liss) {
-                if (lis != null) {
-                    newheapuse += lis.Size;
-                }
+                newheapuse += HeapTrackerList.Size (lis);
+            }
+            foreach (object obj in objs) {
+                newheapuse += HeapTrackerObject.Size (obj);
             }
             foreach (string str in strs) {
-                if (str != null) {
-                    newheapuse += str.Length * HeapTrackerString.HT_STEP;
-                }
+                newheapuse += HeapTrackerString.Size (str);
             }
 
             heapUse = instance.UpdateHeapUse (heapUse, newheapuse);
 
             iarLists   = liss;
+            iarObjects = objs;
             iarStrings = strs;
         }
     }
