@@ -59,6 +59,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     }
 
     public class HeapTrackerObject : HeapTrackerBase {
+        public const int HT_CHAR = 2;
+        public const int HT_DELE = 8;
+        public const int HT_DOUB = 8;
+        public const int HT_SING = 4;
+        public const int HT_SFLT = 4;
+        public const int HT_INT  = 4;
+        public const int HT_VEC  = HT_DOUB * 3;
+        public const int HT_ROT  = HT_DOUB * 4;
+
         private object value;
 
         public HeapTrackerObject (XMRInstAbstract inst) : base (inst) { }
@@ -76,28 +85,42 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public static int Size (object obj)
         {
-            if (obj != null) {
-                if (obj is char)         return HeapTrackerString.HT_STEP;
-                if (obj is double)       return 8;
-                if (obj is float)        return 4;
-                if (obj is int)          return 4;
-                if (obj is LSL_List)     return ((LSL_List)obj).Size;
-                if (obj is LSL_String)   return ((LSL_String)obj).m_string.Length * HeapTrackerString.HT_STEP;
-                if (obj is LSL_Float)    return 8;
-                if (obj is LSL_Vector)   return 8*3;
-                if (obj is LSL_Rotation) return 8*4;
-                if (obj is string)       return ((string)obj).Length * HeapTrackerString.HT_STEP;
+            if (obj == null) return 0;
 
-                // assume any other type keeps track of its own heap usage
-                // eg, XMR_Array
+            if (obj is char)            return HT_CHAR;
+            if (obj is Delegate)        return HT_DELE;
+            if (obj is double)          return HT_DOUB;
+            if (obj is float)           return HT_SING;
+            if (obj is int)             return HT_INT;
+            if (obj is LSL_Float)       return HT_SFLT;
+            if (obj is LSL_Integer)     return HT_INT;
+            if (obj is LSL_List)        return ((LSL_List)obj).Size;
+            if (obj is LSL_Rotation)    return HT_ROT;
+            if (obj is LSL_String)      return ((LSL_String)obj).m_string.Length * HT_CHAR;
+            if (obj is LSL_Vector)      return HT_VEC;
+            if (obj is string)          return ((string)obj).Length * HT_CHAR;
+            if (obj is XMR_Array)       return 0;
+            if (obj is XMRArrayListKey) return ((XMRArrayListKey)obj).Size;
+            if (obj is XMRSDTypeClObj)  return 0;
+
+            if (obj is Array) {
+                Array ar = (Array)obj;
+                int len = ar.Length;
+                if (len == 0) return 0;
+                Type et = ar.GetType ().GetElementType ();
+                if (et.IsValueType) return Size (ar.GetValue (0)) * len;
+                int size = 0;
+                for (int i = 0; i < len; i ++) {
+                    size += Size (ar.GetValue (i));
+                }
+                return size;
             }
-            return 0;
+
+            throw new Exception ("unknown size of type " + obj.GetType ().Name);
         }
     }
 
     public class HeapTrackerString : HeapTrackerBase {
-        public const int HT_STEP = 2;
-
         private string value;
 
         public HeapTrackerString (XMRInstAbstract inst) : base (inst) { }
@@ -115,7 +138,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public static int Size (string str)
         {
-            return (str == null) ? 0 : str.Length * HT_STEP;
+            return (str == null) ? 0 : str.Length * HeapTrackerObject.HT_CHAR;
         }
     }
 }

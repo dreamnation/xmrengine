@@ -1918,7 +1918,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 			CompValuTemp indexVar = new CompValuTemp (new TokenTypeInt (forEachStmt), this);
 			ScriptMyLabel loopLabel = ilGen.DefineLabel ("foreachloop_" + forEachStmt.Unique);
-			ScriptMyLocal objectVar = ((keyLVal == null) || (valLVal == null)) ? ilGen.DeclareLocal (typeof (object), "foreachobj_" + forEachStmt.Unique) : null;
 
 			// indexVar = 0
 			ilGen.Emit (forEachStmt, OpCodes.Ldc_I4_0);

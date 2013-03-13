@@ -283,7 +283,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * So strip off any LSL-ness from the types.
          * We also deep-strip any given lists used as keys (multi-dimensional arrays).
          */
-        private object FixKey (object key)
+        public object FixKey (object key)
         {
             if (key is LSL_Integer) return (int)(LSL_Integer)key;
             if (key is LSL_Float)   return (SCRIPTFLOAT)(LSL_Float)key;
@@ -387,102 +387,111 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (av.z > bv.z) return  1;
             return 0;
         }
+    }
+
+    /**
+     * @brief Lists used as keys must be sanitized first.
+     *        List gets converted to an object[] and each element is converted from LSL_ types to system types where possible.
+     *        And we also need an equality operator that compares the values of all elements of the list, not just the lengths.
+     *        Note that just like LSL_Lists, we consider these objects to be immutable, so they can be directly used as keys in
+     *        the dictionary as they don't ever change.
+     */
+    public class XMRArrayListKey {
+        private XMR_Array array;
+        private LSL_List original;
+        private object[] cleaned;
+        private int length;
+        private int hashCode;
 
         /**
-         * @brief Lists used as keys must be sanitized first.
-         *        List gets converted to an object[] and each element is converted from LSL_ types to system types where possible.
-         *        And we also need an equality operator that compares the values of all elements of the list, not just the lengths.
-         *        Note that just like LSL_Lists, we consider these objects to be immutable, so they can be directly used as keys in
-         *        the dictionary as they don't ever change.
+         * @brief Construct a sanitized object[] from a list.
+         *        Also save the original list in case we need it later.
          */
-        private class XMRArrayListKey {
-            private XMR_Array array;
-            private LSL_List original;
-            private object[] cleaned;
-            private int length;
-            private int hashCode;
+        public XMRArrayListKey (LSL_List key, XMR_Array array)
+        {
+            this.array = array;
+            original = key;
+            object[] given = key.Data;
+            int len  = given.Length;
+            length   = len;
+            cleaned  = new object[len];
+            int hc   = len;
+            for (int i = 0; i < len; i ++) {
+                object v   = array.FixKey (given[i]);
+                hc        += hc + ((hc < 0) ? 1 : 0);
+                hc        ^= v.GetHashCode ();
+                cleaned[i] = v;
+            }
+            hashCode = hc;
+        }
 
-            /**
-             * @brief Construct a sanitized object[] from a list.
-             *        Also save the original list in case we need it later.
-             */
-            public XMRArrayListKey (LSL_List key, XMR_Array array)
-            {
-                this.array = array;
-                original = key;
-                object[] given = key.Data;
-                int len  = given.Length;
-                length   = len;
-                cleaned  = new object[len];
-                int hc   = len;
-                for (int i = 0; i < len; i ++) {
-                    object v   = array.FixKey (given[i]);
-                    hc        += hc + ((hc < 0) ? 1 : 0);
-                    hc        ^= v.GetHashCode ();
-                    cleaned[i] = v;
+        /**
+         * @brief Get heap tracking size.
+         */
+        public int Size {
+            get {
+                return original.Size;
+            }
+        }
+
+        /**
+         * @brief See if the given object is an XMRArrayListKey and every value is equal to our own.
+         */
+        public override bool Equals (object o)
+        {
+            if (!(o is XMRArrayListKey)) return false;
+            XMRArrayListKey a = (XMRArrayListKey)o;
+            int len = a.length;
+            if (len != length) return false;
+            if (a.hashCode != hashCode) return false;
+            for (int i = 0; i < len; i ++) {
+                if (!cleaned[i].Equals (a.cleaned[i])) return false;
+            }
+            return true;
+        }
+
+        /**
+         * @brief Get an hash code.
+         */
+        public override int GetHashCode ()
+        {
+            return hashCode;
+        }
+
+        /**
+         * @brief Compare for key sorting.
+         */
+        public int Compare (XMRArrayListKey x, XMRArrayListKey y)
+        {
+            int j = x.length - y.length;
+            if (j == 0) {
+                for (int i = 0; i < x.length; i ++) {
+                    j = array.Compare (x.cleaned[i], y.cleaned[i]);
+                    if (j != 0) break;
                 }
-                hashCode = hc;
             }
+            return j;
+        }
 
-            /**
-             * @brief See if the given object is an XMRArrayListKey and every value is equal to our own.
-             */
-            public override bool Equals (object o)
-            {
-                if (!(o is XMRArrayListKey)) return false;
-                XMRArrayListKey a = (XMRArrayListKey)o;
-                int len = a.length;
-                if (len != length) return false;
-                if (a.hashCode != hashCode) return false;
-                for (int i = 0; i < len; i ++) {
-                    if (!cleaned[i].Equals (a.cleaned[i])) return false;
-                }
-                return true;
-            }
+        /**
+         * @brief Get the original LSL_List we were built from.
+         */
+        public LSL_List GetOriginal ()
+        {
+            return original;
+        }
 
-            /**
-             * @brief Get an hash code.
-             */
-            public override int GetHashCode ()
-            {
-                return hashCode;
+        /**
+         * @brief Debugging
+         */
+        public override string ToString ()
+        {
+            StringBuilder sb = new StringBuilder ();
+            for (int i = 0; i < length; i ++) {
+                if (i > 0) sb.Append (',');
+                sb.Append (cleaned[i].ToString ());
             }
-
-            /**
-             * @brief Compare for key sorting.
-             */
-            public int Compare (XMRArrayListKey x, XMRArrayListKey y)
-            {
-                int j = x.length - y.length;
-                if (j == 0) {
-                    for (int i = 0; i < x.length; i ++) {
-                        j = array.Compare (x.cleaned[i], y.cleaned[i]);
-                        if (j != 0) break;
-                    }
-                }
-                return j;
-            }
-
-            /**
-             * @brief Get the original LSL_List we were built from.
-             */
-            public LSL_List GetOriginal ()
-            {
-                return original;
-            }
-
-            /**
-             * @brief Debugging
-             */
-            public override string ToString ()
-            {
-                StringBuilder sb = new StringBuilder ();
-                for (int i = 0; i < length; i ++) {
-                    if (i > 0) sb.Append (',');
-                    sb.Append (cleaned[i].ToString ());
-                }
-                return sb.ToString ();
-            }
+            return sb.ToString ();
         }
     }
 }
