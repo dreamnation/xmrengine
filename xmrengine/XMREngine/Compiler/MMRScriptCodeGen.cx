@@ -113,6 +113,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static MethodInfo scriptRestoreCatchExceptionUnwrap = GetStaticMethod (typeof (ScriptRestoreCatchException), "Unwrap", new Type[] { typeof (object) });
 		private static MethodInfo catchTryCastToSDTypeMethodInfo = GetStaticMethod (typeof (XMRInstAbstract), "XMRSDTypeCatchTryCastToSDType", new Type[] { typeof (object), typeof (XMRInstAbstract), typeof (int) });
 		private static MethodInfo thrownExceptionWrapMethodInfo  = GetStaticMethod (typeof (ScriptThrownException), "Wrap", new Type[] { typeof (object) });
+		private static MethodInfo heapTrackerListPush   = typeof (HeapTrackerList).  GetMethod ("Push", new Type[0]);
+		private static MethodInfo heapTrackerLSLStrPush = typeof (HeapTrackerLSLStr).GetMethod ("Push", new Type[0]);
+		private static MethodInfo heapTrackerStringPush = typeof (HeapTrackerString).GetMethod ("Push", new Type[0]);
 
 		public static bool CodeGen (TokenScript tokenScript, BinaryWriter objFileWriter, string sourceHash)
 		{
@@ -907,6 +910,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				 * Copy from the ehArgs[i] element to the temp var.
 				 * Cast as needed, there is a lot of craziness like OpenMetaverse.Quaternion.
 				 */
+				local.PopPre (this, argVar.name);
 				PushXMRInst ();                                          // instance
 				ilGen.Emit (declFunc, OpCodes.Ldfld, ehArgsFieldInfo);   // instance.ehArgs (array of objects)
 				ilGen.Emit (declFunc, OpCodes.Ldc_I4, i);                // array index = i
@@ -937,7 +941,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					ilGen.Emit (declFunc, OpCodes.Call, ehArgUnwrapVector);
 					stkTokType = tokenTypeVec;                       // stack has a type 'LSL_Vector' on it now
 				}
-				local.Pop (this, argVar.name, stkTokType);               // pop stack type into argtype
+				local.PopPost (this, argVar.name, stkTokType);           // pop stack type into argtype
 			}
 
 			/*
@@ -1171,6 +1175,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			openCallLabel = null;
 
 			/*
+			 * Alloc stack space for local vars.
+			 */
+			AllocLocalVarStackSpace ();
+
+			/*
 			 * Any return statements inside function body jump to this label
 			 * after putting return value in __retval.
 			 */
@@ -1264,11 +1273,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					ifiFuncLocn.CallPost (this, ifiFunc);
 				}
 			}
-
-			/*
-			 * Alloc stack space for local vars.
-			 */
-			AllocLocalVarStackSpace ();
 
 			/*
 			 * See if time to suspend in case they are doing a loop with recursion.
@@ -1379,8 +1383,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				 */
 				CompValuLocalVar localLoc = new CompValuLocalVar (localVar.type, localVar.name.val, this);
 				localVar.location = localLoc;
+				localLoc.PopPre (this, localVar.name);
 				PushVarDefaultValue (localVar);
-				localLoc.Pop (this, localVar.name);
+				localLoc.PopPost (this, localVar.name);
 			}
 		}
 
@@ -1441,7 +1446,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ilGen.Emit (curDeclFunc, OpCodes.Dup);
 				ilGen.Emit (curDeclFunc, OpCodes.Ldc_I4, i ++);
 				ilGen.Emit (curDeclFunc, OpCodes.Ldloc, lcl);
-				if (lcl.type.IsValueType) ilGen.Emit (curDeclFunc, OpCodes.Box, lcl.type);
+				Type t = lcl.type;
+				if (t == typeof (HeapTrackerList)) {
+					ilGen.Emit (curDeclFunc, OpCodes.Call, heapTrackerListPush);
+					t = typeof (LSL_List);
+				}
+				if (t == typeof (HeapTrackerLSLStr)) {
+					ilGen.Emit (curDeclFunc, OpCodes.Call, heapTrackerLSLStrPush);
+					t = typeof (LSL_String);
+				}
+				if (t == typeof (HeapTrackerString)) {
+					ilGen.Emit (curDeclFunc, OpCodes.Call, heapTrackerStringPush);
+					t = typeof (string);
+				}
+				if (t.IsValueType) {
+					ilGen.Emit (curDeclFunc, OpCodes.Box, t);
+				}
 				ilGen.Emit (curDeclFunc, OpCodes.Stelem_Ref);
 			}
 
@@ -1508,6 +1528,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Restore local and temp values from object array, unboxing as needed.
 			 */
 			foreach (ScriptMyLocal lcl in activeTemps) {
+				Type t = lcl.type;
+				Type u = t;
+				if (t == typeof (HeapTrackerList))   u = typeof (LSL_List);
+				if (t == typeof (HeapTrackerLSLStr)) u = typeof (LSL_String);
+				if (t == typeof (HeapTrackerString)) u = typeof (string);
+				if (u != t) {
+					ilGen.Emit (curDeclFunc, OpCodes.Ldloc, lcl);
+				}
 				ilGen.Emit (curDeclFunc, OpCodes.Ldloc, objArray);
 				ilGen.Emit (curDeclFunc, OpCodes.Ldc_I4, i ++);
 				ilGen.Emit (curDeclFunc, OpCodes.Ldelem_Ref);
@@ -1521,8 +1549,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ilGen.Emit (curDeclFunc, OpCodes.Dup);
 				ilGen.Emit (curDeclFunc, OpCodes.Call, consoleWriteMethodInfo);
 #endif
-				if (lcl.type.IsValueType) ilGen.Emit (curDeclFunc, OpCodes.Unbox_Any, lcl.type);
-				ilGen.Emit (curDeclFunc, OpCodes.Stloc, lcl);
+				if (u.IsValueType) ilGen.Emit (curDeclFunc, OpCodes.Unbox_Any, u);
+				if (u != t) {
+					ilGen.Emit (curDeclFunc, OpCodes.Call, 
+					            t.GetMethod ("Pop", new Type[] { u }));
+				} else {
+					ilGen.Emit (curDeclFunc, OpCodes.Stloc, lcl);
+				}
 			}
 #if DEBUG_STACKCAPRES
 			ilGen.Emit (curDeclFunc, OpCodes.Ldstr, "\n");

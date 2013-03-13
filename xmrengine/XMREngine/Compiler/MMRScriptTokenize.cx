@@ -1614,6 +1614,26 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         {
             throw new Exception ("not implemented for " + ToString () + " (" + GetType () + ")");
         }
+
+        /**
+         * @brief Get heap tracking type.
+         */
+        public virtual Type ToHeapTrackerType ()
+        {
+            return null;
+        }
+        public virtual ConstructorInfo GetHeapTrackerCtor ()
+        {
+            return null;
+        }
+        public virtual MethodInfo GetHeapTrackerPopMeth ()
+        {
+            return null;
+        }
+        public virtual MethodInfo GetHeapTrackerPushMeth ()
+        {
+            return null;
+        }
     }
 
     public class TokenTypeArray : TokenType {
@@ -1702,6 +1722,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
     }
     public class TokenTypeList : TokenType {
         private static readonly FieldInfo iarListsFieldInfo = typeof (XMRInstArrays).GetField ("iarLists");
+        private static readonly ConstructorInfo htListCtor  = typeof (HeapTrackerList).GetConstructor (new Type [] { typeof (XMRInstAbstract) });
+        private static readonly MethodInfo htListPopMeth    = typeof (HeapTrackerList).GetMethod ("Pop", new Type[] { typeof (LSL_List) });
+        private static readonly MethodInfo htListPushMeth   = typeof (HeapTrackerList).GetMethod ("Push", new Type[0]);
 
         public TokenTypeList (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
         public TokenTypeList (Token original) : base (original) { }
@@ -1712,6 +1735,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             declVar.vTableArray = iarListsFieldInfo;
             declVar.vTableIndex = arSizes.iasLists ++;
         }
+        public override Type ToHeapTrackerType () { return typeof (HeapTrackerList); }
+        public override ConstructorInfo GetHeapTrackerCtor () { return htListCtor; }
+        public override MethodInfo GetHeapTrackerPopMeth ()   { return htListPopMeth; }
+        public override MethodInfo GetHeapTrackerPushMeth ()  { return htListPushMeth; }
     }
     public class TokenTypeObject : TokenType {
         private static readonly FieldInfo iarObjectsFieldInfo = typeof (XMRInstArrays).GetField ("iarObjects");
@@ -1741,6 +1768,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
     }
     public class TokenTypeStr : TokenType {
         private static readonly FieldInfo iarStringsFieldInfo = typeof (XMRInstArrays).GetField ("iarStrings");
+        private static readonly ConstructorInfo htStringCtor  = typeof (HeapTrackerString).GetConstructor (new Type [] { typeof (XMRInstAbstract) });
+        private static readonly MethodInfo htStringPopMeth    = typeof (HeapTrackerString).GetMethod ("Pop", new Type[] { typeof (string) });
+        private static readonly MethodInfo htStringPushMeth   = typeof (HeapTrackerString).GetMethod ("Push", new Type[0]);
 
         public TokenTypeStr (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
         public TokenTypeStr (Token original) : base (original) { }
@@ -1751,6 +1781,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             declVar.vTableArray = iarStringsFieldInfo;
             declVar.vTableIndex = arSizes.iasStrings ++;
         }
+        public override Type ToHeapTrackerType () { return typeof (HeapTrackerString); }
+        public override ConstructorInfo GetHeapTrackerCtor () { return htStringCtor; }
+        public override MethodInfo GetHeapTrackerPopMeth ()   { return htStringPopMeth; }
+        public override MethodInfo GetHeapTrackerPushMeth ()  { return htStringPushMeth; }
     }
     public class TokenTypeUndef : TokenType {  // for the 'undef' constant, ie, null object pointer
         public TokenTypeUndef (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
@@ -1794,8 +1828,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public override Type ToLSLWrapType () { return typeof (LSL_Key); }
     }
     public class TokenTypeLSLString : TokenTypeStr {
+        private static readonly ConstructorInfo htLSLStrCtor = typeof (HeapTrackerLSLStr).GetConstructor (new Type [] { typeof (XMRInstAbstract) });
+        private static readonly MethodInfo htLSLStrPopMeth   = typeof (HeapTrackerLSLStr).GetMethod ("Pop", new Type[] { typeof (LSL_String) });
+        private static readonly MethodInfo htLSLStrPushMeth  = typeof (HeapTrackerLSLStr).GetMethod ("Push", new Type[0]);
+
         public TokenTypeLSLString (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
         public TokenTypeLSLString (Token original) : base (original) { }
         public override Type ToLSLWrapType () { return typeof (LSL_String); }
+        public override Type ToHeapTrackerType () { return typeof (HeapTrackerLSLStr); }
+        public override ConstructorInfo GetHeapTrackerCtor () { return htLSLStrCtor; }
+        public override MethodInfo GetHeapTrackerPopMeth ()   { return htLSLStrPopMeth; }
+        public override MethodInfo GetHeapTrackerPushMeth ()  { return htLSLStrPushMeth; }
     }
 }

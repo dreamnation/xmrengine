@@ -1,0 +1,93 @@
+/***************************************************\
+ *  COPYRIGHT 2009, Mike Rieker, Beverly, MA, USA  *
+ *  All rights reserved.                           *
+\***************************************************/
+
+using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
+using OpenSim.Region.ScriptEngine.XMREngine;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
+using System.Reflection.Emit;
+
+#include "lsltypes.h"
+
+namespace OpenSim.Region.ScriptEngine.XMREngine
+{
+    public class HeapTrackerBase {
+        private int usage;
+        private XMRInstAbstract instance;
+
+        public HeapTrackerBase (XMRInstAbstract inst)
+        {
+            if (inst == null) throw new ArgumentNullException ("inst");
+            instance = inst;
+        }
+
+        ~HeapTrackerBase ()
+        {
+            instance.UpdateHeapUse (usage, 0);
+        }
+
+        protected void NewUse (int newuse)
+        {
+            usage = instance.UpdateHeapUse (usage, newuse);
+        }
+    }
+
+    public class HeapTrackerList : HeapTrackerBase {
+        private LSL_List value;
+
+        public HeapTrackerList (XMRInstAbstract inst) : base (inst) { }
+
+        public void Pop (LSL_List lis)
+        {
+            NewUse ((lis == null) ? 0 : lis.Size);
+            value = lis;
+        }
+
+        public LSL_List Push ()
+        {
+            return value;
+        }
+    }
+
+    public class HeapTrackerLSLStr : HeapTrackerBase {
+        public const int HT_STEP = 2;
+
+        private LSL_String value;
+
+        public HeapTrackerLSLStr (XMRInstAbstract inst) : base (inst) { }
+
+        public void Pop (LSL_String str)
+        {
+            NewUse ((str.m_string == null) ? 0 : str.m_string.Length * HT_STEP);
+            value = str;
+        }
+
+        public LSL_String Push ()
+        {
+            return value;
+        }
+    }
+
+    public class HeapTrackerString : HeapTrackerBase {
+        public const int HT_STEP = 2;
+
+        private string value;
+
+        public HeapTrackerString (XMRInstAbstract inst) : base (inst) { }
+
+        public void Pop (string str)
+        {
+            NewUse ((str == null) ? 0 : str.Length * HT_STEP);
+            value = str;
+        }
+
+        public string Push ()
+        {
+            return value;
+        }
+    }
+}

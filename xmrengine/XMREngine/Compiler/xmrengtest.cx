@@ -917,8 +917,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     Console.WriteLine (msgPrefix + "Script called llDie()");
                     Environment.Exit (0);
                 } catch (Exception e) {
-                    Console.WriteLine (msgPrefix + "Uncaught exception in script: " + 
-                            inst.XMRExceptionFixString (e.ToString (), true));
+                    Console.WriteLine (msgPrefix + "Uncaught exception in script");
+                    Console.WriteLine (inst.XMRExceptionFixString (e.ToString (), true));
+                    Console.WriteLine (e.ToString ());
                     Environment.Exit (3);
                 }
             }
@@ -1022,15 +1023,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /*********************\
          *  XMRInstAbstract  *
         \*********************/
-
-        public override int xmrHeapLeft ()
-        {
-            return 49900;
-        }
-        public override int xmrHeapUsed ()
-        {
-            return   100;
-        }
 
         public override void CheckRun (int line)
         {

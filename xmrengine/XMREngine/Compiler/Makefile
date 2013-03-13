@@ -21,6 +21,7 @@ SADLLFILES = \
 	MMRScriptTypeCast.cs \
 	MMRScriptVarDict.cs \
 	XMRArray.cs \
+	XMRHeapTracker.cs \
 	XMRInstAbstract.cs \
 	XMRSDTypeClObj.cs
 
@@ -56,6 +57,7 @@ SECRETSRCFILES = \
 	MMRScriptTypeCast_sa_secret.cs \
 	MMRScriptVarDict_sa_secret.cs \
 	XMRArray_sa_secret.cs \
+	XMRHeapTracker_sa_secret.cs \
 	XMRInstAbstract_sa_secret.cs \
 	XMRSDTypeClObj_sa_secret.cs
 
@@ -79,6 +81,7 @@ TESTSRCFILES = \
 	MMRScriptVarDict_tester.cs \
 	XMRArray_tester.cs \
 	xmrengtest_$(COMMITHASH)_$(COMMITCLEAN)_tester.cs \
+	XMRHeapTracker_tester.cs \
 	XMRInstAbstract_tester.cs \
 	XMRSDTypeClObj_tester.cs
 

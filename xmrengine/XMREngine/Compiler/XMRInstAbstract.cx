@@ -196,8 +196,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public abstract void CheckRun (int line);
         public abstract int  xmrStackLeft ();
-        public abstract int  xmrHeapLeft ();    // aliased in script as llGetFreeMemory()
-        public abstract int  xmrHeapUsed ();    // aliased in script as llGetUsedMemory()
 
         [xmrMethodIsComplexAttribute] // calls CheckRun()
         [xmrMethodIsNoisyAttribute]   // calls Stub<somethingorother>()
@@ -217,6 +215,25 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          *  Functions what don't require runtime support  *
          *  beyond what the compiler provides.            *
         \**************************************************/
+
+        private int heapLimit = 0x100000;
+        private int heapUsed;
+
+        public int UpdateHeapUse (int olduse, int newuse)
+        {
+            int newused = heapUsed + newuse - olduse;
+            if (newused > heapLimit) throw new OutOfHeapException ();
+            heapUsed = newused;
+            return newuse;
+        }
+        public int xmrHeapLeft ()
+        {
+            return heapLimit - heapUsed;
+        }
+        public int xmrHeapUsed ()
+        {
+            return heapUsed;
+        }
 
         /**
          * @brief Called during CallMode_SAVE to create a stackframe save object that saves 
@@ -1495,4 +1512,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     // tagged with this attribute so the compiler will know they return type key and
     // not type string.
     public class xmrMethodReturnsKeyAttribute : Attribute { }
+
+    public class OutOfHeapException : Exception { }
 }

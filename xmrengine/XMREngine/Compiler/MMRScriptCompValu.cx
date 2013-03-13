@@ -1240,33 +1240,65 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 	// The value is kept in a script-addressable local variable
 	public class CompValuLocalVar : CompValu {
-		public ScriptMyLocal localBuilder;
+		private static int htpopseq = 0;
+
+		private ScriptMyLocal localBuilder;
 
 		public CompValuLocalVar (TokenType type, string name, ScriptCodeGen scg) : base (type)
 		{
-			this.localBuilder = scg.ilGen.DeclareLocal (ToSysType(), name);
+			if (type.ToHeapTrackerType () != null) {
+				this.localBuilder = scg.ilGen.DeclareLocal (type.ToHeapTrackerType (), name);
+				scg.PushXMRInst ();
+				scg.ilGen.Emit (type, OpCodes.Newobj, type.GetHeapTrackerCtor ());
+				scg.ilGen.Emit (type, OpCodes.Stloc, localBuilder);
+			} else {
+				this.localBuilder = scg.ilGen.DeclareLocal (ToSysType (), name);
+			}
 		}
 
 		public override void PushVal (ScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Ldloc, localBuilder);
+			if (type.ToHeapTrackerType () != null) {
+				scg.ilGen.Emit (errorAt, OpCodes.Call, type.GetHeapTrackerPushMeth ());
+			}
 		}
 		public override void PushRef (ScriptCodeGen scg, Token errorAt)
 		{
-			scg.ilGen.Emit (errorAt, OpCodes.Ldloca, localBuilder);
+			if (type.ToHeapTrackerType () != null) {
+				scg.ErrorMsg (errorAt, "can't take ref of heap-tracked type " + type.ToString ());
+				scg.ilGen.Emit (errorAt, OpCodes.Ldnull);
+			} else {
+				scg.ilGen.Emit (errorAt, OpCodes.Ldloca, localBuilder);
+			}
+		}
+
+		public override void PopPre (ScriptCodeGen scg, Token errorAt)
+		{
+			if (type.ToHeapTrackerType () != null) {
+				scg.ilGen.Emit (errorAt, OpCodes.Ldloc, localBuilder);
+			}
 		}
 		public override void PopPost (ScriptCodeGen scg, Token errorAt)
 		{
-			scg.ilGen.Emit (errorAt, OpCodes.Stloc, localBuilder);
+			if (type.ToHeapTrackerType () != null) {
+				scg.ilGen.Emit (errorAt, OpCodes.Call, type.GetHeapTrackerPopMeth ());
+			} else {
+				scg.ilGen.Emit (errorAt, OpCodes.Stloc, localBuilder);
+			}
 		}
-		public void Pop (ScriptCodeGen scg, Token errorAt, TokenType stackType)
-		{
-			TypeCast.CastTopOfStack (scg, errorAt, stackType, this.type, false);
-			this.PopPost (scg, errorAt);  // in case PopPost() overridden eg by CompValuVoid
-		}
+
 		public void Pop (ScriptCodeGen scg, Token errorAt)
 		{
-			this.PopPost (scg, errorAt);  // in case PopPost() overridden eg by CompValuVoid
+			if (type.ToHeapTrackerType () != null) {
+				ScriptMyLocal htpop = scg.ilGen.DeclareLocal (type.ToSysType (), (++ htpopseq).ToString () + "$htpop");
+				scg.ilGen.Emit (errorAt, OpCodes.Stloc, htpop);
+				scg.ilGen.Emit (errorAt, OpCodes.Ldloc, localBuilder);
+				scg.ilGen.Emit (errorAt, OpCodes.Ldloc, htpop);
+				scg.ilGen.Emit (errorAt, OpCodes.Call, type.GetHeapTrackerPopMeth ());
+			} else {
+				scg.ilGen.Emit (errorAt, OpCodes.Stloc, localBuilder);
+			}
 		}
 
 		// non-trivial because it needs to be copied into a temp
