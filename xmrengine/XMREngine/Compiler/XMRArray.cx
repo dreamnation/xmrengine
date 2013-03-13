@@ -30,6 +30,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private int arrayValid;                               // number of elements in 'array' that have been filled in
         private KeyValuePair<object, object>[] array;         // list of kvp's that have been returned by ForEach() since last modification
         private XMRInstAbstract inst;                         // script instance debited with heap use
+        private int heapUse;                                  // current heap use debit amount
 
         public static TokenTypeSDTypeDelegate countDelegate = new TokenTypeSDTypeDelegate (new TokenTypeInt    (null), new TokenType[0]);
         public static TokenTypeSDTypeDelegate clearDelegate = new TokenTypeSDTypeDelegate (new TokenTypeVoid   (null), new TokenType[0]);
@@ -40,6 +41,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             this.inst = inst;
             dnary = new SortedDictionary<object, object> (this);  // IComparer<object>
+            heapUse = inst.UpdateHeapUse (0, EMPTYHEAP);
+        }
+
+        ~XMR_Array ()
+        {
+            heapUse = inst.UpdateHeapUse (heapUse, 0);
         }
 
         public static TokenType GetRValType (TokenName name)
@@ -67,6 +74,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public void SetByKey(object key, object value)
         {
             key = FixKey (key);
+
+            /*
+             * Update heap use throwing an exception on failure
+             * before making any changes to the array.
+             */
+            int keysize = HeapTrackerObject.Size (key);
+            int newheapuse = heapUse;
+            object oldval;
+            if (dnary.TryGetValue (key, out oldval)) {
+                newheapuse -= keysize + HeapTrackerObject.Size (oldval);
+            }
+            if (value != null) {
+                newheapuse += keysize + HeapTrackerObject.Size (value);
+            }
+            heapUse = inst.UpdateHeapUse (heapUse, newheapuse);
 
             /*
              * Save new value in array, replacing one of same key if there.
@@ -126,6 +148,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public void __pub_clear ()
         {
+            heapUse = inst.UpdateHeapUse (heapUse, EMPTYHEAP);
             dnary.Clear ();
             enumrValid = false;
             arrayValid = 0;
@@ -135,7 +158,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /**
          * @brief return number of elements in the array.
          */
-        public int __pub_count () {
+        public int __pub_count ()
+        {
             return dnary.Count;
         }
 
@@ -147,10 +171,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public object __pub_index (int number)
         {
-            object key = null;
-            object val = null;
-            ForEach (number, ref key, ref val);
-            return key;
+            return ForEach (number) ? UnfixKey (array[number].Key) : null;
         }
 
         /**
@@ -161,21 +182,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public object __pub_value (int number)
         {
-            object key = null;
-            object val = null;
-            ForEach (number, ref key, ref val);
-            return val;
+            return ForEach (number) ? array[number].Value : null;
         }
 
         /**
          * @brief Called in each iteration of a 'foreach' statement.
          * @param number = index of element to retrieve (0 = first one)
          * @returns false: element does not exist
-         *           true: element exists:
-         *                 key = key of retrieved element
-         *                 val = value of retrieved element
+         *           true: element exists
          */
-        public bool ForEach (int number, ref object key, ref object val)
+        private bool ForEach (int number)
         {
             /*
              * If we don't have any array, we can't have ever done
@@ -208,14 +224,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * If we don't have that many elements, return end-of-array status.
              */
-            if (arrayValid <= number) return false;
-
-            /*
-             * Return the element values.
-             */
-            key = UnfixKey (array[number].Key);
-            val = array[number].Value;
-            return true;
+            return number < arrayValid;
         }
 
         /**
@@ -245,6 +254,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public delegate object RecvArrayObjDelegate ();
         public void RecvArrayObj (RecvArrayObjDelegate recvObj)
         {
+            heapUse = inst.UpdateHeapUse (heapUse, EMPTYHEAP);
+
             /*
              * Cause any enumeration to refill the array from the sorted dictionary.
              * Since it is a sorted dictionary, any enumerations will be in the same 
@@ -261,6 +272,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             while (-- count >= 0) {
                 object key = FixKey (recvObj ());
                 object val = recvObj ();
+                int htuse = HeapTrackerObject.Size (key) + HeapTrackerObject.Size (val);
+                heapUse = inst.UpdateHeapUse (heapUse, heapUse + htuse);
                 dnary.Add (key, val);
             }
         }
