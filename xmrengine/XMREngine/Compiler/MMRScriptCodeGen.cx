@@ -1547,7 +1547,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ilGen.Emit (curDeclFunc, OpCodes.Dup);
 				ilGen.Emit (curDeclFunc, OpCodes.Call, consoleWriteMethodInfo);
 #endif
-				if (u.IsValueType) ilGen.Emit (curDeclFunc, OpCodes.Unbox_Any, u);
+				if (u.IsValueType) {
+					ilGen.Emit (curDeclFunc, OpCodes.Unbox_Any, u);
+				} else if (u != typeof (object)) {
+					ilGen.Emit (curDeclFunc, OpCodes.Castclass, u);
+				}
 				if (u != t) {
 					ilGen.Emit (curDeclFunc, OpCodes.Call, 
 					            t.GetMethod ("Pop", new Type[] { u }));
