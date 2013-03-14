@@ -129,6 +129,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			new TokenDeclInline_Math    (ifd, "llTan(float)",         "Tan",   oneDoub);
 
 			/*
+			 * Quick call to get list length without generating useless temps.
+			 */
+			new TokenDeclInline_GetListLength (ifd);
+
+			/*
 			 * Something weird about the code generation for these calls, so they all have their own handwritten code generators.
 			 */
 			new TokenDeclInline_GetFreeMemory (ifd);
@@ -396,6 +401,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4, (int)System.MidpointRounding.AwayFromZero);
 			scg.ilGen.Emit (errorAt, OpCodes.Call, roundMethInfo);
 			result.Pop (scg, errorAt, new TokenTypeFloat (null));
+		}
+	}
+
+	public class TokenDeclInline_GetListLength : TokenDeclInline {
+
+		private static MethodInfo lengthMethInfo = typeof (LSL_List).GetMethod ("get_Length", new Type[0]);
+
+		public TokenDeclInline_GetListLength (VarDict ifd)
+				: base (ifd, false, "llGetListLength(list)", new TokenTypeInt (null)) { }
+
+		public override void CodeGen (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
+		{
+			args[0].PushVal (scg, errorAt, new TokenTypeList (errorAt));
+			scg.ilGen.Emit (errorAt, OpCodes.Call, lengthMethInfo);
+			result.Pop (scg, errorAt, new TokenTypeInt (errorAt));
 		}
 	}
 
