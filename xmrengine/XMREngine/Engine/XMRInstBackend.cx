@@ -237,6 +237,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_EventQueue.Remove (lln);
             m_EventCounts[evc1] --;
             Monitor.Exit (m_QueueLock);
+            m_InstEHEvent ++;
 
             /*
              * See if returnable or background event.
