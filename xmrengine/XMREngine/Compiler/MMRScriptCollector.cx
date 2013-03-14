@@ -2291,6 +2291,60 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				}
 
 				/*
+				 * Replace:
+				 *    ldloc v1
+				 *    stloc v2
+				 *    ld<anything> except ld<anything> v2
+				 *    ldloc v2
+				 *      ...v2 unreferenced hereafter
+				 * With:
+				 *    ld<anything> except ld<anything> v2
+				 *    ldloc v1
+				 */
+				for (GraphNode gn = firstLin; gn != null; gn = gn.nextLin) {
+
+					// check for 'ldloc v1' instruction
+					if (!(gn is GraphNodeEmitLocal)) continue;
+					GraphNodeEmitLocal ldlv1 = (GraphNodeEmitLocal)gn;
+					if (ldlv1.opcode != OpCodes.Ldloc) continue;
+
+					// check for 'stloc v2' instruction
+					if (!(ldlv1.nextLin is GraphNodeEmitLocal)) continue;
+					GraphNodeEmitLocal stlv2 = (GraphNodeEmitLocal)ldlv1.nextLin;
+					if (stlv2.opcode != OpCodes.Stloc) continue;
+
+					// check for 'ld<anything> except ld<anything> v2' instruction
+					if (!(stlv2.nextLin is GraphNodeEmit)) continue;
+					GraphNodeEmit ldany = (GraphNodeEmit)stlv2.nextLin;
+					if (!ldany.opcode.ToString ().StartsWith ("ld")) continue;
+					if ((ldany is GraphNodeEmitLocal) &&
+					    ((GraphNodeEmitLocal)ldany).myLocal == stlv2.myLocal) continue;
+
+					// check for 'ldloc v2' instruction
+					if (!(ldany.nextLin is GraphNodeEmitLocal)) continue;
+					GraphNodeEmitLocal ldlv2 = (GraphNodeEmitLocal)ldany.nextLin;
+					if (ldlv2.opcode != OpCodes.Ldloc) continue;
+					if (ldlv2.myLocal != stlv2.myLocal) continue;
+
+					// check that v2 is not needed after this at all
+					if (IsLocalNeededAfterThis (ldlv2, ldlv2.myLocal)) continue;
+
+					// make 'ld<anything>...' the first instruction
+					ldany.prevLin = ldlv1.prevLin;
+					ldany.prevLin.nextLin = ldany;
+
+					// make 'ldloc v1' the second instruction
+					ldany.nextLin = ldlv1;
+					ldlv1.prevLin = ldany;
+
+					// and make 'ldloc v1' the last instruction
+					ldlv1.nextLin = ldlv2.nextLin;
+					ldlv1.nextLin.prevLin = ldlv1;
+
+					didSomething = true;
+				}
+
+				/*
 				 * Remove all the stloc/ldloc that are back-to-back without the local
 				 * being needed afterwards.  If it is needed afterwards, replace the 
 				 * stloc/ldloc with dup/stloc.
