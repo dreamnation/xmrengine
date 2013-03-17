@@ -57,6 +57,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private IConfig m_Config;
         private string m_ScriptBasePath;
         private bool m_Enabled = false;
+        public  bool m_StartProcessing = false;
         public  bool m_UseSourceHashCode = false;
         private Dictionary<UUID, ArrayList> m_ScriptErrors =
                 new Dictionary<UUID, ArrayList>();
@@ -82,7 +83,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * Various instance lists:
          *   m_InstancesDict = all known instances
          *                     find an instance given its itemID
-         *   m_LoadQueue  = instances that have yet to be compiled and loaded
          *   m_StartQueue = instances that have just had event queued to them
          *   m_YieldQueue = instances that are ready to run right now
          *   m_SleepQueue = instances that have m_SleepUntil valid
@@ -90,7 +90,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         private Dictionary<UUID, XMRInstance> m_InstancesDict =
                 new Dictionary<UUID, XMRInstance>();
-        private Queue<XMRInstance> m_LoadQueue = new Queue<XMRInstance> ();
         public  Queue<XMRInstance> m_MOEHQueue = new Queue<XMRInstance> ();
         public  Queue<XMRInstance> m_MIEHQueue = new Queue<XMRInstance> ();
         public  XMRInstQueue m_StartQueue = new XMRInstQueue();
@@ -170,6 +169,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             numThreadScriptWorkers = (HAVE_MMRUTHREADS != 0) ? m_Config.GetInt ("NumThreadScriptWorkers", 1) : 1;
             m_ScriptThreads        = new XMRScriptThread[numThreadScriptWorkers];
 
+            for (int i = 0; i < numThreadScriptWorkers; i ++) {
+                m_ScriptThreads[i] = new XMRScriptThread(this);
+            }
+            m_SleepThread = new Thread(RunSleepThread);
+            m_SliceThread = new Thread(RunSliceThread);
+            m_SleepThread.Start();
+            m_SliceThread.Start();
+
             /*
              * Verify that our ScriptEventCode's match OpenSim's scriptEvent's.
              */
@@ -230,8 +237,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     RunTest);
 
             TCP("[XMREngine]: Initialize successful");
-
-            m_InitializedAt = DateTime.UtcNow.Ticks;
         }
 
         public void AddRegion(Scene scene)
@@ -255,6 +260,29 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_Scene.EventManager.OnRezScript += OnRezScript;
 
             m_Scene.StackModuleInterface<IScriptModule>(this);
+
+            m_InitializedAt = DateTime.UtcNow.Ticks;
+            StartComplete (null, null);
+        }
+
+        /**
+         * @brief OpenSim ignores the TriggerEmptyScriptCompileQueue() call if we call it when we
+         *        load and compile the scripts as part of OnRezScript() so we just call it a few
+         *        seconds after startup.  Seems to be enough time for the 'Non-script portion of '
+         *        'startup took 0m 6s.  PLEASE WAIT FOR LOGINS TO BE ENABLED ON REGIONS ONCE SCRIPTS '
+         *        'HAVE STARTED.' message to be displayed.  Yeah this is quality stuff here...
+         */
+        private void StartComplete (object source, ElapsedEventArgs eea)
+        {
+            int delayms = m_Config.GetInt ("StartDelayMs", 10000);  // 10sec
+            long now = DateTime.UtcNow.Ticks - (long)delayms * 10000;
+            if (m_InitializedAt > now) {
+                System.Timers.Timer startCompleteTimer = new System.Timers.Timer((m_InitializedAt - now) / 10000);
+                startCompleteTimer.Elapsed += StartComplete;
+                startCompleteTimer.Start();
+            } else {
+                m_Scene.EventManager.TriggerEmptyScriptCompileQueue (0, "");
+            }
         }
 
         private void OneTimeLateInitialization ()
@@ -647,14 +675,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void StartProcessing()
         {
-            TCP("[XMREngine]: XMREngine.StartProcessing()");
+            m_StartProcessing = true;
             for (int i = 0; i < numThreadScriptWorkers; i ++) {
-                m_ScriptThreads[i] = new XMRScriptThread(this);
+                XMRScriptThread.WakeUpOne();
             }
-            m_SleepThread = new Thread(RunSleepThread);
-            m_SliceThread = new Thread(RunSliceThread);
-            m_SleepThread.Start();
-            m_SliceThread.Start();
         }
 
         public void Close()
@@ -1070,6 +1094,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             TCP("[XMREngine]: OnRezScript(...,{0},...)", itemID.ToString());
 
+            m_InitializedAt = DateTime.UtcNow.Ticks;
+
             /*
              * Assume script uses the default engine, whatever that is.
              */
@@ -1164,35 +1190,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             lock (m_ScriptErrors) {
                 m_ScriptErrors.Remove (instance.m_ItemID);
             }
-            lock (m_LoadQueue) {
-                if (m_LoadQueue.Count == 0) {
-                    new System.Threading.Thread (LoadThread).Start ();
-                }
-                m_LoadQueue.Enqueue (instance);
-            }
-        }
-
-        /**
-         * @brief This runs as a thread whenever there are new scripts to be compiled and loaded.
-         */
-        private void LoadThread ()
-        {
-            long when = DateTime.UtcNow.Ticks - 100000000;  // 10sec
-            if (when < m_InitializedAt) {
-                long msec = (m_InitializedAt - when) / 10000;
-                m_log.Debug ("[XMREngine]: LoadThread sleeping for " + msec + " mS");
-                Thread.Sleep ((int)msec);
-            }
-            Monitor.Enter (m_LoadQueue);
-            while (m_LoadQueue.Count > 0) {
-                XMRInstance instance = m_LoadQueue.Peek ();
-                Monitor.Exit (m_LoadQueue);
-                LoadThreadWork (instance);
-                Monitor.Enter (m_LoadQueue);
-                m_LoadQueue.Dequeue ();
-            }
-            Monitor.Exit (m_LoadQueue);
-            m_Scene.EventManager.TriggerEmptyScriptCompileQueue (0, "");
+            LoadThreadWork (instance);
         }
 
         /**
@@ -1246,7 +1244,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
                 lock (m_ScriptErrors) {
                     m_ScriptErrors[instance.m_ItemID] = errors;
-                    Monitor.PulseAll (m_ScriptErrors);
                 }
 
                 return;
@@ -1258,7 +1255,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
             lock (m_ScriptErrors) {
                 m_ScriptErrors[instance.m_ItemID] = noScriptErrors;
-                Monitor.PulseAll (m_ScriptErrors);
             }
 
             /*

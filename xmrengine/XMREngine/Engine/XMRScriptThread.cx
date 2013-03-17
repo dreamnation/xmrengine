@@ -153,46 +153,49 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     continue;
                 }
 
-                /*
-                 * If event just queued to any idle scripts
-                 * start them right away.  But only start so
-                 * many so we can make some progress on yield
-                 * queue.
-                 */
-                int numStarts;
-                for (numStarts = 5; -- numStarts >= 0;) {
-                    lock (engine.m_StartQueue) {
-                        inst = engine.m_StartQueue.RemoveHead();
+                if (engine.m_StartProcessing) {
+
+                    /*
+                     * If event just queued to any idle scripts
+                     * start them right away.  But only start so
+                     * many so we can make some progress on yield
+                     * queue.
+                     */
+                    int numStarts;
+                    for (numStarts = 5; -- numStarts >= 0;) {
+                        lock (engine.m_StartQueue) {
+                            inst = engine.m_StartQueue.RemoveHead();
+                        }
+                        if (inst == null) break;
+                        if (inst.m_IState != XMRInstState.ONSTARTQ) throw new Exception("bad state");
+                        INITMONOCONTS;
+                        RunInstance (inst);
                     }
-                    if (inst == null) break;
-                    if (inst.m_IState != XMRInstState.ONSTARTQ) throw new Exception("bad state");
-                    INITMONOCONTS;
-                    RunInstance (inst);
-                }
 
-                /*
-                 * If there is something to run, run it
-                 * then rescan from the beginning in case
-                 * a lot of things have changed meanwhile.
-                 *
-                 * These are considered lower priority than
-                 * m_StartQueue as they have been taking at
-                 * least one quantum of CPU time and event
-                 * handlers are supposed to be quick.
-                 */
-                lock (engine.m_YieldQueue) {
-                    inst = engine.m_YieldQueue.RemoveHead();
-                }
-                if (inst != null) {
-                    if (inst.m_IState != XMRInstState.ONYIELDQ) throw new Exception("bad state");
-                    RunInstance (inst);
-                    numStarts = -1;
-                }
+                    /*
+                     * If there is something to run, run it
+                     * then rescan from the beginning in case
+                     * a lot of things have changed meanwhile.
+                     *
+                     * These are considered lower priority than
+                     * m_StartQueue as they have been taking at
+                     * least one quantum of CPU time and event
+                     * handlers are supposed to be quick.
+                     */
+                    lock (engine.m_YieldQueue) {
+                        inst = engine.m_YieldQueue.RemoveHead();
+                    }
+                    if (inst != null) {
+                        if (inst.m_IState != XMRInstState.ONYIELDQ) throw new Exception("bad state");
+                        RunInstance (inst);
+                        numStarts = -1;
+                    }
 
-                /*
-                 * If we left something dangling in the m_StartQueue or m_YieldQueue, go back to check it.
-                 */
-                if (numStarts < 0) continue;
+                    /*
+                     * If we left something dangling in the m_StartQueue or m_YieldQueue, go back to check it.
+                     */
+                    if (numStarts < 0) continue;
+                }
 
                 /*
                  * Nothing to do, sleep.
