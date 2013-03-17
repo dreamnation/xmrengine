@@ -762,22 +762,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         private void ClearQueueExceptLinkMessages()
         {
-            List<EventParams> linkMessages = new List<EventParams>();
+            lock (m_QueueLock) {
+                EventParams[] linkMessages = new EventParams[m_EventQueue.Count];
+                int n = 0;
+                foreach (EventParams evt2 in m_EventQueue) {
+                    if (evt2.EventName == "link_message") {
+                        linkMessages[n++] = evt2;
+                    }
+                }
 
-            LinkedListNode<EventParams> lln2 = null;
-            for (lln2 = m_EventQueue.First; lln2 != null; lln2 = lln2.Next) {
-                EventParams evt2 = lln2.Value;
-                ScriptEventCode evc2 = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), 
-                                                                     evt2.EventName);
-                if (evc2 == ScriptEventCode.link_message)
-                    linkMessages.Add(evt2);
+                m_EventQueue.Clear();
+                for (int i = m_EventCounts.Length; -- i >= 0;) m_EventCounts[i] = 0;
+
+                for (int i = 0; i < n; i ++) {
+                    m_EventQueue.AddLast(linkMessages[i]);
+                }
+
+                m_EventCounts[(int)ScriptEventCode.link_message] = n;
             }
-            ClearQueue();
-
-            foreach (EventParams evt in linkMessages)
-                m_EventQueue.AddLast(evt);
-
-            m_EventCounts[(int)ScriptEventCode.link_message] = linkMessages.Count;
         }
 
         private void ClearQueue()

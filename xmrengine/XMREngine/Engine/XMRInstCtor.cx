@@ -525,17 +525,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             // Restore event queues, preserving any events that queued
             // whilst we were restoring the state
-            m_DetectParams = detParams;
-            foreach (EventParams evt in m_EventQueue) {
-                eventQueue.AddLast (evt);
-            }
-            m_EventQueue   = eventQueue;
-            for (int i = m_EventCounts.Length; -- i >= 0;) m_EventCounts[i] = 0;
-            foreach (EventParams evt in m_EventQueue)
-            {
-                ScriptEventCode eventCode = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode),
-                                                                         evt.EventName);
-                m_EventCounts[(int)eventCode] ++;
+            lock (m_QueueLock) {
+                m_DetectParams = detParams;
+                foreach (EventParams evt in m_EventQueue) {
+                    eventQueue.AddLast (evt);
+                }
+                m_EventQueue   = eventQueue;
+                for (int i = m_EventCounts.Length; -- i >= 0;) m_EventCounts[i] = 0;
+                foreach (EventParams evt in m_EventQueue)
+                {
+                    ScriptEventCode eventCode = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode),
+                                                                             evt.EventName);
+                    m_EventCounts[(int)eventCode] ++;
+                }
             }
 
             // Requeue timer and listeners (possibly queuing new events)
