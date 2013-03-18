@@ -346,7 +346,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private void LoadInitialState()
         {
             if (m_ForceReset) {
-                m_log.Debug("[XMREngine]: deleting " + m_StateFileName);
+                Verbose ("[XMREngine]: deleting " + m_StateFileName);
                 File.Delete(m_StateFileName);
             }
 

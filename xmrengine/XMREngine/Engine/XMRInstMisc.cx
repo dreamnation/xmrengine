@@ -102,6 +102,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
         }
 
+        public void Verbose (string format, params object[] args)
+        {
+            if (m_Engine.m_Verbose) m_log.DebugFormat (format, args);
+        }
+
         // Called by 'xmr top' console command
         // to dump this script's state to console
         //  Sacha 

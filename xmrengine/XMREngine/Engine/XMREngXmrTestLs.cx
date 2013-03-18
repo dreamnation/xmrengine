@@ -242,7 +242,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
             for (i = 0; i < numScripts; i ++) {
                 XMRInstance inst = instances[i];
-                m_log.Debug("[XMREngine]: post " + eventname + " to " + inst.m_DescName);
+                m_log.Info ("[XMREngine]: post " + eventname + " to " + inst.m_DescName);
                 inst.PostEvent (eps);
             }
         }
@@ -373,7 +373,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
             for (int i = 0; i < numScripts; i ++) {
                 XMRInstance inst = instances[i];
-                m_log.Debug("[XMREngine]: resetting " + inst.m_DescName);
+                m_log.Info ("[XMREngine]: resetting " + inst.m_DescName);
                 inst.Reset();
             }
         }

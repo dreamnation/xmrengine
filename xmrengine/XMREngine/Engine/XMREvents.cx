@@ -84,9 +84,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if ((part.ScriptEvents & scriptEvents.money) == 0)
                 part = part.ParentGroup.RootPart;
 
-            m_log.Debug("Paid: " + objectID + " from " + agentID + ", amount " + amount);
-//            if (part.ParentGroup != null)
-//                part = part.ParentGroup.RootPart;
+            Verbose ("Paid: " + objectID + " from " + agentID + ", amount " + amount);
 
             if (part != null)
             {

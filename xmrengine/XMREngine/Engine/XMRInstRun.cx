@@ -522,7 +522,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * ... to delete itself from the object.
                  */
                 m_SleepUntil = DateTime.MaxValue;
-                m_log.DebugFormat("[XMREngine]: script self-delete {0}", m_ItemID);
+                Verbose ("[XMREngine]: script self-delete {0}", m_ItemID);
                 m_Part.Inventory.RemoveInventoryItem(m_ItemID);
             }
             else if (e is ScriptDieException)
@@ -577,7 +577,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Display full exception message in log.
              */
-            m_log.Debug(msg.ToString() + XMRExceptionFixString (e.ToString(), false) + 
+            Verbose (msg.ToString() + XMRExceptionFixString (e.ToString(), false) + 
                         "\n--------\n" + e.StackTrace);
 
             /*

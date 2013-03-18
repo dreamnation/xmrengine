@@ -6,8 +6,6 @@
 // All rights reserved
 //
 
-#define TCP if (m_TraceCalls) NoPrint // m_log.DebugFormat
-
 using log4net;
 using Mono.Addins;
 using Mono.Tasklets;
@@ -52,6 +50,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         private bool m_LateInit;
         private bool m_TraceCalls;
+        public  bool m_Verbose;
         private Scene m_Scene;
         private IConfigSource m_ConfigSource;
         private IConfig m_Config;
@@ -99,11 +98,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public XMREngine()
         {
+            String envar;
+
             m_log.Info ("[XMREngine]: commit " + GITCOMMITHASH + ((GITCOMMITCLEAN != 0) ? "" : "(dirty)") + " " + GITCOMMITDATE);
             m_log.Info ("[XMREngine]: HAVE_MMRUTHREADS=" + ((HAVE_MMRUTHREADS != 0) ? "Yes" : "No"));
-            string envar = Environment.GetEnvironmentVariable("XMREngineTraceCalls");
+
+            envar = Environment.GetEnvironmentVariable ("XMREngineTraceCalls");
             m_TraceCalls = (envar != null) && ((envar[0] & 1) != 0);
-            m_log.DebugFormat("[XMREngine]: m_TraceCalls={0}", m_TraceCalls);
+            m_log.Info ("[XMREngine]: m_TraceCalls=" + m_TraceCalls);
+
+            envar = Environment.GetEnvironmentVariable ("XMREngineVerbose");
+            m_Verbose    = (envar != null) && ((envar[0] & 1) != 0);
+            m_log.Info ("[XMREngine]: m_Verbose=" + m_Verbose);
         }
 
         public string Name
@@ -143,7 +149,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void Initialise(IConfigSource config)
         {
-            TCP("[XMREngine]: Initialize entry");
+            TraceCalls("[XMREngine]: Initialize entry");
             m_ConfigSource = config;
 
             ////foreach (IConfig icfg in config.Configs) {
@@ -236,7 +242,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     "Run xmr script engine commands",
                     RunTest);
 
-            TCP("[XMREngine]: Initialize successful");
+            TraceCalls("[XMREngine]: Initialize successful");
         }
 
         public void AddRegion(Scene scene)
@@ -244,7 +250,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (!m_Enabled)
                 return;
 
-            TCP("[XMREngine]: XMREngine.AddRegion({0})", scene.RegionInfo.RegionName);
+            TraceCalls("[XMREngine]: XMREngine.AddRegion({0})", scene.RegionInfo.RegionName);
 
             m_Scene = scene;
 
@@ -370,7 +376,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     MethodInfo mi = m.Method;
                     try {
                         CommsCallCodeGen cccg = new CommsCallCodeGen (mi, comms, m_XMRInstanceApiCtxFieldInfos["MOD"]);
-                        m_log.Debug ("[XMREngine]: added comms function " + cccg.fullName);
+                        Verbose ("[XMREngine]: added comms function " + cccg.fullName);
                     } catch (Exception e) {
                         m_log.Error ("[XMREngine]: failed to add comms function " + mi.Name);
                         m_log.Error ("[XMREngine]: - " + e.ToString ());
@@ -384,14 +390,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 foreach (KeyValuePair<string,object> kvp in consts) {
                     try {
                         ScriptConst sc = ScriptConst.AddConstant (kvp.Key, kvp.Value);
-                        m_log.Debug ("[XMREngine]: added comms constant " + sc.name);
+                        Verbose ("[XMREngine]: added comms constant " + sc.name);
                     } catch (Exception e) {
                         m_log.Error ("[XMREngine]: failed to add comms constant " + kvp.Key);
                         m_log.Error ("[XMREngine]: - " + e.Message);
                     }
                 }
             } else {
-                m_log.Debug ("[XMREngine]: comms not enabled");
+                Verbose ("[XMREngine]: comms not enabled");
             }
         }
 
@@ -612,7 +618,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (!m_Enabled)
                 return;
 
-            TCP("[XMREngine]: XMREngine.RemoveRegion({0})", scene.RegionInfo.RegionName);
+            TraceCalls("[XMREngine]: XMREngine.RemoveRegion({0})", scene.RegionInfo.RegionName);
 
             /*
              * Write script states out to .state files so it will be
@@ -661,7 +667,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (!m_Enabled)
                 return;
 
-            TCP("[XMREngine]: XMREngine.RegionLoaded({0})", scene.RegionInfo.RegionName);
+            TraceCalls("[XMREngine]: XMREngine.RegionLoaded({0})", scene.RegionInfo.RegionName);
 
             m_Scene.EventManager.OnRemoveScript += OnRemoveScript;
             m_Scene.EventManager.OnScriptReset += OnScriptReset;
@@ -683,7 +689,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void Close()
         {
-            TCP("[XMREngine]: XMREngine.Close()");
+            TraceCalls("[XMREngine]: XMREngine.Close()");
         }
 
         private void RunTest (string module, string[] args)
@@ -730,6 +736,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_log.Info ("[XMREngine]: xmr reset [-help ...]");
                     m_log.Info ("[XMREngine]: xmr resume - resume script processing");
                     m_log.Info ("[XMREngine]: xmr suspend - suspend script processing");
+                    m_log.Info ("[XMREngine]: xmr tracecalls [yes | no]");
+                    m_log.Info ("[XMREngine]: xmr verbose [yes | no]");
                     break;
                 }
                 case "ls": {
@@ -782,6 +790,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     }
                     break;
                 }
+                case "tracecalls": {
+                    if (args.Length > 2) {
+                        m_TraceCalls = (args[2][0] & 1) != 0;
+                    }
+                    m_log.Info ("[XMREngine]: tracecalls " + (m_TraceCalls ? "yes" : "no"));
+                    break;
+                }
+                case "verbose": {
+                    if (args.Length > 2) {
+                        m_Verbose = (args[2][0] & 1) != 0;
+                    }
+                    m_log.Info ("[XMREngine]: verbose " + (m_Verbose ? "yes" : "no"));
+                    break;
+                }
                 default: {
                     m_log.Error ("[XMREngine]: unknown command " + args[1] + ", try 'xmr help'");
                     break;
@@ -822,7 +844,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             XMRInstance instance = GetInstance (itemID);
             if (instance == null) return false;
 
-            TCP("[XMREngine]: XMREngine.PostScriptEvent({0},{1})", itemID.ToString(), parms.EventName);
+            TraceCalls("[XMREngine]: XMREngine.PostScriptEvent({0},{1})", itemID.ToString(), parms.EventName);
 
             instance.PostEvent(parms);
             return true;
@@ -841,7 +863,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             UUID partUUID = part.UUID;
 
-            TCP("[XMREngine]: XMREngine.PostObjectEvent({0},{1})", localID.ToString(), parms.EventName);
+            TraceCalls("[XMREngine]: XMREngine.PostObjectEvent({0},{1})", localID.ToString(), parms.EventName);
 
             /*
              * Get list of script instances running in the object.
@@ -906,7 +928,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void SetState(UUID itemID, string newState)
         {
-            TCP("[XMREngine]: XMREngine.SetState({0},{1})", itemID.ToString(), newState);
+            TraceCalls("[XMREngine]: XMREngine.SetState({0},{1})", itemID.ToString(), newState);
         }
 
         public void ApiResetScript(UUID itemID)
@@ -959,7 +981,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             XMRInstance instance = GetInstance (itemID);
             if (instance == null) return String.Empty;
 
-            TCP("[XMREngine]: XMREngine.GetXMLState({0})", itemID.ToString());
+            TraceCalls("[XMREngine]: XMREngine.GetXMLState({0})", itemID.ToString());
 
             if (!instance.m_HasRun) return String.Empty;
 
@@ -1010,7 +1032,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             {
                 return false;
             }
-            TCP("[XMREngine]: XMREngine.SetXMLState({0})", itemID.ToString());
+            TraceCalls("[XMREngine]: XMREngine.SetXMLState({0})", itemID.ToString());
 
             // Make sure <State Engine="XMREngine"> so we know it is in our
             // format.
@@ -1037,7 +1059,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             // Write out the .state file with the <ScriptState ...>...</ScriptState> XML text
             string statePath = XMRInstance.GetStateFileName(m_ScriptBasePath, itemID);
-            m_log.Debug ("[XMREngine]: writing " + itemID.ToString () + ".state file from XML");
+            Verbose ("[XMREngine]: writing " + itemID.ToString () + ".state file from XML");
             FileStream ss = File.Create(statePath);
             StreamWriter sw = new StreamWriter(ss);
             sw.Write(scriptStateN.OuterXml);
@@ -1052,7 +1074,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (!m_Enabled)
                 return false;
 
-            TCP("[XMREngine]: XMREngine.PostScriptEvent({0},{1})", itemID.ToString(), name);
+            TraceCalls("[XMREngine]: XMREngine.PostScriptEvent({0},{1})", itemID.ToString(), name);
 
             return PostScriptEvent(itemID, new EventParams(name, p, zeroDetectParams));
         }
@@ -1062,7 +1084,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (!m_Enabled)
                 return false;
 
-            TCP("[XMREngine]: XMREngine.PostObjectEvent({0},{1})", itemID.ToString(), name);
+            TraceCalls("[XMREngine]: XMREngine.PostObjectEvent({0},{1})", itemID.ToString(), name);
 
             SceneObjectPart part = m_Scene.GetSceneObjectPart(itemID);
             if (part == null)
@@ -1092,7 +1114,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 OneTimeLateInitialization ();
             }
 
-            TCP("[XMREngine]: OnRezScript(...,{0},...)", itemID.ToString());
+            TraceCalls("[XMREngine]: OnRezScript(...,{0},...)", itemID.ToString());
 
             m_InitializedAt = DateTime.UtcNow.Ticks;
 
@@ -1210,9 +1232,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
             if ((initerr != null) && !instance.m_ForceReset) {
                 UUID itemID = instance.m_ItemID;
-                m_log.DebugFormat("[XMREngine]: {0}/{2} first load failed ({1}), retrying after reset", 
+                Verbose ("[XMREngine]: {0}/{2} first load failed ({1}), retrying after reset", 
                         itemID.ToString(), initerr.Message, instance.m_Item.AssetID.ToString());
-                m_log.DebugFormat("[XMREngine]:\n{0}", initerr.ToString ());
+                Verbose ("[XMREngine]:\n{0}", initerr.ToString ());
                 initerr = null;
                 errors = new ArrayList();
                 instance.m_ForceReset = true;
@@ -1224,10 +1246,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
             if (initerr != null) {
                 UUID itemID = instance.m_ItemID;
-                m_log.DebugFormat("[XMREngine]: Error starting script {0}/{2}: {1}",
+                Verbose ("[XMREngine]: Error starting script {0}/{2}: {1}",
                                   itemID.ToString(), initerr.Message, instance.m_Item.AssetID.ToString());
                 if (initerr.Message != "compilation errors") {
-                    m_log.DebugFormat("[XMREngine]:   exception:\n{0}", initerr.ToString());
+                    Verbose ("[XMREngine]:   exception:\n{0}", initerr.ToString());
                 }
 
                 OnRemoveScript (0, itemID);
@@ -1239,7 +1261,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     errors.Add(initerr.Message);
                 } else {
                     foreach (Object err in errors) {
-                        m_log.DebugFormat("[XMREngine]:   {0}", err.ToString());
+                        Verbose ("[XMREngine]:   {0}", err.ToString());
                     }
                 }
                 lock (m_ScriptErrors) {
@@ -1275,7 +1297,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void OnRemoveScript(uint localID, UUID itemID)
         {
-            TCP("[XMREngine]: OnRemoveScript(...,{0})", itemID.ToString());
+            TraceCalls("[XMREngine]: OnRemoveScript(...,{0})", itemID.ToString());
 
             /*
              * Remove from our list of known scripts.
@@ -1341,7 +1363,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void OnScriptReset(uint localID, UUID itemID)
         {
-            TCP("[XMREngine]: XMREngine.OnScriptReset({0},{1})", localID.ToString(), itemID.ToString());
+            TraceCalls("[XMREngine]: XMREngine.OnScriptReset({0},{1})", localID.ToString(), itemID.ToString());
             ResetScript(itemID);
         }
 
@@ -1366,7 +1388,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             XMRInstance instance = GetInstance (itemID);
             if (instance != null) {
-                TCP("[XMREngine]: XMREngine.OnGetScriptRunning({0},{1})", objectID.ToString(), itemID.ToString());
+                TraceCalls("[XMREngine]: XMREngine.OnGetScriptRunning({0},{1})", objectID.ToString(), itemID.ToString());
 
                 IEventQueue eq = World.RequestModuleInterface<IEventQueue>();
                 if (eq == null) {
@@ -1397,7 +1419,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public void OnShutdown()
         {
-            TCP("[XMREngine]: XMREngine.OnShutdown()");
+            TraceCalls("[XMREngine]: XMREngine.OnShutdown()");
         }
 
         /**
@@ -1632,7 +1654,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             XMRInstance instance = GetInstance (itemID);
             if (instance != null) {
-                TCP("[XMREngine]: XMREngine.Die({0})", itemID.ToString());
+                TraceCalls("[XMREngine]: XMREngine.Die({0})", itemID.ToString());
                 instance.Die();
             }
         }
@@ -1741,7 +1763,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             XMRInstance instance = GetInstance (itemID);
             if (instance != null) {
-                TCP("[XMREngine]: XMREngine.SuspendScript({0})", itemID.ToString());
+                TraceCalls("[XMREngine]: XMREngine.SuspendScript({0})", itemID.ToString());
                 instance.SuspendIt();
             }
         }
@@ -1753,7 +1775,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             XMRInstance instance = GetInstance (itemID);
             if (instance != null) {
-                TCP("[XMREngine]: XMREngine.ResumeScript({0})", itemID.ToString());
+                TraceCalls("[XMREngine]: XMREngine.ResumeScript({0})", itemID.ToString());
                 instance.ResumeIt();
             } else {
                 // probably an XEngine script
@@ -1780,7 +1802,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return a;
         }
 
-        public static void NoPrint (params string[] list)
-        { }
+        public void TraceCalls (string format, params object[] args)
+        {
+            if (m_TraceCalls) m_log.DebugFormat (format, args);
+        }
+        public void Verbose (string format, params object[] args)
+        {
+            if (m_Verbose) m_log.DebugFormat (format, args);
+        }
     }
 }
