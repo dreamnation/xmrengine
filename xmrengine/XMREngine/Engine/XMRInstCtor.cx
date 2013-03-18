@@ -98,7 +98,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 /*
                  * Initialize the API instance.
                  */
-                scriptApi.Initialize(m_Engine, m_Part, m_Item, null);
+                scriptApi.Initialize(m_Engine, m_Part, m_Item/*, null*/);
                 this.InitApi(api, scriptApi);
             }
 
