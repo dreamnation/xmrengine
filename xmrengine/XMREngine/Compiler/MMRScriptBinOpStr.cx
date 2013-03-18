@@ -188,36 +188,36 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				BinOpStr val = kvp.Value;
 				bos2.Add (key, val);
 			}
-            Regex wordReg = new Regex("\\w+");
-            Regex opReg = new Regex("\\W+");
+			Regex wordReg = new Regex("\\w+");
+			Regex opReg = new Regex("\\W+");
 			foreach (KeyValuePair<string, BinOpStr> kvp in bos) {
 				string   key  = kvp.Key;
 				BinOpStr val  = kvp.Value;
-                MatchCollection matches = wordReg.Matches(key);
-                if (matches.Count != 2)
-                    continue;
-                Match opM = opReg.Match(key);
-                if (!opM.Success)
-                    continue;
-                string left = matches[0].Value;
-                string right = matches[1].Value;
-                string op = opM.Value;
-                string key2;
-                if (left == "integer" && right == "integer")
-                {
-                    key2 = "bool"+op+"bool";
-                    if (!bos2.ContainsKey (key2)) bos2.Add (key2, val);
-                    key2 = "bool"+op+"integer";
-                    if (!bos2.ContainsKey (key2)) bos2.Add (key2, val);
-                    key2 = "integer"+op+"bool";
-                    if (!bos2.ContainsKey (key2)) bos2.Add (key2, val);
-                }
-                else
-                {
-                    key2 = key.Replace("integer", "bool");
-                    if (!bos2.ContainsKey (key2)) bos2.Add (key2, val);
-                }
-            }
+				MatchCollection matches = wordReg.Matches(key);
+				if (matches.Count != 2)
+					continue;
+				Match opM = opReg.Match(key);
+				if (!opM.Success)
+					continue;
+				string left = matches[0].Value;
+				string right = matches[1].Value;
+				string op = opM.Value;
+				string key2;
+				if (left == "integer" && right == "integer")
+				{
+					key2 = "bool"+op+"bool";
+					if (!bos2.ContainsKey (key2)) bos2.Add (key2, val);
+					key2 = "bool"+op+"integer";
+					if (!bos2.ContainsKey (key2)) bos2.Add (key2, val);
+					key2 = "integer"+op+"bool";
+					if (!bos2.ContainsKey (key2)) bos2.Add (key2, val);
+				}
+				else
+				{
+					key2 = key.Replace("integer", "bool");
+					if (!bos2.ContainsKey (key2)) bos2.Add (key2, val);
+				}
+			}
 			return bos2;
 		}
 
@@ -332,7 +332,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			bos.Add ("vector+list",    new BinOpStr (typeof (LSL_List), BinOpStrVecAddList));
 
 			bos.Add ("list==list",     new BinOpStr (typeof (bool), BinOpStrListEqList));
-			bos.Add ("list!=list",     new BinOpStr (typeof (bool), BinOpStrListNeList));
+			bos.Add ("list!=list",     new BinOpStr (typeof (int),  BinOpStrListNeList));
 		}
 
 		// all operations allowed by LSL_Rotation definition
@@ -1361,9 +1361,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			return left == right;
 		}
 
-		public static bool MethListNeList (LSL_List left, LSL_List right)
+		// According to http://wiki.secondlife.com/wiki/LlGetListLength
+		// jackassed LSL allows 'somelist != []' to get the length of a list
+		public static int MethListNeList (LSL_List left, LSL_List right)
 		{
-			return left != right;
+			int leftlen = left.Length;
+			int ritelen = right.Length;
+			return leftlen - ritelen;
 		}
 
 		public static bool MethRotEqRot (LSL_Rotation left, LSL_Rotation right)
