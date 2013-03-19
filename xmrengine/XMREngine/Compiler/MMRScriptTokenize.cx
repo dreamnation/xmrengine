@@ -44,7 +44,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
         public Token nextToken;
         public Token prevToken;
-        public int macroLevel;
+        public bool  nr2l;
 
         // used for error message printing
         public TokenErrorMessage emsg;
@@ -79,6 +79,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                 this.file = original.file;
                 this.line = original.line;
                 this.posn = original.posn;
+                this.nr2l = original.nr2l;
             }
         }
 
@@ -156,6 +157,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             public bool tryCatch;       // has seen 'XMROption tryCatch;'
             public bool objects;        // has seen 'XMROption objects;'
             public bool chars;          // has seen 'XMROption chars;'
+            public bool noRightToLeft;  // has seen 'XMROption noRightToLeft;'
         }
 
         private bool youveAnError;      // there was some error tokenizing
@@ -491,6 +493,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                         options.objects = true;
                     } else if (strcasecmp (opt, "chars") == 0) {
                         options.chars = true;
+                    } else if (strcasecmp (opt, "norighttoleft") == 0) {
+                        options.noRightToLeft = true;
                     } else {
                         lastToken.ErrorMsg ("unknown XMROption");
                     }
@@ -775,6 +779,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         {
             newToken.nextToken  = null;
             newToken.prevToken  = lastToken;
+            newToken.nr2l       = this.options.noRightToLeft;
             lastToken.nextToken = newToken;
             lastToken           = newToken;
         }

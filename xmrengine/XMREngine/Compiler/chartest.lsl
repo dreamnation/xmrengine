@@ -1,6 +1,7 @@
 xmroption advflowctl;
 xmroption chars;
 xmroption objects;
+xmroption norighttoleft;
 
 char gblchar;
 

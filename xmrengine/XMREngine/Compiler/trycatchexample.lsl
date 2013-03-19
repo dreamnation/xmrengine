@@ -1,5 +1,6 @@
 
 xmroption arrays;
+xmroption norighttoleft;
 xmroption trycatch;
 
 default {

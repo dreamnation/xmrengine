@@ -4,6 +4,7 @@
 
 xmroption advflowctl;
 xmroption arrays;
+xmroption norighttoleft;
 
 constant RUMMY_CHANNEL = -646830961;
 

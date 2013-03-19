@@ -2,6 +2,7 @@ xmroption advflowctl;
 xmrOption arrayS;
 xmroption objects;
 xmrOPtion expIRYdays 5;
+xmroption norighttoleft;
 
 DumpArray(integer shouldhave)
 {

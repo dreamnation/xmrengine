@@ -27,6 +27,7 @@
 xmroption arrays;
 xmroption advflowctl;
 xmroption chars;
+xmroption norighttoleft;
 xmroption objects;
 xmroption trycatch;
 

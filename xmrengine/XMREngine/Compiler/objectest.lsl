@@ -3,6 +3,7 @@ xmrOption arrayS;
 xmroption objects;
 xmroption trycatch;
 xmrOPtion expIRYdays 5;
+xmroption norighttoleft;
 
 xmroption include "dictionary.lsl";
 

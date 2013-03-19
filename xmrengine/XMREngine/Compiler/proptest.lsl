@@ -2,6 +2,7 @@ xmroption advflowctl;
 xmroption arrays;
 xmroption objects;
 xmroption trycatch;
+xmroption norighttoleft;
 
 constant c0 = 99;
 constant c1 = Klass.c2 + 12;

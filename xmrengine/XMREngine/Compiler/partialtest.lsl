@@ -1,3 +1,4 @@
+xmroption norighttoleft;
 xmroption objects;
 
 partial class Abc<T> : Iface1, Marker {

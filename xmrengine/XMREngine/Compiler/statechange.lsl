@@ -1,3 +1,4 @@
+XMROption noRightToLeft;
 XMROption tryCatch;
 
 // Just waiting to be touched

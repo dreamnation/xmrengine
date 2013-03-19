@@ -4555,7 +4555,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 */
 			nArgs = argRVals.Length;
 			for (i = 0; i < nArgs; i ++) {
-				if (!argRVals[i].IsReadTrivial (this)) {
+				if (!argRVals[i].IsReadTrivial (this, call)) {
 					argRVals[i] = Trivialize (argRVals[i], call);
 				}
 			}
@@ -4606,7 +4606,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		public CompValu Trivialize (CompValu operand, Token errorAt)
 		{
-			if (operand.IsReadTrivial (this)) return operand;
+			if (operand.IsReadTrivial (this, errorAt)) return operand;
 			CompValuTemp temp = new CompValuTemp (operand.type, this);
 			operand.PushVal (this, errorAt);
 			temp.Pop (this, errorAt);
@@ -4941,10 +4941,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			CompValu xRVal, yRVal, zRVal, wRVal;
 
-			xRVal = GenerateFromRVal (rValRot.xRVal);
-			yRVal = GenerateFromRVal (rValRot.yRVal);
-			zRVal = GenerateFromRVal (rValRot.zRVal);
-			wRVal = GenerateFromRVal (rValRot.wRVal);
+			xRVal = Trivialize (GenerateFromRVal (rValRot.xRVal), rValRot);
+			yRVal = Trivialize (GenerateFromRVal (rValRot.yRVal), rValRot);
+			zRVal = Trivialize (GenerateFromRVal (rValRot.zRVal), rValRot);
+			wRVal = Trivialize (GenerateFromRVal (rValRot.wRVal), rValRot);
 			return new CompValuRot (new TokenTypeRot (rValRot), xRVal, yRVal, zRVal, wRVal);
 		}
 
@@ -4981,9 +4981,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			CompValu xRVal, yRVal, zRVal;
 
-			xRVal = GenerateFromRVal (rValVec.xRVal);
-			yRVal = GenerateFromRVal (rValVec.yRVal);
-			zRVal = GenerateFromRVal (rValVec.zRVal);
+			xRVal = Trivialize (GenerateFromRVal (rValVec.xRVal), rValVec);
+			yRVal = Trivialize (GenerateFromRVal (rValVec.yRVal), rValVec);
+			zRVal = Trivialize (GenerateFromRVal (rValVec.zRVal), rValVec);
 			return new CompValuVec (new TokenTypeVec (rValVec), xRVal, yRVal, zRVal);
 		}
 

@@ -1,3 +1,5 @@
+xmroption norighttoleft;
+
 default {
     state_entry ()
     {

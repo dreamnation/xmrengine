@@ -1,6 +1,7 @@
 
 xmroption advflowctl;
 xmroption arrays;
+xmroption norighttoleft;
 xmroption objects;
 
 xmroption include "http://dreamnation.net/dictionary.lsl";

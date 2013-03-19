@@ -1,5 +1,6 @@
 xmroption advflowctl;
 xmrOption arrayS;
+xmroption norighttoleft;
 xmroption objects;
 xmroption trycatch;
 xmrOPtion expIRYdays 5;

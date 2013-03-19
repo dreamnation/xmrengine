@@ -1,5 +1,6 @@
 xmroption advflowctl;
 xmroption arrays;
+xmroption norighttoleft;
 xmroption objects;
 xmroption trycatch;
 
