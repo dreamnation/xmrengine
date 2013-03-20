@@ -12,6 +12,7 @@ using Mono.Tasklets;
 using Nini.Config;
 using OpenSim.Framework;
 using OpenSim.Framework.Console;
+using OpenSim.Framework.Monitoring;
 using OpenSim.Region.ClientStack.Linden;
 using OpenSim.Region.Framework.Interfaces;
 using OpenSim.Region.Framework.Scenes;
@@ -178,10 +179,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             for (int i = 0; i < numThreadScriptWorkers; i ++) {
                 m_ScriptThreads[i] = new XMRScriptThread(this);
             }
-            m_SleepThread = new Thread(RunSleepThread);
-            m_SliceThread = new Thread(RunSliceThread);
-            m_SleepThread.Start();
-            m_SliceThread.Start();
+            m_SleepThread = Watchdog.StartThread (RunSleepThread, "xmrengine sleep", ThreadPriority.Normal, false, true);
+            m_SliceThread = Watchdog.StartThread (RunSliceThread, "xmrengine slice", ThreadPriority.Normal, false, true);
 
             /*
              * Verify that our ScriptEventCode's match OpenSim's scriptEvent's.
@@ -1587,10 +1586,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      * Wait here until there is a script on the timer queue that has expired.
                      */
                     while (true) {
+                        Watchdog.UpdateThread ();
                         if (m_Exiting) return;
                         inst = m_SleepQueue.PeekHead();
                         if (inst == null) {
-                            Monitor.Wait (m_SleepQueue);
+                            Monitor.Wait (m_SleepQueue, Watchdog.DEFAULT_WATCHDOG_TIMEOUT_MS / 2);
                             continue;
                         }
                         if (inst.m_IState != XMRInstState.ONSLEEPQ) throw new Exception("bad state");
@@ -1598,6 +1598,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         if (deltaTS <= 0.0) break;
                         deltaMS = Int32.MaxValue;
                         if (deltaTS < Int32.MaxValue) deltaMS = (int)deltaTS;
+                        if (deltaMS > Watchdog.DEFAULT_WATCHDOG_TIMEOUT_MS / 2) {
+                            deltaMS = Watchdog.DEFAULT_WATCHDOG_TIMEOUT_MS / 2;
+                        }
                         Monitor.Wait (m_SleepQueue, deltaMS);
                     }
 
@@ -1625,11 +1628,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             int ms = m_Config.GetInt ("TimeSlice", 50);
             while (!m_Exiting) {
+                Watchdog.UpdateThread ();
 
                 /*
                  * Let script run for a little bit.
                  */
-                System.Threading.Thread.Sleep(ms);
+                System.Threading.Thread.Sleep (ms);
 
                 /*
                  * If some script is running, flag it to suspend

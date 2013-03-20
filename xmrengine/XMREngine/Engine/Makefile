@@ -34,6 +34,7 @@ REFERENCED = $(OPENSIMDLLDIR)/xmrengshare.dll \
              $(OPENSIMDLLDIR)/OpenMetaverseTypes.dll \
              $(OPENSIMDLLDIR)/OpenSim.Framework.dll \
              $(OPENSIMDLLDIR)/OpenSim.Framework.Console.dll \
+             $(OPENSIMDLLDIR)/OpenSim.Framework.Monitoring.dll \
              $(OPENSIMDLLDIR)/OpenSim.Region.ClientStack.LindenCaps.dll \
              $(OPENSIMDLLDIR)/OpenSim.Region.CoreModules.dll \
              $(OPENSIMDLLDIR)/OpenSim.Region.Framework.dll \

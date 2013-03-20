@@ -4,6 +4,7 @@
 \***************************************************/
 
 using Mono.Tasklets;
+using OpenSim.Framework.Monitoring;
 using System;
 using System.Threading;
 using log4net;
@@ -57,9 +58,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public XMRScriptThread(XMREngine eng)
         {
             engine = eng;
-            thd = new Thread(RunScriptThread);
-            thd.Priority = ThreadPriority.BelowNormal;
-            thd.Start();
+            thd = Watchdog.StartThread (RunScriptThread, "xmrengine script", ThreadPriority.BelowNormal, false, true);
         }
 
         public void SuspendThread()
@@ -113,6 +112,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_ScriptThreadTID = System.Threading.Thread.CurrentThread.ManagedThreadId;
 
             while (!m_Exiting) {
+                Watchdog.UpdateThread ();
 
                 /*
                  * Handle 'xmr resume/suspend' commands.
@@ -123,7 +123,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                                !m_Exiting &&
                                (engine.m_MIEHQueue.Count == 0) &&
                                (engine.m_MOEHQueue.Count == 0)) {
-                            Monitor.Wait (m_WakeUpLock);
+                            Monitor.Wait (m_WakeUpLock, Watchdog.DEFAULT_WATCHDOG_TIMEOUT_MS / 2);
+                            Watchdog.UpdateThread ();
                         }
                     }
                 }
@@ -202,7 +203,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  */
                 lock (m_WakeUpLock) {
                     if (!m_WakeUpThis && (m_WakeUpOne <= 0) && !m_Exiting) {
-                        Monitor.Wait (m_WakeUpLock);
+                        Monitor.Wait (m_WakeUpLock, Watchdog.DEFAULT_WATCHDOG_TIMEOUT_MS / 2);
                     }
                     m_WakeUpThis = false;
                     if ((m_WakeUpOne > 0) && (-- m_WakeUpOne > 0)) {
