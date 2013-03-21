@@ -284,6 +284,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (m_InitializedAt > now) {
                 System.Timers.Timer startCompleteTimer = new System.Timers.Timer((m_InitializedAt - now) / 10000);
                 startCompleteTimer.Elapsed += StartComplete;
+                startCompleteTimer.AutoReset = false;
                 startCompleteTimer.Start();
             } else {
                 m_Scene.EventManager.TriggerEmptyScriptCompileQueue (0, "");
