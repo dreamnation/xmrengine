@@ -281,8 +281,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             int delayms = m_Config.GetInt ("StartDelayMs", 10000);  // 10sec
             long now = DateTime.UtcNow.Ticks - (long)delayms * 10000;
-            if (m_InitializedAt > now) {
-                int delms = (int)((m_InitializedAt - now) / 10000);
+            int delms = (int)((m_InitializedAt - now) / 10000);
+            if (delms > 0) {
                 m_log.Debug ("[XMREngine]: StartComplete delaying " + delms);
                 System.Timers.Timer startCompleteTimer = new System.Timers.Timer(delms);
                 startCompleteTimer.Elapsed += StartComplete;
