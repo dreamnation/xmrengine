@@ -42,7 +42,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static MethodInfo keyToBoolMethodInfo        = typeof (TypeCast).GetMethod ("KeyToBool",         new Type[] { typeof (string) });
 		private static MethodInfo listToBoolMethodInfo       = typeof (TypeCast).GetMethod ("ListToBool",        new Type[] { typeof (LSL_List) });
 		private static MethodInfo listToStringMethodInfo     = typeof (TypeCast).GetMethod ("ListToString",      new Type[] { typeof (LSL_List) });
+		private static MethodInfo objectToFloatMethodInfo    = typeof (TypeCast).GetMethod ("ObjectToFloat",     new Type[] { typeof (object) });
+		private static MethodInfo objectToIntegerMethodInfo  = typeof (TypeCast).GetMethod ("ObjectToInteger",   new Type[] { typeof (object) });
+		private static MethodInfo objectToRotationMethodInfo = typeof (TypeCast).GetMethod ("ObjectToRotation",  new Type[] { typeof (object) });
 		private static MethodInfo objectToStringMethodInfo   = typeof (TypeCast).GetMethod ("ObjectToString",    new Type[] { typeof (object) });
+		private static MethodInfo objectToVectorMethodInfo   = typeof (TypeCast).GetMethod ("ObjectToVector",    new Type[] { typeof (object) });
 		private static MethodInfo rotationToBoolMethodInfo   = typeof (TypeCast).GetMethod ("RotationToBool",    new Type[] { typeof (LSL_Rotation) });
 		private static MethodInfo rotationToStringMethodInfo = typeof (TypeCast).GetMethod ("RotationToString",  new Type[] { typeof (LSL_Rotation) });
 		private static MethodInfo vectorToBoolMethodInfo     = typeof (TypeCast).GetMethod ("VectorToBool",      new Type[] { typeof (LSL_Vector) });
@@ -548,11 +552,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		private static void TypeCastObject2Float (IScriptCodeGen scg, Token errorAt)
 		{
-			scg.ilGen.Emit (errorAt, OpCodes.Unbox_Any, typeof (SCRIPTFLOAT));
+			scg.ilGen.Emit (errorAt, OpCodes.Call, objectToFloatMethodInfo);
 		}
 		private static void TypeCastObject2Integer (IScriptCodeGen scg, Token errorAt)
 		{
-			scg.ilGen.Emit (errorAt, OpCodes.Unbox_Any, typeof (int));
+			scg.ilGen.Emit (errorAt, OpCodes.Call, objectToIntegerMethodInfo);
 		}
 		private static void TypeCastObject2List (IScriptCodeGen scg, Token errorAt)
 		{
@@ -560,11 +564,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		private static void TypeCastObject2Rotation (IScriptCodeGen scg, Token errorAt)
 		{
-			scg.ilGen.Emit (errorAt, OpCodes.Unbox_Any, typeof (LSL_Rotation));
+			scg.ilGen.Emit (errorAt, OpCodes.Call, objectToRotationMethodInfo);
 		}
 		private static void TypeCastObject2Vector (IScriptCodeGen scg, Token errorAt)
 		{
-			scg.ilGen.Emit (errorAt, OpCodes.Unbox_Any, typeof (LSL_Vector));
+			scg.ilGen.Emit (errorAt, OpCodes.Call, objectToVectorMethodInfo);
 		}
 		private static void TypeCastRotation2Bool (IScriptCodeGen scg, Token errorAt)
 		{
@@ -682,6 +686,38 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public static string   RotationToString  (LSL_Rotation x) { return x.ToString (); }
 		public static string   VectorToString    (LSL_Vector x)   { return x.ToString (); }
 		public static LSL_List ListOfOneObj      (object x)       { return new LSL_List (new object[1] { x }); }
+
+		public static SCRIPTFLOAT ObjectToFloat (object x)
+		{
+			if (x is LSL_String)  return SCRIPTFLOAT.Parse (((LSL_String)x).m_string);
+			if (x is string)      return SCRIPTFLOAT.Parse ((string)x);
+			if (x is LSL_Float)   return (SCRIPTFLOAT)(LSL_Float)x;
+			if (x is LSL_Integer) return (SCRIPTFLOAT)(int)(LSL_Integer)x;
+			if (x is int)         return (SCRIPTFLOAT)(int)x;
+			return (SCRIPTFLOAT)x;
+		}
+
+		public static int ObjectToInteger (object x)
+		{
+			if (x is LSL_String)  return int.Parse (((LSL_String)x).m_string);
+			if (x is string)      return int.Parse ((string)x);
+			if (x is LSL_Integer) return (int)(LSL_Integer)x;
+			return (int)x;
+		}
+
+		public static LSL_Rotation ObjectToRotation (object x)
+		{
+			if (x is LSL_String) return new LSL_Rotation (((LSL_String)x).m_string);
+			if (x is string)     return new LSL_Rotation ((string)x);
+			return (LSL_Rotation)x;
+		}
+
+		public static LSL_Vector ObjectToVector (object x)
+		{
+			if (x is LSL_String) return new LSL_Vector (((LSL_String)x).m_string);
+			if (x is string)     return new LSL_Vector ((string)x);
+			return (LSL_Vector)x;
+		}
 
 		/*
 		 * These are used by event handler entrypoints to remove any LSL wrapping
