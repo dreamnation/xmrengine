@@ -8,6 +8,7 @@
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Reflection.Emit;
 using System.Runtime.Serialization;
@@ -336,6 +337,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                                             //    cleared to CallMode_NORMAL by CheckRun()
         public XMRStackFrame stackFrames;   // stack frames being saved/restored
 
+        private static readonly char[] justacomma = { ',' };
+
         /*
          * These arrays hold the global variable values for the script instance.
          * The array lengths are determined by the script compilation,
@@ -622,6 +625,100 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (beg >= s.Length) return "";
             if (end >  s.Length) end = s.Length;
             return s.Substring (beg, end - beg);
+        }
+
+        /**
+         * @brief [Last]IndexOf with starting position (just like C#)
+         */
+        public int xmrStringIndexOf (string haystack, string needle)
+        {
+            return haystack.IndexOf (needle);
+        }
+        public int xmrStringIndexOf (string haystack, string needle, int startat)
+        {
+            return haystack.IndexOf (needle, startat);
+        }
+        public int xmrStringLastIndexOf (string haystack, string needle)
+        {
+            return haystack.LastIndexOf (needle);
+        }
+        public int xmrStringLastIndexOf (string haystack, string needle, int startat)
+        {
+            return haystack.LastIndexOf (needle, startat);
+        }
+
+        /**
+         * @brief These conversions throw exceptions if there is anything stinky...
+         */
+        public SCRIPTFLOAT xmrString2Float (string s)
+        {
+            return SCRIPTFLOAT.Parse (s, CultureInfo.InvariantCulture);
+        }
+        public int xmrString2Integer (string s)
+        {
+            s = s.Trim ();
+            if (s.StartsWith ("0x") || s.StartsWith ("0X")) {
+                return int.Parse (s.Substring (2), NumberStyles.HexNumber);
+            }
+            return int.Parse (s, CultureInfo.InvariantCulture);
+        }
+        public LSL_Rotation xmrString2Rotation (string s)
+        {
+            s = s.Trim ();
+            if (!s.StartsWith ("<") || !s.EndsWith (">")) {
+                throw new FormatException ("doesn't begin with < and end with >");
+            }
+            s = s.Substring (1, s.Length - 2);
+            string[] splitup = s.Split (justacomma, 5);
+            if (splitup.Length != 4) {
+                throw new FormatException ("doesn't have exactly 3 commas");
+            }
+            SCRIPTFLOAT x = SCRIPTFLOAT.Parse (splitup[0], CultureInfo.InvariantCulture);
+            SCRIPTFLOAT y = SCRIPTFLOAT.Parse (splitup[1], CultureInfo.InvariantCulture);
+            SCRIPTFLOAT z = SCRIPTFLOAT.Parse (splitup[2], CultureInfo.InvariantCulture);
+            SCRIPTFLOAT w = SCRIPTFLOAT.Parse (splitup[3], CultureInfo.InvariantCulture);
+            return new LSL_Rotation (x, y, z, w);
+        }
+        public LSL_Vector xmrString2Vector (string s)
+        {
+            s = s.Trim ();
+            if (!s.StartsWith ("<") || !s.EndsWith (">")) {
+                throw new FormatException ("doesn't begin with < and end with >");
+            }
+            s = s.Substring (1, s.Length - 2);
+            string[] splitup = s.Split (justacomma, 4);
+            if (splitup.Length != 3) {
+                throw new FormatException ("doesn't have exactly 2 commas");
+            }
+            SCRIPTFLOAT x = SCRIPTFLOAT.Parse (splitup[0], CultureInfo.InvariantCulture);
+            SCRIPTFLOAT y = SCRIPTFLOAT.Parse (splitup[1], CultureInfo.InvariantCulture);
+            SCRIPTFLOAT z = SCRIPTFLOAT.Parse (splitup[2], CultureInfo.InvariantCulture);
+            return new LSL_Vector (x, y, z);
+        }
+
+        /**
+         * @brief Access C#-style formatted numeric conversions.
+         */
+        public string xmrFloat2String (SCRIPTFLOAT val, string fmt)
+        {
+            return val.ToString (fmt, CultureInfo.InvariantCulture);
+        }
+        public string xmrInteger2String (int val, string fmt)
+        {
+            return val.ToString (fmt, CultureInfo.InvariantCulture);
+        }
+        public string xmrRotation2String (LSL_Rotation val, string fmt)
+        {
+            return "<" + val.x.ToString (fmt, CultureInfo.InvariantCulture) + "," +
+                         val.y.ToString (fmt, CultureInfo.InvariantCulture) + "," +
+                         val.z.ToString (fmt, CultureInfo.InvariantCulture) + "," +
+                         val.s.ToString (fmt, CultureInfo.InvariantCulture) + ">";
+        }
+        public string xmrVector2String (LSL_Vector val, string fmt)
+        {
+            return "<" + val.x.ToString (fmt, CultureInfo.InvariantCulture) + "," +
+                         val.y.ToString (fmt, CultureInfo.InvariantCulture) + "," +
+                         val.z.ToString (fmt, CultureInfo.InvariantCulture) + ">";
         }
 
         /**

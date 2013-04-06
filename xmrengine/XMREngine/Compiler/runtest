@@ -33,6 +33,7 @@ testit proptest
 testit trycatchexample
 testit trycatchtest
 testit while1
+testit xmrstringfunctest
 testev testllparcelmedia
 testit typeassigntest
 testit partialtest
