@@ -73,7 +73,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public void ApiReset()
         {
             ClearQueueExceptLinkMessages();
-
             throw new ScriptResetException();
         }
 
@@ -83,13 +82,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public DetectParams GetDetectParams(int number)
         {
-            if (m_DetectParams == null)
-                return null;
-
-            if (number < 0 || number >= m_DetectParams.Length)
-                return null;
-
-            return m_DetectParams[number];
+            DetectParams dp = null;
+            if ((number >= 0) && (m_DetectParams != null) && (number < m_DetectParams.Length)) {
+                dp = m_DetectParams[number];
+            }
+            return dp;
         }
 
         /**
