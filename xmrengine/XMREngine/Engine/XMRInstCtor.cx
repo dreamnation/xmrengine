@@ -316,7 +316,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Allocate global variable arrays.
              */
-            this.glblVars.AllocVarArrays (ref objCode.glblSizes);
+            this.glblVars.AllocVarArrays (objCode.glblSizes);
 
             /*
              * Script can handle these event codes.

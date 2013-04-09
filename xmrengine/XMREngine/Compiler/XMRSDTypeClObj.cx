@@ -44,7 +44,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public XMRSDTypeClObj (XMRInstAbstract inst, int classindex)
         {
             Construct (inst, classindex);
-            instVars.AllocVarArrays (ref sdtcClass.instSizes);
+            instVars.AllocVarArrays (sdtcClass.instSizes);
         }
 
         /**

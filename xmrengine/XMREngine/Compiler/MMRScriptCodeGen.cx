@@ -139,6 +139,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private int nStates = 0;
 		private string sourceHash;
 		private string lastErrorFile = "";
+		private string[] stateNames;
+		private XMRInstArSizes glblSizes = new XMRInstArSizes ();
 		private Token errorMessageToken = null;
 		private TokenDeclVar curDeclFunc = null;
 		private TokenStmtBlock curStmtBlock = null;
@@ -148,9 +150,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private TokenDeclSDTypeClass currentSDTClass = null;
 
 		private Dictionary<string, int> stateIndices = null;
-
-		// code generation output
-		public ScriptObjCode scriptObjCode = null;
 
 		// These get cleared at beginning of every function definition
 		private ScriptMyLocal instancePointer;   // holds XMRInstanceSuperType pointer
@@ -181,7 +180,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				if (!youveAnError) throw;
 			} finally {
 				objFileWriter = null;
-				scriptObjCode = null;
 			}
 		}
 
@@ -189,8 +187,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief Convert 'tokenScript' to 'objFileWriter' format.
 		 *   'tokenScript' is a parsed/reduced abstract syntax tree of the script source file
 		 *   'objFileWriter' is a serialized form of the CIL code that we generate
-		 * Note:  The scriptObjCode herein is only temporary and is discarded on return.
-		 *        Use PerformGeneration() to create the 'real' one.
 		 */
 		private void PerformCompilation ()
 		{
@@ -224,12 +220,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Make up an array that translates state indices to state name strings.
 			 */
-			scriptObjCode = new ScriptObjCode ();
-			scriptObjCode.stateNames = new string[nStates];
-			scriptObjCode.stateNames[0] = "default";
+			stateNames = new string[nStates];
+			stateNames[0] = "default";
 			foreach (KeyValuePair<string, TokenDeclState> kvp in tokenScript.states) {
 				TokenDeclState declState = kvp.Value;
-				scriptObjCode.stateNames[declState.body.index] = declState.name.val;
+				stateNames[declState.body.index] = declState.name.val;
 			}
 
 			/*
@@ -304,7 +299,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				/*
 				 * Create entry in the value array for the variable or property.
 				 */
-				declVar.location = new CompValuGlobalVar (declVar, scriptObjCode);
+				declVar.location = new CompValuGlobalVar (declVar, glblSizes);
 			}
 
 			/*
@@ -337,7 +332,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					/*
 					 * Create entry in the value array for the static field or static property.
 					 */
-					declVar.location = new CompValuGlobalVar (declVar, scriptObjCode);
+					declVar.location = new CompValuGlobalVar (declVar, glblSizes);
 				}
 			}
 
@@ -402,7 +397,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						if (declVar.constant) continue;
 						if ((declVar.sdtFlags & ScriptReduce.SDT_STATIC) != 0) continue;
 						if ((declVar.getProp == null) && (declVar.setProp == null)) {
-							declVar.type.AssignVarSlot (declVar, ref sdtClass.instSizes);
+							declVar.type.AssignVarSlot (declVar, sdtClass.instSizes);
 						}
 					}
 
@@ -707,11 +702,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			objFileWriter.Write (COMPILED_VERSION_VALUE);
 			objFileWriter.Write (sourceHash);
 			objFileWriter.Write (tokenScript.expiryDays);
-			scriptObjCode.glblSizes.WriteToFile (objFileWriter);
+			glblSizes.WriteToFile (objFileWriter);
 
 			objFileWriter.Write (nStates);
 			for (int i = 0; i < nStates; i ++) {
-				objFileWriter.Write (scriptObjCode.stateNames[i]);
+				objFileWriter.Write (stateNames[i]);
 			}
 
 			/*
@@ -803,8 +798,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			ScriptObjWriter.TheEnd (objFileWriter);
-
-			scriptObjCode = null;
 		}
 
 		/**
@@ -6024,156 +6017,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				used  = false;                         // assume it isn't referenced at all
 				label = scg.ilGen.DefineLabel (name);  // label that the break/continue jumps to
 				block = scg.curStmtBlock;              // { ... } that the break/continue label is in
-			}
-		}
-
-		/**
-		 * @brief Convert 'objFileReader' format to 'scriptObjCode' format.
-		 *   'objFileReader' is a serialized form of the CIL code we generated
-		 *   'asmFileWriter' is where we write the disassembly to (or null if not wanted)
-		 *   'scriptObjCode' is an in-memory object with methods filled in from the CIL code
-		 * Throws an exception if there is any error (theoretically).
-		 */
-		public static ScriptObjCode PerformGeneration (BinaryReader objFileReader, TextWriter asmFileWriter)
-		{
-			/*
-			 * Check version number to make sure we know how to process file contents.
-			 */
-			char[] ocm = objFileReader.ReadChars (OBJECT_CODE_MAGIC.Length);
-			if (new String (ocm) != OBJECT_CODE_MAGIC) {
-				throw new Exception ("not an XMR object file (bad magic)");
-			}
-			int cvv = objFileReader.ReadInt32 ();
-			if (cvv != COMPILED_VERSION_VALUE) {
-				throw new CVVMismatchException (cvv, COMPILED_VERSION_VALUE);
-			}
-
-			/*
-			 * Fill in simple parts of scriptObjCode object.
-			 */
-			ScriptObjCode scriptObjCode = new ScriptObjCode ();
-			scriptObjCode.sourceHash    = objFileReader.ReadString ();
-			scriptObjCode.expiryDays    = objFileReader.ReadInt32 ();
-			scriptObjCode.glblSizes.ReadFromFile (objFileReader);
-
-			int nStates = objFileReader.ReadInt32 ();
-
-			scriptObjCode.stateNames = new string[nStates];
-			for (int i = 0; i < nStates; i ++) {
-				scriptObjCode.stateNames[i] = objFileReader.ReadString ();
-				if (asmFileWriter != null) {
-					asmFileWriter.WriteLine ("  state[{0}] = {1}", i, scriptObjCode.stateNames[i]);
-				}
-			}
-
-			if (asmFileWriter != null) {
-				scriptObjCode.glblSizes.WriteAsmFile (asmFileWriter, "numGbl");
-			}
-
-			string gblName;
-			while ((gblName = objFileReader.ReadString ()) != "") {
-				string gblType = objFileReader.ReadString ();
-				int gblIndex = objFileReader.ReadInt32 ();
-				if (asmFileWriter != null) {
-					asmFileWriter.WriteLine ("  {0} = {1}[{2}]", gblName, gblType, gblIndex);
-				}
-			}
-
-			/*
-			 * Read in script-defined types.
-			 */
-			scriptObjCode.sdObjTypesName = new Dictionary<string, TokenDeclSDType> ();
-			scriptObjCode.sdDelTypes = new Dictionary<Type, string> ();
-			int maxIndex = -1;
-			while ((gblName = objFileReader.ReadString ()) != "") {
-				TokenDeclSDType sdt = TokenDeclSDType.ReadFromFile (scriptObjCode.sdObjTypesName, 
-				                                      gblName, objFileReader, asmFileWriter);
-				scriptObjCode.sdObjTypesName.Add (gblName, sdt);
-				if (maxIndex < sdt.sdTypeIndex) maxIndex = sdt.sdTypeIndex;
-				if (sdt is TokenDeclSDTypeDelegate) {
-					scriptObjCode.sdDelTypes.Add (sdt.GetSysType (), gblName);
-				}
-			}
-			scriptObjCode.sdObjTypesIndx = new TokenDeclSDType[maxIndex+1];
-			foreach (TokenDeclSDType sdt in scriptObjCode.sdObjTypesName.Values) {
-				scriptObjCode.sdObjTypesIndx[sdt.sdTypeIndex] = sdt;
-			}
-
-			/*
-			 * Now fill in the methods (the hard part).
-			 */
-			EndMethodWrapper endMethodWrapper     = new EndMethodWrapper ();
-			endMethodWrapper.scriptObjCode        = scriptObjCode;
-			scriptObjCode.scriptEventHandlerTable = new ScriptEventHandler[nStates,(int)ScriptEventCode.Size];
-			scriptObjCode.dynamicMethods          = new Dictionary<string, DynamicMethod> ();
-			scriptObjCode.scriptSrcLocss          = new Dictionary<string, KeyValuePair<int, ScriptSrcLoc>[]> ();
-			ScriptObjWriter.CreateObjCode (scriptObjCode.sdObjTypesName, objFileReader, endMethodWrapper.EndMethod, asmFileWriter);
-
-			/*
-			 * We enter all script event handler methods in the ScriptEventHandler table.
-			 * They are named:  <statename> <eventname>
-			 */
-			foreach (KeyValuePair<string, DynamicMethod> kvp in scriptObjCode.dynamicMethods) {
-				string methName = kvp.Key;
-				int i = methName.IndexOf (' ');
-				if (i < 0) continue;
-				string stateName = methName.Substring (0, i);
-				string eventName = methName.Substring (++ i);
-				int stateCode;
-				for (stateCode = scriptObjCode.stateNames.Length; -- stateCode >= 0;) {
-					if (scriptObjCode.stateNames[stateCode] == stateName) break;
-				}
-				int eventCode = (int)Enum.Parse (typeof (ScriptEventCode), eventName);
-				scriptObjCode.scriptEventHandlerTable[stateCode,eventCode] = 
-							(ScriptEventHandler)kvp.Value.CreateDelegate (typeof (ScriptEventHandler));
-			}
-
-			/*
-			 * Fill in all script-defined class vtables.
-			 */
-			foreach (TokenDeclSDType sdt in scriptObjCode.sdObjTypesIndx) {
-				if ((sdt != null) && (sdt is TokenDeclSDTypeClass)) {
-					TokenDeclSDTypeClass sdtc = (TokenDeclSDTypeClass)sdt;
-					sdtc.FillVTables (scriptObjCode);
-				}
-			}
-
-			return scriptObjCode;
-		}
-
-		/**
-		 * @brief Called once for every method found in objFileReader file.
-		 *        It enters the method in the ScriptObjCode object table so it can be called.
-		 */
-		private class EndMethodWrapper : System.Collections.IComparer {
-			public ScriptObjCode scriptObjCode;
-			public void EndMethod (DynamicMethod method, Dictionary<int, ScriptSrcLoc> srcLocs)
-			{
-				/*
-				 * Save method object code pointer.
-				 */
-				scriptObjCode.dynamicMethods.Add (method.Name, method);
-
-				/*
-				 * Build and sort iloffset -> source code location array.
-				 */
-				int n = srcLocs.Count;
-				KeyValuePair<int, ScriptSrcLoc>[] srcLocArray = new KeyValuePair<int, ScriptSrcLoc>[n];
-				n = 0;
-				foreach (KeyValuePair<int, ScriptSrcLoc> kvp in srcLocs) srcLocArray[n++] = kvp;
-				Array.Sort (srcLocArray, this);
-
-				/*
-				 * Save sorted array.
-				 */
-				scriptObjCode.scriptSrcLocss.Add (method.Name, srcLocArray);
-			}
-
-			public int Compare (object x, object y)
-			{
-				KeyValuePair<int, ScriptSrcLoc> kvpx = (KeyValuePair<int, ScriptSrcLoc>)x;
-				KeyValuePair<int, ScriptSrcLoc> kvpy = (KeyValuePair<int, ScriptSrcLoc>)y;
-				return kvpx.Key - kvpy.Key;
 			}
 		}
 	}

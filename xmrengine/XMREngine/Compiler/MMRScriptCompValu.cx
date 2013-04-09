@@ -640,11 +640,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 		private TokenDeclVar declVar;
 
-		public CompValuGlobalVar (TokenDeclVar declVar, ScriptObjCode scriptObjCode) : base (declVar.type)
+		public CompValuGlobalVar (TokenDeclVar declVar, XMRInstArSizes glblSizes) : base (declVar.type)
 		{
 			this.declVar = declVar;
 			if ((declVar.getProp == null) && (declVar.setProp == null)) {
-				declVar.type.AssignVarSlot (declVar, ref scriptObjCode.glblSizes);
+				declVar.type.AssignVarSlot (declVar, glblSizes);
 			}
 		}
 		public override void PushVal (ScriptCodeGen scg, Token errorAt)

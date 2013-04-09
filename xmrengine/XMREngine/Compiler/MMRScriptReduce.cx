@@ -4407,7 +4407,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public int arrayOfRank;           // if array, it has this number of dimensions, else zero
 
 		public bool slotsAssigned;        // set true when slots have been assigned...
-		public XMRInstArSizes instSizes;  // number of instance fields of various types
+		public XMRInstArSizes instSizes = new XMRInstArSizes ();
+		                                  // number of instance fields of various types
 		public int numVirtFuncs;          // number of virtual functions
 		public int numInterfaces;         // number of implemented interfaces
 
@@ -5072,7 +5073,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			return typeof (XMRSDTypeClObj);
 		}
 
-		public override void AssignVarSlot (TokenDeclVar declVar, ref XMRInstArSizes ias)
+		public override void AssignVarSlot (TokenDeclVar declVar, XMRInstArSizes ias)
 		{
 			declVar.vTableArray = iarSDTClObjsFieldInfo;
 			declVar.vTableIndex = ias.iasSDTClObjs ++;
@@ -5173,7 +5174,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 * @brief Assign slots in the gblObjects[] array because we have to typecast out in any case.
 		 *        Likewise with the sdtcObjects[] array.
 		 */
-		public override void AssignVarSlot (TokenDeclVar declVar, ref XMRInstArSizes ias)
+		public override void AssignVarSlot (TokenDeclVar declVar, XMRInstArSizes ias)
 		{
 			declVar.vTableArray = iarObjectsFieldInfo;
 			declVar.vTableIndex = ias.iasObjects ++;
@@ -5225,7 +5226,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 * @brief Assign slots in the gblSDTIntfObjs[] array
 		 *        Likewise with the sdtcSDTIntfObjs[] array.
 		 */
-		public override void AssignVarSlot (TokenDeclVar declVar, ref XMRInstArSizes ias)
+		public override void AssignVarSlot (TokenDeclVar declVar, XMRInstArSizes ias)
 		{
 			declVar.vTableArray = iarSDTIntfObjsFieldInfo;
 			declVar.vTableIndex = ias.iasSDTIntfObjs ++;

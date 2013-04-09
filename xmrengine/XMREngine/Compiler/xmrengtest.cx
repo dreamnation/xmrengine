@@ -178,7 +178,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  */
                 objFileStream.Seek (0, SeekOrigin.Begin);
                 BinaryReader objFileReader = new BinaryReader (objFileStream);
-                ScriptObjCode scriptObjCode = ScriptCodeGen.PerformGeneration (objFileReader, null);
+                ScriptObjCode scriptObjCode = new ScriptObjCode (objFileReader, null);
                 objFileReader.Close ();
 
                 /*
@@ -1028,7 +1028,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             m_ObjCode = soc;
             heapLimit = HEAPLIMIT;
-            glblVars.AllocVarArrays (ref m_ObjCode.glblSizes);
+            glblVars.AllocVarArrays (m_ObjCode.glblSizes);
 
             /*
              * Run default state_entry() handler until it is ready for more input.

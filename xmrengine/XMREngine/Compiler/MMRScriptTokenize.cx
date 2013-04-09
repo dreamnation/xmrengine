@@ -1615,7 +1615,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
          *        These only need to be implemented for script-visible types, ie, those that a script writer 
          *        can actually define a variable as.
          */
-        public virtual void AssignVarSlot (TokenDeclVar declVar, ref XMRInstArSizes arSizes)
+        public virtual void AssignVarSlot (TokenDeclVar declVar, XMRInstArSizes arSizes)
         {
             throw new Exception ("not implemented for " + ToString () + " (" + GetType () + ")");
         }
@@ -1648,7 +1648,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public TokenTypeArray (Token original) : base (original) { }
         public override Type ToSysType () { return typeof (XMR_Array); }
         public override string ToString () { return "array"; }
-        public override void AssignVarSlot (TokenDeclVar declVar, ref XMRInstArSizes arSizes)
+        public override void AssignVarSlot (TokenDeclVar declVar, XMRInstArSizes arSizes)
         {
             declVar.vTableArray = iarArraysFieldInfo;
             declVar.vTableIndex = arSizes.iasArrays ++;
@@ -1667,7 +1667,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public TokenTypeChar (Token original) : base (original) { }
         public override Type ToSysType () { return typeof (char); }
         public override string ToString () { return "char"; }
-        public override void AssignVarSlot (TokenDeclVar declVar, ref XMRInstArSizes arSizes)
+        public override void AssignVarSlot (TokenDeclVar declVar, XMRInstArSizes arSizes)
         {
             declVar.vTableArray = iarCharsFieldInfo;
             declVar.vTableIndex = arSizes.iasChars ++;
@@ -1680,7 +1680,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public TokenTypeExc (Token original) : base (original) { }
         public override Type ToSysType () { return typeof (Exception); }
         public override string ToString () { return "exception"; }
-        public override void AssignVarSlot (TokenDeclVar declVar, ref XMRInstArSizes arSizes)
+        public override void AssignVarSlot (TokenDeclVar declVar, XMRInstArSizes arSizes)
         {
             declVar.vTableArray = iarObjectsFieldInfo;
             declVar.vTableIndex = arSizes.iasObjects ++;
@@ -1693,7 +1693,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public TokenTypeFloat (Token original) : base (original) { }
         public override Type ToSysType () { return typeof (SCRIPTFLOAT); }
         public override string ToString () { return "float"; }
-        public override void AssignVarSlot (TokenDeclVar declVar, ref XMRInstArSizes arSizes)
+        public override void AssignVarSlot (TokenDeclVar declVar, XMRInstArSizes arSizes)
         {
             declVar.vTableArray = iarFloatsFieldInfo;
             declVar.vTableIndex = arSizes.iasFloats ++;
@@ -1706,7 +1706,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public TokenTypeInt (Token original) : base (original) { }
         public override Type ToSysType () { return typeof (int); }
         public override string ToString () { return "integer"; }
-        public override void AssignVarSlot (TokenDeclVar declVar, ref XMRInstArSizes arSizes)
+        public override void AssignVarSlot (TokenDeclVar declVar, XMRInstArSizes arSizes)
         {
             declVar.vTableArray = iarIntegersFieldInfo;
             declVar.vTableIndex = arSizes.iasIntegers ++;
@@ -1719,7 +1719,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public TokenTypeKey (Token original) : base (original) { }
         public override Type ToSysType () { return typeof (string); }
         public override string ToString () { return "key"; }
-        public override void AssignVarSlot (TokenDeclVar declVar, ref XMRInstArSizes arSizes)
+        public override void AssignVarSlot (TokenDeclVar declVar, XMRInstArSizes arSizes)
         {
             declVar.vTableArray = iarStringsFieldInfo;
             declVar.vTableIndex = arSizes.iasStrings ++;
@@ -1735,7 +1735,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public TokenTypeList (Token original) : base (original) { }
         public override Type ToSysType () { return typeof (LSL_List); }
         public override string ToString () { return "list"; }
-        public override void AssignVarSlot (TokenDeclVar declVar, ref XMRInstArSizes arSizes)
+        public override void AssignVarSlot (TokenDeclVar declVar, XMRInstArSizes arSizes)
         {
             declVar.vTableArray = iarListsFieldInfo;
             declVar.vTableIndex = arSizes.iasLists ++;
@@ -1755,7 +1755,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public TokenTypeObject (Token original) : base (original) { }
         public override Type ToSysType () { return typeof (object); }
         public override string ToString () { return "object"; }
-        public override void AssignVarSlot (TokenDeclVar declVar, ref XMRInstArSizes arSizes)
+        public override void AssignVarSlot (TokenDeclVar declVar, XMRInstArSizes arSizes)
         {
             declVar.vTableArray = iarObjectsFieldInfo;
             declVar.vTableIndex = arSizes.iasObjects ++;
@@ -1772,7 +1772,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public TokenTypeRot (Token original) : base (original) { }
         public override Type ToSysType () { return typeof (LSL_Rotation); }
         public override string ToString () { return "rotation"; }
-        public override void AssignVarSlot (TokenDeclVar declVar, ref XMRInstArSizes arSizes)
+        public override void AssignVarSlot (TokenDeclVar declVar, XMRInstArSizes arSizes)
         {
             declVar.vTableArray = iarRotationsFieldInfo;
             declVar.vTableIndex = arSizes.iasRotations ++;
@@ -1788,7 +1788,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public TokenTypeStr (Token original) : base (original) { }
         public override Type ToSysType () { return typeof (string); }
         public override string ToString () { return "string"; }
-        public override void AssignVarSlot (TokenDeclVar declVar, ref XMRInstArSizes arSizes)
+        public override void AssignVarSlot (TokenDeclVar declVar, XMRInstArSizes arSizes)
         {
             declVar.vTableArray = iarStringsFieldInfo;
             declVar.vTableIndex = arSizes.iasStrings ++;
@@ -1811,7 +1811,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public TokenTypeVec (Token original) : base (original) { }
         public override Type ToSysType () { return typeof (LSL_Vector); }
         public override string ToString () { return "vector"; }
-        public override void AssignVarSlot (TokenDeclVar declVar, ref XMRInstArSizes arSizes)
+        public override void AssignVarSlot (TokenDeclVar declVar, XMRInstArSizes arSizes)
         {
             declVar.vTableArray = iarVectorsFieldInfo;
             declVar.vTableIndex = arSizes.iasVectors ++;

@@ -55,7 +55,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             heapUse = instance.UpdateHeapUse (heapUse, 0);
         }
 
-        public void AllocVarArrays (ref XMRInstArSizes ars)
+        public void AllocVarArrays (XMRInstArSizes ars)
         {
             ClearOldArrays ();
 
@@ -242,7 +242,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
     }
 
-    public struct XMRInstArSizes {
+    public class XMRInstArSizes {
         public int iasArrays;
         public int iasChars;
         public int iasFloats;
