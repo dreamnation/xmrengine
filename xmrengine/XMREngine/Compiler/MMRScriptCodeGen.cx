@@ -3882,6 +3882,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (rVal is TokenRValAsnPre)    cVal = GenerateFromRValAsnPre    ((TokenRValAsnPre)rVal);
 			if (rVal is TokenRValCall)      cVal = GenerateFromRValCall      ((TokenRValCall)rVal);
 			if (rVal is TokenRValCast)      cVal = GenerateFromRValCast      ((TokenRValCast)rVal);
+			if (rVal is TokenRValCondExpr)  cVal = GenerateFromRValCondExpr  ((TokenRValCondExpr)rVal);
 			if (rVal is TokenRValConst)     cVal = GenerateFromRValConst     ((TokenRValConst)rVal);
 			if (rVal is TokenRValInitDef)   cVal = GenerateFromRValInitDef   ((TokenRValInitDef)rVal);
 			if (rVal is TokenRValIsType)    cVal = GenerateFromRValIsType    ((TokenRValIsType)rVal);
@@ -4647,6 +4648,43 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			inRVal.PushVal (this, cast, outType, true);
 			outRVal.PopPost (this, cast);
 			return outRVal;
+		}
+
+		/**
+		 * @brief Compute conditional expression value.
+		 * @returns type and location of computed value.
+		 */
+		private CompValu GenerateFromRValCondExpr (TokenRValCondExpr rValCondExpr)
+		{
+			bool condVal;
+			CompValu condValu = GenerateFromRVal (rValCondExpr.condExpr);
+			if (IsConstBoolExpr (condValu, out condVal)) {
+				return GenerateFromRVal (condVal ? rValCondExpr.trueExpr : rValCondExpr.falseExpr);
+			}
+
+			ScriptMyLabel falseLabel = ilGen.DefineLabel ("condexfalse");
+			ScriptMyLabel doneLabel  = ilGen.DefineLabel ("condexdone");
+
+			condValu.PushVal (this, rValCondExpr.condExpr, tokenTypeBool);
+			ilGen.Emit (rValCondExpr, OpCodes.Brfalse, falseLabel);
+
+			CompValu trueValu = GenerateFromRVal (rValCondExpr.trueExpr);
+			trueValu.PushVal (this, rValCondExpr.trueExpr);
+			ilGen.Emit (rValCondExpr, OpCodes.Br, doneLabel);
+
+			ilGen.MarkLabel (falseLabel);
+			CompValu falseValu = GenerateFromRVal (rValCondExpr.falseExpr);
+			falseValu.PushVal (this, rValCondExpr.falseExpr);
+
+			if (trueValu.type.GetType () != falseValu.type.GetType ()) {
+				ErrorMsg (rValCondExpr, "? operands " + trueValu.type.ToString () + " : " +
+				              falseValu.type.ToString () + " must be of same type");
+			}
+
+			ilGen.MarkLabel (doneLabel);
+			CompValuTemp retRVal = new CompValuTemp (trueValu.type, this);
+			retRVal.Pop (this, rValCondExpr);
+			return retRVal;
 		}
 
 		/**

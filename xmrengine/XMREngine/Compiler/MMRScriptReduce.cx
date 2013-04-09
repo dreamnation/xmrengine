@@ -18,6 +18,7 @@
  *                as a tree of tokens
  */
 
+using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -74,6 +75,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			p.Add (typeof (TokenKwAsnOr),  ASNPR);
 			p.Add (typeof (TokenKwAsnXor), ASNPR);
 			p.Add (typeof (TokenKwAssign), ASNPR);
+
+			p.Add (typeof (TokenKwQMark),     60);
 
 			p.Add (typeof (TokenKwOrOrOr),    70);
 			p.Add (typeof (TokenKwAndAndAnd), 80);
@@ -162,7 +165,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * remain in the source token stream after this, but they can 
 			 * be skipped over, because their bodies have been substituted 
 			 * in the source for any references.
- 			 */
+			 */
 			ParseSDTypePreScanPassOne (tokenBegin);  // catalog definitions
 			ParseSDTypePreScanPassTwo (tokenBegin);  // substitute references
 
@@ -3162,7 +3165,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * any other variable, except it has .constant = true.
 			 * The code generator will test that the initialization expression is constant.
 			 *
-			 * 	constant <name> = <value> ;
+			 *	constant <name> = <value> ;
 			 */
 			if (token is TokenKwConst) {
 				token = token.nextToken;
@@ -3396,6 +3399,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					result.prevToken = operands.prevToken.prevToken;
 					operands = result;
 					binOps   = binOps.pop;
+				}
+
+				/*
+				 * Handle conditional expression as a special form:
+				 *    <condexp> ? <trueexp> : <falseexp>
+				 */
+				if (binOp.token is TokenKwQMark) {
+					TokenRValCondExpr condExpr = new TokenRValCondExpr (binOp.token);
+					condExpr.condExpr  = operands;
+					condExpr.trueExpr  = ParseRVal (ref token, new Type[] { typeof (TokenKwColon) });
+					condExpr.falseExpr = ParseRVal (ref token, termTokenTypes);
+					condExpr.prevToken = operands.prevToken;
+					operands = condExpr;
+					termTokenTypes = new Type[0];
+					goto done;
 				}
 
 				/*
@@ -6214,6 +6232,61 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	}
 
 	/**
+	 * @brief Encapsulate a conditional expression:
+	 *        <condExpr> ? <trueExpr> : <falseExpr>
+	 */
+	public class TokenRValCondExpr : TokenRVal {
+		public TokenRVal condExpr;
+		public TokenRVal trueExpr;
+		public TokenRVal falseExpr;
+
+		public TokenRValCondExpr (Token original) : base (original)
+		{ }
+
+		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			TokenType trueType = trueExpr.GetRValType (scg, argsig);
+			TokenType falseType = falseExpr.GetRValType (scg, argsig);
+			if (trueType.ToString () != falseType.ToString ()) {
+				scg.ErrorMsg (condExpr, "true & false expr types don't match");
+			}
+			return trueType;
+		}
+
+		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)
+		{
+			return condExpr.IsRValTrivial (scg, null) &&
+				   trueExpr.IsRValTrivial (scg, argsig) &&
+				  falseExpr.IsRValTrivial (scg, argsig);
+		}
+
+		/**
+		 * @brief If condition is constant, then the whole expression is constant
+		 *		iff the corresponding trueExpr or falseExpr is constant.
+		 */
+		public override TokenRVal TryComputeConstant (TCCLookup lookup, ref bool didOne)
+		{
+			TokenRVal rValCond = condExpr.TryComputeConstant  (lookup, ref didOne);
+			if (rValCond is TokenRValConst) {
+				didOne = true;
+				bool isTrue = ((TokenRValConst)rValCond).IsConstBoolTrue ();
+				return (isTrue ? trueExpr : falseExpr).TryComputeConstant  (lookup, ref didOne);
+			}
+			return this;
+		}
+
+		// debugging
+		public override void DebString (StringBuilder sb)
+		{
+			condExpr.DebString (sb);
+			sb.Append ("? ");
+			trueExpr.DebString (sb);
+			sb.Append (": ");
+			falseExpr.DebString (sb);
+		}
+	}
+
+	/**
 	 * @brief all constants supposed to end up here
 	 */
 	public enum TokenRValConstType : byte { CHAR = 0, FLOAT = 1, INT = 2, KEY = 3, STRING = 4 };
@@ -6275,6 +6348,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			// gotta end somewhere
 			return this;
+		}
+
+		public bool IsConstBoolTrue ()
+		{
+			switch (type) {
+				case TokenRValConstType.CHAR:   { return (char)val        != 0;  }
+				case TokenRValConstType.FLOAT:  { return (SCRIPTFLOAT)val != 0;  }
+				case TokenRValConstType.INT:	{ return (int)val         != 0;  }
+				case TokenRValConstType.KEY:	{ return (string)val != "" && (string)val != SCRIPTBASECLASS.NULL_KEY; }
+				case TokenRValConstType.STRING: { return (string)val      != ""; }
+				default: throw new Exception ("unknown type");
+			}
 		}
 	}
 
