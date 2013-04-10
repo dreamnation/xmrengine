@@ -839,8 +839,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private void GenerateStateEventHandlers (string statename, TokenStateBody body)
 		{
+			Dictionary<string,TokenDeclVar> statehandlers = new Dictionary<string,TokenDeclVar> ();
 			for (Token t = body.eventFuncs; t != null; t = t.nextToken) {
-				GenerateEventHandler (statename, (TokenDeclVar)t);
+				TokenDeclVar tdv = (TokenDeclVar)t;
+				string eventname = tdv.GetSimpleName ();
+				if (statehandlers.ContainsKey (eventname)) {
+					ErrorMsg (tdv, "event handler " + eventname + " already defined for state " + statename);
+				} else {
+					statehandlers.Add (eventname, tdv);
+					GenerateEventHandler (statename, tdv);
+				}
 			}
 		}
 
