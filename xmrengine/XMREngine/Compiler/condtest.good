@@ -9,3 +9,20 @@ llOwnerSay: 0
 llOwnerSay: <12345678-1234-1234-1234-123456789abc> NOT null
 llOwnerSay: <> IS null
 llOwnerSay: <00000000-0000-0000-0000-000000000000> IS null
+llOwnerSay: Compute: i == 10
+llOwnerSay: Compute: this
+llOwnerSay: this
+llOwnerSay: Compute: i == 10
+llOwnerSay: Compute: i == 11
+llOwnerSay: Compute: that
+llOwnerSay: that
+llOwnerSay: Compute: i == 10
+llOwnerSay: Compute: i == 11
+llOwnerSay: Compute: i == 12
+llOwnerSay: Compute: other
+llOwnerSay: the other thing
+llOwnerSay: Compute: i == 10
+llOwnerSay: Compute: i == 11
+llOwnerSay: Compute: i == 12
+llOwnerSay: Compute: more
+llOwnerSay: and more

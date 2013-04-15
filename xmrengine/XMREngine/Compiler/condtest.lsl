@@ -17,5 +17,27 @@ default {
             key akey = (key)somekeys[i];
             llOwnerSay ("<" + akey + "> " + (akey ? "NOT" : "IS") + " null");
         }
+
+        for (integer i = 10; i < 14; i ++) {
+            llOwnerSay (ComputeI (i == 10, "i == 10") ? 
+                        ComputeS ("this", "this") : 
+                        ComputeI (i == 11, "i == 11") ? 
+                        ComputeS ("that", "that") : 
+                        ComputeI (i == 12, "i == 12") ?
+                        ComputeS ("the other thing", "other") :
+                        ComputeS ("and more", "more"));
+        }
     }
+}
+
+integer ComputeI (integer x, string s)
+{
+    llOwnerSay ("Compute: " + s);
+    return x;
+}
+
+string ComputeS (string x, string s)
+{
+    llOwnerSay ("Compute: " + s);
+    return x;
 }
