@@ -130,68 +130,67 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         // ready to resume it from where the .state file says it was last
         private void InstantiateScript()
         {
-            lock (m_CompileLock)
-            {
-                bool compiledIt = false;
-                ScriptObjCode objCode;
+            bool compiledIt = false;
+            ScriptObjCode objCode;
+
+            /*
+             * If source code string is empty, use the asset ID as the object file name.
+             * Allow lines of // comments at the beginning (for such as engine selection).
+             */
+            int i, j, len;
+            for (len = m_SourceCode.Length; len > 0; -- len) {
+                if (m_SourceCode[len-1] > ' ') break;
+            }
+            for (i = 0; i < len; i ++) {
+                char c = m_SourceCode[i];
+                if (c <= ' ') continue;
+                if (c != '/') break;
+                if ((i + 1 >= len) || (m_SourceCode[i+1] != '/')) break;
+                i = m_SourceCode.IndexOf ('\n', i);
+                if (i < 0) i = len - 1;
+            }
+            if ((i >= len) || !m_Engine.m_UseSourceHashCode) {
+ 
+                /*
+                 * Source consists of nothing but // comments and whitespace,
+                 * or we are being forced to use the asset-id as the key, to
+                 * open an already existing object code file.
+                 */
+                m_ScriptObjCodeKey = m_Item.AssetID.ToString ();
+                if (i >= len) m_SourceCode = "";
+            } else {
 
                 /*
-                 * If source code string is empty, use the asset ID as the object file name.
-                 * Allow lines of // comments at the beginning (for such as engine selection).
+                 * Make up dictionary key for the object code.
+                 * Use the same object code for identical source code
+                 * regardless of asset ID, so we don't care if they
+                 * copy scripts or not.
                  */
-                int i, j, len;
-                for (len = m_SourceCode.Length; len > 0; -- len) {
-                    if (m_SourceCode[len-1] > ' ') break;
-                }
-                for (i = 0; i < len; i ++) {
-                    char c = m_SourceCode[i];
-                    if (c <= ' ') continue;
-                    if (c != '/') break;
-                    if ((i + 1 >= len) || (m_SourceCode[i+1] != '/')) break;
-                    i = m_SourceCode.IndexOf ('\n', i);
-                    if (i < 0) i = len - 1;
-                }
-                if ((i >= len) || !m_Engine.m_UseSourceHashCode) {
- 
-                    /*
-                     * Source consists of nothing but // comments and whitespace,
-                     * or we are being forced to use the asset-id as the key, to
-                     * open an already existing object code file.
-                     */
-                    m_ScriptObjCodeKey = m_Item.AssetID.ToString ();
-                    if (i >= len) m_SourceCode = "";
-                } else {
+                byte[] scbytes   = System.Text.Encoding.UTF8.GetBytes (m_SourceCode);
+                StringBuilder sb = new StringBuilder ((256 + 5) / 6);
+                ByteArrayToSixbitStr (sb, System.Security.Cryptography.SHA256.Create ().ComputeHash (scbytes));
+                m_ScriptObjCodeKey = sb.ToString ();
 
-                    /*
-                     * Make up dictionary key for the object code.
-                     * Use the same object code for identical source code
-                     * regardless of asset ID, so we don't care if they
-                     * copy scripts or not.
-                     */
-                    byte[] scbytes   = System.Text.Encoding.UTF8.GetBytes (m_SourceCode);
-                    StringBuilder sb = new StringBuilder ((256 + 5) / 6);
-                    ByteArrayToSixbitStr (sb, System.Security.Cryptography.SHA256.Create ().ComputeHash (scbytes));
-                    m_ScriptObjCodeKey = sb.ToString ();
-
-                    /*
-                     * But source code can be just a sixbit string itself
-                     * that identifies an already existing object code file.
-                     */
-                    if (len - i == m_ScriptObjCodeKey.Length) {
-                        for (j = len; -- j >= i;) {
-                            if (sixbit.IndexOf (m_SourceCode[j]) < 0) break;
-                        }
-                        if (j < i) {
-                            m_ScriptObjCodeKey = m_SourceCode.Substring (i, len - i);
-                            m_SourceCode = "";
-                        }
+                /*
+                 * But source code can be just a sixbit string itself
+                 * that identifies an already existing object code file.
+                 */
+                if (len - i == m_ScriptObjCodeKey.Length) {
+                    for (j = len; -- j >= i;) {
+                        if (sixbit.IndexOf (m_SourceCode[j]) < 0) break;
+                    }
+                    if (j < i) {
+                        m_ScriptObjCodeKey = m_SourceCode.Substring (i, len - i);
+                        m_SourceCode = "";
                     }
                 }
+            }
 
-                /*
-                 * There may already be an ScriptObjCode struct in memory that
-                 * we can use.  If not, try to compile it.
-                 */
+            /*
+             * There may already be an ScriptObjCode struct in memory that
+             * we can use.  If not, try to compile it.
+             */
+            lock (m_CompileLock) {
                 if (!m_CompiledScriptObjCode.TryGetValue (m_ScriptObjCodeKey, out objCode)) {
                     try {
                         objCode = TryToCompile (m_ForceReset);
@@ -209,27 +208,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
 
                 /*
-                 * Fill in script instance from object code
-                 * Script instance is put in a "never-ever-has-run-before" state.
-                 */
-                LoadObjCode(objCode);
-
-                /*
-                 * Fill in script intial state
-                 * - either as loaded from a .state file
-                 * - or initial default state_entry() event
-                 */
-                try {
-                    m_ObjCode = objCode;
-                    LoadInitialState();
-                } catch {
-                    // we haven't incremented refcount below
-                    // so don't let anything decrement it
-                    m_ObjCode = null;
-                    throw;
-                }
-
-                /*
                  * Loaded successfully, increment reference count.
                  *
                  * If we just compiled it though, reset count to 0 first as
@@ -242,6 +220,39 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     objCode.refCount = 0;
                 }
                 objCode.refCount ++;
+
+                /*
+                 * Now set up to decrement ref count on dispose.
+                 */
+                m_ObjCode = objCode;
+            }
+
+            /*
+             * In case source code is huge.
+             */
+            m_SourceCode = null;
+
+            try {
+    
+                /*
+                 * Fill in script instance from object code
+                 * Script instance is put in a "never-ever-has-run-before" state.
+                 */
+                LoadObjCode();
+
+                /*
+                 * Fill in script intial state
+                 * - either as loaded from a .state file
+                 * - or initial default state_entry() event
+                 */
+                LoadInitialState();
+            } catch {
+
+                /*
+                 * If any error loading, decrement object code reference count.
+                 */
+                Dispose ();
+                throw;
             }
         }
 
@@ -299,10 +310,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * Fill in script object initial contents.
          * Set the initial state to "default".
          */
-        private void LoadObjCode (ScriptObjCode objCode)
+        private void LoadObjCode ()
         {
-            if (objCode  == null) throw new ArgumentNullException ("objCode");
-
             /*
              * Script must leave this much stack remaining on calls to CheckRun().
              */
@@ -316,15 +325,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Allocate global variable arrays.
              */
-            this.glblVars.AllocVarArrays (objCode.glblSizes);
+            this.glblVars.AllocVarArrays (m_ObjCode.glblSizes);
 
             /*
              * Script can handle these event codes.
              */
-            m_HaveEventHandlers = new bool[objCode.scriptEventHandlerTable.GetLength(1)];
-            for (int i = objCode.scriptEventHandlerTable.GetLength(0); -- i >= 0;) {
-                for (int j = objCode.scriptEventHandlerTable.GetLength(1); -- j >= 0;) {
-                    if (objCode.scriptEventHandlerTable[i,j] != null) {
+            m_HaveEventHandlers = new bool[m_ObjCode.scriptEventHandlerTable.GetLength(1)];
+            for (int i = m_ObjCode.scriptEventHandlerTable.GetLength(0); -- i >= 0;) {
+                for (int j = m_ObjCode.scriptEventHandlerTable.GetLength(1); -- j >= 0;) {
+                    if (m_ObjCode.scriptEventHandlerTable[i,j] != null) {
                         m_HaveEventHandlers[j] = true;
                     }
                 }

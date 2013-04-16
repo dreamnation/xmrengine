@@ -280,8 +280,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private void StartComplete (object source, ElapsedEventArgs eea)
         {
             int delayms = m_Config.GetInt ("StartDelayMs", 10000);  // 10sec
-            long now = DateTime.UtcNow.Ticks - (long)delayms * 10000;
-            int delms = (int)((m_InitializedAt - now) / 10000);
+            long now = DateTime.UtcNow.Ticks;
+            int delms = (int)((m_InitializedAt - now) / 10000) + delayms;
             if (delms > 0) {
                 m_log.Debug ("[XMREngine]: StartComplete delaying " + delms);
                 System.Timers.Timer startCompleteTimer = new System.Timers.Timer(delms);
@@ -1062,7 +1062,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             // Write out the .state file with the <ScriptState ...>...</ScriptState> XML text
             string statePath = XMRInstance.GetStateFileName(m_ScriptBasePath, itemID);
-            Verbose ("[XMREngine]: writing " + itemID.ToString () + ".state file from XML");
             FileStream ss = File.Create(statePath);
             StreamWriter sw = new StreamWriter(ss);
             sw.Write(scriptStateN.OuterXml);
@@ -1118,8 +1117,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             TraceCalls("[XMREngine]: OnRezScript(...,{0},...)", itemID.ToString());
-
-            m_InitializedAt = DateTime.UtcNow.Ticks;
 
             /*
              * Assume script uses the default engine, whatever that is.
@@ -1210,7 +1207,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             /*
-             * Queue script in a thread that will compile and load it.
+             * Compile and load it.
              */
             lock (m_ScriptErrors) {
                 m_ScriptErrors.Remove (instance.m_ItemID);
@@ -1279,6 +1276,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * successfully (by posting a 0 element array).
              */
             lock (m_ScriptErrors) {
+                if (instance.m_IState != XMRInstState.CONSTRUCT) throw new Exception("bad state");
                 m_ScriptErrors[instance.m_ItemID] = noScriptErrors;
             }
 
@@ -1351,8 +1349,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 File.Delete(stateFileName);
 
                 ScriptRemoved handlerScriptRemoved = OnScriptRemoved;
-                if (handlerScriptRemoved != null)
+                if (handlerScriptRemoved != null) {
                     handlerScriptRemoved(itemID);
+                }
 
                 m_LockedDict = "~~OnRemoveScript";
             }

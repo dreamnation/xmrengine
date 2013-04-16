@@ -87,13 +87,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         execTime += (long)(DateTime.UtcNow - DateTime.MinValue).TotalMilliseconds;
                     }
                     outFile.WriteLine("  execution time: " + execTime + " mS");
+                    outFile.WriteLine("     last ran at: " + th.m_LastRanAt.ToString());
                     XMRInstance rins = th.m_RunInstance;
                     if (rins != null) {
-                        outFile.WriteLine("running {0} {1}",
-                                rins.ItemID.ToString(),
-                                rins.m_DescName);
+                        outFile.WriteLine("         running: " + rins.ItemID.ToString() + " " + rins.m_DescName);
+                        if (flagFull) {
+                            outFile.WriteLine (rins.RunTestLs (true));
+                        }
                     }
-                    outFile.WriteLine("     last ran at: " + th.m_LastRanAt.ToString());
                 }
 
                 /*
