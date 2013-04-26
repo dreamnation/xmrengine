@@ -24,6 +24,7 @@ time make xmrengtest.exe
 export MONO_PATH=../../../bin
 export PATH=~/mono64.267/bin:$PATH
 
+testit listinserttest
 testit arraytest
 testit chartest
 testit fieldtest

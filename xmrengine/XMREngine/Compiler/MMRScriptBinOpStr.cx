@@ -55,9 +55,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		private static MethodInfo stringAddStringMethInfo = ScriptCodeGen.GetStaticMethod (typeof (string), "Concat",  new Type[] { typeof (string), typeof (string) });
 		private static MethodInfo stringCmpStringMethInfo = ScriptCodeGen.GetStaticMethod (typeof (string), "Compare", new Type[] { typeof (string), typeof (string) });
 
-		private static MethodInfo infoMethListAddObj   = GetBinOpsMethod ("MethListAddObj",   new Type[] { typeof (LSL_List),     typeof (object)       });
+		private static MethodInfo infoMethListAddFloat = GetBinOpsMethod ("MethListAddFloat", new Type[] { typeof (LSL_List),     typeof (SCRIPTFLOAT)  });
+		private static MethodInfo infoMethListAddInt   = GetBinOpsMethod ("MethListAddInt",   new Type[] { typeof (LSL_List),     typeof (int)          });
+		private static MethodInfo infoMethListAddKey   = GetBinOpsMethod ("MethListAddKey",   new Type[] { typeof (LSL_List),     typeof (string)       });
+		private static MethodInfo infoMethListAddRot   = GetBinOpsMethod ("MethListAddRot",   new Type[] { typeof (LSL_List),     typeof (LSL_Rotation) });
+		private static MethodInfo infoMethListAddStr   = GetBinOpsMethod ("MethListAddStr",   new Type[] { typeof (LSL_List),     typeof (string)       });
+		private static MethodInfo infoMethListAddVec   = GetBinOpsMethod ("MethListAddVec",   new Type[] { typeof (LSL_List),     typeof (LSL_Vector)   });
 		private static MethodInfo infoMethListAddList  = GetBinOpsMethod ("MethListAddList",  new Type[] { typeof (LSL_List),     typeof (LSL_List)     });
-		private static MethodInfo infoMethObjAddList   = GetBinOpsMethod ("MethObjAddList",   new Type[] { typeof (object),       typeof (LSL_List)     });
+		private static MethodInfo infoMethFloatAddList = GetBinOpsMethod ("MethFloatAddList", new Type[] { typeof (SCRIPTFLOAT),  typeof (LSL_List)     });
+		private static MethodInfo infoMethIntAddList   = GetBinOpsMethod ("MethIntAddList",   new Type[] { typeof (int),          typeof (LSL_List)     });
+		private static MethodInfo infoMethKeyAddList   = GetBinOpsMethod ("MethKeyAddList",   new Type[] { typeof (string),       typeof (LSL_List)     });
+		private static MethodInfo infoMethRotAddList   = GetBinOpsMethod ("MethRotAddList",   new Type[] { typeof (LSL_Rotation), typeof (LSL_List)     });
+		private static MethodInfo infoMethStrAddList   = GetBinOpsMethod ("MethStrAddList",   new Type[] { typeof (string),       typeof (LSL_List)     });
+		private static MethodInfo infoMethVecAddList   = GetBinOpsMethod ("MethVecAddList",   new Type[] { typeof (LSL_Vector),   typeof (LSL_List)     });
 		private static MethodInfo infoMethListEqList   = GetBinOpsMethod ("MethListEqList",   new Type[] { typeof (LSL_List),     typeof (LSL_List)     });
 		private static MethodInfo infoMethListNeList   = GetBinOpsMethod ("MethListNeList",   new Type[] { typeof (LSL_List),     typeof (LSL_List)     });
 		private static MethodInfo infoMethRotEqRot     = GetBinOpsMethod ("MethRotEqRot",     new Type[] { typeof (LSL_Rotation), typeof (LSL_Rotation) });
@@ -934,8 +944,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeList);
-			right.PushVal (scg, errorAt, tokenTypeObject);
-			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethListAddObj);
+			right.PushVal (scg, errorAt, tokenTypeFloat);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethListAddFloat);
 			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
@@ -943,8 +953,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeList);
-			right.PushVal (scg, errorAt, tokenTypeObject);
-			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethListAddObj);
+			right.PushVal (scg, errorAt, tokenTypeInt);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethListAddInt);
 			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
@@ -952,8 +962,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeList);
-			right.PushVal (scg, errorAt, tokenTypeObject);
-			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethListAddObj);
+			right.PushVal (scg, errorAt, tokenTypeStr);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethListAddKey);
 			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
@@ -970,8 +980,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeList);
-			right.PushVal (scg, errorAt, tokenTypeObject);
-			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethListAddObj);
+			right.PushVal (scg, errorAt, tokenTypeRot);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethListAddRot);
 			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
@@ -979,8 +989,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeList);
-			right.PushVal (scg, errorAt, tokenTypeObject);
-			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethListAddObj);
+			right.PushVal (scg, errorAt, tokenTypeStr);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethListAddStr);
 			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
@@ -988,62 +998,62 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			result.PopPre (scg, errorAt);
 			left.PushVal (scg, errorAt, tokenTypeList);
-			right.PushVal (scg, errorAt, tokenTypeObject);
-			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethListAddObj);
+			right.PushVal (scg, errorAt, tokenTypeVec);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethListAddVec);
 			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
 		private static void BinOpStrFloatAddList (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
 			result.PopPre (scg, errorAt);
-			left.PushVal (scg, errorAt, tokenTypeObject);
+			left.PushVal (scg, errorAt, tokenTypeFloat);
 			right.PushVal (scg, errorAt, tokenTypeList);
-			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethObjAddList);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethFloatAddList);
 			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
 		private static void BinOpStrIntAddList (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
 			result.PopPre (scg, errorAt);
-			left.PushVal (scg, errorAt, tokenTypeObject);
+			left.PushVal (scg, errorAt, tokenTypeInt);
 			right.PushVal (scg, errorAt, tokenTypeList);
-			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethObjAddList);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethIntAddList);
 			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
 		private static void BinOpStrKeyAddList (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
 			result.PopPre (scg, errorAt);
-			left.PushVal (scg, errorAt, tokenTypeObject);
+			left.PushVal (scg, errorAt, tokenTypeStr);
 			right.PushVal (scg, errorAt, tokenTypeList);
-			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethObjAddList);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethKeyAddList);
 			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
 		private static void BinOpStrRotAddList (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
 			result.PopPre (scg, errorAt);
-			left.PushVal (scg, errorAt, tokenTypeObject);
+			left.PushVal (scg, errorAt, tokenTypeRot);
 			right.PushVal (scg, errorAt, tokenTypeList);
-			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethObjAddList);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethRotAddList);
 			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
 		private static void BinOpStrStrAddList (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
 			result.PopPre (scg, errorAt);
-			left.PushVal (scg, errorAt, tokenTypeObject);
+			left.PushVal (scg, errorAt, tokenTypeStr);
 			right.PushVal (scg, errorAt, tokenTypeList);
-			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethObjAddList);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethStrAddList);
 			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
 		private static void BinOpStrVecAddList (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
 			result.PopPre (scg, errorAt);
-			left.PushVal (scg, errorAt, tokenTypeObject);
+			left.PushVal (scg, errorAt, tokenTypeVec);
 			right.PushVal (scg, errorAt, tokenTypeList);
-			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethObjAddList);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, infoMethVecAddList);
 			result.PopPost (scg, errorAt, tokenTypeList);
 		}
 
@@ -1328,6 +1338,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 *        Needed to pick up functionality defined by overloaded operators of LSL_ types.
 		 *        They need to be marked public or runtime says they are inaccessible.
 		 */
+		public static LSL_List MethListAddFloat (LSL_List left, SCRIPTFLOAT right)
+		{
+			return MethListAddObj (left, new LSL_Float (right));
+		}
+		public static LSL_List MethListAddInt (LSL_List left, int right)
+		{
+			return MethListAddObj (left, new LSL_Integer (right));
+		}
+		public static LSL_List MethListAddKey (LSL_List left, string right)
+		{
+			return MethListAddObj (left, new LSL_Key (right));
+		}
+		public static LSL_List MethListAddRot (LSL_List left, LSL_Rotation right)
+		{
+			return MethListAddObj (left, right);
+		}
+		public static LSL_List MethListAddStr (LSL_List left, string right)
+		{
+			return MethListAddObj (left, new LSL_String (right));
+		}
+		public static LSL_List MethListAddVec (LSL_List left, LSL_Vector right)
+		{
+			return MethListAddObj (left, right);
+		}
 		public static LSL_List MethListAddObj (LSL_List left, object right)
 		{
 			int oldlen = left.Length;
@@ -1347,6 +1381,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			return new LSL_List (newarr);
 		}
 
+		public static LSL_List MethFloatAddList (SCRIPTFLOAT left, LSL_List right)
+		{
+			return MethObjAddList (new LSL_Float (left), right);
+		}
+		public static LSL_List MethIntAddList (int left, LSL_List right)
+		{
+			return MethObjAddList (new LSL_Integer (left), right);
+		}
+		public static LSL_List MethKeyAddList (string left, LSL_List right)
+		{
+			return MethObjAddList (new LSL_Key (left), right);
+		}
+		public static LSL_List MethRotAddList (LSL_Rotation left, LSL_List right)
+		{
+			return MethObjAddList (left, right);
+		}
+		public static LSL_List MethStrAddList (string left, LSL_List right)
+		{
+			return MethObjAddList (new LSL_String (left), right);
+		}
+		public static LSL_List MethVecAddList (LSL_Vector left, LSL_List right)
+		{
+			return MethObjAddList (left, right);
+		}
 		public static LSL_List MethObjAddList (object left, LSL_List right)
 		{
 			int oldlen = right.Length;
