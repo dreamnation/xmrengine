@@ -1378,13 +1378,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				if (localVar.constant) continue;
 
 				/*
-				 * Get a stack location for it and fill in with default value.
+				 * Get a stack location for the local variable.
 				 */
-				CompValuLocalVar localLoc = new CompValuLocalVar (localVar.type, localVar.name.val, this);
-				localVar.location = localLoc;
-				localLoc.PopPre (this, localVar.name);
-				PushVarDefaultValue (localVar);
-				localLoc.PopPost (this, localVar.name);
+				localVar.location = new CompValuLocalVar (localVar.type, localVar.name.val, this);
 			}
 		}
 
@@ -1658,6 +1654,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private void GenerateStmt (TokenStmt stmt)
 		{
 			errorMessageToken = stmt;
+			if (stmt is TokenDeclVar)       { GenerateDeclVar       ((TokenDeclVar)stmt);       return; }
 			if (stmt is TokenStmtBlock)     { GenerateStmtBlock     ((TokenStmtBlock)stmt);     return; }
 			if (stmt is TokenStmtBreak)     { GenerateStmtBreak     ((TokenStmtBreak)stmt);     return; }
 			if (stmt is TokenStmtCont)      { GenerateStmtCont      ((TokenStmtCont)stmt);      return; }
@@ -1697,11 +1694,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Output the statements that make up the block.
 			 */
 			for (Token t = stmtBlock.statements; t != null; t = t.nextToken) {
-				if (t is TokenStmt) {
-					GenerateStmt ((TokenStmt)t);
-				} else {
-					GenerateDeclVar ((TokenDeclVar)t);
-				}
+				GenerateStmt ((TokenStmt)t);
 			}
 
 			/*
@@ -3421,14 +3414,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			/*
 			 * Script gave us an initialization value, so just store init value in var like an assignment statement.
-			 * If no init given, the var was set to its default value when stack space was allocated at the beginning
-			 * of the function.
+			 * If no init given, set it to its default value.
 			 */
+			CompValu local = declVar.location;
 			if (declVar.init != null) {
-				CompValu local = declVar.location;
-				CompValu rVal  = GenerateFromRVal (declVar.init, local.GetArgTypes ());
+				CompValu rVal = GenerateFromRVal (declVar.init, local.GetArgTypes ());
 				local.PopPre  (this, declVar);
 				rVal.PushVal  (this, declVar.init, declVar.type);
+				local.PopPost (this, declVar);
+			} else {
+				local.PopPre  (this, declVar);
+				PushDefaultValue (declVar.type);
 				local.PopPost (this, declVar);
 			}
 		}

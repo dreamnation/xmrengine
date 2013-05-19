@@ -5348,7 +5348,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		analyzing  // triviality is being analyzed (used to detect recursive loops)
 	};
 
-	public class TokenDeclVar : Token {
+	public class TokenDeclVar : TokenStmt {
 		public TokenName name;                 // vars: name; funcs: bare name, ie, no signature
 		public TokenRVal init;                 // vars: null if none; funcs: null
 		public bool constant;                  // vars: 'constant'; funcs: false
@@ -6880,11 +6880,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	/**
 	 * @brief a single statement, such as ending on a semicolon or enclosed in braces
 	 * TokenStmt includes the terminating semicolon or the enclosing braces
-	 * Also includes @label: for jump targets.
+	 * Also includes @label; for jump targets.
 	 * Also includes stray ; null statements.
+	 * Also includes local variable declarations with or without initialization value.
 	 */
 	public class TokenStmt : Token {
-
 		public TokenStmt (Token original) : base (original) { }
 	}
 
