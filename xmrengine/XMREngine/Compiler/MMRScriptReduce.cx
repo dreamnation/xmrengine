@@ -3250,6 +3250,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 */
 		private void DoVarInit (TokenDeclVar initFunc, TokenLVal left, TokenRVal init)
 		{
+			/*
+			 * Make a statement that assigns the initialization value to the variable.
+			 */
 			TokenStmt stmt;
 			if (init == null) {
 				TokenStmtVarIniDef tsvid = new TokenStmtVarIniDef (left);
@@ -3261,8 +3264,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				tsrv.rVal = new TokenRValOpBin (left, op, init);
 				stmt = tsrv;
 			}
-			stmt.nextToken = initFunc.body.statements;
-			initFunc.body.statements = stmt;
+
+			/*
+			 * Add statement to end of initialization function.
+			 * Be sure to execute them in same order as in source
+			 * as some doofus scripts depend on it.
+			 */
+			Token lastStmt = initFunc.body.statements;
+			if (lastStmt == null) {
+				initFunc.body.statements = stmt;
+			} else {
+				Token nextStmt;
+				while ((nextStmt = lastStmt.nextToken) != null) {
+					lastStmt = nextStmt;
+				}
+				lastStmt.nextToken = stmt;
+			}
 		}
 
 		/**
