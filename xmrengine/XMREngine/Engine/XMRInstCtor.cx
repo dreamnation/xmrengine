@@ -227,11 +227,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 m_ObjCode = objCode;
             }
 
-            /*
-             * In case source code is huge.
-             */
-            m_SourceCode = null;
-
             try {
     
                 /*
@@ -251,7 +246,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 /*
                  * If any error loading, decrement object code reference count.
                  */
-                Dispose ();
+                DecObjCodeRefCount ();
                 throw;
             }
         }
@@ -291,7 +286,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             ScriptObjCode objCode = ScriptCompile.Compile(m_SourceCode, 
                                                           m_ScriptObjCodeKey, 
                                                           m_CameFrom, 
-                                                          m_ScriptBasePath, 
+                                                          GetScriptFileName, 
                                                           forceRecompile, 
                                                           ErrorHandler);
             if (m_CompilerErrors.Count != 0)

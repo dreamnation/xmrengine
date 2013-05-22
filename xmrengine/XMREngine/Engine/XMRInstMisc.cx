@@ -84,18 +84,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * Let script methods get garbage collected if no one else is using
              * them.
              */
-            if (m_ObjCode != null)
-            {
-                lock (m_CompileLock)
-                {
+            DecObjCodeRefCount ();
+        }
+
+        private void DecObjCodeRefCount ()
+        {
+            if (m_ObjCode != null) {
+                lock (m_CompileLock) {
                     ScriptObjCode objCode;
 
-                    if (m_CompiledScriptObjCode.TryGetValue(m_ScriptObjCodeKey, 
-                                                            out objCode) &&
-                        (objCode == m_ObjCode) && 
-                        (-- objCode.refCount == 0))
-                    {
-                        m_CompiledScriptObjCode.Remove(m_ScriptObjCodeKey);
+                    if (m_CompiledScriptObjCode.TryGetValue (m_ScriptObjCodeKey, out objCode) &&
+                        (objCode == m_ObjCode) &&
+                        (-- objCode.refCount == 0)) {
+                        m_CompiledScriptObjCode.Remove (m_ScriptObjCodeKey);
                     }
                 }
                 m_ObjCode = null;
@@ -212,9 +213,48 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /**
          * @brief Get the .state file name.
          */
-        public static string GetStateFileName(string scriptBasePath, UUID itemID)
+        public static string GetStateFileName (string scriptBasePath, UUID itemID)
         {
-            return Path.Combine(scriptBasePath, itemID.ToString() + ".state");
+            return GetScriptFileName (scriptBasePath, itemID.ToString() + ".state");
+        }
+
+        public string GetScriptFileName (string filename)
+        {
+            return GetScriptFileName (m_ScriptBasePath, filename);
+        }
+
+        public static string GetScriptFileName (string scriptBasePath, string filename)
+        {
+            /*
+             * Get old path, ie, all files lumped in a single huge directory.
+             */
+            string oldPath = Path.Combine (scriptBasePath, filename);
+
+            /*
+             * Get new path, ie, files split up based on first 2 chars of name.
+             */
+            string subdir = filename.Substring (0, 2);
+            filename = filename.Substring (2);
+            scriptBasePath = Path.Combine (scriptBasePath, subdir);
+            Directory.CreateDirectory (scriptBasePath);
+            string newPath = Path.Combine (scriptBasePath, filename);
+
+            /*
+             * If file exists only in old location, move to new location.
+             * If file exists in both locations, delete old location.
+             */
+            if (File.Exists (oldPath)) {
+                if (File.Exists (newPath)) {
+                    File.Delete (oldPath);
+                } else {
+                    File.Move (oldPath, newPath);
+                }
+            }
+
+            /*
+             * Always return new location.
+             */
+            return newPath;
         }
 
         /**

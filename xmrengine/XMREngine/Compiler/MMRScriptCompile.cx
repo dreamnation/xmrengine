@@ -330,10 +330,11 @@ version:
          * @param errorMessage = where to write error messages to
          * @returns object code pointer or null if compile error
          */
+	public delegate string PathName (string filename);
         public static ScriptObjCode Compile (string source, 
                                              string assetID,
                                              string cameFrom, 
-                                             string scriptBasePath,
+                                             PathName scriptBasePath,
                                              bool forceRecompile,
                                              TokenErrorMessage errorMessage)
         {
@@ -341,10 +342,13 @@ version:
             Stream objFileStream = null;
             StreamWriter asmFileWriter = null;
             string envar = null;
-            string fname = Path.Combine (scriptBasePath, assetID);
-            string objFileName = GetObjFileName (assetID, scriptBasePath);
             string sourceHash = null;
             TextWriter saveSource = null;
+
+            string asmFileName = scriptBasePath (assetID + ".xmrasm");
+            string lslFileName = scriptBasePath (assetID + ".lsl");
+            string objFileName = scriptBasePath (assetID + ".xmrobj");
+            string tmpFileName = scriptBasePath (assetID + ".xmrtmp");
 
             /*
              * If we already have an object file, don't bother compiling.
@@ -361,8 +365,8 @@ version:
                  */
                 envar = Environment.GetEnvironmentVariable ("MMRScriptCompileSaveSource");
                 if ((envar != null) && ((envar[0] & 1) != 0)) {
-                    m_log.DebugFormat("[XMREngine]: MMRScriptCompileSaveSource: saving to {0}.lsl", fname);
-                    saveSource = File.CreateText (fname + ".lsl");
+                    m_log.Debug ("[XMREngine]: MMRScriptCompileSaveSource: saving to " + lslFileName);
+                    saveSource = File.CreateText (lslFileName);
                 }
 
                 /*
@@ -383,7 +387,7 @@ version:
                  * Create object file one way or another.
                  */
                 try {
-                    objFileStream = File.Create (objFileName + ".tmp");
+                    objFileStream = File.Create (tmpFileName);
 
                     /*
                      * Create abstract syntax tree from raw tokens.
@@ -412,9 +416,9 @@ version:
                      * Then re-open the new file for reading from the beginning.
                      */
                     if (File.Exists (objFileName)) {
-                        File.Replace (objFileName + ".tmp", objFileName, null);
+                        File.Replace (tmpFileName, objFileName, null);
                     } else {
-                        File.Move (objFileName + ".tmp", objFileName);
+                        File.Move (tmpFileName, objFileName);
                     }
                     objFileStream = File.OpenRead (objFileName);
                 } finally {
@@ -423,7 +427,7 @@ version:
                      * In case something went wrong writing temp file, delete it.
                      */
                     try {
-                        File.Delete (objFileName + ".tmp");
+                        File.Delete (tmpFileName);
                     } catch {
                     }
                 }
@@ -433,8 +437,7 @@ version:
                  */
                 envar = Environment.GetEnvironmentVariable ("MMRScriptCompileSaveILGen");
                 if ((envar != null) && ((envar[0] & 1) != 0)) {
-                    string asmFileName = fname + ".xmrasm";
-                    m_log.DebugFormat("[XMREngine]: MMRScriptCompileSaveILGen: saving to {0}", asmFileName);
+                    m_log.Debug ("[XMREngine]: MMRScriptCompileSaveILGen: saving to " + asmFileName);
                     asmFileWriter = File.CreateText (asmFileName);
                 }
             }
@@ -467,16 +470,6 @@ version:
             }
 
             return scriptObjCode;
-        }
-
-        /**
-         * @brief Figure out name of object file.
-         */
-        public static string GetObjFileName (string assetID,
-                                             string scriptBasePath)
-        {
-            string fname = Path.Combine (scriptBasePath, assetID);
-            return fname + ".xmrobj";
         }
 #endif
 

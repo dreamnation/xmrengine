@@ -255,10 +255,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             m_Scene.RegisterModuleInterface<IScriptModule>(this);
 
-            m_ScriptBasePath = m_Config.GetString("ScriptBasePath",
-                    Path.Combine(".", "ScriptData"));
-            m_ScriptBasePath = Path.Combine(m_ScriptBasePath,
-                    scene.RegionInfo.RegionID.ToString());
+            m_ScriptBasePath = m_Config.GetString ("ScriptBasePath", "ScriptData");
+            m_ScriptBasePath = Path.Combine (m_ScriptBasePath, scene.RegionInfo.RegionID.ToString());
 
             Directory.CreateDirectory(m_ScriptBasePath);
 
