@@ -628,6 +628,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         /**
+         * @brief String begins and ends with test.
+         */
+        public bool xmrStringStartsWith (string s, string t)
+        {
+            return s.StartsWith (t);
+        }
+        public bool xmrStringEndsWith (string s, string t)
+        {
+            return s.EndsWith (t);
+        }
+
+        /**
          * @brief [Last]IndexOf with starting position (just like C#)
          */
         public int xmrStringIndexOf (string haystack, string needle)
