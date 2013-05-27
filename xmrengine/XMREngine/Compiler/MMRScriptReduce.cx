@@ -947,7 +947,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * even farther out than that.  If not found, simply return 
 			 * without updating t, meaning that t isn't the name of a type.
 			 */
-			TokenDeclSDType decl;
+			TokenDeclSDType decl = null;
 			while (outerSDType != null) {
 				if (outerSDType.innerSDTypes.TryGetValue (tnamestr, out decl)) break;
 				outerSDType = outerSDType.outerSDType;
