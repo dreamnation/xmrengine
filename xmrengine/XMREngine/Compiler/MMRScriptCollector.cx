@@ -815,7 +815,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				case FlowControl.Next:        return true;   // falls through to next instruction
 				case FlowControl.Return:      return false;  // return
 				case FlowControl.Throw:       return false;  // throw
-				default: throw new Exception ("unknown flow control " + opcode.FlowControl);
+				default: {
+					string op = opcode.ToString ();
+					if (op == "volatile.") return true;
+					throw new Exception ("unknown flow control " + opcode.FlowControl + " for " + op);
+				}
 			}
 		}
 
@@ -892,6 +896,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			switch (opcode.ToString ()) {
 				case "nop": break;
 				case "break": break;
+				case "volatile.": break;
 				case "ldarg.0": coll.stackDepth.Push (coll.wrapped.argTypes[0]); break;
 				case "ldarg.1": coll.stackDepth.Push (coll.wrapped.argTypes[1]); break;
 				case "ldarg.2": coll.stackDepth.Push (coll.wrapped.argTypes[2]); break;
@@ -1058,6 +1063,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					coll.stackDepth.PopNumVal ();
 					coll.stackDepth.PopNumVal ();
 					coll.stackDepth.Push (typeof (int));
+					break;
+				}
+				case "ldind.i4": {
+					coll.stackDepth.Pop (typeof (int).MakeByRefType ());
+					coll.stackDepth.Push (typeof (int));
+					break;
+				}
+				case "stind.i4": {
+					coll.stackDepth.Pop (typeof (int));
+					coll.stackDepth.Pop (typeof (int).MakeByRefType ());
 					break;
 				}
 				default: throw new Exception ("unknown opcode " + opcode.ToString ());
