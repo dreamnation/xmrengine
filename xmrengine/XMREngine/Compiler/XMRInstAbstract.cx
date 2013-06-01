@@ -319,6 +319,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public const int CallMode_SAVE    = 1;  // StackSaveException() was thrown, push args/locals to stackFrames
         public const int CallMode_RESTORE = 2;  // when function is called, it pops state from stackFrames
 
+        public bool suspendOnCheckRunHold;  // suspend script execution until explicitly set false
+        public bool suspendOnCheckRunTemp;  // suspend script execution for single step only
+        public int stackLimit;              // stack must have at least this many bytes free on entry to functions
+
         public ScriptObjCode m_ObjCode;     // script object code this instance was created from
 
         public object[] ehArgs;             // event handler argument array
@@ -356,7 +360,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          *  These functions require access to the OpenSim environment.  *
         \****************************************************************/
 
-        public abstract void CheckRun (int line);
+        public abstract void CheckRunWork ();
         public abstract int  xmrStackLeft ();
 
         [xmrMethodIsComplexAttribute] // calls CheckRun()
@@ -412,6 +416,36 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public int xmrHeapUsed ()
         {
             return heapUsed;
+        }
+
+        /**
+         * @brief For compatibility with old code.
+         */
+        public void CheckRun (int line)
+        {
+            CheckRunStack ();
+        }
+
+        /**
+         * @brief Called at beginning of complex functions to see if they
+         *        are nested too deep possibly in a recursive loop.
+         */
+        public void CheckRunStack ()
+        {
+            if (xmrStackLeft () < stackLimit) {
+                throw new OutOfStackException ();
+            }
+            CheckRunQuick ();
+        }
+
+        /**
+         * @brief Called in each iteration of a loop to see if running too long.
+         */
+        public void CheckRunQuick ()
+        {
+            if (suspendOnCheckRunHold || suspendOnCheckRunTemp) {
+                CheckRunWork ();
+            }
         }
 
         /**
@@ -1798,9 +1832,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     // not type string.
     public class xmrMethodReturnsKeyAttribute : Attribute { }
 
+    [SerializableAttribute]
     public class OutOfHeapException : Exception {
         public OutOfHeapException (int oldtotal, int newtotal, int limit)
                 : base ("oldtotal=" + oldtotal + ", newtotal=" + newtotal + ", limit=" + limit)
         { }
     }
+
+    [SerializableAttribute]
+    public class OutOfStackException : Exception { }
 }

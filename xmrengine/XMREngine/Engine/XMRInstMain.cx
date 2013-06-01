@@ -72,7 +72,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public const int MAXEVENTQUEUE = 64;
 
         public static readonly DetectParams[] zeroDetectParams = new DetectParams[0];
-        public static readonly Exception outOfStackException = new OutOfStackException ();
         public static readonly object[] zeroObjectArray = new object[0];
 
         public static readonly ILog m_log =
@@ -112,7 +111,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private DateTime m_LastRanAt = DateTime.MinValue;
         private string m_RunOnePhase = "hasn't run";
         private string m_CheckRunPhase = "hasn't checked";
-        private int m_CheckRunLine = 0;
         public  int m_InstEHEvent  = 0;  // number of events dequeued (StartEventHandler called)
         public  int m_InstEHSlice  = 0;  // number of times handler timesliced (ResumeEx called)
         public  double m_CPUTime   = 0;  // accumulated CPU time (milliseconds)
@@ -150,8 +148,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         private XMRLSL_Api m_XMRLSLApi;
 
-        public uint stackLimit;             // CheckRun() must always see this much stack available
-
         /*
          * We will use this microthread to run the scripts event handlers.
          */
@@ -160,13 +156,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public Continuation engstack;
         public Continuation scrstack;
 #endif
-
-        /*
-         * Set to suspend microthread at next CheckRun() call.
-         */
-        public bool suspendOnCheckRunHold;
-        public bool suspendOnCheckRunTemp;   // false: keep running
-                                             //  true: suspend on next call to CheckRun()
 
         /*
          * Set to perform migration.
@@ -213,7 +202,4 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         // It will then be set again on suspend/completion
         private ManualResetEvent m_DetachReady = new ManualResetEvent(true);
     }
-
-    [SerializableAttribute]
-    public class OutOfStackException : Exception { }
 }

@@ -310,7 +310,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Script must leave this much stack remaining on calls to CheckRun().
              */
-            this.stackLimit = (uint)(m_StackSize / 2);
+            this.stackLimit = m_StackSize / 2;
 
             /*
              * This is how many total heap bytes script is allowed to use.

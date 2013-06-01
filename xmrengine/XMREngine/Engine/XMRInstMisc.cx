@@ -157,7 +157,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 sb.AppendLine("    eventCode            = " + eventCode.ToString());
                 sb.AppendLine("    m_LastRanAt          = " + m_LastRanAt.ToString());
                 sb.AppendLine("    m_RunOnePhase        = " + m_RunOnePhase);
-                sb.AppendLine("    m_CheckRunLine       = " + m_CheckRunLine.ToString());
                 sb.AppendLine("    suspOnCkRunHold      = " + suspendOnCheckRunHold);
                 sb.AppendLine("    suspOnCkRunTemp      = " + suspendOnCheckRunTemp);
                 sb.AppendLine("    m_CheckRunPhase      = " + m_CheckRunPhase);

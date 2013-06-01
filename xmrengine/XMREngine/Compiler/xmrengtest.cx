@@ -1040,6 +1040,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_ObjCode = soc;
             heapLimit = HEAPLIMIT;
             glblVars.AllocVarArrays (m_ObjCode.glblSizes);
+            suspendOnCheckRunHold = XMREngTest.doCheckRun;
 
             /*
              * Run default state_entry() handler until it is ready for more input.
@@ -1057,6 +1058,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             scriptRoot = inst.scriptRoot;
             m_ObjCode  = inst.m_ObjCode;
             heapLimit  = HEAPLIMIT;
+            suspendOnCheckRunHold = XMREngTest.doCheckRun;
         }
 
         /*********************\
@@ -1071,33 +1073,31 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return rc;
         }
 
-        public override void CheckRun (int line)
+        public override void CheckRunWork ()
         {
-            if (XMREngTest.doCheckRun) {
-                switch (this.callMode) {
+            switch (this.callMode) {
 
-                    /*
-                     * Code was running normally.
-                     * Suspend and write stack frames to this.StackFrames.
-                     */
-                    case CallMode_NORMAL: {
-                        this.callMode = CallMode_SAVE;
-                        this.stackFrames = null;
-                        throw new StackCaptureException ();
-                    }
-
-                    /*
-                     * Code just restored itself from this.StackFrames.
-                     * Resume where it left off until it calls CheckRun() again.
-                     */
-                    case CallMode_RESTORE: {
-                        if (this.stackFrames != null) throw new Exception ("frames left over");
-                        this.callMode = CallMode_NORMAL;
-                        break;
-                    }
-
-                    default: throw new Exception ("bad callMode " + this.callMode);
+                /*
+                 * Code was running normally.
+                 * Suspend and write stack frames to this.StackFrames.
+                 */
+                case CallMode_NORMAL: {
+                    this.callMode = CallMode_SAVE;
+                    this.stackFrames = null;
+                    throw new StackCaptureException ();
                 }
+
+                /*
+                 * Code just restored itself from this.StackFrames.
+                 * Resume where it left off until it calls CheckRun() again.
+                 */
+                case CallMode_RESTORE: {
+                    if (this.stackFrames != null) throw new Exception ("frames left over");
+                    this.callMode = CallMode_NORMAL;
+                    break;
+                }
+
+                default: throw new Exception ("bad callMode " + this.callMode);
             }
         }
 

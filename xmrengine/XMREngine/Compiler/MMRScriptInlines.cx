@@ -515,7 +515,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 			result.Pop (scg, errorAt, retType);               // pop result, boxing/unboxing as needed
 			if (doCheckRun) {
-				scg.EmitCallCheckRun (errorAt);           // maybe call CheckRun()
+				scg.EmitCallCheckRun (errorAt, false);    // maybe call CheckRun()
 			}
 		}
 	}

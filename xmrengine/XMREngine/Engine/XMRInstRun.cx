@@ -949,20 +949,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /**
          * @brief The script code should call this routine whenever it is
          *        convenient to perform a migation or switch microthreads.
-         *
-         * @param line = script source line number (for debugging)
          */
-        public override void CheckRun (int line)
+        public override void CheckRunWork ()
         {
-            m_CheckRunLine = line;
             m_CheckRunPhase = "entered";
-
-            /*
-             * Make sure script hasn't run out of stack.
-             */
-            if ((ulong)MMRUThread.StackLeft () < stackLimit) {
-                throw outOfStackException;
-            }
 
             /*
              * Stay stuck in this loop as long as something wants us suspended.
