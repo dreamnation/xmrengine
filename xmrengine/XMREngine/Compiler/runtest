@@ -22,7 +22,7 @@ function testev {
 set -e
 time make xmrengtest.exe
 export MONO_PATH=../../../bin
-export PATH=~/mono64.267/bin:$PATH
+export PATH=~/mono64.2109/bin:$PATH
 
 testev buildersbuddy
 testit listinserttest

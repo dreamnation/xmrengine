@@ -2,6 +2,10 @@ COMMITHASH  := $(strip $(shell git log -1 | grep ^commit | sed 's/commit//g'))
 COMMITDATE  := $(strip $(shell git log -1 --date=iso | grep ^Date: | sed 's/Date://g'))
 COMMITCLEAN := $(strip $(shell git status | grep -q modified: ; echo $$?))
 
+MONODIR    ?= /home/kunta/mono64.2109
+MONOBINDIR ?= $(MONODIR)/bin
+MONODLLDIR ?= $(MONODIR)/lib/mono/2.0
+
 SADLLFILES = \
 	IEventHandlers.cs \
 	MMRDelegateCommon.cs \
@@ -100,9 +104,9 @@ xmrengcomp.zip: xmrengcomp.exe $(patsubst %,$(OPENSIMDLLDIR)/%,$(SAOPENSIMDLLS))
 xmrengcomp.exe: MMRScriptCompile.cx $(patsubst %,$(OPENSIMDLLDIR)/%,$(SAOPENSIMDLLS))
 	rm -f MMRScriptCompile_sa.cs
 	cpp -C -P -nostdinc -o MMRScriptCompile_sa.cs -DSTANDALONE_COMPILER MMRScriptCompile.cx
-	gmcs -debug -out:xmrengcomp.exe \
+	$(MONOBINDIR)/gmcs -debug -out:xmrengcomp.exe \
 		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(SAOPENSIMDLLS)) \
-		-reference:System.Drawing.dll \
+		-reference:$(MONODLLDIR)/System.Drawing.dll \
 		MMRScriptCompile_sa.cs
 
 # ------------------------------------------------------------------------------
@@ -111,9 +115,9 @@ xmrengcomp.exe: MMRScriptCompile.cx $(patsubst %,$(OPENSIMDLLDIR)/%,$(SAOPENSIMD
 # ...includes the -asm, -decode and -genkey command-line options
 #
 xmrengcomp_secret.exe: $(SECRETSRCFILES) $(wildcard *.h)
-	gmcs -debug -out:$@ \
+	$(MONOBINDIR)/gmcs -debug -out:$@ \
 		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(filter-out xmrengshare.dll,$(SAOPENSIMDLLS))) \
-		-reference:System.Drawing.dll \
+		-reference:$(MONODLLDIR)/System.Drawing.dll \
 		$(SECRETSRCFILES)
 
 # ------------------------------------------------------------------------------
@@ -127,9 +131,9 @@ xmrengtest.zip: xmrengtest.exe $(patsubst %,$(OPENSIMDLLDIR)/%,$(TESTOSIMDLLS))
 	rm -f $(TESTOSIMDLLS)
 
 xmrengtest.exe: $(TESTSRCFILES) $(wildcard *.h)
-	gmcs -debug -out:$@ \
+	$(MONOBINDIR)/gmcs -debug -out:$@ \
 		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(filter-out xmrengshare.dll,$(TESTOSIMDLLS))) \
-		-reference:System.Drawing.dll \
+		-reference:$(MONODLLDIR)/System.Drawing.dll \
 		$(TESTSRCFILES)
 
 xmrengtest_$(COMMITHASH)_$(COMMITCLEAN)_tester.cs: xmrengtest.cx makexmrengtestilslapi.inc $(wildcard *.h)
@@ -145,7 +149,7 @@ makexmrengtestilslapi.inc: makexmrengtestilslapi.exe
 	mv -f makexmrengtestilslapi.tmp makexmrengtestilslapi.inc
 
 makexmrengtestilslapi.exe: makexmrengtestilslapi.cs
-	gmcs -debug -out:$@ \
+	$(MONOBINDIR)/gmcs -debug -out:$@ \
 		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(filter-out xmrengshare.dll,$(TESTOSIMDLLS))) \
 		$<
 
@@ -155,9 +159,9 @@ makexmrengtestilslapi.exe: makexmrengtestilslapi.cs
 # runtime engine, so the serialization/deserialization will have common types.
 #
 $(OPENSIMDLLDIR)/xmrengshare.dll: $(SADLLFILES) $(patsubst %,$(OPENSIMDLLDIR)/%,$(filter-out xmrengshare.dll,$(SAOPENSIMDLLS)))
-	gmcs -debug -target:library -out:$(OPENSIMDLLDIR)/xmrengshare.dll \
+	$(MONOBINDIR)/gmcs -debug -target:library -out:$(OPENSIMDLLDIR)/xmrengshare.dll \
 		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(filter-out xmrengshare.dll,$(SAOPENSIMDLLS))) \
-		-reference:System.Drawing.dll \
+		-reference:$(MONODLLDIR)/System.Drawing.dll \
 		$(SADLLFILES)
 
 # ------------------------------------------------------------------------------

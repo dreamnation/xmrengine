@@ -9,6 +9,10 @@ COMMITHASH  := $(strip $(shell git log -1 | grep ^commit | sed 's/commit//g'))
 COMMITDATE  := $(strip $(shell git log -1 --date=iso | grep ^Date: | sed 's/Date://g'))
 COMMITCLEAN := $(strip $(shell git status | grep -q modified: ; echo $$?))
 
+MONODIR    ?= /home/kunta/mono64.2109
+MONOBINDIR ?= $(MONODIR)/bin
+MONODLLDIR ?= $(MONODIR)/lib/mono/2.0
+
 OPENSIMDLLDIR ?= ../../../bin
 
 ENGINECSFILES = XMREngine_$(COMMITHASH)_$(COMMITCLEAN).cs \
@@ -41,7 +45,7 @@ REFERENCED = $(OPENSIMDLLDIR)/xmrengshare.dll \
              $(OPENSIMDLLDIR)/OpenSim.Region.ScriptEngine.Shared.dll \
              $(OPENSIMDLLDIR)/OpenSim.Region.ScriptEngine.Shared.Api.dll \
              $(OPENSIMDLLDIR)/OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll \
-             /home/kunta/mono64.2109/lib/mono/2.0/Mono.Tasklets.dll
+             $(MONODLLDIR)/Mono.Tasklets.dll
 
 default: \
 	$(OPENSIMDLLDIR)/xmrengshare.dll \
@@ -52,7 +56,7 @@ default: \
 # Create files needed for OpenSim
 #
 $(OPENSIMDLLDIR)/OpenSim.Region.ScriptEngine.XMREngine.dll: $(ENGINECSFILES) $(REFERENCED)
-	gmcs -debug -target:library \
+	$(MONOBINDIR)/gmcs -debug -target:library \
 		-out:$@ \
 		$(ENGINECSFILES) \
 		$(patsubst %.dll,-reference:%.dll,$(REFERENCED))
