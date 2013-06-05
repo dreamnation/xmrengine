@@ -11,7 +11,7 @@ COMMITCLEAN := $(strip $(shell git status | grep -q modified: ; echo $$?))
 
 MONODIR    ?= /home/kunta/mono64.2109
 MONOBINDIR ?= $(MONODIR)/bin
-MONODLLDIR ?= $(MONODIR)/lib/mono/2.0
+MONODLLDIR ?= $(MONODIR)/lib/mono/4.0
 
 OPENSIMDLLDIR ?= ../../../bin
 
@@ -56,7 +56,7 @@ default: \
 # Create files needed for OpenSim
 #
 $(OPENSIMDLLDIR)/OpenSim.Region.ScriptEngine.XMREngine.dll: $(ENGINECSFILES) $(REFERENCED)
-	$(MONOBINDIR)/gmcs -debug -target:library \
+	$(MONOBINDIR)/dmcs -debug -target:library \
 		-out:$@ \
 		$(ENGINECSFILES) \
 		$(patsubst %.dll,-reference:%.dll,$(REFERENCED))

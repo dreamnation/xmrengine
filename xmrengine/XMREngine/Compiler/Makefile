@@ -1,6 +1,6 @@
 MONODIR    ?= /home/kunta/mono64.2109
 MONOBINDIR ?= $(MONODIR)/bin
-MONODLLDIR ?= $(MONODIR)/lib/mono/2.0
+MONODLLDIR ?= $(MONODIR)/lib/mono/4.0
 OPENSIMDLLDIR ?= ../../../bin
 
 COMMITHASH  := $(strip $(shell git log -1 | grep ^commit | sed 's/commit//g'))
@@ -78,7 +78,7 @@ xmrengtest.zip: xmrengtest.exe $(patsubst %,$(OPENSIMDLLDIR)/%,$(TESTOSIMDLLS))
 	rm -f $(TESTOSIMDLLS)
 
 xmrengtest.exe: $(TESTSRCFILES) $(wildcard *.h)
-	$(MONOBINDIR)/gmcs -debug -out:$@ \
+	$(MONOBINDIR)/dmcs -debug -out:$@ \
 		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(filter-out xmrengshare.dll,$(TESTOSIMDLLS))) \
 		-reference:$(MONODLLDIR)/System.Drawing.dll \
 		$(TESTSRCFILES)
@@ -96,7 +96,7 @@ makexmrengtestilslapi.inc: makexmrengtestilslapi.exe
 	mv -f makexmrengtestilslapi.tmp makexmrengtestilslapi.inc
 
 makexmrengtestilslapi.exe: makexmrengtestilslapi.cs
-	$(MONOBINDIR)/gmcs -debug -out:$@ \
+	$(MONOBINDIR)/dmcs -debug -out:$@ \
 		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(filter-out xmrengshare.dll,$(TESTOSIMDLLS))) \
 		$<
 
@@ -106,7 +106,7 @@ makexmrengtestilslapi.exe: makexmrengtestilslapi.cs
 # runtime engine, so the serialization/deserialization will have common types.
 #
 $(OPENSIMDLLDIR)/xmrengshare.dll: $(SADLLFILES) $(patsubst %,$(OPENSIMDLLDIR)/%,$(filter-out xmrengshare.dll,$(SAOPENSIMDLLS)))
-	$(MONOBINDIR)/gmcs -debug -target:library -out:$(OPENSIMDLLDIR)/xmrengshare.dll \
+	$(MONOBINDIR)/dmcs -debug -target:library -out:$(OPENSIMDLLDIR)/xmrengshare.dll \
 		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(filter-out xmrengshare.dll,$(SAOPENSIMDLLS))) \
 		-reference:$(MONODLLDIR)/System.Drawing.dll \
 		$(SADLLFILES)
