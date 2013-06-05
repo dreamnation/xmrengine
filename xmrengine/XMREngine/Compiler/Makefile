@@ -1,10 +1,11 @@
-COMMITHASH  := $(strip $(shell git log -1 | grep ^commit | sed 's/commit//g'))
-COMMITDATE  := $(strip $(shell git log -1 --date=iso | grep ^Date: | sed 's/Date://g'))
-COMMITCLEAN := $(strip $(shell git status | grep -q modified: ; echo $$?))
-
 MONODIR    ?= /home/kunta/mono64.2109
 MONOBINDIR ?= $(MONODIR)/bin
 MONODLLDIR ?= $(MONODIR)/lib/mono/2.0
+OPENSIMDLLDIR ?= ../../../bin
+
+COMMITHASH  := $(strip $(shell git log -1 | grep ^commit | sed 's/commit//g'))
+COMMITDATE  := $(strip $(shell git log -1 --date=iso | grep ^Date: | sed 's/Date://g'))
+COMMITCLEAN := $(strip $(shell git status | grep -q modified: ; echo $$?))
 
 SADLLFILES = \
 	IEventHandlers.cs \
@@ -29,7 +30,6 @@ SADLLFILES = \
 	XMRInstAbstract.cs \
 	XMRSDTypeClObj.cs
 
-OPENSIMDLLDIR ?= ../../../bin
 SAOPENSIMDLLS = \
 	xmrengshare.dll \
 	OpenMetaverseTypes.dll \
@@ -40,30 +40,6 @@ TESTOSIMDLLS = \
 	OpenMetaverseTypes.dll \
 	OpenSim.Region.ScriptEngine.Shared.dll \
 	OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll
-
-SECRETSRCFILES = \
-	IEventHandlers_sa_secret.cs \
-	MMRDelegateCommon_sa_secret.cs \
-	MMRInternalFuncDict_sa_secret.cs \
-	MMRScriptBinOpStr_sa_secret.cs \
-	MMRScriptCodeGen_sa_secret.cs \
-	MMRScriptCollector_sa_secret.cs \
-	MMRScriptCompile_sa_secret.cs \
-	MMRScriptCompValu_sa_secret.cs \
-	MMRScriptConsts_sa_secret.cs \
-	MMRScriptEventCode_sa_secret.cs \
-	MMRScriptInlines_sa_secret.cs \
-	MMRScriptMyILGen_sa_secret.cs \
-	MMRScriptObjCode_sa_secret.cs \
-	MMRScriptObjWriter_sa_secret.cs \
-	MMRScriptReduce_sa_secret.cs \
-	MMRScriptTokenize_sa_secret.cs \
-	MMRScriptTypeCast_sa_secret.cs \
-	MMRScriptVarDict_sa_secret.cs \
-	XMRArray_sa_secret.cs \
-	XMRHeapTracker_sa_secret.cs \
-	XMRInstAbstract_sa_secret.cs \
-	XMRSDTypeClObj_sa_secret.cs
 
 TESTSRCFILES = \
 	IEventHandlers_tester.cs \
@@ -89,36 +65,7 @@ TESTSRCFILES = \
 	XMRInstAbstract_tester.cs \
 	XMRSDTypeClObj_tester.cs
 
-default: xmrengcomp.zip xmrengcomp_secret.exe xmrengtest.zip
-
-# ------------------------------------------------------------------------------
-#
-# Create distributable xmrengcomp stand-alone compiler
-#
-xmrengcomp.zip: xmrengcomp.exe $(patsubst %,$(OPENSIMDLLDIR)/%,$(SAOPENSIMDLLS))
-	$(foreach dll,$(SAOPENSIMDLLS),$(shell cp $(OPENSIMDLLDIR)/$(dll) $(dll)))
-	rm -f xmrengcomp.zip
-	zip -D xmrengcomp.zip xmrengcomp.exe $(SAOPENSIMDLLS)
-	rm -f $(SAOPENSIMDLLS)
-
-xmrengcomp.exe: MMRScriptCompile.cx $(patsubst %,$(OPENSIMDLLDIR)/%,$(SAOPENSIMDLLS))
-	rm -f MMRScriptCompile_sa.cs
-	cpp -C -P -nostdinc -o MMRScriptCompile_sa.cs -DSTANDALONE_COMPILER MMRScriptCompile.cx
-	$(MONOBINDIR)/gmcs -debug -out:xmrengcomp.exe \
-		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(SAOPENSIMDLLS)) \
-		-reference:$(MONODLLDIR)/System.Drawing.dll \
-		MMRScriptCompile_sa.cs
-
-# ------------------------------------------------------------------------------
-#
-# Create internal-use-only xmrengcomp stand-alone compiler
-# ...includes the -asm, -decode and -genkey command-line options
-#
-xmrengcomp_secret.exe: $(SECRETSRCFILES) $(wildcard *.h)
-	$(MONOBINDIR)/gmcs -debug -out:$@ \
-		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(filter-out xmrengshare.dll,$(SAOPENSIMDLLS))) \
-		-reference:$(MONODLLDIR)/System.Drawing.dll \
-		$(SECRETSRCFILES)
+default: $(OPENSIMDLLDIR)/xmrengshare.dll xmrengtest.zip
 
 # ------------------------------------------------------------------------------
 #
@@ -170,9 +117,6 @@ $(OPENSIMDLLDIR)/xmrengshare.dll: $(SADLLFILES) $(patsubst %,$(OPENSIMDLLDIR)/%,
 #
 %.cs: %.cx $(wildcard *.h)
 	cpp -C -P -nostdinc -DSCRIPTBASECLASS=ScriptBaseClass -o $@ $<
-
-%_sa_secret.cs: %.cx $(wildcard *.h)
-	cpp -C -P -nostdinc -DSCRIPTBASECLASS=ScriptBaseClass -DSTANDALONE_COMPILER -DSECRET_STUFF -o $@ $<
 
 %_tester.cs: %.cx $(wildcard *.h)
 	cpp -C -P -nostdinc -DSCRIPTBASECLASS=TestScriptBaseClass -o $@ $<

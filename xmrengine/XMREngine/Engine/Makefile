@@ -64,9 +64,6 @@ $(OPENSIMDLLDIR)/OpenSim.Region.ScriptEngine.XMREngine.dll: $(ENGINECSFILES) $(R
 $(OPENSIMDLLDIR)/xmrengshare.dll: $(wildcard ../*/*.cx) $(wildcard ../*/*.h)
 	make -C ../Compiler $(OPENSIMDLLDIR)/xmrengshare.dll
 
-MMRScriptCompile.cs: ../Compiler/MMRScriptCompile.cx
-	cpp -I../Compiler $(DEFS) -C -P -nostdinc -o $@ $<
-
 XMREngine_$(COMMITHASH)_$(COMMITCLEAN).cs: XMREngine.cx $(wildcard ../*/*.h)
 	rm -f XMREngine_*.cs
 	cpp -I../Compiler $(DEFS) \

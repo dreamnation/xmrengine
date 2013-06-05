@@ -101,8 +101,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             String envar;
 
-            m_log.Info ("[XMREngine]: commit " + GITCOMMITHASH + ((GITCOMMITCLEAN != 0) ? "" : "(dirty)") + " " + GITCOMMITDATE);
-            m_log.Info ("[XMREngine]: HAVE_MMRUTHREADS=" + ((HAVE_MMRUTHREADS != 0) ? "Yes" : "No"));
+            m_log.Info ("[XMREngine]: commit " + GITCOMMITHASH + (new string[] { "(dirty)", "" })[GITCOMMITCLEAN] + " " + GITCOMMITDATE);
+            m_log.Info ("[XMREngine]: HAVE_MMRUTHREADS=" + (new string[] { "No", "Yes" })[HAVE_MMRUTHREADS]);
 
             envar = Environment.GetEnvironmentVariable ("XMREngineTraceCalls");
             m_TraceCalls = (envar != null) && ((envar[0] & 1) != 0);
@@ -173,7 +173,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             m_UseSourceHashCode    = m_Config.GetBoolean ("UseSourceHashCode", false);
-            numThreadScriptWorkers = (HAVE_MMRUTHREADS != 0) ? m_Config.GetInt ("NumThreadScriptWorkers", 1) : 1;
+#if HAVE_MMRUTHREADS
+            numThreadScriptWorkers = m_Config.GetInt ("NumThreadScriptWorkers", 1);
+#else
+            numThreadScriptWorkers = 1;
+#endif
             m_ScriptThreads        = new XMRScriptThread[numThreadScriptWorkers];
 
             for (int i = 0; i < numThreadScriptWorkers; i ++) {

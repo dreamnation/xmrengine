@@ -47,7 +47,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		private static TokenTypeFloat  tokenTypeFloat  = new TokenTypeFloat  (null);
 		private static TokenTypeInt    tokenTypeInt    = new TokenTypeInt    (null);
 		private static TokenTypeList   tokenTypeList   = new TokenTypeList   (null);
-		private static TokenTypeObject tokenTypeObject = new TokenTypeObject (null);
 		private static TokenTypeRot    tokenTypeRot    = new TokenTypeRot    (null);
 		private static TokenTypeStr    tokenTypeStr    = new TokenTypeStr    (null);
 		private static TokenTypeVec    tokenTypeVec    = new TokenTypeVec    (null);

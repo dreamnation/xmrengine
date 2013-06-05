@@ -111,7 +111,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		                                                                       "LSLVectorNegate", 
 		                                                                       new Type[] { typeof (LSL_Vector) });
 		private static MethodInfo scriptRestoreCatchExceptionUnwrap = GetStaticMethod (typeof (ScriptRestoreCatchException), "Unwrap", new Type[] { typeof (Exception) });
-		private static MethodInfo catchTryCastToSDTypeMethodInfo = GetStaticMethod (typeof (XMRInstAbstract), "XMRSDTypeCatchTryCastToSDType", new Type[] { typeof (object), typeof (XMRInstAbstract), typeof (int) });
 		private static MethodInfo thrownExceptionWrapMethodInfo  = GetStaticMethod (typeof (ScriptThrownException), "Wrap", new Type[] { typeof (object) });
 		private static MethodInfo heapTrackerListPush   = typeof (HeapTrackerList).  GetMethod ("Push", new Type[0]);
 		private static MethodInfo heapTrackerObjectPush = typeof (HeapTrackerObject).GetMethod ("Push", new Type[0]);

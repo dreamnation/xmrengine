@@ -1,0 +1,173 @@
+/********************************************************\
+ *  COPYRIGHT 2009,2010, Mike Rieker, Beverly, MA, USA  *
+ *  All rights reserved.                                *
+\********************************************************/
+
+/**
+ * @brief Compile a script to produce a ScriptObjCode object
+ */
+
+using System;
+using System.IO;
+using System.Reflection;
+
+namespace OpenSim.Region.ScriptEngine.XMREngine
+{
+    public class ScriptCompile
+    {
+        private static readonly log4net.ILog m_log =
+            log4net.LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+
+        /**
+         * @brief Compile a script to produce a ScriptObjCode object
+         * @param source = 'source' contains the whole script source
+         * @param assetID = the script asset ID, unique per script source file
+         * @param scriptBasePath = where to put files (a directory)
+         * @param forceRecompile = false: use existing object file if any
+         *                          true: ignore existing object file
+         * @param errorMessage = where to write error messages to
+         * @returns object code pointer or null if compile error
+         */
+        public delegate string PathName (string filename);
+        public static ScriptObjCode Compile (string source, 
+                                             string assetID,
+                                             string cameFrom, 
+                                             PathName scriptBasePath,
+                                             bool forceRecompile,
+                                             TokenErrorMessage errorMessage)
+        {
+            bool oldObjFile = false;
+            Stream objFileStream = null;
+            StreamWriter asmFileWriter = null;
+            string envar = null;
+            string sourceHash = null;
+            TextWriter saveSource = null;
+
+            string asmFileName = scriptBasePath (assetID + ".xmrasm");
+            string lslFileName = scriptBasePath (assetID + ".lsl");
+            string objFileName = scriptBasePath (assetID + ".xmrobj");
+            string tmpFileName = scriptBasePath (assetID + ".xmrtmp");
+
+            /*
+             * If we already have an object file, don't bother compiling.
+             */
+            if (!forceRecompile && File.Exists (objFileName)) {
+                objFileStream = File.OpenRead (objFileName);
+                oldObjFile = true;
+            } else if (source == "") {
+                throw new Exception ("source file empty");
+            } else {
+
+                /*
+                 * Maybe write script source to a file for debugging.
+                 */
+                envar = Environment.GetEnvironmentVariable ("MMRScriptCompileSaveSource");
+                if ((envar != null) && ((envar[0] & 1) != 0)) {
+                    m_log.Debug ("[XMREngine]: MMRScriptCompileSaveSource: saving to " + lslFileName);
+                    saveSource = File.CreateText (lslFileName);
+                }
+
+                /*
+                 * Parse source string into tokens.
+                 */
+                TokenBegin tokenBegin;
+                try {
+                    tokenBegin = TokenBegin.Construct(cameFrom, saveSource, errorMessage, source, out sourceHash);
+                } finally {
+                    if (saveSource != null) saveSource.Close ();
+                }
+                if (tokenBegin == null) {
+                    m_log.Debug ("[XMREngine]: parsing errors on " + assetID);
+                    return null;
+                }
+
+                /*
+                 * Create object file one way or another.
+                 */
+                try {
+                    objFileStream = File.Create (tmpFileName);
+
+                    /*
+                     * Create abstract syntax tree from raw tokens.
+                     */
+                    TokenScript tokenScript = ScriptReduce.Reduce(tokenBegin);
+                    if (tokenScript == null) {
+                        m_log.Debug ("[XMREngine]: reduction errors on " + assetID);
+                        return null;
+                    }
+
+                    /*
+                     * Compile abstract syntax tree to write object file.
+                     */
+                    BinaryWriter objFileWriter = new BinaryWriter (objFileStream);
+                    bool ok = ScriptCodeGen.CodeGen(tokenScript, objFileWriter, sourceHash);
+                    if (!ok) {
+                        m_log.Debug ("[XMREngine]: compile error on " + assetID);
+                        objFileStream.Close ();
+                        return null;
+                    }
+                    objFileStream.Close ();
+
+                    /*
+                     * File has been completely written.
+                     * If there is an old one laying around, delete it now.
+                     * Then re-open the new file for reading from the beginning.
+                     */
+                    if (File.Exists (objFileName)) {
+                        File.Replace (tmpFileName, objFileName, null);
+                    } else {
+                        File.Move (tmpFileName, objFileName);
+                    }
+                    objFileStream = File.OpenRead (objFileName);
+                } finally {
+
+                    /*
+                     * In case something went wrong writing temp file, delete it.
+                     */
+                    try {
+                        File.Delete (tmpFileName);
+                    } catch {
+                    }
+                }
+
+                /*
+                 * Since we just wrote the .xmrobj file, maybe save disassembly.
+                 */
+                envar = Environment.GetEnvironmentVariable ("MMRScriptCompileSaveILGen");
+                if ((envar != null) && ((envar[0] & 1) != 0)) {
+                    m_log.Debug ("[XMREngine]: MMRScriptCompileSaveILGen: saving to " + asmFileName);
+                    asmFileWriter = File.CreateText (asmFileName);
+                }
+            }
+
+            /*
+             * Read object file to create ScriptObjCode object.
+             * Maybe also write disassembly to a file for debugging.
+             */
+            BinaryReader objFileReader = new BinaryReader (objFileStream);
+            ScriptObjCode scriptObjCode = null;
+            try {
+                scriptObjCode = new ScriptObjCode (objFileReader, asmFileWriter);
+                if (scriptObjCode != null) {
+                    scriptObjCode.fileDateUtc = File.GetLastWriteTimeUtc (objFileName);
+                }
+            } finally {
+                objFileReader.Close ();
+                if (asmFileWriter != null) {
+                    asmFileWriter.Flush ();
+                    asmFileWriter.Close ();
+                }
+            }
+
+            /*
+             * Maybe an old object file has reached its expiration date.
+             */
+            if (oldObjFile && (scriptObjCode != null) && scriptObjCode.IsExpired ()) {
+                m_log.Debug ("[XMREngine]: expiration reached on " + assetID + ", reloading");
+                scriptObjCode = Compile (source, assetID, cameFrom, scriptBasePath, true, errorMessage);
+            }
+
+            return scriptObjCode;
+        }
+    }
+}

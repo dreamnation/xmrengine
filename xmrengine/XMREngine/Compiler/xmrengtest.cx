@@ -53,6 +53,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Parse command-line arguments.
              */
+            bool doXmrAsm     = false;
             bool eventIO      = false;
             List<PerPrim> perPrims = new List<PerPrim> ();
             int linkNum       = 0;
@@ -112,8 +113,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     continue;
                 }
                 if (arg == "-version") {
-                    Console.WriteLine ("commit " + GITCOMMITHASH + ((GITCOMMITCLEAN != 0) ? "" : "(dirty)") + " " + GITCOMMITDATE);
+                    Console.WriteLine ("commit " + GITCOMMITHASH + (new string[] { "(dirty)", "" })[GITCOMMITCLEAN] + " " + GITCOMMITDATE);
                     return;
+                }
+                if (arg == "-xmrasm") {
+                    doXmrAsm = true;
+                    continue;
                 }
                 if (arg[0] == '-') goto usage;
                 PerPrim perPrim;
@@ -182,8 +187,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      */
                     objFileStream.Seek (0, SeekOrigin.Begin);
                     BinaryReader objFileReader = new BinaryReader (objFileStream);
-                    scriptObjCode = new ScriptObjCode (objFileReader, null);
+                    TextWriter asmFileWriter = null;
+                    if (doXmrAsm) {
+                        string asmFileName = srcFileName;
+                        if (asmFileName.EndsWith (".lsl")) {
+                            asmFileName = asmFileName.Substring (0, asmFileName.Length - 4);
+                        }
+                        asmFileName += ".xmrasm";
+                        asmFileWriter = new StreamWriter (asmFileName);
+                    }
+                    scriptObjCode = new ScriptObjCode (objFileReader, asmFileWriter);
                     objFileReader.Close ();
+                    if (asmFileWriter != null) {
+                        asmFileWriter.Close ();
+                    }
 
                     scriptObjCodes.Add (srcFileName, scriptObjCode);
                 }
