@@ -31,12 +31,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public static bool doCheckRun = false;
         public static bool haveLinkNums = false;
         public static bool printPeakHeap = false;
+        public static Dictionary<string, ScriptObjCode> scriptObjCodes = new Dictionary<string, ScriptObjCode> ();
+        public static Dictionary<string, ScriptRoot> scriptRootPrimUUIDs = new Dictionary<string, ScriptRoot> ();
         public static int consoleLine = 0;
         public static LinkedList<int> ipcChannels = new LinkedList<int> ();
         public static LinkedList<QueuedEvent> queuedEvents = new LinkedList<QueuedEvent> ();
         public static MemoryStream serializeStream = null;
         public static ScriptRoot[] scriptRoots;
-        public static Dictionary<string, ScriptRoot> scriptRootPrimUUIDs = new Dictionary<string, ScriptRoot> ();
 
         /**
          * @brief Stand-alone test program.
@@ -129,62 +130,72 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
             scriptRoots = new ScriptRoot[perPrims.Count];
             for (int i = 0; i < perPrims.Count; i ++) {
+                ScriptObjCode scriptObjCode;
                 string srcFileName = perPrims[i].srcFileName;
 
-                /*
-                 * Read whole source into memory.
-                 */
-                FileInfo srcFileInfo = new FileInfo (srcFileName);
-                string source = "# 1 \"" + srcFileName + "\"\n" + File.ReadAllText (srcFileInfo.FullName);
+                if (!scriptObjCodes.TryGetValue (srcFileName, out scriptObjCode)) {
 
-                /*
-                 * Parse source string into tokens.
-                 */
-                if (perPrims.Count > 1) {
-                    Console.WriteLine ("Compiling " + srcFileName + " ...");
-                } else {
-                    Console.WriteLine ("Compiling...");
-                }
-                string cameFrom = "file://" + srcFileInfo.FullName;
-                TokenBegin tokenBegin = TokenBegin.Construct (cameFrom, null, StandAloneErrorMessage, source, out sourceHash);
-                if (tokenBegin == null) {
-                    Console.WriteLine ("Parsing errors.");
-                    Environment.Exit (1);
-                }
+                    /*
+                     * Read whole source into memory.
+                     */
+                    FileInfo srcFileInfo = new FileInfo (srcFileName);
+                    string source = "# 1 \"" + srcFileName + "\"\n" + File.ReadAllText (srcFileInfo.FullName);
 
-                /*
-                 * Create abstract syntax tree from raw tokens.
-                 */
-                TokenScript tokenScript = ScriptReduce.Reduce(tokenBegin);
-                if (tokenScript == null) {
-                    Console.WriteLine ("Reduction errors.");
-                    Environment.Exit (1);
-                }
+                    /*
+                     * Parse source string into tokens.
+                     */
+                    if (perPrims.Count > 1) {
+                        Console.WriteLine ("Compiling " + srcFileName + " ...");
+                    } else {
+                        Console.WriteLine ("Compiling...");
+                    }
+                    string cameFrom = "file://" + srcFileInfo.FullName;
+                    TokenBegin tokenBegin = TokenBegin.Construct (cameFrom, null, StandAloneErrorMessage, source, out sourceHash);
+                    if (tokenBegin == null) {
+                        Console.WriteLine ("Parsing errors.");
+                        Environment.Exit (1);
+                    }
 
-                /*
-                 * Attempt to compile AST to object code.
-                 */
-                Stream objFileStream = new MemoryStream ();
-                BinaryWriter objFileWriter = new BinaryWriter (objFileStream);
-                bool ok;
-                ok = ScriptCodeGen.CodeGen (tokenScript, objFileWriter, sourceHash);
-                if (!ok) {
-                    Console.WriteLine ("Compilation errors.");
-                    Environment.Exit (1);
-                }
+                    /*
+                     * Create abstract syntax tree from raw tokens.
+                     */
+                    TokenScript tokenScript = ScriptReduce.Reduce(tokenBegin);
+                    if (tokenScript == null) {
+                        Console.WriteLine ("Reduction errors.");
+                        Environment.Exit (1);
+                    }
 
-                /*
-                 * Load object code into memory.
-                 */
-                objFileStream.Seek (0, SeekOrigin.Begin);
-                BinaryReader objFileReader = new BinaryReader (objFileStream);
-                ScriptObjCode scriptObjCode = new ScriptObjCode (objFileReader, null);
-                objFileReader.Close ();
+                    /*
+                     * Attempt to compile AST to object code.
+                     */
+                    Stream objFileStream = new MemoryStream ();
+                    BinaryWriter objFileWriter = new BinaryWriter (objFileStream);
+                    bool ok;
+                    ok = ScriptCodeGen.CodeGen (tokenScript, objFileWriter, sourceHash);
+                    if (!ok) {
+                        Console.WriteLine ("Compilation errors.");
+                        Environment.Exit (1);
+                    }
+
+                    /*
+                     * Load object code into memory.
+                     */
+                    objFileStream.Seek (0, SeekOrigin.Begin);
+                    BinaryReader objFileReader = new BinaryReader (objFileStream);
+                    scriptObjCode = new ScriptObjCode (objFileReader, null);
+                    objFileReader.Close ();
+
+                    scriptObjCodes.Add (srcFileName, scriptObjCode);
+                }
 
                 /*
                  * Instantiate the script and set it up to run its default state_entry() handler.
                  */
-                Console.WriteLine ("Running...");
+                if (perPrims.Count > 1) {
+                    Console.WriteLine ("Running " + perPrims[i].name + " ...");
+                } else {
+                    Console.WriteLine ("Running...");
+                }
                 new ScriptRoot (new TestInstance (scriptObjCode), i, perPrims[i]);
             }
 
