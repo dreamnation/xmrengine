@@ -6,6 +6,7 @@
 using Mono.Tasklets;
 using OpenSim.Framework.Monitoring;
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using log4net;
 
@@ -31,6 +32,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     public class XMRScriptThread {
         private static int    m_WakeUpOne  = 0;
         public  static object m_WakeUpLock = new object();
+        private static Dictionary<Thread,XMRScriptThread> m_AllThreads = new Dictionary<Thread,XMRScriptThread> ();
 
         /**
          * @brief Something was just added to the Start or Yield queue so
@@ -43,6 +45,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 m_WakeUpOne ++;
                 Monitor.Pulse (m_WakeUpLock);
             }
+        }
+
+        public static bool IsScriptThread ()
+        {
+            Thread cur = Thread.CurrentThread;
+            bool itis;
+            lock (m_AllThreads) {
+                itis = m_AllThreads.ContainsKey (cur);
+            }
+            return itis;
         }
 
         private bool        m_Exiting = false;
@@ -59,6 +71,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             engine = eng;
             thd = Watchdog.StartThread (RunScriptThread, "xmrengine script", ThreadPriority.BelowNormal, false, true);
+            lock (m_AllThreads) {
+                m_AllThreads.Add (thd, this);
+            }
         }
 
         public void SuspendThread()
@@ -78,6 +93,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_Exiting = true;
             WakeUpScriptThread();
             thd.Join();
+            lock (m_AllThreads) {
+                m_AllThreads.Remove (thd);
+            }
+            thd = null;
         }
 
         public void TimeSlice()

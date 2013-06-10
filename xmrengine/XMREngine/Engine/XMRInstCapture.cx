@@ -208,15 +208,26 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             // do all the work in the MigrateOutEventHandlerThread() method below
             moehstream = stream;
-            lock (XMRScriptThread.m_WakeUpLock) {
-                m_Engine.m_MOEHQueue.Enqueue (this);
-            }
-            XMRScriptThread.WakeUpOne ();
 
-            // wait for it to complete
-            lock (moehdone) {
-                while (moehstream != null) {
-                    Monitor.Wait (moehdone);
+            if (XMRScriptThread.IsScriptThread ()) {
+
+                // we might be getting called inside some LSL Api function
+                // so we are already in script thread and thus must do
+                // migration directly
+                MigrateOutEventHandlerThread ();
+            } else {
+
+                // some other thread, do migration via a script thread
+                lock (XMRScriptThread.m_WakeUpLock) {
+                    m_Engine.m_MOEHQueue.Enqueue (this);
+                }
+                XMRScriptThread.WakeUpOne ();
+
+                // wait for it to complete
+                lock (moehdone) {
+                    while (moehstream != null) {
+                        Monitor.Wait (moehdone);
+                    }
                 }
             }
 
