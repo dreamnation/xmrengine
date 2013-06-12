@@ -209,7 +209,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             // do all the work in the MigrateOutEventHandlerThread() method below
             moehstream = stream;
 
-            if (XMRScriptThread.IsScriptThread ()) {
+            XMRScriptThread cst = XMRScriptThread.CurrentScriptThread ();
+            if (cst != null) {
 
                 // we might be getting called inside some LSL Api function
                 // so we are already in script thread and thus must do
@@ -219,7 +220,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                 // some other thread, do migration via a script thread
                 lock (XMRScriptThread.m_WakeUpLock) {
-                    m_Engine.m_MOEHQueue.Enqueue (this);
+                    m_Engine.m_ThunkQueue.Enqueue (this.MigrateOutEventHandlerThread);
                 }
                 XMRScriptThread.WakeUpOne ();
 
@@ -237,7 +238,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private Exception moehexcep;
         private object moehdone = new object ();
         private Stream moehstream;
-        public void MigrateOutEventHandlerThread ()
+        private void MigrateOutEventHandlerThread ()
         {
             Exception except;
 

@@ -90,8 +90,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         private Dictionary<UUID, XMRInstance> m_InstancesDict =
                 new Dictionary<UUID, XMRInstance>();
-        public  Queue<XMRInstance> m_MOEHQueue = new Queue<XMRInstance> ();
-        public  Queue<XMRInstance> m_MIEHQueue = new Queue<XMRInstance> ();
+        public  Queue<ThreadStart> m_ThunkQueue = new Queue<ThreadStart> ();
         public  XMRInstQueue m_StartQueue = new XMRInstQueue();
         public  XMRInstQueue m_YieldQueue = new XMRInstQueue();
         public  XMRInstQueue m_SleepQueue = new XMRInstQueue();

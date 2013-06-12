@@ -47,14 +47,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
         }
 
-        public static bool IsScriptThread ()
+        public static XMRScriptThread CurrentScriptThread ()
         {
-            Thread cur = Thread.CurrentThread;
-            bool itis;
+            XMRScriptThread st;
             lock (m_AllThreads) {
-                itis = m_AllThreads.ContainsKey (cur);
+                m_AllThreads.TryGetValue (Thread.CurrentThread, out st);
             }
-            return itis;
+            return st;
         }
 
         private bool        m_Exiting = false;
@@ -140,8 +139,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     lock (m_WakeUpLock) {
                         while (m_SuspendScriptThreadFlag &&
                                !m_Exiting &&
-                               (engine.m_MIEHQueue.Count == 0) &&
-                               (engine.m_MOEHQueue.Count == 0)) {
+                               (engine.m_ThunkQueue.Count == 0)) {
                             Monitor.Wait (m_WakeUpLock, Watchdog.DEFAULT_WATCHDOG_TIMEOUT_MS / 2);
                             Watchdog.UpdateThread ();
                         }
@@ -151,25 +149,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 /*
                  * Maybe there are some scripts waiting to be migrated in or out.
                  */
-                inst = null;
+                ThreadStart thunk = null;
                 lock (m_WakeUpLock) {
-                    if (engine.m_MIEHQueue.Count > 0) {
-                        inst = engine.m_MIEHQueue.Dequeue ();
+                    if (engine.m_ThunkQueue.Count > 0) {
+                        thunk = engine.m_ThunkQueue.Dequeue ();
                     }
                 }
-                if (inst != null) {
+                if (thunk != null) {
+                    inst = (XMRInstance)thunk.Target;
                     INITMONOCONTS;
-                    inst.MigrateInEventHandlerThread ();
-                    continue;
-                }
-                lock (m_WakeUpLock) {
-                    if (engine.m_MOEHQueue.Count > 0) {
-                        inst = engine.m_MOEHQueue.Dequeue ();
-                    }
-                }
-                if (inst != null) {
-                    INITMONOCONTS;
-                    inst.MigrateOutEventHandlerThread ();
+                    thunk ();
                     continue;
                 }
 
