@@ -162,13 +162,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          *      is immediately changed and the script-level xmrEventDequeue call does not return.
          *   7) For returned events, the detect parameters are overwritten by the returned event.
          *      For background events, the detect parameters are saved and restored.
-         *   8) Scripts must contain dummy event handler definitions for any event types that may 
-         *      be returned by xmrEventDequeue, to let the runtime know that the script is capable 
+         *   8) Scripts must contain dummy event handler definitions for any event types that may
+         *      be returned by xmrEventDequeue, to let the runtime know that the script is capable
          *      of processing that event type.  Otherwise, the event may not be queued to the script.
          */
         private static LSL_List emptyList = new LSL_List (new object[0]);
 
-        public override LSL_List xmrEventDequeue (SCRIPTFLOAT timeout, int returnMask1, int returnMask2, 
+        public override LSL_List xmrEventDequeue (SCRIPTFLOAT timeout, int returnMask1, int returnMask2,
                                                   int backgroundMask1, int backgroundMask2)
         {
             DateTime sleepUntil = DateTime.UtcNow + TimeSpan.FromMilliseconds (timeout * 1000.0);
@@ -231,7 +231,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
         remfromq:
             m_EventQueue.Remove (lln);
-            m_EventCounts[evc1] --;
+            if ((uint)evc1 < (uint)m_EventCounts.Length) {
+                m_EventCounts[evc1] --;
+            }
             Monitor.Exit (m_QueueLock);
             m_InstEHEvent ++;
 

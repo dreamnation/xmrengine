@@ -65,8 +65,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * by the time this event is dequeued and delivered to the script.
                  */
                 if (!construct &&                      // make sure m_HaveEventHandlers is filled in 
-                    ((int)evc >= 0) &&                 // make sure event code is in range
-                    ((int)evc < m_HaveEventHandlers.Length) &&
+                    ((uint)evc < (uint)m_HaveEventHandlers.Length) &&
                     !m_HaveEventHandlers[(int)evc]) {  // don't bother if we don't have such a handler in any state
                     return;
                 }
@@ -82,7 +81,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 /*
                  * Only so many of each event type allowed to queue.
                  */
-                if ((int)evc >= 0) {
+                if ((uint)evc < (uint)m_EventCounts.Length) {
                     int maxAllowed = MAXEVENTQUEUE;
                     if (evc == ScriptEventCode.timer) maxAllowed = 1;
                     if (m_EventCounts[(int)evc] >= maxAllowed)
@@ -816,6 +815,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             this.eventCode = ScriptEventCode.None;  // not processing an event
             m_DetectParams = null;                  // not processing an event
             m_SleepUntil   = DateTime.MinValue;     // not doing llSleep()
+            m_ResetCount ++;                        // has been reset once more
 
             /*
              * Tell next call to 'default state_entry()' to reset all global

@@ -75,11 +75,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * This also gets the API modules ready to accept setup data, such as
              * active listeners being restored.
              */
+            IScriptApi scriptApi;
             ApiManager am = new ApiManager();
             foreach (string api in am.GetApis())
             {
-                IScriptApi scriptApi;
-
                 /*
                  * Instantiate the API for this script instance.
                  */
@@ -90,15 +89,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
 
                 /*
-                 * Set up m_ApiManager_<APINAME> = instance pointer.
+                 * Connect it up to the instance.
                  */
-                engine.m_XMRInstanceApiCtxFieldInfos[api].SetValue (this, scriptApi);
-
-                /*
-                 * Initialize the API instance.
-                 */
-                scriptApi.Initialize(m_Engine, m_Part, m_Item/*, null*/);
-                this.InitApi(api, scriptApi);
+                InitScriptApi (engine, api, scriptApi);
             }
 
             m_XMRLSLApi.InitXMRLSLApi(this);
@@ -124,6 +117,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             int eventMask = GetStateEventFlags(stateCode);
             m_Part.SetScriptEvents(m_ItemID, eventMask);
         }
+
+        private void InitScriptApi (XMREngine engine, string api, IScriptApi scriptApi)
+        {
+            /*
+             * Set up m_ApiManager_<APINAME> = instance pointer.
+             */
+            engine.m_XMRInstanceApiCtxFieldInfos[api].SetValue (this, scriptApi);
+
+            /*
+             * Initialize the API instance.
+             */
+            scriptApi.Initialize(m_Engine, m_Part, m_Item/*, null*/);
+            this.InitApi (api, scriptApi);
+        }
+
 
         // Get script object code loaded in memory and all ready to run,
         // ready to resume it from where the .state file says it was last
@@ -547,6 +555,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             AsyncCommandManager.CreateFromData(m_Engine,
                     m_LocalID, m_ItemID, m_Part.UUID,
                     pluginData);
+
+            // Restore SetObjRegPosRotAsync data
+            // Then finish it off assuming we are now running on the destination sim
+            XmlElement sorpraxml = (XmlElement)scriptStateN.SelectSingleNode ("SetObjRegPosRotAsync");
+            if (sorpraxml != null) {
+                SetObjRegPosRotAsync sorpra = new SetObjRegPosRotAsync (this);
+                sorpra.SetXml (sorpraxml);
+                m_Engine.AddOnFrameUpdate (sorpra.Finish);
+            }
         }
 
         /**

@@ -21,6 +21,7 @@ ENGINECSFILES := XMREngine_$(COMMITHASH)_$(COMMITCLEAN).cs \
                  XMRInstMisc.cs \
                  XMRInstQueue.cs \
                  XMRInstRun.cs \
+                 XMRInstSorpra.cs \
                  XMRScriptThread.cs \
                  XMRScriptUThread.cs \
                  XMREngXmrTestLs.cs \
@@ -59,14 +60,14 @@ default: \
 #
 # Create files needed for OpenSim
 #
+$(OPENSIMDLLDIR)/xmrengshare.dll: $(wildcard ../*/*.cx) $(wildcard ../*/*.h)
+	make -C ../Compiler $(OPENSIMDLLDIR)/xmrengshare.dll
+
 $(OPENSIMDLLDIR)/OpenSim.Region.ScriptEngine.XMREngine.dll: $(ENGINECSFILES) $(REFERENCED)
 	$(MONOBINDIR)/dmcs -debug -target:library \
 		-out:$@ \
 		$(ENGINECSFILES) \
 		$(patsubst %.dll,-reference:%.dll,$(REFERENCED))
-
-$(OPENSIMDLLDIR)/xmrengshare.dll: $(wildcard ../*/*.cx) $(wildcard ../*/*.h)
-	make -C ../Compiler $(OPENSIMDLLDIR)/xmrengshare.dll
 
 XMREngine_$(COMMITHASH)_$(COMMITCLEAN).cs: XMREngine.cx $(wildcard ../*/*.h)
 	rm -f XMREngine_*.cs

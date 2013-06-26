@@ -51,7 +51,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private bool m_LateInit;
         private bool m_TraceCalls;
         public  bool m_Verbose;
-        private Scene m_Scene;
+        public  Scene m_Scene;
         private IConfigSource m_ConfigSource;
         private IConfig m_Config;
         private string m_ScriptBasePath;
@@ -78,6 +78,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private int m_MaintenanceInterval = 10;
         private System.Timers.Timer m_MaintenanceTimer;
         public  int numThreadScriptWorkers;
+
+        private object m_FrameUpdateLock = new object ();
+        private event ThreadStart m_FrameUpdateList = null;
 
         /*
          * Various instance lists:
@@ -681,6 +684,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 m_SliceThread = null;
             }
 
+            m_Scene.EventManager.OnFrame -= OnFrame;
             m_Scene.EventManager.OnRezScript -= OnRezScript;
             m_Scene.EventManager.OnRemoveScript -= OnRemoveScript;
             m_Scene.EventManager.OnScriptReset -= OnScriptReset;
@@ -700,6 +704,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             TraceCalls("[XMREngine]: XMREngine.RegionLoaded({0})", scene.RegionInfo.RegionName);
 
+            m_Scene.EventManager.OnFrame += OnFrame;
             m_Scene.EventManager.OnRemoveScript += OnRemoveScript;
             m_Scene.EventManager.OnScriptReset += OnScriptReset;
             m_Scene.EventManager.OnStartScript += OnStartScript;
@@ -1441,6 +1446,33 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
             running = instance.Running;
             return true;
+        }
+
+        /**
+         * @brief Called once per frame update to see if scripts have
+         *        any such work to do.
+         */
+        private void OnFrame ()
+        {
+            if (m_FrameUpdateList != null) {
+                ThreadStart frameupdates;
+                lock (m_FrameUpdateLock) {
+                    frameupdates = m_FrameUpdateList;
+                    m_FrameUpdateList = null;
+                }
+                frameupdates ();
+            }
+        }
+
+        /**
+         * @brief Add a one-shot delegate to list of things to do
+         *        synchronized with frame updates.
+         */
+        public void AddOnFrameUpdate (ThreadStart thunk)
+        {
+            lock (m_FrameUpdateLock) {
+                m_FrameUpdateList += thunk;
+            }
         }
 
         /**

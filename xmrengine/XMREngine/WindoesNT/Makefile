@@ -44,6 +44,7 @@ xmrengwincsfiles.zip: \
 		XMRInstMisc.cs         \
 		XMRInstQueue.cs        \
 		XMRInstRun.cs          \
+		XMRInstSorpra.cs       \
 		XMRSDTypeClObj.cs      \
 		XMRScriptThread.cs     \
 		XMRScriptUThread.cs

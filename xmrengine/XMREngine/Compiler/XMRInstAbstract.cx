@@ -379,6 +379,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         [xmrMethodIsNoisyAttribute]   // calls Stub<somethingorother>()
         public abstract void xmrEventLoadDets (LSL_List dpList);
 
+        [xmrMethodIsNoisyAttribute]   // calls Stub<somethingorother>()
+        public abstract bool xmrSetObjRegPosRotAsync (LSL_Vector pos, LSL_Rotation rot, int evcode, LSL_List evargs);
+
         /**************************************************\
          *  Functions what don't require runtime support  *
          *  beyond what the compiler provides.            *

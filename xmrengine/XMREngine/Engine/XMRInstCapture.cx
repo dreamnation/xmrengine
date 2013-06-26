@@ -172,6 +172,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 m_RunOnePhase = "GetExecutionState H"; CheckRunLockInvariants(true);
 
                 /*
+                 * Maybe a SetObjRegPosRotAsync is in progress and
+                 * we are sending the context to the receiving sim.
+                 */
+                if (m_Sorpra != null) {
+                    XmlElement sorpraxml = doc.CreateElement ("", "SetObjRegPosRotAsync", "");
+                    m_Sorpra.GetXml (sorpraxml);
+                    scriptStateN.AppendChild (sorpraxml);
+                }
+
+                /*
                  * Let script run again.
                  */
                 suspendOnCheckRunHold = false;

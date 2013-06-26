@@ -1238,6 +1238,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             StubVoid ("xmrEventLoadDets", dpList);
         }
+
+        [xmrMethodIsNoisyAttribute]  // calls Stub<somethingorother>
+        public override bool xmrSetObjRegPosRotAsync (LSL_Vector pos, LSL_Rotation rot, int evcode, LSL_List evargs)
+        {
+            return StubLSLInteger ("xmrSetObjRegPosRotAsync", pos, rot, evcode, evargs) != 0;
+        }
     }
 
     public class SCRIPTBASECLASS :

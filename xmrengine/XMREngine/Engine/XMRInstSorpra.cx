@@ -1,0 +1,402 @@
+/***************************************************\
+ *  COPYRIGHT 2013, Mike Rieker, Beverly, MA, USA  *
+ *  All rights reserved.                           *
+\***************************************************/
+
+using log4net;
+using OpenMetaverse;
+using OpenSim.Framework;
+using OpenSim.Region.Framework.Scenes;
+using OpenSim.Region.ScriptEngine.Shared;
+using System;
+using System.Collections.Generic;
+using System.Xml;
+
+#include "lsltypes.h"
+
+namespace OpenSim.Region.ScriptEngine.XMREngine
+{
+    public partial class XMRInstance
+    {
+        /**
+         * @brief Move object to new position and rotation asynchronously.
+         *        Can move object across region boundary.
+         * @param pos    = new position within current region (same coords as llGetPos())
+         * @param rot    = new rotation within current region (same coords as llGetRot())
+         * @param evcode = event handler code to post when move complete (XMREVENTCODE_whatever)
+         *                 -1 to not bother delivering event
+         * @param evargs = arguments to pass to event handler
+         * @returns false: completed synchronously, no event will be queued
+         *           true: event will be queued when move completed
+         */
+        public const int SORPRA_TIMEOUT_MS = 30000;
+        public override bool xmrSetObjRegPosRotAsync (LSL_Vector pos, LSL_Rotation rot, int evcode, LSL_List evargs)
+        {
+            /*
+             * Check for synchronous completion, ie, object stays within current region.
+             * This case is handled correctly by SceneObjectGroup, including any seated avatars.
+             */
+            if ((pos.x >= 0) && (pos.x < Constants.RegionSize) &&
+                (pos.y >= 0) && (pos.y < Constants.RegionSize)) {
+                SceneObjectGroup sog = m_Part.ParentGroup;
+                sog.UpdateGroupRotationPR (pos, rot);
+                return false;
+            }
+
+            /*
+             * Crosses region boundary, sync processing with frame updates.
+             * The avatars must be unseated then moved to new region followed
+             * by moving the object and finally reseating the avatars.
+             */
+            SetObjRegPosRotAsync sorpra = new SetObjRegPosRotAsync (this);
+            sorpra.pos = (OpenMetaverse.Vector3)pos;
+            sorpra.rot = (OpenMetaverse.Quaternion)rot;
+            if (evcode >= 0) {
+                string evn = ((ScriptEventCode)evcode).ToString ();
+                sorpra.eps = new EventParams (evn, evargs.Data, zeroDetectParams);
+            }
+            m_Engine.AddOnFrameUpdate (sorpra.StandUpAvs);
+            return true;
+        }
+
+        private class SetObjRegPosRotAsync {
+            public EventParams eps;
+            public OpenMetaverse.Quaternion rot;
+            public OpenMetaverse.Vector3 pos;
+
+            private DateTime timeoutAt;
+            private int resetCount;
+            private List<SeatedAv> seatedAvs;
+            private XMRInstance inst;
+
+            public SetObjRegPosRotAsync (XMRInstance inst)
+            {
+                this.inst       = inst;
+                this.resetCount = inst.m_ResetCount;
+                this.timeoutAt  = DateTime.UtcNow + TimeSpan.FromMilliseconds (SORPRA_TIMEOUT_MS);
+            }
+
+            /**
+             * @brief Executes as part of scene frame update.
+             *        It moves the object and any seated avatars to new sim.
+             */
+            public void StandUpAvs ()
+            {
+                if (DeadCheck ()) return;
+
+                try {
+                    Scene scene = inst.m_Engine.m_Scene;
+
+                    // point to object as a whole (all linked parts)
+                    SceneObjectGroup sog = inst.m_Part.ParentGroup;
+
+                    // see if any avatars are seated on any part of the object
+                    int sac = sog.GetSittingAvatarsCount ();
+                    seatedAvs = new List<SeatedAv> (sac);
+                    if (sac > 0) {
+
+                        // get list of parts in link set
+                        SceneObjectPart[] sops = sog.Parts;
+
+                        // see which avatars are on which part
+                        foreach (SceneObjectPart sop in sops) {
+                            if (sop.GetSittingAvatarsCount () > 0) {
+                                HashSet<UUID> seateds = sop.GetSittingAvatars ();
+                                foreach (UUID avid in seateds) {
+                                    ScenePresence sp = scene.GetScenePresence (avid);
+                                    if ((sp != null) && !sp.IsChildAgent) {
+                                        SeatedAv sav = new SeatedAv ();
+                                        sav.avUUID = avid;
+                                        sav.partID = sop.UUID;
+                                        seatedAvs.Add (sav);
+                                    }
+                                }
+                            }
+                        }
+
+                        // unseat all those avatars
+                        foreach (SeatedAv sav in seatedAvs) {
+                            ScenePresence sp = scene.GetScenePresence (sav.avUUID);
+                            if ((sp != null) && !sp.IsChildAgent) {
+                                sp.StandUp ();
+                            }
+                        }
+                    }
+
+                    // start unseated avatars heading to position in new region
+                    // wait for any unseated avatars to reach their targets
+                    // then move object
+                    MoveAvatars ();
+                } catch (Exception e) {
+                    m_log.Error ("[xmrSetObjRegPosRotAsync]: " + e.ToString ());
+                }
+            }
+
+            private void MoveAvatars ()
+            {
+                if (DeadCheck ()) return;
+
+                try {
+                    Scene scene = inst.m_Engine.m_Scene;
+                    SceneObjectGroup sog = inst.m_Part.ParentGroup;
+
+                    // start moving any avatars that need moving by giving them velocity toward 'pos'
+                    // just setting position with sp.AbsolutePosition doesn't seem to move them at all
+                    bool needToWait = false;
+                    foreach (SeatedAv sav in seatedAvs) {
+                        ScenePresence sp = scene.GetScenePresence (sav.avUUID);
+                        if ((sp != null) && !sp.IsChildAgent) {
+                            OpenMetaverse.Vector3 vel;
+                            vel.X = (pos.X - sp.AbsolutePosition.X) * 2.0F;
+                            vel.Y = (pos.Y - sp.AbsolutePosition.Y) * 2.0F;
+                            vel.Z = 0.0F;
+                            needToWait  = true;
+                            sp.Rotation = OpenMetaverse.Quaternion.Identity;
+                            sp.AddNewMovement (vel);
+                        }
+                    }
+
+                    // if some were not in place, come back on next frame update to check again
+                    if (needToWait) {
+                        inst.m_Engine.AddOnFrameUpdate (MoveAvatars);
+                        return;
+                    }
+
+                    // move object to new position and region without any avatars sitting on it
+                    // the avatars should be in the new region waiting for it to arrive
+                    inst.m_Sorpra = this;                  // set this data to be migrated over to remote sim
+                    sog.UpdateGroupRotationPR (pos, rot);  // migrate object to remote sim along with its data
+                    inst.m_Sorpra = null;                  // this data no longer needs to be migrated
+
+                    // when the object arrives in its new location, Finish() will be called.
+                } catch (Exception e) {
+                    m_log.Error ("[xmrSetObjRegPosRotAsync]: " + e.ToString ());
+                }
+            }
+
+            /**
+             * @brief Movement complete, sit everyone back down on object and post event.
+             *        This executes as part of the scene frame update thread in new region.
+             */
+            public void Finish ()
+            {
+                if (DeadCheck ()) return;
+
+                Scene scene = inst.m_Engine.m_Scene;
+
+                /*
+                 * Make sure all avatars that were seated on the object
+                 * are now root (not child) avatars in this sim.  If not,
+                 * wait for another scene frame update to happen then
+                 * check again.
+                 */
+                foreach (SeatedAv sav in seatedAvs) {
+                    ScenePresence sp = scene.GetScenePresence (sav.avUUID);
+                    if ((sp == null) || sp.IsChildAgent) {
+                        inst.m_Engine.AddOnFrameUpdate (Finish);
+                        return;
+                    }
+                }
+
+                /*
+                 * Seems more stable if we wait an extra frame before reseating.
+                 * Otherwise we sometimes get jump to Y+512 when seating avatars.
+                 */
+                inst.m_Engine.AddOnFrameUpdate (Finish2);
+            }
+
+            private void Finish2 ()
+            {
+                if (DeadCheck ()) return;
+
+                Scene scene = inst.m_Engine.m_Scene;
+
+                /*
+                 * Sit everyone back down on object.
+                 */
+                foreach (SeatedAv sav in seatedAvs) {
+                    ScenePresence sp = scene.GetScenePresence (sav.avUUID);
+                    if (sp != null) {
+                        sp.HandleAgentRequestSit (null, UUID.Zero, sav.partID, OpenMetaverse.Vector3.Zero);
+                    }
+                }
+
+                /*
+                 * Tell script it is now moved by posting the requested event.
+                 */
+                if (eps != null) {
+                    inst.PostEvent (eps);
+                }
+            }
+
+            /**
+             * @brief Make sure we aren't hung (eg, waiting for an avatar to
+             *        finish TPing but they have logged out meanwhile).
+             */
+            private bool DeadCheck ()
+            {
+                if (inst.m_ResetCount != this.resetCount) {
+                    m_log.Debug ("[Sorpra.DeadCheck]: script was reset");
+                    return true;
+                }
+                if (DateTime.UtcNow > this.timeoutAt) {
+                    m_log.Error ("[Sorpra.DeadCheck]: timed out");
+                    return true;
+                }
+                return false;
+            }
+
+            /**
+             * @brief Being migrated out as part of being moved to another server
+             *        or this server is being shut down.
+             */
+            public void GetXml (XmlElement sorpraxml)
+            {
+                XmlDocument doc = sorpraxml.OwnerDocument;
+
+                /*
+                 * <Seateds>
+                 *   <Seated Avid="uuid" Part="uuid" />
+                 *   ...
+                 * </Seateds>
+                 */
+                XmlElement sitsxml = doc.CreateElement ("Seateds");
+                foreach (SeatedAv sav in seatedAvs) {
+                    XmlElement sitxml = doc.CreateElement ("Seated");
+                    sitxml.SetAttribute ("Avid", sav.avUUID.ToString ());
+                    sitxml.SetAttribute ("Part", sav.partID.ToString ());
+                    sitsxml.AppendChild (sitxml);
+                }
+                sorpraxml.AppendChild (sitsxml);
+
+                /*
+                 * <EventParams Name="eventname">
+                 *   <EventArg Type="typename" Val="value" />
+                 *   ...
+                 * </EventParams>
+                 */
+                if (eps != null) {
+                    XmlElement epsxml = doc.CreateElement ("EventParams");
+                    epsxml.SetAttribute ("Name", eps.EventName);
+                    foreach (object eparg in eps.Params) {
+                        XmlElement epargxml = doc.CreateElement ("EventArg");
+
+                        string typstr = null;
+                        string valstr = null;
+                        if (eparg is LSL_Float) {
+                            typstr = "float";
+                            valstr = inst.xmrFloat2String ((LSL_Float)eparg, "");
+                        }
+                        if (eparg is LSL_Integer) {
+                            typstr = "integer";
+                            valstr = inst.xmrInteger2String ((LSL_Integer)eparg, "");
+                        }
+                        if (eparg is LSL_Rotation) {
+                            typstr = "rotation";
+                            valstr = inst.xmrRotation2String ((LSL_Rotation)eparg, "");
+                        }
+                        if (eparg is LSL_String) {
+                            typstr = "string";
+                            valstr = eparg.ToString ();
+                        }
+                        if (eparg is LSL_Vector) {
+                            typstr = "vector";
+                            valstr = inst.xmrVector2String ((LSL_Vector)eparg, "");
+                        }
+                        if (eparg is SCRIPTFLOAT) {
+                            typstr = "float";
+                            valstr = inst.xmrFloat2String ((SCRIPTFLOAT)eparg, "");
+                        }
+                        if (eparg is int) {
+                            typstr = "integer";
+                            valstr = inst.xmrInteger2String ((int)eparg, "");
+                        }
+                        if (eparg is string) {
+                            typstr = "string";
+                            valstr = (string)eparg;
+                        }
+                        if (typstr == null) {
+                            throw new Exception ("unsupported event params type " + eparg.GetType ().Name);
+                        }
+
+                        epargxml.SetAttribute ("Type", typstr);
+                        epargxml.SetAttribute ("Val",  valstr);
+                        epsxml.AppendChild (epargxml);
+                    }
+                    sorpraxml.AppendChild (epsxml);
+                }
+            }
+
+            /**
+             * @brief Restore values when being migrated in from a sender.
+             */
+            public void SetXml (XmlElement sorpraxml)
+            {
+                /*
+                 * <Seateds>
+                 *   <Seated Avid="uuid" Part="uuid" />
+                 *   ...
+                 * </Seateds>
+                 */
+                XmlElement sitsxml = (XmlElement)sorpraxml.SelectSingleNode ("Seateds");
+                XmlNodeList sitxmllist = sitsxml.SelectNodes ("Seated");
+                seatedAvs = new List<SeatedAv> (sitxmllist.Count);
+                foreach (XmlElement sitxml in sitxmllist) {
+                    string avid  = sitxml.GetAttribute ("Avid");
+                    string part  = sitxml.GetAttribute ("Part");
+                    SeatedAv sav = new SeatedAv ();
+                    sav.avUUID   = new UUID (avid);
+                    sav.partID   = new UUID (part);
+                    seatedAvs.Add (sav);
+                }
+
+                /*
+                 * <EventParams Name="eventname">
+                 *   <EventArg Type="typename" Val="value" />
+                 *   ...
+                 * </EventParams>
+                 */
+                XmlElement epsxml = (XmlElement)sorpraxml.SelectSingleNode ("EventParams");
+                if (epsxml != null) {
+                    XmlNodeList evasxml = epsxml.SelectNodes ("EventArg");
+                    object[] evargs = new object[evasxml.Count];
+                    int i = 0;
+                    foreach (XmlElement evaxml in evasxml) {
+                        string typstr = evaxml.GetAttribute ("Type");
+                        string valstr = evaxml.GetAttribute ("Val");
+                        switch (typstr) {
+                            case "float": {
+                                evargs[i++] = inst.xmrString2Float (valstr);
+                                break;
+                            }
+                            case "integer": {
+                                evargs[i++] = inst.xmrString2Integer (valstr);
+                                break;
+                            }
+                            case "rotation": {
+                                evargs[i++] = inst.xmrString2Rotation (valstr);
+                                break;
+                            }
+                            case "string": {
+                                evargs[i++] = valstr;
+                                break;
+                            }
+                            case "vector": {
+                                evargs[i++] = inst.xmrString2Vector (valstr);
+                                break;
+                            }
+                            default: throw new Exception ("unsupported event params type " + typstr);
+                        }
+                    }
+                    string evname = epsxml.GetAttribute ("Name");
+                    eps = new EventParams (evname, evargs, new DetectParams[0]);
+                }
+            }
+
+            private class SeatedAv {
+                public UUID avUUID;
+                public UUID partID;
+            }
+        }
+    }
+}
