@@ -1192,8 +1192,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Output:
 			 *    int __mainCallNo = -1;
-			 *    if (instance.callMode != CallMode_NORMAL) goto __cmRestore;
 			 *    try {
+			 *        if (instance.callMode != CallMode_NORMAL) goto __cmRestore;
 			 */
 			actCallNo = null;
 			ScriptMyLabel cmRestore = null;
@@ -1201,11 +1201,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				actCallNo = ilGen.DeclareLocal (typeof (int), "__mainCallNo");
 				SetCallNo (curDeclFunc, actCallNo, -1);
 				cmRestore = ilGen.DefineLabel ("__cmRestore");
+				ilGen.BeginExceptionBlock ();
 				PushXMRInst ();
 				ilGen.Emit (curDeclFunc, OpCodes.Ldfld, ScriptCodeGen.callModeFieldInfo);
 				ilGen.Emit (curDeclFunc, OpCodes.Ldc_I4, XMRInstAbstract.CallMode_NORMAL);
 				ilGen.Emit (curDeclFunc, OpCodes.Bne_Un, cmRestore);
-				ilGen.BeginExceptionBlock ();
 			}
 
 			/*
@@ -1299,33 +1299,58 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * End of the code to be optimized.
 			 * Do optimizations then write it all out to object file.
 			 * After this, all code gets written directly to object file.
-			 * Optimization must be completed before GenerateFrameCaptureCode()
-			 * because GenerateFrameCaptureCode() needs the list of vars valid
-			 * at the __call_ labels.
+			 * Optimization must be completed before we scan the allCallLabels
+			 * list below to look for active locals and temps.
 			 */
 			collector.Optimize ();
 			_ilGen = collector.WriteOutAll ();
 			collector = null;
 
 			/*
+			 * Output code to restore stack frame from stream.
+			 * It jumps back to the call labels within the function body.
+			 */
+			List<ScriptMyLocal> activeTemps = null;
+			if (!isTrivial) {
+
+				/*
+				 * Build list of locals and temps active at all the call labels.
+				 */
+				activeTemps = new List<ScriptMyLocal> ();
+				foreach (CallLabel cl in allCallLabels) {
+					foreach (ScriptMyLocal lcl in cl.callLabel.whereAmI.localsReadBeforeWritten) {
+						if (!activeTemps.Contains (lcl)) {
+							activeTemps.Add (lcl);
+						}
+					}
+				}
+
+				/*
+				 * Output code to restore the args, locals and temps then jump to
+				 * the call label that we were interrupted at.
+				 */
+				ilGen.MarkLabel (cmRestore);
+				GenerateFrameRestoreCode (activeTemps);
+			}
+
+			/*
 			 * Output epilog that saves stack frame state if CallMode_SAVE.
 			 *
 			 *   finally {
-			 *      if (instance.callMode == CallMode_NORMAL) goto __endFin;
+			 *      if (instance.callMode != CallMode_SAVE) goto __endFin;
 			 *      GenerateFrameCaptureCode();
 			 *   __endFin:
 			 *   }
 			 */
-			List<ScriptMyLocal> activeTemps = null;
 			ScriptMyLabel endFin = null;
 			if (!isTrivial) {
 				ilGen.BeginFinallyBlock ();
 				endFin = ilGen.DefineLabel ("__endFin");
 				PushXMRInst ();
 				ilGen.Emit (curDeclFunc, OpCodes.Ldfld, callModeFieldInfo);
-				ilGen.Emit (curDeclFunc, OpCodes.Ldc_I4, XMRInstAbstract.CallMode_NORMAL);
-				ilGen.Emit (curDeclFunc, OpCodes.Beq, endFin);
-				activeTemps = GenerateFrameCaptureCode ();
+				ilGen.Emit (curDeclFunc, OpCodes.Ldc_I4, XMRInstAbstract.CallMode_SAVE);
+				ilGen.Emit (curDeclFunc, OpCodes.Bne_Un, endFin);
+				GenerateFrameCaptureCode (activeTemps);
 				ilGen.MarkLabel (endFin);
 				ilGen.Emit (curDeclFunc, OpCodes.Endfinally);
 				ilGen.EndExceptionBlock ();
@@ -1341,14 +1366,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ilGen.Emit (curDeclFunc, OpCodes.Ret);
 			retLabel = null;
 			retValue = null;
-
-			/*
-			 * Output code to restore stack frame from stream.
-			 */
-			if (!isTrivial) {
-				ilGen.MarkLabel (cmRestore);
-				GenerateFrameRestoreCode (activeTemps);
-			}
 
 			/*
 			 * No more instructions for this method.
@@ -1390,21 +1407,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 *        We only need to save what is active at the point of callLabels through because 
 		 *        those are the only points we will jump to on restore.  This saves us from saving 
 		 *        all the little temp vars we create.
+		 * @param activeTemps = list of locals and temps that we care about, ie, which
+		 *                      ones get restored by GenerateFrameRestoreCode().
 		 */
-		private List<ScriptMyLocal> GenerateFrameCaptureCode ()
+		private void GenerateFrameCaptureCode (List<ScriptMyLocal> activeTemps)
 		{
-			/*
-			 * Build list of locals and temps active at all the call labels.
-			 */
-			List<ScriptMyLocal> activeTemps = new List<ScriptMyLocal> ();
-			foreach (CallLabel cl in allCallLabels) {
-				foreach (ScriptMyLocal lcl in cl.callLabel.whereAmI.localsReadBeforeWritten) {
-					if (!activeTemps.Contains (lcl)) {
-						activeTemps.Add (lcl);
-					}
-				}
-			}
-
 			/*
 			 * Compute total number of slots we need to save stuff.
 			 * Assume we need to save all call arguments.
@@ -1461,8 +1468,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 
 			ilGen.Emit (curDeclFunc, OpCodes.Pop);
-
-			return activeTemps;
 		}
 
 		/**

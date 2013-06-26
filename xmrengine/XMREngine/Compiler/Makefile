@@ -1,11 +1,16 @@
-MONODIR    ?= /home/kunta/mono64.2109
-MONOBINDIR ?= $(MONODIR)/bin
-MONODLLDIR ?= $(MONODIR)/lib/mono/4.0
+MONODIR       ?= /home/kunta/mono64.2109
+MONOBINDIR    ?= $(MONODIR)/bin
+MONODLLDIR    ?= $(MONODIR)/lib/mono/4.0
 OPENSIMDLLDIR ?= ../../../bin
 
 COMMITHASH  := $(strip $(shell git log -1 | grep ^commit | sed 's/commit//g'))
 COMMITDATE  := $(strip $(shell git log -1 --date=iso | grep ^Date: | sed 's/Date://g'))
 COMMITCLEAN := $(strip $(shell git status | grep -q modified: ; echo $$?))
+
+HAVE_MONOCONTS   ?= $(shell ../Compiler/findmonotasklet.sh $(MONOBINDIR) $(MONODLLDIR) Continuation)
+HAVE_MMRUTHREADS ?= $(shell ../Compiler/findmonotasklet.sh $(MONOBINDIR) $(MONODLLDIR) MMRUThread)
+
+DEFS := -DHAVE_MONOCONTS=$(HAVE_MONOCONTS) -DHAVE_MMRUTHREADS=$(HAVE_MMRUTHREADS)
 
 SADLLFILES = \
 	IEventHandlers.cs \
@@ -63,6 +68,7 @@ TESTSRCFILES = \
 	xmrengtest_$(COMMITHASH)_$(COMMITCLEAN)_tester.cs \
 	XMRHeapTracker_tester.cs \
 	XMRInstAbstract_tester.cs \
+	XMRScriptUThread.cs \
 	XMRSDTypeClObj_tester.cs
 
 default: $(OPENSIMDLLDIR)/xmrengshare.dll xmrengtest.zip
@@ -80,12 +86,13 @@ xmrengtest.zip: xmrengtest.exe $(patsubst %,$(OPENSIMDLLDIR)/%,$(TESTOSIMDLLS))
 xmrengtest.exe: $(TESTSRCFILES) $(wildcard *.h)
 	$(MONOBINDIR)/dmcs -debug -out:$@ \
 		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(filter-out xmrengshare.dll,$(TESTOSIMDLLS))) \
+		-reference:$(MONODLLDIR)/Mono.Tasklets.dll \
 		-reference:$(MONODLLDIR)/System.Drawing.dll \
 		$(TESTSRCFILES)
 
 xmrengtest_$(COMMITHASH)_$(COMMITCLEAN)_tester.cs: xmrengtest.cx makexmrengtestilslapi.inc $(wildcard *.h)
 	rm -f xmrengtest_*_tester.cs
-	cpp -C -P -nostdinc -DSCRIPTBASECLASS=TestScriptBaseClass \
+	cpp -C -P -nostdinc $(DEFS) -DSCRIPTBASECLASS=TestScriptBaseClass \
 		-DGITCOMMITHASH='"$(COMMITHASH)"' \
 		-DGITCOMMITDATE='"$(COMMITDATE)"' \
 		-DGITCOMMITCLEAN=$(COMMITCLEAN)   \
@@ -116,10 +123,10 @@ $(OPENSIMDLLDIR)/xmrengshare.dll: $(SADLLFILES) $(patsubst %,$(OPENSIMDLLDIR)/%,
 # Create .cs files from the .cx files
 #
 %.cs: %.cx $(wildcard *.h)
-	cpp -C -P -nostdinc -DSCRIPTBASECLASS=ScriptBaseClass -o $@ $<
+	cpp -C -P -nostdinc $(DEFS) -DSCRIPTBASECLASS=ScriptBaseClass -o $@ $<
 
 %_tester.cs: %.cx $(wildcard *.h)
-	cpp -C -P -nostdinc -DSCRIPTBASECLASS=TestScriptBaseClass -o $@ $<
+	cpp -C -P -nostdinc $(DEFS) -DSCRIPTBASECLASS=TestScriptBaseClass -o $@ $<
 
 # ------------------------------------------------------------------------------
 

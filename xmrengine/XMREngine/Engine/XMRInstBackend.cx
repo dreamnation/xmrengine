@@ -16,7 +16,6 @@ using System.Security.Policy;
 using System.IO;
 using System.Xml;
 using System.Text;
-using Mono.Tasklets;
 using OpenMetaverse;
 using OpenSim.Framework;
 using OpenSim.Region.ScriptEngine.Interfaces;
@@ -399,7 +398,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * then tell outer layers which events the new state has handlers for.
          * We also clear the event queue as per http://wiki.secondlife.com/wiki/State
          */
-        public void StateChange()
+        public override void StateChange()
         {
             /*
              * Cancel any llListen()s etc.
@@ -426,9 +425,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /**
          * @brief Script is calling xmrStackLeft().
          */
-        public override int xmrStackLeft()
+        public override int xmrStackLeft ()
         {
-            return (int)MMRUThread.StackLeft();
+            return microthread.StackLeft ();
         }
     }
 

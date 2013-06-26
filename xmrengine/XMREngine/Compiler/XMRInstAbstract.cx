@@ -328,6 +328,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public object[] ehArgs;             // event handler argument array
         public bool doGblInit = true;       // default state_entry() needs to initialize global variables
         public int stateCode = 0;           // state the script is in (0 = 'default')
+        public int newStateCode = -1;       // if >= 0, in the middle of exiting 'stateCode' and entering 'newStateCode'
         public ScriptEventCode eventCode = ScriptEventCode.None;
                                             // what event handler is executing (or None if not)
 
@@ -361,6 +362,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         \****************************************************************/
 
         public abstract void CheckRunWork ();
+        public abstract void StateChange  ();
         public abstract int  xmrStackLeft ();
 
         [xmrMethodIsComplexAttribute] // calls CheckRun()
@@ -416,6 +418,95 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public int xmrHeapUsed ()
         {
             return heapUsed;
+        }
+
+        /**
+         * @brief Call script's event handler function from the very beginning.
+         * @param instance.stateCode = which state the event is happening in
+         * @param instance.eventCode = which event is happening in that state
+         * @returns when event handler has completed or throws an exception
+         *          with instance.eventCode = ScriptEventCode.None
+         */
+        public void CallSEH ()
+        {
+            ScriptEventHandler seh;
+
+            /*
+             * CallMode_NORMAL:  run event handler from the beginning normally
+             * CallMode_RESTORE: restore event handler stack from stackFrames
+             */
+            callMode = (stackFrames == null) ? XMRInstAbstract.CallMode_NORMAL :
+                                               XMRInstAbstract.CallMode_RESTORE;
+
+            while (true) {
+                if (this.newStateCode < 0) {
+
+                    /*
+                     * Process event given by 'stateCode' and 'eventCode'.
+                     * The event handler should call CheckRun() as often as convenient.
+                     */
+                    int newState = this.stateCode;
+                    seh = this.m_ObjCode.scriptEventHandlerTable[newState,(int)this.eventCode];
+                    if (seh != null) {
+                        try {
+                            seh (this);
+                        } catch (ScriptChangeStateException scse) {
+                            newState = scse.newState;
+                        }
+                    }
+                    this.ehArgs = null;  // we are done with them and no args for
+                                         // exit_state()/enter_state() anyway
+
+                    /*
+                     * The usual case is no state change.
+                     * Even a 'state <samestate>;' statement has no effect except to exit out.
+                     * It does not execute the state_exit() or state_entry() handlers.
+                     * See http://wiki.secondlife.com/wiki/State
+                     */
+                    if (newState == this.stateCode) break;
+
+                    /*
+                     * Save new state in a more permanent location in case we
+                     * get serialized out while in the state_exit() handler.
+                     */
+                    this.newStateCode = newState;
+                }
+
+                /*
+                 * Call old state's state_exit() handler.
+                 */
+                this.eventCode = ScriptEventCode.state_exit;
+                seh = this.m_ObjCode.scriptEventHandlerTable[this.stateCode,(int)ScriptEventCode.state_exit];
+                if (seh != null) {
+                    try {
+                        seh (this);
+                    } catch (ScriptChangeStateException scse) {
+                        this.newStateCode = scse.newState;
+                    }
+                }
+
+                /*
+                 * Switch over to the new state's state_entry() handler.
+                 */
+                this.stateCode    = this.newStateCode;
+                this.eventCode    = ScriptEventCode.state_entry;
+                this.newStateCode = -1;
+
+                /*
+                 * Now that the old state can't possibly start any more activity,
+                 * cancel any listening handlers, etc, of the old state.
+                 */
+                this.StateChange ();
+
+                /*
+                 * Loop back to execute new state's state_entry() handler.
+                 */
+            }
+
+            /*
+             * Event no longer being processed.
+             */
+            this.eventCode = ScriptEventCode.None;
         }
 
         /**
@@ -1408,6 +1499,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 mow.Write (this.stateCode);
                 mow.Write ((int)this.eventCode);
                 this.glblVars.SendArrays (this.SendObjValue);
+                if (this.newStateCode >= 0) {
+                    mow.Write ("**newStateCode**");
+                    mow.Write (this.newStateCode);
+                }
                 for (XMRStackFrame thisSF = this.stackFrames; thisSF != null; thisSF = thisSF.nextSF) {
                     mow.Write (thisSF.funcName);
                     mow.Write (thisSF.callNo);
@@ -1667,10 +1762,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 this.doGblInit = mir.ReadBoolean ();
                 this.stateCode = mir.ReadInt32 ();
                 this.eventCode = (ScriptEventCode)mir.ReadInt32 ();
+                this.newStateCode = -1;
                 this.glblVars.RecvArrays (this.RecvObjValue);
                 XMRStackFrame lastSF = null;
                 string funcName;
                 while ((funcName = mir.ReadString ()) != "") {
+                    if (funcName == "**newStateCode**") {
+                        this.newStateCode = mir.ReadInt32 ();
+                        continue;
+                    }
                     XMRStackFrame thisSF = new XMRStackFrame ();
                     thisSF.funcName = funcName;
                     thisSF.callNo   = mir.ReadInt32 ();
@@ -1816,6 +1916,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 default: throw new Exception ("bad stream code " + code.ToString ());
             }
         }
+    }
+
+    /**
+     * @brief Common access to script microthread.
+     */
+    public interface IScriptUThread : IDisposable
+    {
+        Exception ResumeEx  ();     // called by macrothread to resume execution at most recent Hiber()
+        Exception StartEx   ();     // called by macrothread to start execution at CallSEH()
+        int       Active    ();     // called by macrothread to query state of microthread
+        int       StackLeft ();     // called by microthread to query amount of remaining stack space
+        void      Hiber     ();     // called by microthread to hibernate
     }
 
     // Any xmr...() methods that call CheckRun() must be tagged with this attribute

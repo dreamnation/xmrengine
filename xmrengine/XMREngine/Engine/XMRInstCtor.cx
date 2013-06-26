@@ -16,7 +16,6 @@ using System.Security.Policy;
 using System.IO;
 using System.Xml;
 using System.Text;
-using Mono.Tasklets;
 using OpenMetaverse;
 using OpenSim.Framework;
 using OpenSim.Region.ScriptEngine.Interfaces;
@@ -337,7 +336,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Set up microthread object which actually calls the script event handler functions.
              */
-            this.microthread = new ScriptUThread (this);
+            this.microthread = (IScriptUThread)m_Engine.uThreadCtor.Invoke (new object[] { this });
         }
 
         //  LoadInitialState()
@@ -751,7 +750,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      * stack all restored.  It shouldn't ever throw an exception.
                      */
                     this.stackFramesRestored = false;
-                    microthread.Start ();
+                    Exception te = microthread.StartEx ();
+                    if (te != null) throw te;
                     if (!this.stackFramesRestored) throw new Exception ("migrate in did not complete");
                 }
             } catch (Exception e) {

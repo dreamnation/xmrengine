@@ -8,7 +8,6 @@
 
 using log4net;
 using Mono.Addins;
-using Mono.Tasklets;
 using Nini.Config;
 using OpenSim.Framework;
 using OpenSim.Framework.Console;
@@ -59,6 +58,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private bool m_Enabled = false;
         public  bool m_StartProcessing = false;
         public  bool m_UseSourceHashCode = false;
+        public  ConstructorInfo uThreadCtor;
         private Dictionary<UUID, ArrayList> m_ScriptErrors =
                 new Dictionary<UUID, ArrayList>();
         private Dictionary<UUID, List<UUID>> m_ObjectItemList =
@@ -98,10 +98,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public XMREngine()
         {
-            String envar;
+            string envar;
+            string[] cleanindicator = new string[] { "(dirty)", "" };
 
-            m_log.Info ("[XMREngine]: commit " + GITCOMMITHASH + (new string[] { "(dirty)", "" })[GITCOMMITCLEAN] + " " + GITCOMMITDATE);
-            m_log.Info ("[XMREngine]: HAVE_MMRUTHREADS=" + (new string[] { "No", "Yes" })[HAVE_MMRUTHREADS]);
+            m_log.Info ("[XMREngine]: commit " + GITCOMMITHASH + cleanindicator[GITCOMMITCLEAN] + " " + GITCOMMITDATE);
 
             envar = Environment.GetEnvironmentVariable ("XMREngineTraceCalls");
             m_TraceCalls = (envar != null) && ((envar[0] & 1) != 0);
@@ -171,12 +171,39 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 return;
             }
 
-            m_UseSourceHashCode    = m_Config.GetBoolean ("UseSourceHashCode", false);
 #if HAVE_MMRUTHREADS
-            numThreadScriptWorkers = m_Config.GetInt ("NumThreadScriptWorkers", 1);
+            string uThreadModel = "MMR";
+#elif HAVE_MONOCONTS
+            string uThreadModel = "Con";
 #else
-            numThreadScriptWorkers = 1;
+            string uThreadModel = "Sys";
 #endif
+            uThreadModel = m_Config.GetString ("UThreadModel", uThreadModel);
+            Type uThreadType = null;
+#if HAVE_MMRUTHREADS
+            if (uThreadModel.ToLower () == "mmr") uThreadType = typeof (ScriptUThread_MMR);
+#endif
+#if HAVE_MONOCONTS
+            if (uThreadModel.ToLower () == "con") uThreadType = typeof (ScriptUThread_Con);
+#endif
+            if (uThreadModel.ToLower () == "sys") uThreadType = typeof (ScriptUThread_Sys);
+            if (uThreadType == null) {
+                m_log.Error ("[XMREngine]: invalid thread model " + uThreadModel);
+#if HAVE_MONOCONTS
+                if (Type.GetType ("XMRScriptUThread_Con") != null) m_log.Error ("[XMREngine]: - Con");
+#endif
+#if HAVE_MMRUTHREADS
+                if (Type.GetType ("XMRScriptUThread_MMR") != null) m_log.Error ("[XMREngine]: - MMR");
+#endif
+                if (Type.GetType ("XMRScriptUThread_Sys") != null) m_log.Error ("[XMREngine]: - Sys");
+                m_Enabled = false;
+                return;
+            }
+            uThreadCtor = uThreadType.GetConstructor (new Type[] { typeof (XMRInstance) });
+            m_log.Info ("[XMREngine]: using thread model " + uThreadModel);
+
+            m_UseSourceHashCode    = m_Config.GetBoolean ("UseSourceHashCode", false);
+            numThreadScriptWorkers = m_Config.GetInt ("NumThreadScriptWorkers", 1);
             m_ScriptThreads        = new XMRScriptThread[numThreadScriptWorkers];
 
             for (int i = 0; i < numThreadScriptWorkers; i ++) {

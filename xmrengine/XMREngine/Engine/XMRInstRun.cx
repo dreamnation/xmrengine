@@ -17,7 +17,6 @@ using System.Security.Policy;
 using System.IO;
 using System.Xml;
 using System.Text;
-using Mono.Tasklets;
 using OpenMetaverse;
 using OpenSim.Framework;
 using OpenSim.Region.Framework.Interfaces;
@@ -277,7 +276,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_LastRanAt   = now;
                     m_InstEHSlice ++;
                     callMode = CallMode_NORMAL;
-                    e = microthread.ResumeEx (null);
+                    e = microthread.ResumeEx ();
                 }
 
                 /*
@@ -420,7 +419,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * If not executing any event handler, active should be 0 indicating the microthread stack is not in use.
              * If executing an event handler, active should be -1 indicating stack is in use but suspended.
              */
-            ScriptUThread uth = microthread;
+            IScriptUThread uth = microthread;
             if (uth != null) {
                 int active = uth.Active ();
                 ScriptEventCode ec = this.eventCode;
@@ -742,7 +741,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  */
                 if (microthread.Active () < 0) {
                     microthread.Dispose ();
-                    microthread = new ScriptUThread (this);
+                    microthread = (IScriptUThread)m_Engine.uThreadCtor.Invoke (new object[] { this });
                 }
 
                 /*
@@ -868,82 +867,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     }
                 }
             }
-        }
-
-        /**
-         * @brief Call script's event handler function from the very beginning.
-         * @param instance.stateCode = which state the event is happening in
-         * @param instance.eventCode = which event is happening in that state
-         * @returns when event handler has completed or throws an exception
-         *          with instance.eventCode = ScriptEventCode.None
-         */
-        public void CallSEH ()
-        {
-            int newStateCode;
-            ScriptEventHandler seh;
-
-            /*
-             * CallMode_NORMAL:  run event handler from the beginning normally
-             * CallMode_RESTORE: restore event handler stack from stackFrames
-             */
-            callMode = (stackFrames == null) ? XMRInstAbstract.CallMode_NORMAL :
-                                               XMRInstAbstract.CallMode_RESTORE;
-
-            while (true) {
-
-                /*
-                 * Process event given by 'stateCode' and 'eventCode'.
-                 * The event handler should call CheckRun() as often as convenient.
-                 */
-                newStateCode = this.stateCode;
-                seh = this.m_ObjCode.scriptEventHandlerTable[newStateCode,(int)this.eventCode];
-                if (seh != null) {
-                    try {
-                        seh (this);
-                    } catch (ScriptChangeStateException scse) {
-                        newStateCode = scse.newState;
-                    }
-                }
-                this.ehArgs = null;  // we are done with them and no args for
-                                     // exit_state()/enter_state() anyway
-
-                /*
-                 * The usual case is no state change.
-                 * Even a 'state <samestate>;' statement has no effect except to exit out.
-                 * See http://wiki.secondlife.com/wiki/State
-                 */
-                if (newStateCode == this.stateCode) break;
-
-                /*
-                 * Call old state's state_exit() handler.
-                 */
-                this.eventCode = ScriptEventCode.state_exit;
-                seh = this.m_ObjCode.scriptEventHandlerTable[this.stateCode,(int)ScriptEventCode.state_exit];
-                if (seh != null) {
-                    try {
-                        seh (this);
-                    } catch (ScriptChangeStateException scse) {
-                        newStateCode = scse.newState;
-                    }
-                }
-
-                /*
-                 * Now that the old state can't possibly start any more activity,
-                 * cancel any listening handlers, etc, of the old state.
-                 */
-                this.stateCode = newStateCode;
-                this.StateChange ();
-
-                /*
-                 * Loop back to call the new state's state_entry() handler.
-                 */
-                this.eventCode = ScriptEventCode.state_entry;
-            }
-
-            /*
-             * Event no longer being processed.
-             */
-            this.eventCode = ScriptEventCode.None;
         }
 
         /**

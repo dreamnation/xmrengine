@@ -11,5 +11,6 @@ xmrengine/XMREngine/Engine/*.cs
 *.xmrbin
 *.xmrobj
 *.xmrsrc
+xmrengine/XMREngine/Compiler/*.ckr
 xmrengine/XMREngine/Compiler/*.out
 xmrengine/XMREngine/Compiler/*.ser

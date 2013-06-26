@@ -372,7 +372,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				 * Get IL instruction offset at beginning of instruction.
 				 */
 				offset = 0;
-				if (ilGen != null) {
+				if ((ilGen != null) && (monoGetCurrentOffset != null)) {
 					offset = (int)monoGetCurrentOffset.Invoke (null, ilGenArg);
 				}
 

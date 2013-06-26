@@ -3,16 +3,15 @@
  *  All rights reserved.                           *
 \***************************************************/
 
-using Mono.Tasklets;
 using OpenSim.Framework.Monitoring;
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using log4net;
 
-#if HAVE_MMRUTHREADS
+#if !HAVE_MONOCONTS
 #define INITMONOCONTS do { } while (false)
 #else
+using Mono.Tasklets;
 #define INITMONOCONTS \
     do if (inst.scrstack == null) {                         \
         inst.engstack = engstack;                           \
@@ -123,7 +122,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private void RunScriptThread()
         {
             XMRInstance inst;
-#if !HAVE_MMRUTHREADS
+#if HAVE_MONOCONTS
             Mono.Tasklets.Continuation engstack = new Mono.Tasklets.Continuation ();
             engstack.Mark ();
 #endif

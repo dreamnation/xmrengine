@@ -3,10 +3,13 @@
  *  All rights reserved.                                *
 \********************************************************/
 
+#define HAVE_MONOTASKLETS 1
+
 /**
  * @brief Main program for the script tester.
  */
 
+using Mono.Tasklets;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -38,6 +41,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public static LinkedList<QueuedEvent> queuedEvents = new LinkedList<QueuedEvent> ();
         public static MemoryStream serializeStream = null;
         public static ScriptRoot[] scriptRoots;
+        public static string uthreadType;
+
+        private static int scriptRootIndex;
+        private static int scriptStepIndex;
+        private static Token nextInputToken;
 
         /**
          * @brief Stand-alone test program.
@@ -48,7 +56,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * Tell code generator what type we do a 'new' of for script context.
              * Must be descended from XMRInstAbstract.
              */
-            ScriptCodeGen.xmrInstSuperType = typeof (TestInstance);
+            ScriptCodeGen.xmrInstSuperType = typeof (XMRInstance);
 
             /*
              * Parse command-line arguments.
@@ -60,6 +68,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             string primName   = "";
             string primUUID   = "";
             string sourceHash = null;
+
+            uthreadType = "mmr";
 
             for (int i = 0; i < args.Length; i ++) {
                 string arg = args[i];
@@ -112,6 +122,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     serializeStream = new MemoryStream ();
                     continue;
                 }
+                if (arg == "-uthread") {
+                    if (++ i >= args.Length) goto usage;
+                    uthreadType = args[i].ToLower ();
+                    continue;
+                }
                 if (arg == "-version") {
                     Console.WriteLine ("commit " + GITCOMMITHASH + (new string[] { "(dirty)", "" })[GITCOMMITCLEAN] + " " + GITCOMMITDATE);
                     return;
@@ -129,6 +144,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 perPrims.Add (perPrim);
             }
             if (perPrims.Count == 0) goto usage;
+
 
             /*
              * Compile each script and create script instance for each.
@@ -213,7 +229,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 } else {
                     Console.WriteLine ("Running...");
                 }
-                new ScriptRoot (new TestInstance (scriptObjCode), i, perPrims[i]);
+                XMRInstance inst = new XMRInstance (scriptObjCode);
+                inst.m_DescName  = perPrims[i].name + ":" + srcFileName;
+                inst.engstack    = new Mono.Tasklets.Continuation ();
+                inst.engstack.Mark ();
+                inst.scrstack    = new Mono.Tasklets.Continuation ();
+                inst.scrstack.Mark ();
+                inst.wfistack    = new Mono.Tasklets.Continuation ();
+                inst.wfistack.Mark ();
+                new ScriptRoot (inst, i, perPrims[i]);
             }
 
             /*
@@ -223,20 +247,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if (sr.primUUID != "") {
                     if (scriptRootPrimUUIDs.ContainsKey (sr.primUUID)) {
                         Console.WriteLine ("duplicate use of -primuuid " + sr.primUUID);
-                        Environment.Exit (1);
+                        Environment.Exit (2);
                     }
                     scriptRootPrimUUIDs.Add (sr.primUUID, sr);
                 }
             }
 
-            int index = 0;
-            ScriptRoot scriptRoot = scriptRoots[0];
-            Token t = null;
+            scriptRootIndex = 0;
+            nextInputToken = null;
             while (true) {
 
                 /*
-                 * Keep processing -ipcchannel queues and stepping 
-                 * scripts until all scripts are waiting for some 
+                 * Keep processing -ipcchannel queues and stepping
+                 * scripts until all scripts are waiting for some
                  * kind of input.
                  */
                 bool didSomething;
@@ -271,10 +294,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     bool steppedSomething;
                     do {
                         steppedSomething = false;
-                        for (int i = 0; i < scriptRoots.Length; i ++) {
-                            ScriptRoot sr = scriptRoots[(index+i)%scriptRoots.Length];
-                            if (sr.iState == IState.YIELDING) {
-                                sr.StepScript ();
+                        for (scriptStepIndex = 0; scriptStepIndex < scriptRoots.Length; scriptStepIndex ++) {
+                            ScriptRoot sr = scriptRoots[(scriptRootIndex+scriptStepIndex)%scriptRoots.Length];
+                            if ((sr.iState == IState.YIELDING) || (sr.iState == IState.GOTSOMEINPUT)) {
+                                sr.StepScript ();  // NOTE: CAN BLOW AWAY ALL STACK-LOCAL VARIABLES
+                                                   //       BECAUSE OF MONO.CONTINUATIONS READING INPUT
                                 steppedSomething = true;
                                 didSomething = true;
                             }
@@ -301,72 +325,71 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 /*
                  * Read input and pass to script.
                  */
-                if ((t == null) || (t is TokenEnd)) {
-                    t = ReadInputTokens ();
-                    if (t == null) break;
+                if ((nextInputToken == null) || (nextInputToken is TokenEnd)) {
+                    nextInputToken = ReadInputTokens ();
+                    if (nextInputToken == null) break;
                 }
                 while (true) {
-                    while ((t is TokenBegin) || (t is TokenKwSemi)) {
-                        t = t.nextToken;
+                    while ((nextInputToken is TokenBegin) || (nextInputToken is TokenKwSemi)) {
+                        nextInputToken = nextInputToken.nextToken;
                     }
-                    if (t is TokenEnd) break;
+                    if (nextInputToken is TokenEnd) break;
 
                     /*
                      * If 'STATUS' print each script status.
                      */
-                    if ((t is TokenName) && (((TokenName)t).val == "STATUS")) {
+                    if ((nextInputToken is TokenName) && (((TokenName)nextInputToken).val == "STATUS")) {
                         foreach (ScriptRoot sr in scriptRoots) {
                             sr.PrintStatus ();
                         }
-                        t = t.nextToken;
+                        nextInputToken = nextInputToken.nextToken;
                     } else {
 
                         /*
                          * Get index token from first integer on line.
                          * Can also be a string containing the prim uuid.
                          */
-                        Token u = t;
+                        Token u = nextInputToken;
                         if ((u is TokenInt) && (u.nextToken is TokenKwParClose)) {
-                            index = ((TokenInt)u).val;
-                            if ((index < 0) || (index >= scriptRoots.Length)) {
+                            scriptRootIndex = ((TokenInt)u).val;
+                            if ((scriptRootIndex < 0) || (scriptRootIndex >= scriptRoots.Length)) {
                                 u.ErrorMsg ("script index out of range 0.." + (scriptRoots.Length - 1));
-                                t = null;
+                                nextInputToken = null;
                                 continue;
                             }
-                            scriptRoot = scriptRoots[index];
                             u = u.nextToken.nextToken;
                         } else if ((u is TokenStr) && (u.nextToken is TokenKwParClose)) {
                             string uuid = ((TokenStr)u).val;
                             if (!scriptRootPrimUUIDs.ContainsKey (uuid)) {
                                 u.ErrorMsg ("unknown script prim uuid");
-                                t = null;
+                                nextInputToken = null;
                                 continue;
                             }
-                            scriptRoot = scriptRootPrimUUIDs[uuid];
-                            index = scriptRoot.index;
+                            scriptRootIndex = scriptRootPrimUUIDs[uuid].index;
                             u = u.nextToken.nextToken;
                         }
 
                         /*
                          * If that script isn't ready for input, step everything until it is.
                          */
-                        if ((scriptRoot.iState != IState.WAITINGFORINPUT) && 
-                            (scriptRoot.iState != IState.WAITINGFOREVENT)) break;
+                        ScriptRoot sr = scriptRoots[scriptRootIndex];
+                        if ((sr.iState != IState.WAITINGFORINPUT) &&
+                            (sr.iState != IState.WAITINGFOREVENT)) break;
 
                         /*
                          * Process the input, getting the script ready to run again.
                          */
-                        t = scriptRoot.ProcessInput (u);
+                        nextInputToken = sr.ProcessInput (u);
                     }
 
                     /*
                      * Check for end of input or if there is more to do before stepping scripts.
                      */
-                    if (t == null) break;
-                    if (t is TokenEnd) break;
-                    if (!(t is TokenKwSemi)) {
-                        t.ErrorMsg ("extra stuff at end of line");
-                        t = null;
+                    if (nextInputToken == null) break;
+                    if (nextInputToken is TokenEnd) break;
+                    if (!(nextInputToken is TokenKwSemi)) {
+                        nextInputToken.ErrorMsg ("extra stuff at end of line");
+                        nextInputToken = null;
                         break;
                     }
                 }
@@ -379,7 +402,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Environment.Exit (0);
 
         usage:
-            Console.WriteLine ("usage: mono xmrengtest.exe [ -builtins ] [ -checkrun ] [ -eventio ] [ -ipcchannel <channel> ] [ -linknum <number> ] [ -primname <name> ] [ -primuuid <uuid> ] [ -serialize ] [ -version ] <sourcefile> ...");
+            Console.WriteLine ("usage: mono xmrengtest.exe [ -builtins ] [ -checkrun ] [ -eventio ] [ -ipcchannel <channel> ] [ -linknum <number> ] [ -primname <name> ] [ -primuuid <uuid> ] [ -serialize ] [ -uthread <type> ] [ -version ] <sourcefile> ...");
             Console.WriteLine ("     -builtins : print list of built-in functions and constants then exit");
             Console.WriteLine ("     -checkrun : simulate a thread slice at every opportunity");
             Console.WriteLine ("      -eventio : when default state_entry completes, read next event from stdin and keep doing so until eof");
@@ -391,8 +414,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Console.WriteLine ("     -primname : give prim name for subsequent script(s) (returned by llGetKey())");
             Console.WriteLine ("     -primuuid : give prim uuid for subsequent script(s) (returned by llGetObjectName())");
             Console.WriteLine ("    -serialize : serialize and deserialize stack at every opportunity");
+            Console.WriteLine ("      -uthread : specify Con (stack memcpying), MMR (stack switching), Sys (system thread)");
             Console.WriteLine ("      -version : print version number then exit");
-            Environment.Exit (1);
+            Environment.Exit (2);
         }
 
         /**
@@ -656,10 +680,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
     public enum IState {
         YIELDING,
-        STEPIT,
         RUNNING,
         WAITINGFORINPUT,
-        WAITINGFOREVENT
+        WAITINGFOREVENT,
+        GOTSOMEINPUT
     }
 
     public class Listener {
@@ -688,25 +712,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     public class ScriptRoot {
         public static object iStateLock = new object ();
 
-        public  int    index;
-        public  int    linkNum;
-        private int    peakHeapUsed;
-        public  IState iState;
-        public  Listener[] listeners = new Listener[65];
-        public  object wfiValue;
-        public  string msgPrefix;
-        public  string primName;
-        public  string primUUID;
-        public  string wfiName;
-        public  string wfiType;
-        private TestInstance inst;
-        private Thread thread;
+        public  int         index;
+        public  int         linkNum;
+        private int         peakHeapUsed;
+        public  IState      iState;
+        public  Listener[]  listeners = new Listener[65];
+        public  object      wfiValue;
+        public  string      msgPrefix;
+        public  string      primName;
+        public  string      primUUID;
+        public  string      wfiName;
+        public  string      wfiType;
+        private XMRInstance inst;
 
-        public ScriptRoot (TestInstance inst, int index, PerPrim perPrim)
+        public ScriptRoot (XMRInstance inst, int index, PerPrim perPrim)
         {
             this.index    = index;
             this.inst     = inst;
-            this.thread   = new Thread (ScriptThread);
             this.iState   = IState.YIELDING;
             this.linkNum  = perPrim.linkNum;
             this.primName = perPrim.name;
@@ -726,8 +748,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             XMREngTest.scriptRoots[index] = this;
 
             inst.scriptRoot = this;
-
-            this.thread.Start ();
         }
 
         public void PrintStatus ()
@@ -795,7 +815,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         ifaceMethod = ifm;
                         if (ifaceMethod.Name == eventName.val) goto gotEvent;
                     }
-                    eventName.ErrorMsg ("unknown event");
+                    eventName.ErrorMsg ("unknown event " + eventName);
                     return null;
                 gotEvent:
                     inst.eventCode = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), eventName.val);
@@ -852,7 +872,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     wfiValue = XMREngTest.ParseEHArg (ref t);
                     if (wfiValue == null) return null;
 
-                    iState = IState.YIELDING;
+                    iState = IState.GOTSOMEINPUT;
                     break;
                 }
 
@@ -879,162 +899,171 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public void StepScript ()
         {
-            lock (iStateLock) {
-                if (iState != IState.YIELDING) throw new Exception ("bad istate " + iState);
-                iState = IState.STEPIT;
-                Monitor.PulseAll (iStateLock);
-                while ((iState == IState.STEPIT) || (iState == IState.RUNNING)) {
-                    Monitor.Wait (iStateLock);
-                }
-            }
-        }
-
-        /**********************************************************\
-         *  The rest of these methods run in the script's thread  *
-        \**********************************************************/
-
-        /**
-         * @brief Main program for the thread.
-         */
-        private void ScriptThread ()
-        {
-            while (true) {
-
-                /*
-                 * Wait for main program to call StepScript()
-                 */
-                lock (iStateLock) {
-                    while (iState != IState.STEPIT) {
-                        Monitor.Wait (iStateLock);
-                    }
-                    iState = IState.RUNNING;
-                }
-
-                /*
-                 * Run the script event handler until it completes.
-                 * It may also block waiting for input but we don't see that here.
-                 */
-                RunScriptEventHandler ();
-
-                /*
-                 * We need another event queued so we have something to do.
-                 */
-                lock (iStateLock) {
-                    iState = IState.WAITINGFOREVENT;
-                    Monitor.PulseAll (iStateLock);
-                }
+            if ((inst.uthread is ScriptUThread_MMR) || (inst.uthread is ScriptUThread_Sys)) {
+                StepScriptMMRSys ();
+            } else {
+                StepScriptOther ();
             }
         }
 
         /**
-         * @brief Run current state event handler until it completes or throws an exception
-         * @param inst = script instance
-         *        inst.stateCode = which state it is in
-         *        inst.eventCode = which handler of that event to run
-         *        inst.ehArgs    = arguments to pass to the event handler
-         * @returns when event handler completes or throws an exception
+         * @brief MMR/Sys thread model case - ReadRetVal() uses uthread.Hiber()
+         *        when it wants input so we have to handle that case.
          */
-        private void RunScriptEventHandler ()
+        private void StepScriptMMRSys ()
         {
-            if (inst.eventCode == ScriptEventCode.None) {
-                throw new Exception ("no event queued");
+            /*
+             * The uthread stack pointer better not already be loaded in some CPU.
+             */
+            int active = inst.uthread.Active ();
+            if (active > 0) throw new Exception ("bad active [A] " + active);
+
+            if (iState == IState.YIELDING) {
+
+                /*
+                 * Hiber() was called inside CheckRun(),
+                 * say we are now running the script's code.
+                 */
+                iState = IState.RUNNING;
             }
-            while (true) {
-                try {
-                    RunScriptEventHandler2 ();
+
+            /*
+             * Ok, run the script event handler code on the uthread stack until it calls
+             * Hiber() or it finishes.
+             * If the stack is valid (ie it called Hiber() last time), resume from where 
+             * it left off.  Otherwise, the stack is not valid, so start the event hander
+             * from very beginning.
+             */
+            Exception e = (active < 0) ? inst.uthread.ResumeEx () : inst.uthread.StartEx ();
+
+            /*
+             * It called Hiber() in either CheckRun() or ReadRetVal() or it ran to the end.
+             */
+            switch (iState) {
+
+                /*
+                 * Called Hiber() in CheckRun() or the event handler ran to the end or 
+                 * threw an exception.
+                 */
+                case IState.RUNNING: {
+                    StepScriptFinish (e);
                     break;
-                } catch (ScriptChangeStateException scse) {
-                    inst.eventCode = ScriptEventCode.state_exit;
-                    inst.ehArgs    = new object[0];
-                    try {
-                        RunScriptEventHandler2 ();
-                    } catch (ScriptChangeStateException) {
-                        Console.WriteLine (msgPrefix + "State change in state_exit handler ignored");
-                    }
-                    listeners = new Listener[listeners.Length];
-                    inst.stateCode = scse.newState;
-                    inst.eventCode = ScriptEventCode.state_entry;
-                    Console.WriteLine (msgPrefix + "Change to state " + inst.m_ObjCode.stateNames[inst.stateCode]);
-                } catch (ScriptResetException) {
-                    listeners = new Listener[listeners.Length];
-                    inst.stateCode = 0;
-                    inst.eventCode = ScriptEventCode.state_entry;
-                    inst.doGblInit = true;
-                    Console.WriteLine (msgPrefix + "Script called llResetScript()");
-                } catch (ScriptDieException) {
-                    Console.WriteLine (msgPrefix + "Script called llDie()");
-                    Environment.Exit (0);
-                } catch (Exception e) {
-                    Console.WriteLine (msgPrefix + "Uncaught exception in script");
-                    Console.WriteLine (inst.XMRExceptionFixString (e.ToString (), true));
-                    Console.WriteLine (e.ToString ());
-                    Environment.Exit (3);
                 }
+
+                /*
+                 * Called Hiber() in ReadRetVal().
+                 */
+                case IState.WAITINGFORINPUT: {
+                    if (e != null) throw new Exception ("exception while WAITINGFORINPUT", e);
+                    break;
+                }
+
+                default: throw new Exception ("bad iState " + iState);
             }
-            inst.eventCode = ScriptEventCode.None;
-            inst.ehArgs    = null;
         }
 
-        private void RunScriptEventHandler2 ()
+        /**
+         * @brief Con or Ser thread model cases - ReadRetVal() does longjmp()
+         *        to wfistack when it wants input, so handle that case.
+         */
+        private void StepScriptOther ()
         {
-            while (true) {
-                try {
-                    ScriptEventHandler seh = inst.m_ObjCode.scriptEventHandlerTable[inst.stateCode,(int)inst.eventCode];
-                    if (seh != null) {
-                        seh (inst);
-                    }
-                    break;
-                } catch (StackCaptureException) {
+            /*
+             * Do a setjmp(0) that ReadRetVal() can use when it wants some input.
+             */
+            if (inst.wfistack.Store (0) != 0) {
+                if (iState != IState.WAITINGFORINPUT) throw new Exception ("bad iState " + iState);
+                return;
+            }
 
-                    /*
-                     * Make sure we were called because CheckRun() threw and 
-                     * the code built inst.StackFrames.
-                     */
-                    if (inst.callMode != XMRInstAbstract.CallMode_SAVE) throw;
+            /*
+             * Now if we are stepping because we have input for ReadRetVal(),
+             * do a longjmp() back into ReadRetVal().
+             */
+            if (iState == IState.GOTSOMEINPUT) {
+                inst.scrstack.Restore (1);
+            }
 
-                    /*
-                     * Time-slice to another script.
-                     */
-                    lock (iStateLock) {
-                        iState = IState.YIELDING;
-                        Monitor.PulseAll (iStateLock);
-                        while (iState != IState.STEPIT) {
-                            Monitor.Wait (iStateLock);
-                        }
-                        iState = IState.RUNNING;
-                    }
+            /*
+             * The uthread stack better not already be in use.
+             */
+            int active = inst.uthread.Active ();
+            if (active > 0) throw new Exception ("bad active [B] " + active);
 
-                    /*
-                     * If -serialize, make sure script instance serialization works.
-                     */
-                    if (XMREngTest.serializeStream != null) {
-                        if (peakHeapUsed < inst.peakHeapUsed) {
-                            peakHeapUsed = inst.peakHeapUsed;
-                        }
+            /*
+             * Say we are now running the script's code.
+             */
+            iState = IState.RUNNING;
 
-                        /*
-                         * Write global variables and stack frames out and discard them.
-                         */
-                        XMREngTest.serializeStream.Position = 0;
-                        inst.MigrateOut (new BinaryWriter (XMREngTest.serializeStream));
-                        long savePos = XMREngTest.serializeStream.Position;
+            /*
+             * Ok, run the script event handler code on the uthread stack until it calls
+             * Hiber() or it finishes.
+             * If the stack is active (ie it called Hiber() last time), resume from where 
+             * it left off.  Otherwise, the stack is not active, so start the event hander
+             * from very beginning.
+             */
+            Exception e = (active < 0) ? inst.uthread.ResumeEx () : inst.uthread.StartEx ();
+            StepScriptFinish (e);
+        }
 
-                        /*
-                         * Read global variables and stack frames back in and reconstruct.
-                         */
-                        XMREngTest.serializeStream.Position = 0;
-                        inst = new TestInstance (inst);
-                        inst.MigrateIn (new BinaryReader (XMREngTest.serializeStream));
-                        if (savePos != XMREngTest.serializeStream.Position) {
-                            throw new Exception ("save/restore positions different");
-                        }
-                    }
+        private void StepScriptFinish (Exception e)
+        {
+            /*
+             * Set up new state based on whether it suspended via Hiber() or it finished.
+             */
+            int active = inst.uthread.Active ();
+            if (active > 0) {
+                if (e == null) e = new Exception (Object.ObjAddr (inst.uthread).ToString ("X") + " bad active [C] " + active);
+                          else e = new Exception (Object.ObjAddr (inst.uthread).ToString ("X") + " bad active [C] " + active, e);
+                throw e;
+            }
+            iState = (active < 0) ? IState.YIELDING : IState.WAITINGFOREVENT;
 
-                    /*
-                     * Tell code to restore from inst.stackFrames when it is called back.
-                     */
-                    inst.callMode = XMRInstAbstract.CallMode_RESTORE;
+            /*
+             * Maybe we are doing -serialize.
+             */
+            if (e != null) {
+                if (!(e is StackCaptureException)) {
+                    throw e;
                 }
+                if (inst.callMode != XMRInstAbstract.CallMode_SAVE) {
+                    throw new Exception ("bad callmode " + inst.callMode, e);
+                }
+                if (XMREngTest.serializeStream == null) throw new Exception ("bad serializeStream", e);
+
+                /*
+                 * The uthread stack should be emptied, it got serialized out to inst.stackFrames.
+                 */
+                if (active != 0) throw new Exception ("bad active [D] " + active, e);
+
+                if (peakHeapUsed < inst.peakHeapUsed) {
+                    peakHeapUsed = inst.peakHeapUsed;
+                }
+
+                /*
+                 * Write global variables and stack frames out and discard them.
+                 */
+                XMREngTest.serializeStream.Position = 0;
+                inst.MigrateOut (new BinaryWriter (XMREngTest.serializeStream));
+                long savePos = XMREngTest.serializeStream.Position;
+
+                /*
+                 * Read global variables and stack frames back in and reconstruct.
+                 * Create a new XMRInstance to simulate the script hibernating for
+                 * days and sim crashes etc.
+                 */
+                XMREngTest.serializeStream.Position = 0;
+                inst = new XMRInstance (inst);
+                inst.MigrateIn (new BinaryReader (XMREngTest.serializeStream));
+                if (savePos != XMREngTest.serializeStream.Position) {
+                    throw new Exception ("save/restore positions different");
+                }
+
+                /*
+                 * Script is ready to be run again immediately.
+                 * But we will return to our caller so other scripts can get a time slice.
+                 */
+                iState = IState.YIELDING;
             }
         }
     }
@@ -1042,22 +1071,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     /**
      * @brief This stuff is re-instantiated on serialization.
      */
-    public class TestInstance : XMRInstAbstract {
+    public partial class XMRInstance : XMRInstAbstract {
         public const int HEAPLIMIT = 65536;
         public SCRIPTBASECLASS m_ApiManager_LSL;
         public OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.IOSSL_Api m_ApiManager_OSSL;
 
         public int peakHeapUsed = 0;
+        public int m_StackSize = 1024*1024;
+        public string m_DescName;
+
+        public Mono.Tasklets.Continuation wfistack;
 
         /**
          * @brief Initial instance for the given script
          */
-        public TestInstance (ScriptObjCode soc)
+        public XMRInstance (ScriptObjCode soc)
         {
             m_ObjCode = soc;
             heapLimit = HEAPLIMIT;
             glblVars.AllocVarArrays (m_ObjCode.glblSizes);
             suspendOnCheckRunHold = XMREngTest.doCheckRun;
+            InitUThread ();
 
             /*
              * Run default state_entry() handler until it is ready for more input.
@@ -1070,12 +1104,40 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /**
          * @brief Create a new instance that is being reloaded for serialization test.
          */
-        public TestInstance (TestInstance inst)
+        public XMRInstance (XMRInstance inst)
         {
             scriptRoot = inst.scriptRoot;
             m_ObjCode  = inst.m_ObjCode;
+            m_DescName = inst.m_DescName;
             heapLimit  = HEAPLIMIT;
+            engstack   = inst.engstack;
+            scrstack   = inst.scrstack;
+            wfistack   = inst.wfistack;
             suspendOnCheckRunHold = XMREngTest.doCheckRun;
+            InitUThread ();
+        }
+
+        private void InitUThread ()
+        {
+            switch (XMREngTest.uthreadType) {
+                case "con": {
+                    uthread = new ScriptUThread_Con (this);
+                    break;
+                }
+                case "mmr": {
+                    uthread = new ScriptUThread_MMR (this);
+                    break;
+                }
+                case "sys": {
+                    uthread = new ScriptUThread_Sys (this);
+                    break;
+                }
+                default: {
+                    Console.WriteLine ("unsupported -uthread type: " + XMREngTest.uthreadType);
+                    Environment.Exit (2);
+                    break;
+                }
+            }
         }
 
         /*********************\
@@ -1090,37 +1152,66 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return rc;
         }
 
+        /**
+         * @brief Gets called by scripts on entry to functions or in loops 
+         *        whenever suspendOnCheckRunHold or suspendOnCheckRunTemp set.
+         *        In the tester, it thus gets called only when -checkrun or
+         *        -serialize options were given on the command line.
+         */
         public override void CheckRunWork ()
         {
-            switch (this.callMode) {
+            if (XMREngTest.serializeStream == null) {
 
                 /*
-                 * Code was running normally.
-                 * Suspend and write stack frames to this.StackFrames.
+                 * -checkrun:  Just switch stacks back to StepScript(),
+                 *             leaving the uthread stack intact.
                  */
-                case CallMode_NORMAL: {
-                    this.callMode = CallMode_SAVE;
-                    this.stackFrames = null;
-                    throw new StackCaptureException ();
-                }
+                uthread.Hiber ();
+            } else {
 
                 /*
-                 * Code just restored itself from this.StackFrames.
-                 * Resume where it left off until it calls CheckRun() again.
+                 * -serialize:  Serialize the whole uthread stack out to 
+                 *              this.stackFramesand switch stacks back to 
+                 *              StepScript().
                  */
-                case CallMode_RESTORE: {
-                    if (this.stackFrames != null) throw new Exception ("frames left over");
-                    this.callMode = CallMode_NORMAL;
-                    break;
-                }
+                switch (this.callMode) {
 
-                default: throw new Exception ("bad callMode " + this.callMode);
+                    /*
+                     * Code was running normally.
+                     * Suspend and write ustack frames to this.StackFrames,
+                     * unwinding them as we go, then return out to StepScript().
+                     */
+                    case CallMode_NORMAL: {
+                        this.callMode = CallMode_SAVE;
+                        this.stackFrames = null;
+                        throw new StackCaptureException ();
+                    }
+
+                    /*
+                     * Code just restored itself from this.StackFrames building up
+                     * the uthread stack just as was when we saved it.
+                     * Resume script where it left off until it calls CheckRun() again.
+                     */
+                    case CallMode_RESTORE: {
+                        if (this.stackFrames != null) throw new Exception ("frames left over");
+                        this.callMode = CallMode_NORMAL;
+                        break;
+                    }
+
+                    default: throw new Exception ("bad callMode " + this.callMode);
+                }
             }
         }
 
         public override int xmrStackLeft ()
         {
-            return 1000000;
+            return uthread.StackLeft ();
+        }
+
+        public override void StateChange ()
+        {
+            Console.WriteLine ("Change to state " + m_ObjCode.stateNames[stateCode]);
+            scriptRoot.listeners = new Listener[scriptRoot.listeners.Length];
         }
 
         [xmrMethodIsNoisyAttribute]  // calls Stub<somethingorother>
@@ -1149,10 +1240,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
     }
 
-    public class SCRIPTBASECLASS : 
-            OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.ILSL_Api, 
+    public class SCRIPTBASECLASS :
+            OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.ILSL_Api,
             OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.IOSSL_Api {
 
+        public IScriptUThread uthread;
         public ScriptRoot scriptRoot;
 
         public void llResetScript ()
@@ -1172,7 +1264,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void state (string newstate)
         {
-            string[] stateNames = ((TestInstance)this).m_ObjCode.stateNames;
+            string[] stateNames = ((XMRInstance)this).m_ObjCode.stateNames;
             for (int i = 0; i < stateNames.Length; i ++) {
                 if (stateNames[i] == newstate) {
                     throw new ScriptChangeStateException (i);
@@ -1615,7 +1707,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return (double)Math.Atan2(x, y);
         }
         public LSL_Float llCos (double f)
-        { 
+        {
             return (double)Math.Cos(f);
         }
         public LSL_Float llFabs (double f)
@@ -3266,20 +3358,56 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * @brief Read return value from stdin.
          *        Must be in form <funcname>:<value>
          * @param name = name of function that the return value is for
+         * @param type = script-visible return value type
          * @returns value read from stdin
          */
         private object ReadRetVal (string name, string type)
         {
+            /*
+             * Set up what input we are waiting for.
+             */
+            if (scriptRoot.iState != IState.RUNNING) throw new Exception ("bad iState " + scriptRoot.iState);
             scriptRoot.wfiName = name;
             scriptRoot.wfiType = type;
-            lock (ScriptRoot.iStateLock) {
-                scriptRoot.iState = IState.WAITINGFORINPUT;
-                Monitor.PulseAll (ScriptRoot.iStateLock);
-                while (scriptRoot.iState != IState.STEPIT) {
-                    Monitor.Wait (ScriptRoot.iStateLock);
+            scriptRoot.iState  = IState.WAITINGFORINPUT;
+
+            if ((uthread is ScriptUThread_MMR) || (uthread is ScriptUThread_Sys)) {
+
+                /*
+                 * Save this stack pointer and switch back to the stack pointer
+                 * within StepScriptMMR().
+                 */
+                uthread.Hiber ();
+
+                /*
+                 * StepScriptMMR() called ResumeEx() to switch back to this
+                 * stack pointer to tell us our input is ready.
+                 */
+            } else {
+
+                /*
+                 * Do a setjmp(0) that the input reader can use to resume us
+                 * when it is ready to.
+                 */
+                if (((XMRInstance)this).scrstack.Store (0) == 0) {
+
+                    /*
+                     * Now do a longjmp(1) back to StepScriptOther().
+                     * It will do a longjmp(1) back here when it has input.
+                     */
+                    ((XMRInstance)this).wfistack.Restore (1);
                 }
-                scriptRoot.iState = IState.RUNNING;
+
+                /*
+                 * StepScriptOther() did a longjmp(1) here to tell us our input is ready.
+                 */
             }
+
+            /*
+             * Our input should be ready now.
+             */
+            if (scriptRoot.iState != IState.GOTSOMEINPUT) throw new Exception ("bad iState " + scriptRoot.iState);
+            scriptRoot.iState = IState.RUNNING;
             return scriptRoot.wfiValue;
         }
     }
@@ -3329,9 +3457,163 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
         private static byte[] ComputeSHA1Hash(byte[] src)
         {
-            System.Security.Cryptography.SHA1CryptoServiceProvider SHA1 = 
+            System.Security.Cryptography.SHA1CryptoServiceProvider SHA1 =
                     new System.Security.Cryptography.SHA1CryptoServiceProvider();
             return SHA1.ComputeHash(src);
+        }
+    }
+
+    /**********************\
+     *  Copied from Mono  *
+    \**********************/
+
+    ////////////////////////////////////////////////////////////////////////
+    //  Copy of Random from Mono 2.6.7 mcs/class/corlib/System/Random.cs  //
+    //      so we do the same in both Mono and Microsoft                  //
+    ////////////////////////////////////////////////////////////////////////
+
+    //
+    // System.Random.cs
+    //
+    // Authors:
+    //   Bob Smith (bob@thestuff.net)
+    //   Ben Maurer (bmaurer@users.sourceforge.net)
+    //
+    // (C) 2001 Bob Smith.  http://www.thestuff.net
+    // (C) 2003 Ben Maurer
+    //
+
+    //
+    // Copyright (C) 2004 Novell, Inc (http://www.novell.com)
+    //
+    // Permission is hereby granted, free of charge, to any person obtaining
+    // a copy of this software and associated documentation files (the
+    // "Software"), to deal in the Software without restriction, including
+    // without limitation the rights to use, copy, modify, merge, publish,
+    // distribute, sublicense, and/or sell copies of the Software, and to
+    // permit persons to whom the Software is furnished to do so, subject to
+    // the following conditions:
+    //
+    // The above copyright notice and this permission notice shall be
+    // included in all copies or substantial portions of the Software.
+    //
+    // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+    // EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+    // MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+    // NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+    // LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+    // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+    // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+    //
+
+    public class Random
+    {
+        const int MBIG = int.MaxValue;
+        const int MSEED = 161803398;
+        const int MZ = 0;
+
+        int inext, inextp;
+        int [] SeedArray = new int [56];
+
+        public Random ()
+            : this (Environment.TickCount)
+        {
+        }
+
+        public Random (int Seed)
+        {
+            int ii;
+            int mj, mk;
+
+            // Numerical Recipes in C online @ http://www.library.cornell.edu/nr/bookcpdf/c7-1.pdf
+
+            // Math.Abs throws on Int32.MinValue, so we need to work around that case.
+            // Fixes: 605797
+            if (Seed == Int32.MinValue)
+                mj = MSEED - Math.Abs (Int32.MinValue + 1);
+            else
+                mj = MSEED - Math.Abs (Seed);
+
+            SeedArray [55] = mj;
+            mk = 1;
+            for (int i = 1; i < 55; i++) {  //  [1, 55] is special (Knuth)
+                ii = (21 * i) % 55;
+                SeedArray [ii] = mk;
+                mk = mj - mk;
+                if (mk < 0)
+                    mk += MBIG;
+                mj = SeedArray [ii];
+            }
+            for (int k = 1; k < 5; k++) {
+                for (int i = 1; i < 56; i++) {
+                    SeedArray [i] -= SeedArray [1 + (i + 30) % 55];
+                    if (SeedArray [i] < 0)
+                        SeedArray [i] += MBIG;
+                }
+            }
+            inext = 0;
+            inextp = 31;
+        }
+
+        protected virtual double Sample ()
+        {
+            int retVal;
+
+            if (++inext  >= 56) inext  = 1;
+            if (++inextp >= 56) inextp = 1;
+
+            retVal = SeedArray [inext] - SeedArray [inextp];
+
+            if (retVal < 0)
+                retVal += MBIG;
+
+            SeedArray [inext] = retVal;
+
+            return retVal * (1.0 / MBIG);
+        }
+
+        public virtual int Next ()
+        {
+            return (int)(Sample () * int.MaxValue);
+        }
+
+        public virtual int Next (int maxValue)
+        {
+            if (maxValue < 0)
+                throw new ArgumentOutOfRangeException(
+                    "Max value is less than min value.");
+
+            return (int)(Sample () * maxValue);
+        }
+
+        public virtual int Next (int minValue, int maxValue)
+        {
+            if (minValue > maxValue)
+                throw new ArgumentOutOfRangeException (
+                    "Min value is greater than max value.");
+
+            // special case: a difference of one (or less) will always return the minimum
+            // e.g. -1,-1 or -1,0 will always return -1
+            uint diff = (uint) (maxValue - minValue);
+            if (diff <= 1)
+                return minValue;
+
+            return (int)((uint)(Sample () * diff) + minValue);
+        }
+
+        public virtual void NextBytes (byte [] buffer)
+        {
+            if (buffer == null)
+                throw new ArgumentNullException ("buffer");
+
+            for (int i = 0; i < buffer.Length; i++) {
+                buffer [i] = (byte)(Sample () * (byte.MaxValue + 1));
+            }
+        }
+
+        public virtual double NextDouble ()
+        {
+            return this.Sample ();
         }
     }
 }

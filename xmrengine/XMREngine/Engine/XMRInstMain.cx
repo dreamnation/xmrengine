@@ -16,7 +16,6 @@ using System.Security.Policy;
 using System.IO;
 using System.Xml;
 using System.Text;
-using Mono.Tasklets;
 using OpenMetaverse;
 using OpenSim.Framework;
 using OpenSim.Region.ScriptEngine.Interfaces;
@@ -151,11 +150,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /*
          * We will use this microthread to run the scripts event handlers.
          */
-        private ScriptUThread microthread;
-#if !HAVE_MMRUTHREADS
-        public Continuation engstack;
-        public Continuation scrstack;
-#endif
+        private IScriptUThread microthread;
 
         /*
          * Set to perform migration.

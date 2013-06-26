@@ -16,7 +16,6 @@ using System.Security.Policy;
 using System.IO;
 using System.Xml;
 using System.Text;
-using Mono.Tasklets;
 using OpenMetaverse;
 using OpenSim.Framework;
 using OpenSim.Region.ScriptEngine.Interfaces;
@@ -257,7 +256,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     // it should see captureStackFrames and throw StackCaptureException()
                     // ...generating XMRStackFrames as it unwinds
                     this.captureStackFrames = true;
-                    except = this.microthread.ResumeEx (null);
+                    except = this.microthread.ResumeEx ();
                     this.captureStackFrames = false;
                     if (except == null) {
                         throw new Exception ("stack save did not complete");
