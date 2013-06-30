@@ -48,9 +48,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * The avatars must be unseated then moved to new region followed
              * by moving the object and finally reseating the avatars.
              */
+            double reglocx = (double)m_Engine.m_Scene.RegionInfo.RegionLocX * Constants.RegionSize;
+            double reglocy = (double)m_Engine.m_Scene.RegionInfo.RegionLocY * Constants.RegionSize;
             SetObjRegPosRotAsync sorpra = new SetObjRegPosRotAsync (this);
-            sorpra.pos = (OpenMetaverse.Vector3)pos;
-            sorpra.rot = (OpenMetaverse.Quaternion)rot;
+            sorpra.pos     = (OpenMetaverse.Vector3)pos;
+            sorpra.rot     = (OpenMetaverse.Quaternion)rot;
+            sorpra.gblposx = reglocx + pos.x;
+            sorpra.gblposy = reglocy + pos.y;
             if (evcode >= 0) {
                 string evn = ((ScriptEventCode)evcode).ToString ();
                 sorpra.eps = new EventParams (evn, evargs.Data, zeroDetectParams);
@@ -63,6 +67,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             public EventParams eps;
             public OpenMetaverse.Quaternion rot;
             public OpenMetaverse.Vector3 pos;
+            public double gblposx, gblposy;
 
             private DateTime timeoutAt;
             private int resetCount;
@@ -201,6 +206,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 /*
                  * Seems more stable if we wait an extra frame before reseating.
                  * Otherwise we sometimes get jump to Y+512 when seating avatars.
+                 *
+                 * EntityTransferModule.Cross() seems to re-compute the position
+                 * of the object in the new region using same region-relative co-
+                 * ordinates as the old region and so the object ends up moving to
+                 * the wrong position in the new region.  So give it time to do
+                 * its bad work then we move it to the correct position after this
+                 * delay.
                  */
                 inst.m_Engine.AddOnFrameUpdate (Finish2);
             }
@@ -210,6 +222,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if (DeadCheck ()) return;
 
                 Scene scene = inst.m_Engine.m_Scene;
+
+                /*
+                 * Move object to make sure it is at target coordinates.
+                 * Theoretically this should always be a local move.
+                 */
+                double reglocx = (double)scene.RegionInfo.RegionLocX * Constants.RegionSize;
+                double reglocy = (double)scene.RegionInfo.RegionLocY * Constants.RegionSize;
+                pos.X = (float)(gblposx - reglocx);
+                pos.Y = (float)(gblposy - reglocy);
+                SceneObjectGroup sog = inst.m_Part.ParentGroup;
+                sog.UpdateGroupRotationPR (pos, rot);
 
                 /*
                  * Sit everyone back down on object.
@@ -253,6 +276,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             public void GetXml (XmlElement sorpraxml)
             {
                 XmlDocument doc = sorpraxml.OwnerDocument;
+
+                /*
+                 * <Target Pos="x,y,z" Rot="x,y,z,w" Gbl="x,y" />
+                 */
+                XmlElement targxml = doc.CreateElement ("Target");
+                targxml.SetAttribute ("Pos", pos.ToString ());
+                targxml.SetAttribute ("Rot", rot.ToString ());
+                targxml.SetAttribute ("Gbl", gblposx.ToString () + "," + gblposy.ToString ());
+                sorpraxml.AppendChild (targxml);
 
                 /*
                  * <Seateds>
@@ -332,6 +364,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
             public void SetXml (XmlElement sorpraxml)
             {
+                /*
+                 * <Target Pos="x,y,z" Rot="x,y,z,w" Gbl="x,y" />
+                 */
+                XmlElement targxml = (XmlElement)sorpraxml.SelectSingleNode ("Target");
+                string posstr = targxml.GetAttribute ("Pos");
+                string rotstr = targxml.GetAttribute ("Rot");
+                string gblstr = targxml.GetAttribute ("Gbl");
+                pos = OpenMetaverse.Vector3.Parse (posstr);
+                rot = OpenMetaverse.Quaternion.Parse (rotstr);
+                string[] gblstrxy = gblstr.Split (new char[] { ',' });
+                gblposx = double.Parse (gblstrxy[0]);
+                gblposy = double.Parse (gblstrxy[1]);
+
                 /*
                  * <Seateds>
                  *   <Seated Avid="uuid" Part="uuid" />
