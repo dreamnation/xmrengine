@@ -1013,8 +1013,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
             int active = inst.uthread.Active ();
             if (active > 0) {
-                if (e == null) e = new Exception (Object.ObjAddr (inst.uthread).ToString ("X") + " bad active [C] " + active);
-                          else e = new Exception (Object.ObjAddr (inst.uthread).ToString ("X") + " bad active [C] " + active, e);
+                if (e == null) e = new Exception ("bad active [C] " + active);
+                          else e = new Exception ("bad active [C] " + active, e);
                 throw e;
             }
             iState = (active < 0) ? IState.YIELDING : IState.WAITINGFOREVENT;
