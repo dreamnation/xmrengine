@@ -10,24 +10,30 @@ COMMITCLEAN := $(strip $(shell git status | grep -q modified: ; echo $$?))
 HAVE_MONOCONTS   ?= $(shell ../Compiler/findmonotasklet.sh $(MONOBINDIR) $(MONODLLDIR) Continuation)
 HAVE_MMRUTHREADS ?= $(shell ../Compiler/findmonotasklet.sh $(MONOBINDIR) $(MONODLLDIR) MMRUThread)
 
-DEFS := -DHAVE_MONOCONTS=$(HAVE_MONOCONTS) -DHAVE_MMRUTHREADS=$(HAVE_MMRUTHREADS)
+XMRENGINEDLLS := xmrengine_sys.dll
+ifeq ($(HAVE_MONOCONTS),1)
+  XMRENGINEDLLS += xmrengine_con.dll
+endif
+ifeq ($(HAVE_MMRUTHREADS),1)
+  XMRENGINEDLLS += xmrengine_mmr.dll
+endif
 
-ENGINECSFILES := XMREngine_$(COMMITHASH)_$(COMMITCLEAN).cs \
-                 XMREvents.cs \
-                 XMRInstBackend.cs \
-                 XMRInstCapture.cs \
-                 XMRInstCtor.cs \
-                 XMRInstMain.cs \
-                 XMRInstMisc.cs \
-                 XMRInstQueue.cs \
-                 XMRInstRun.cs \
-                 XMRInstSorpra.cs \
-                 XMRScriptThread.cs \
-                 XMRScriptUThread.cs \
-                 XMREngXmrTestLs.cs \
-                 MMRScriptCompile.cs
+ENGINECXFILES := XMREngine.cx \
+                 XMREvents.cx \
+                 XMRInstBackend.cx \
+                 XMRInstCapture.cx \
+                 XMRInstCtor.cx \
+                 XMRInstMain.cx \
+                 XMRInstMisc.cx \
+                 XMRInstQueue.cx \
+                 XMRInstRun.cx \
+                 XMRInstSorpra.cx \
+                 XMRScriptThread.cx \
+                 XMRScriptUThread.cx \
+                 XMREngXmrTestLs.cx \
+                 MMRScriptCompile.cx
 
-REFERENCED := $(OPENSIMDLLDIR)/xmrengshare.dll \
+REFERENCED := ../Compiler/xmrengshare.dll \
               $(OPENSIMDLLDIR)/log4net.dll \
               $(OPENSIMDLLDIR)/Nini.dll \
               $(OPENSIMDLLDIR)/Mono.Addins.dll \
@@ -44,43 +50,68 @@ REFERENCED := $(OPENSIMDLLDIR)/xmrengshare.dll \
               $(OPENSIMDLLDIR)/OpenSim.Region.ScriptEngine.Shared.Api.dll \
               $(OPENSIMDLLDIR)/OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll
 
-ifeq ($(HAVE_MONOTASKLETS),1)
-	REFERENCED += $(MONODLLDIR)/Mono.Tasklets.dll
-else
-  ifeq ($(HAVE_MMRUTHREADS),1)
-	REFERENCED += $(MONODLLDIR)/Mono.Tasklets.dll
-  endif
-endif
-
-default: \
-	$(OPENSIMDLLDIR)/xmrengshare.dll \
-	$(OPENSIMDLLDIR)/OpenSim.Region.ScriptEngine.XMREngine.dll
+default: $(XMRENGINEDLLS)
 
 # ------------------------------------------------------------------------------
 #
 # Create files needed for OpenSim
 #
-$(OPENSIMDLLDIR)/xmrengshare.dll: $(wildcard ../*/*.cx) $(wildcard ../*/*.h)
-	make -C ../Compiler $(OPENSIMDLLDIR)/xmrengshare.dll
-
-$(OPENSIMDLLDIR)/OpenSim.Region.ScriptEngine.XMREngine.dll: $(ENGINECSFILES) $(REFERENCED)
+#  - xmrengine_sys.dll:
+#      will run on anything including WindoesNT (system threads)
+#      supports UThreadModel = "sys" only
+#
+#  - xmrengine_con.dll:
+#      will run on unpatched Mono (user stack memcpy)
+#      supports UThreadModel = "sys" and "con"
+#
+#  - xmrengine_mmr.dll:
+#      requires MMR patched Mono (user stack pointer switching)
+#      supports UThreadModel = "sys", "con" and "mmr"
+#
+# Copy exactly one of the above to your OpenSim/bin directory
+# along with the ../Compiler/xmrengshare.dll file
+#
+xmrengine_sys.dll: $(ENGINECXFILES:.cx=_sys.cs) XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs $(REFERENCED)
+	rm -f xmrengine_sys.dll*
 	$(MONOBINDIR)/dmcs -debug -target:library \
 		-out:$@ \
-		$(ENGINECSFILES) \
+		$(ENGINECXFILES:.cx=_sys.cs) XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs \
 		$(patsubst %.dll,-reference:%.dll,$(REFERENCED))
 
-XMREngine_$(COMMITHASH)_$(COMMITCLEAN).cs: XMREngine.cx $(wildcard ../*/*.h)
-	rm -f XMREngine_*.cs
-	cpp -I../Compiler $(DEFS) \
+xmrengine_con.dll: $(ENGINECXFILES:.cx=_con.cs) XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs $(REFERENCED)
+	rm -f xmrengine_con.dll*
+	$(MONOBINDIR)/dmcs -debug -target:library \
+		-out:$@ \
+		$(ENGINECXFILES:.cx=_con.cs) XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs \
+		$(patsubst %.dll,-reference:%.dll,$(REFERENCED)) \
+		-reference:$(MONODLLDIR)/Mono.Tasklets.dll
+
+xmrengine_mmr.dll: $(ENGINECXFILES:.cx=_mmr.cs) XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs $(REFERENCED)
+	rm -f xmrengine_mmr.dll*
+	$(MONOBINDIR)/dmcs -debug -target:library \
+		-out:$@ \
+		$(ENGINECXFILES:.cx=_mmr.cs) XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs \
+		$(patsubst %.dll,-reference:%.dll,$(REFERENCED)) \
+		-reference:$(MONODLLDIR)/Mono.Tasklets.dll
+
+XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs: XMREngCommit.cx
+	rm -f XMREngCommit_*.cs
+	cpp -I../Compiler \
 		-DGITCOMMITHASH='"$(COMMITHASH)"' \
 		-DGITCOMMITDATE='"$(COMMITDATE)"' \
 		-DGITCOMMITCLEAN=$(COMMITCLEAN) -C -P -nostdinc -o $@ $<
 
-XMRScriptUThread.cs: ../Compiler/XMRScriptUThread.cx
-	cpp -I../Compiler $(DEFS) -C -P -nostdinc -o $@ $<
+%_sys.cs: %.cx $(wildcard ../*/*.h)
+	cpp -I../Compiler -DHAVE_MONOCONTS=0 -DHAVE_MMRUTHREADS=0 -C -P -nostdinc -o $@ $<
 
-%.cs: %.cx $(wildcard ../*/*.h)
-	cpp -I../Compiler $(DEFS) -C -P -nostdinc -o $@ $<
+%_con.cs: %.cx $(wildcard ../*/*.h)
+	cpp -I../Compiler -DHAVE_MONOCONTS=1 -DHAVE_MMRUTHREADS=0 -C -P -nostdinc -o $@ $<
+
+%_mmr.cs: %.cx $(wildcard ../*/*.h)
+	cpp -I../Compiler -DHAVE_MONOCONTS=1 -DHAVE_MMRUTHREADS=1 -C -P -nostdinc -o $@ $<
+
+../Compiler/xmrengshare.dll: $(wildcard ../Compiler/*.cx) $(wildcard ../Compiler/*.h)
+	make -C ../Compiler ../Compiler/xmrengshare.dll
 
 # ------------------------------------------------------------------------------
 

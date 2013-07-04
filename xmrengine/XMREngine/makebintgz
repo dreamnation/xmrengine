@@ -1,0 +1,56 @@
+#!/bin/bash
+
+function checkdll
+{
+    dll=$1.dll
+    deb=$1.$2
+    if [ ! -f $dll ]
+    then
+        echo $dll not found
+        exit 1
+    fi
+    if [ ! -f $deb ]
+    then
+        echo $deb not found
+        exit 1
+    fi
+    if (strings -e l $dll | grep -q $COMMITGREP)
+    then
+        FILES="$FILES $dll $deb"
+        return
+    fi
+    if (strings -e b $dll | grep -q $COMMITGREP)
+    then
+        FILES="$FILES $dll $deb"
+        return
+    fi
+    echo $dll old build
+    exit 1
+}
+
+set -e
+
+if (git status | grep -q modified:)
+then
+    echo "git repo dirty"
+    exit 1
+fi
+
+COMMITHASH=`git log -1 | grep ^commit | sed 's/commit //g'`
+COMMITGREP=${COMMITHASH:4:32}
+
+FILES=""
+
+rm -f WindoesNT/xmrengine_win.dll WindoesNT/xmrengine_win.pdb
+ln WindoesNT/xmrengine.dll WindoesNT/xmrengine_win.dll
+ln WindoesNT/xmrengine.pdb WindoesNT/xmrengine_win.pdb
+
+checkdll Compiler/xmrengshare dll.mdb
+checkdll Engine/xmrengine_con dll.mdb
+checkdll Engine/xmrengine_mmr dll.mdb
+checkdll Engine/xmrengine_sys dll.mdb
+checkdll WindoesNT/xmrengine_win pdb
+
+tar czvf $COMMITHASH.tgz $FILES
+ls -l $COMMITHASH.tgz
+

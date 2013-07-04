@@ -13,7 +13,8 @@ default: xmrengwincsfiles.zip
 # Create ZIP file for Windows sources
 #
 xmrengwincsfiles.zip: \
-		XMREngine.cs \
+		XMREngine.cs           \
+		XMREngCommit.cs        \
 		IEventHandlers.cs      \
 		MMRDelegateCommon.cs   \
 		MMRInternalFuncDict.cs \
@@ -51,11 +52,11 @@ xmrengwincsfiles.zip: \
 	rm -f xmrengwincsfiles.zip
 	zip xmrengwincsfiles.zip *.cs
 
-XMREngine.cs: $(wildcard ../*/XMREngine.cx) $(wildcard ../*/*.h)
-	cpp -I../Compiler $(DEFS) \
-		-DGITCOMMITHASH='"$(COMMITHASH)"' \
-		-DGITCOMMITDATE='"$(COMMITDATE)"' \
-		-DGITCOMMITCLEAN=$(COMMITCLEAN) -C -P -nostdinc -o $@ $<
+XMREngCommit.cs: ../Engine/XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs
+	cp -a $< $@
+
+../Engine/XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs: ../Engine/XMREngCommit.cx
+	cd ../Engine ; make XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs
 
 %.cs: $(wildcard ../*/$*.cx) $(wildcard ../*/*.h)
 	cpp -I../Compiler $(DEFS) -C -P -nostdinc -o $@ $(wildcard ../*/$*.cx)

@@ -117,6 +117,7 @@
     <Compile Include="MMRScriptTypeCast.cs" />
     <Compile Include="MMRScriptVarDict.cs" />
     <Compile Include="XMRArray.cs" />
+    <Compile Include="XMREngCommit.cs" />
     <Compile Include="XMREngine.cs" />
     <Compile Include="XMREngXmrTestLs.cs" />
     <Compile Include="XMREvents.cs" />
@@ -129,6 +130,7 @@
     <Compile Include="XMRInstMisc.cs" />
     <Compile Include="XMRInstQueue.cs" />
     <Compile Include="XMRInstRun.cs" />
+    <Compile Include="XMRInstSorpra.cs" />
     <Compile Include="XMRScriptThread.cs" />
     <Compile Include="XMRScriptUThread.cs" />
     <Compile Include="XMRSDTypeClObj.cs" />

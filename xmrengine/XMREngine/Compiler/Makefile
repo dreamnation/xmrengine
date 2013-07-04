@@ -7,96 +7,71 @@ COMMITHASH  := $(strip $(shell git log -1 | grep ^commit | sed 's/commit//g'))
 COMMITDATE  := $(strip $(shell git log -1 --date=iso | grep ^Date: | sed 's/Date://g'))
 COMMITCLEAN := $(strip $(shell git status | grep -q modified: ; echo $$?))
 
-HAVE_MONOCONTS   ?= $(shell ../Compiler/findmonotasklet.sh $(MONOBINDIR) $(MONODLLDIR) Continuation)
-HAVE_MMRUTHREADS ?= $(shell ../Compiler/findmonotasklet.sh $(MONOBINDIR) $(MONODLLDIR) MMRUThread)
+SOURCEFILES := \
+	IEventHandlers.cx \
+	MMRDelegateCommon.cx \
+	MMRInternalFuncDict.cx \
+	MMRScriptBinOpStr.cx \
+	MMRScriptCodeGen.cx \
+	MMRScriptCollector.cx \
+	MMRScriptCompValu.cx \
+	MMRScriptConsts.cx \
+	MMRScriptEventCode.cx \
+	MMRScriptInlines.cx \
+	MMRScriptMyILGen.cx \
+	MMRScriptObjCode.cx \
+	MMRScriptObjWriter.cx \
+	MMRScriptReduce.cx \
+	MMRScriptTokenize.cx \
+	MMRScriptTypeCast.cx \
+	MMRScriptVarDict.cx \
+	XMRArray.cx \
+	XMRHeapTracker.cx \
+	XMRInstAbstract.cx \
+	XMRSDTypeClObj.cx
 
-DEFS := -DHAVE_MONOCONTS=$(HAVE_MONOCONTS) -DHAVE_MMRUTHREADS=$(HAVE_MMRUTHREADS)
+TESTERCSFILES := \
+	xmrengtest_tester.cs \
+	$(SOURCEFILES:.cx=_tester.cs) \
+	MMRScriptCompCommit_$(COMMITHASH)_$(COMMITCLEAN).cs \
+	XMRScriptUThread_tester.cs
 
-SADLLFILES = \
-	IEventHandlers.cs \
-	MMRDelegateCommon.cs \
-	MMRInternalFuncDict.cs \
-	MMRScriptBinOpStr.cs \
-	MMRScriptCodeGen.cs \
-	MMRScriptCollector.cs \
-	MMRScriptCompValu.cs \
-	MMRScriptConsts.cs \
-	MMRScriptEventCode.cs \
-	MMRScriptInlines.cs \
-	MMRScriptMyILGen.cs \
-	MMRScriptObjCode.cs \
-	MMRScriptObjWriter.cs \
-	MMRScriptReduce.cs \
-	MMRScriptTokenize.cs \
-	MMRScriptTypeCast.cs \
-	MMRScriptVarDict.cs \
-	XMRArray.cs \
-	XMRHeapTracker.cs \
-	XMRInstAbstract.cs \
-	XMRSDTypeClObj.cs
+SHARECSFILES := \
+	$(SOURCEFILES:.cx=_shared.cs) \
+	MMRScriptCompCommit_$(COMMITHASH)_$(COMMITCLEAN).cs
 
-SAOPENSIMDLLS = \
-	xmrengshare.dll \
+REFDOPENSIMDLLS := \
 	OpenMetaverseTypes.dll \
 	OpenSim.Region.ScriptEngine.Shared.dll \
 	OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll
 
-TESTOSIMDLLS = \
-	OpenMetaverseTypes.dll \
-	OpenSim.Region.ScriptEngine.Shared.dll \
-	OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll
-
-TESTSRCFILES = \
-	IEventHandlers_tester.cs \
-	MMRDelegateCommon_tester.cs \
-	MMRInternalFuncDict_tester.cs \
-	MMRScriptBinOpStr_tester.cs \
-	MMRScriptCodeGen_tester.cs \
-	MMRScriptCollector_tester.cs \
-	MMRScriptCompValu_tester.cs \
-	MMRScriptConsts_tester.cs \
-	MMRScriptEventCode_tester.cs \
-	MMRScriptInlines_tester.cs \
-	MMRScriptMyILGen_tester.cs \
-	MMRScriptObjCode_tester.cs \
-	MMRScriptObjWriter_tester.cs \
-	MMRScriptReduce_tester.cs \
-	MMRScriptTokenize_tester.cs \
-	MMRScriptTypeCast_tester.cs \
-	MMRScriptVarDict_tester.cs \
-	XMRArray_tester.cs \
-	xmrengtest_$(COMMITHASH)_$(COMMITCLEAN)_tester.cs \
-	XMRHeapTracker_tester.cs \
-	XMRInstAbstract_tester.cs \
-	XMRScriptUThread.cs \
-	XMRSDTypeClObj_tester.cs
-
-default: $(OPENSIMDLLDIR)/xmrengshare.dll xmrengtest.zip
+default: xmrengtest.zip xmrengshare.dll
 
 # ------------------------------------------------------------------------------
 #
 # Create xmrengtest.exe
 #
-xmrengtest.zip: xmrengtest.exe $(patsubst %,$(OPENSIMDLLDIR)/%,$(TESTOSIMDLLS))
-	$(foreach dll,$(TESTOSIMDLLS),$(shell cp $(OPENSIMDLLDIR)/$(dll) $(dll)))
+xmrengtest.zip: xmrengtest.exe $(patsubst %,$(OPENSIMDLLDIR)/%,$(REFDOPENSIMDLLS))
+	$(foreach dll,$(REFDOPENSIMDLLS),$(shell cp $(OPENSIMDLLDIR)/$(dll) $(dll)))
 	rm -f xmrengtest.zip
-	zip -D xmrengtest.zip xmrengtest.exe $(TESTOSIMDLLS)
-	rm -f $(TESTOSIMDLLS)
+	zip -D xmrengtest.zip xmrengtest.exe $(REFDOPENSIMDLLS)
+	rm -f $(REFDOPENSIMDLLS)
 
-xmrengtest.exe: $(TESTSRCFILES) $(wildcard *.h)
+xmrengtest.exe: $(TESTERCSFILES) $(wildcard *.h)
 	$(MONOBINDIR)/dmcs -debug -out:$@ \
-		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(filter-out xmrengshare.dll,$(TESTOSIMDLLS))) \
+		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(REFDOPENSIMDLLS)) \
 		-reference:$(MONODLLDIR)/Mono.Tasklets.dll \
 		-reference:$(MONODLLDIR)/System.Drawing.dll \
-		$(TESTSRCFILES)
+		$(TESTERCSFILES)
 
-xmrengtest_$(COMMITHASH)_$(COMMITCLEAN)_tester.cs: xmrengtest.cx makexmrengtestilslapi.inc $(wildcard *.h)
-	rm -f xmrengtest_*_tester.cs
-	cpp -C -P -nostdinc $(DEFS) -DSCRIPTBASECLASS=TestScriptBaseClass \
-		-DGITCOMMITHASH='"$(COMMITHASH)"' \
-		-DGITCOMMITDATE='"$(COMMITDATE)"' \
-		-DGITCOMMITCLEAN=$(COMMITCLEAN)   \
-		-o $@ $<
+xmrengtest_tester.cs: xmrengtest.cx makexmrengtestilslapi.inc $(wildcard *.h)
+	cpp -C -P -nostdinc -DSCRIPTBASECLASS=TestScriptBaseClass -o $@ $<
+
+%_tester.cs: %.cx $(wildcard *.h)
+	cpp -C -P -nostdinc -DSCRIPTBASECLASS=TestScriptBaseClass -o $@ $<
+
+XMRScriptUThread_tester.cs: ../Engine/XMRScriptUThread.cx $(wildcard *.h)
+	cpp -C -P -nostdinc -DHAVE_MONOCONTS=1 -DHAVE_MMRUTHREADS=1 -DSCRIPTBASECLASS=TestScriptBaseClass -o $@ $<
 
 makexmrengtestilslapi.inc: makexmrengtestilslapi.exe
 	MONO_PATH=../../../bin mono --debug makexmrengtestilslapi.exe > makexmrengtestilslapi.tmp
@@ -104,29 +79,35 @@ makexmrengtestilslapi.inc: makexmrengtestilslapi.exe
 
 makexmrengtestilslapi.exe: makexmrengtestilslapi.cs
 	$(MONOBINDIR)/dmcs -debug -out:$@ \
-		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(filter-out xmrengshare.dll,$(TESTOSIMDLLS))) \
+		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(REFDOPENSIMDLLS)) \
 		$<
+
+makexmrengtestilslapi.cs: makexmrengtestilslapi.cx $(wildcard *.h)
+	cpp -C -P -nostdinc $(DEFS) -DSCRIPTBASECLASS=ScriptBaseClass -o $@ $<
 
 # ------------------------------------------------------------------------------
 #
 # Create shareable that contains types common to both the compilers and the
 # runtime engine, so the serialization/deserialization will have common types.
 #
-$(OPENSIMDLLDIR)/xmrengshare.dll: $(SADLLFILES) $(patsubst %,$(OPENSIMDLLDIR)/%,$(filter-out xmrengshare.dll,$(SAOPENSIMDLLS)))
-	$(MONOBINDIR)/dmcs -debug -target:library -out:$(OPENSIMDLLDIR)/xmrengshare.dll \
-		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(filter-out xmrengshare.dll,$(SAOPENSIMDLLS))) \
+xmrengshare.dll: $(SHARECSFILES) $(patsubst %,$(OPENSIMDLLDIR)/%,$(REFDOPENSIMDLLS))
+	rm -rf xmrengshare.dll*
+	$(MONOBINDIR)/dmcs -debug -target:library -out:xmrengshare.dll \
+		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(REFDOPENSIMDLLS)) \
 		-reference:$(MONODLLDIR)/System.Drawing.dll \
-		$(SADLLFILES)
+		$(SHARECSFILES)
 
-# ------------------------------------------------------------------------------
-#
-# Create .cs files from the .cx files
-#
-%.cs: %.cx $(wildcard *.h)
-	cpp -C -P -nostdinc $(DEFS) -DSCRIPTBASECLASS=ScriptBaseClass -o $@ $<
-
-%_tester.cs: %.cx $(wildcard *.h)
-	cpp -C -P -nostdinc $(DEFS) -DSCRIPTBASECLASS=TestScriptBaseClass -o $@ $<
+%_shared.cs: %.cx $(wildcard *.h)
+	cpp -C -P -nostdinc -DSCRIPTBASECLASS=ScriptBaseClass -o $@ $<
 
 # ------------------------------------------------------------------------------
 
+MMRScriptCompCommit_$(COMMITHASH)_$(COMMITCLEAN).cs: MMRScriptCompCommit.cx
+	rm -f MMRScriptCompCommit_*.cs
+	cpp -C -P -nostdinc \
+		-DGITCOMMITHASH='"$(COMMITHASH)"' \
+		-DGITCOMMITDATE='"$(COMMITDATE)"' \
+		-DGITCOMMITCLEAN=$(COMMITCLEAN)   \
+		-o $@ $<
+
+# ------------------------------------------------------------------------------

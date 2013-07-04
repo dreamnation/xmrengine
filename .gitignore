@@ -1,9 +1,11 @@
 bin
-xmrengine/XMREngine/Compiler/xmrengcomp.zip
 xmrengine/XMREngine/Compiler/makexmrengtestilslapi.inc
+xmrengine/XMREngine/Compiler/xmrengtest.zip
 xmrengine/XMREngine/Compiler/*.cs
 xmrengine/XMREngine/Engine/*.cs
 *~
+*.dll
+*.dll.mdb
 *.exe
 *.exe.mdb
 *.o

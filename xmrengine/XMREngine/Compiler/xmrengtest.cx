@@ -3,8 +3,6 @@
  *  All rights reserved.                                *
 \********************************************************/
 
-#define HAVE_MONOTASKLETS 1
-
 /**
  * @brief Main program for the script tester.
  */
@@ -128,7 +126,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     continue;
                 }
                 if (arg == "-version") {
-                    Console.WriteLine ("commit " + GITCOMMITHASH + (new string[] { "(dirty)", "" })[GITCOMMITCLEAN] + " " + GITCOMMITDATE);
+                    Console.WriteLine ("commit " + ScriptCompCommit.commitInfo);
                     return;
                 }
                 if (arg == "-xmrasm") {
