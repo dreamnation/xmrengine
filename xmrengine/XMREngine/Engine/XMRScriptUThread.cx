@@ -7,6 +7,7 @@
 using Mono.Tasklets;
 #endif
 using System;
+using System.Collections.Generic;
 using System.Threading;
 
 
@@ -25,14 +26,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                                 //  0: exited
                                 //  1: running
         private object activeLock = new object ();
-        private Thread sysThread;
         private XMRInstance instance;
 
         public ScriptUThread_Sys (XMRInstance instance)
         {
-            this.instance  = instance;
-            this.sysThread = new Thread (SysThreadMain);
-            this.sysThread.Start ();
+            this.instance = instance;
         }
 
         /**
@@ -52,14 +50,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                 if (active != 0) throw new Exception ("active=" + active);
 
                 /*
-                 * Tell SysThreadMain() to start running script.
+                 * Tell CallSEHThread() to run script event handler in a thread.
                  */
                 active = 1;
-                Monitor.PulseAll (activeLock);
+                TredPoo.RunSomething (CallSEHThread);
 
                 /*
                  * Wait for script to call Hiber() or for script to
-                 * return back out to SysThreadMain().
+                 * return back out to CallSEHThread().
                  */
                 while (active > 0) {
                     Monitor.Wait (activeLock);
@@ -94,7 +92,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
                 /*
                  * Wait for script to call Hiber() again or for script to
-                 * return back out to SysThreadMain().
+                 * return back out to CallSEHThread().
                  */
                 while (active > 0) {
                     Monitor.Wait (activeLock);
@@ -109,7 +107,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
         /**
          * @brief Script is being closed out.
-         *        Terminate sysThread.
+         *        Terminate thread asap.
          */
         public void Dispose ()
         {
@@ -117,8 +115,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                 instance = null;
                 Monitor.PulseAll (activeLock);
             }
-            sysThread.Join ();
-            sysThread = null;
         }
 
         /**
@@ -142,34 +138,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         }
 
         /**
-         * @brief This system thread executes the script code.
+         * @brief This thread executes the script event handler code.
          */
-        private void SysThreadMain ()
+        private void CallSEHThread ()
         {
-            Monitor.Enter (activeLock);             // lock our state
-            while (instance != null) {              // Dispose() not called
-                if (active <= 0) {
-                    Monitor.Wait (activeLock);      // wait for Start() to be called
-                } else {
-                    Monitor.Exit (activeLock);
+            if (active <= 0) throw new Exception ("active=" + active);
 
-                    except = null;                  // assume completion without exception
-                    try {
-                        instance.CallSEH ();        // run script event handler
-                    } catch (Exception e) {
-                        except = e;                 // threw exception, save for Start()/Resume()
-                    }
-
-                    Monitor.Enter (activeLock);     // tell Start() or Resume() we're done
-                    active = 0;
-                    Monitor.PulseAll (activeLock);
-                }
+            except = null;                  // assume completion without exception
+            try {
+                instance.CallSEH ();        // run script event handler
+            } catch (Exception e) {
+                except = e;                 // threw exception, save for Start()/Resume()
             }
-            Monitor.Exit (activeLock);              // Dispose()d, exit
+
+            lock (activeLock) {             // tell Start() or Resume() we're done
+                active = 0;
+                Monitor.PulseAll (activeLock);
+            }
         }
 
         /**
-         * @brief Called by the script wherever it wants to hibernate.
+         * @brief Called by the script event handler whenever it wants to hibernate.
          */
         public void Hiber ()
         {
@@ -199,9 +188,75 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         {
             return 0x7FFFFFFF;
         }
-    }
 
-    public class AbortedByDisposeException : Exception, IXMRUncatchable { }
+        public class AbortedByDisposeException : Exception, IXMRUncatchable { }
+
+        /**
+         * @brief Pool of threads that run script event handlers.
+         */
+        private class TredPoo {
+            private static readonly TimeSpan idleTimeSpan = new TimeSpan (0, 0, 1, 0, 0);  // 1 minute
+
+            public static bool exiting = false;
+
+            private static int started = 0;
+            private static LinkedList<TredPoo> tredPooAvail = new LinkedList<TredPoo> ();
+            private static object tredPooLock = new object ();
+            private static Queue<ThreadStart> tredPooQueue = new Queue<ThreadStart> ();
+
+            private LinkedListNode<TredPoo> availLinkNode;
+
+            /**
+             * @brief Queue a function for execution in a system thread.
+             */
+            public static void RunSomething (ThreadStart entry)
+            {
+                lock (tredPooLock) {
+                    tredPooQueue.Enqueue (entry);
+                    Monitor.Pulse (tredPooLock);
+                    int availCount = tredPooAvail.Count + started;
+                    if (availCount < tredPooQueue.Count) {
+                        new TredPoo ();
+                    }
+                }
+            }
+
+            /**
+             * @brief Start a new system thread.
+             *        It will shortly attempt to dequeue work or if none,
+             *        add itself to the available thread list.
+             */
+            private TredPoo ()
+            {
+                availLinkNode = new LinkedListNode<TredPoo> (this);
+                new Thread (Main).Start ();
+                started ++;
+            }
+
+            /**
+             * @brief Executes items from the queue or waits a little while
+             *        if nothing.  If idle for a while, it exits.
+             */
+            private void Main ()
+            {
+                Monitor.Enter (tredPooLock);
+                -- started;
+                while (!exiting) {
+                    while (tredPooQueue.Count > 0) {
+                        ThreadStart entry = tredPooQueue.Dequeue ();
+                        Monitor.Exit (tredPooLock);
+                        entry ();
+                        Monitor.Enter (tredPooLock);
+                    }
+                    tredPooAvail.AddLast (availLinkNode);
+                    bool keepgoing = Monitor.Wait (tredPooLock, idleTimeSpan);
+                    tredPooAvail.Remove (availLinkNode);
+                    if (!keepgoing) break;
+                }
+                Monitor.Exit (tredPooLock);
+            }
+        }
+    }
 }
 
 
