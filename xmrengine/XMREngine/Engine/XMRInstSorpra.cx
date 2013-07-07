@@ -14,6 +14,9 @@ using System.Xml;
 
 #include "lsltypes.h"
 
+//#define SorpraDebug(msg) m_log.Debug ("[xmrSetObjRegPosRotAsync]*: " + msg)
+#define SorpraDebug(msg) do { } while (false)
+
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
     public partial class XMRInstance
@@ -29,7 +32,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * @returns false: completed synchronously, no event will be queued
          *           true: event will be queued when move completed
          */
-        public const int SORPRA_TIMEOUT_MS = 30000;
+        public const double SORPRA_MIN_CROSS  = 1.0 / 512.0;  // ie, ~2mm
+        public const int    SORPRA_TIMEOUT_MS = 30000;        // ie, 30sec
         public override bool xmrSetObjRegPosRotAsync (LSL_Vector pos, LSL_Rotation rot, int evcode, LSL_List evargs)
         {
             /*
@@ -47,7 +51,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * Crosses region boundary, sync processing with frame updates.
              * The avatars must be unseated then moved to new region followed
              * by moving the object and finally reseating the avatars.
+             * We have to move a minimum amount though or some OpenSim components
+             * seem to be confused, eg, moving to -0.0000001 doesn't work reliably.
              */
+            if ((pos.x <                   0.0) && (pos.x >                       -SORPRA_MIN_CROSS)) pos.x = -SORPRA_MIN_CROSS;
+            if ((pos.y <                   0.0) && (pos.y >                       -SORPRA_MIN_CROSS)) pos.y = -SORPRA_MIN_CROSS;
+            if ((pos.x >= Constants.RegionSize) && (pos.x < Constants.RegionSize + SORPRA_MIN_CROSS)) pos.x = Constants.RegionSize + SORPRA_MIN_CROSS;
+            if ((pos.y >= Constants.RegionSize) && (pos.y < Constants.RegionSize + SORPRA_MIN_CROSS)) pos.y = Constants.RegionSize + SORPRA_MIN_CROSS;
+
             double reglocx = (double)m_Engine.m_Scene.RegionInfo.RegionLocX * Constants.RegionSize;
             double reglocy = (double)m_Engine.m_Scene.RegionInfo.RegionLocY * Constants.RegionSize;
             SetObjRegPosRotAsync sorpra = new SetObjRegPosRotAsync (this);
@@ -123,6 +134,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         foreach (SeatedAv sav in seatedAvs) {
                             ScenePresence sp = scene.GetScenePresence (sav.avUUID);
                             if ((sp != null) && !sp.IsChildAgent) {
+                                SorpraDebug ("stand up " + sav.avUUID);
                                 sp.StandUp ();
                             }
                         }
@@ -151,13 +163,25 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     foreach (SeatedAv sav in seatedAvs) {
                         ScenePresence sp = scene.GetScenePresence (sav.avUUID);
                         if ((sp != null) && !sp.IsChildAgent) {
-                            OpenMetaverse.Vector3 vel;
-                            vel.X = (pos.X - sp.AbsolutePosition.X) * 2.0F;
-                            vel.Y = (pos.Y - sp.AbsolutePosition.Y) * 2.0F;
-                            vel.Z = 0.0F;
+
+                            // See where avatar is now and give a vector to point to where we want it to go.
+                            // Code adapted from sp.AddNewMovement() but can't use AddNewMovement() because
+                            // it will zero out the velocity because the avatar might be falling as a result
+                            // of the unseat animation and so it will take a long time for it to move.
+                            // Zero out the Z component because it can swamp out the X,Y and otherwise doesn't
+                            // seem to have much effect anyway.
+                            OpenMetaverse.Vector3 avpos = sp.AbsolutePosition;
+                            OpenMetaverse.Vector3 avvel = pos - avpos;
+                            avvel.Z = 0.0F;
+                            avvel.Normalize ();
+                            avvel  *= 0.03F * 128.0F * sp.SpeedModifier;
+                            SorpraDebug ("push av " + sav.avUUID + " from " + avpos + " by " + avvel);
+
+                            sp.Velocity = avvel;
+                            scene.EventManager.TriggerScenePresenceUpdated (sp);
+
+                            // We saw an avatar was out of position so we will check its position again next cycle
                             needToWait  = true;
-                            sp.Rotation = OpenMetaverse.Quaternion.Identity;
-                            sp.AddNewMovement (vel);
                         }
                     }
 
@@ -169,6 +193,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                     // move object to new position and region without any avatars sitting on it
                     // the avatars should be in the new region waiting for it to arrive
+                    SorpraDebug ("initial move to " + pos);
                     inst.m_Sorpra = this;                  // set this data to be migrated over to remote sim
                     sog.UpdateGroupRotationPR (pos, rot);  // migrate object to remote sim along with its data
                     inst.m_Sorpra = null;                  // this data no longer needs to be migrated
@@ -198,6 +223,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 foreach (SeatedAv sav in seatedAvs) {
                     ScenePresence sp = scene.GetScenePresence (sav.avUUID);
                     if ((sp == null) || sp.IsChildAgent) {
+                        SorpraDebug ("waiting on " + sav.avUUID);
                         inst.m_Engine.AddOnFrameUpdate (Finish);
                         return;
                     }
@@ -231,6 +257,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 double reglocy = (double)scene.RegionInfo.RegionLocY * Constants.RegionSize;
                 pos.X = (float)(gblposx - reglocx);
                 pos.Y = (float)(gblposy - reglocy);
+                SorpraDebug ("final move to " + pos);
                 SceneObjectGroup sog = inst.m_Part.ParentGroup;
                 sog.UpdateGroupRotationPR (pos, rot);
 
@@ -240,6 +267,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 foreach (SeatedAv sav in seatedAvs) {
                     ScenePresence sp = scene.GetScenePresence (sav.avUUID);
                     if (sp != null) {
+                        SorpraDebug ("seating " + sav.avUUID);
                         sp.HandleAgentRequestSit (null, UUID.Zero, sav.partID, OpenMetaverse.Vector3.Zero);
                     }
                 }
@@ -248,8 +276,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * Tell script it is now moved by posting the requested event.
                  */
                 if (eps != null) {
+                    SorpraDebug ("posting event");
                     inst.PostEvent (eps);
                 }
+                SorpraDebug ("done");
             }
 
             /**
@@ -259,11 +289,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             private bool DeadCheck ()
             {
                 if (inst.m_ResetCount != this.resetCount) {
-                    m_log.Debug ("[Sorpra.DeadCheck]: script was reset");
+                    m_log.Debug ("[xmrSetObjRegPosRotAsync]: script was reset");
                     return true;
                 }
                 if (DateTime.UtcNow > this.timeoutAt) {
-                    m_log.Error ("[Sorpra.DeadCheck]: timed out");
+                    m_log.Error ("[xmrSetObjRegPosRotAsync]: timed out");
                     return true;
                 }
                 return false;
