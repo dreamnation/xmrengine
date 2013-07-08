@@ -60,7 +60,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             // Change this to a 5 second timeout. If things do mess up,
             // we don't want to be stuck forever.
             //
-            m_DetachReady.WaitOne(5000);
+            m_DetachReady.WaitOne (5000, false);
 
             XmlElement scriptStateN = doc.CreateElement("", "ScriptState", "");
             scriptStateN.SetAttribute("Engine", m_Engine.ScriptEngineName);
