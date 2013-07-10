@@ -80,6 +80,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             public OpenMetaverse.Vector3 pos;
             public double gblposx, gblposy;
 
+            private bool objPushed;
             private DateTime timeoutAt;
             private int resetCount;
             private List<SeatedAv> seatedAvs;
@@ -149,16 +150,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
             }
 
+            /**
+             * @brief All the avatars are standing.
+             *        Move them and the object to the new region.
+             */
             private void MoveAvatars ()
             {
                 if (DeadCheck ()) return;
 
                 try {
                     Scene scene = inst.m_Engine.m_Scene;
-                    SceneObjectGroup sog = inst.m_Part.ParentGroup;
 
-                    // start moving any avatars that need moving by giving them velocity toward 'pos'
-                    // just setting position with sp.AbsolutePosition doesn't seem to move them at all
+                    // Start moving any avatars that need moving by giving them velocity toward 'pos'.
+                    // Just setting position with sp.AbsolutePosition doesn't seem to move them at all.
                     bool needToWait = false;
                     foreach (SeatedAv sav in seatedAvs) {
                         ScenePresence sp = scene.GetScenePresence (sav.avUUID);
@@ -185,19 +189,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         }
                     }
 
-                    // if some were not in place, come back on next frame update to check again
+                    // move object to new position and region without any avatars sitting on it
+                    // the avatars should be on their way to the new region waiting for it to arrive
+                    if (!objPushed) {
+                        SceneObjectGroup sog = inst.m_Part.ParentGroup;
+                        SorpraDebug ("initial move to " + pos);
+                        inst.m_Sorpra = this;                  // set this data to be migrated over to remote sim
+                        sog.UpdateGroupRotationPR (pos, rot);  // migrate object to remote sim along with its data
+                        inst.m_Sorpra = null;                  // this data no longer needs to be migrated
+                        objPushed = true;
+                    }
+
+                    // if some avatars were still in old region, come back on next frame update to check again
                     if (needToWait) {
                         inst.m_Engine.AddOnFrameUpdate (MoveAvatars);
                         return;
                     }
 
-                    // move object to new position and region without any avatars sitting on it
-                    // the avatars should be in the new region waiting for it to arrive
-                    SorpraDebug ("initial move to " + pos);
-                    inst.m_Sorpra = this;                  // set this data to be migrated over to remote sim
-                    sog.UpdateGroupRotationPR (pos, rot);  // migrate object to remote sim along with its data
-                    inst.m_Sorpra = null;                  // this data no longer needs to be migrated
-
+                    // everything pushed out of sending region
                     // when the object arrives in its new location, Finish() will be called.
                 } catch (Exception e) {
                     m_log.Error ("[xmrSetObjRegPosRotAsync]: " + e.ToString ());
