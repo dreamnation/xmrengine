@@ -260,13 +260,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /**
          * @brief Decode state code (int) to state name (string).
          */
-        public string GetStateName(int stateCode)
+        public string GetStateName (int stateCode)
         {
-            if ((m_ObjCode.stateNames != null) && (stateCode >= 0) && (stateCode < m_ObjCode.stateNames.Length))
-            {
+            try {
                 return m_ObjCode.stateNames[stateCode];
+            } catch {
+                return stateCode.ToString ();
             }
-            return stateCode.ToString();
         }
 
         /**
