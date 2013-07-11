@@ -37,7 +37,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	public class ScriptCodeGen : IScriptCodeGen
 	{
 		public static readonly string OBJECT_CODE_MAGIC = "XMRObjectCode";
-		public static int COMPILED_VERSION_VALUE = 18;  // incremented when compiler changes for compatibility testing
+		public static int COMPILED_VERSION_VALUE = 19;  // incremented when compiler changes for compatibility testing
 
 		public static readonly int CALL_FRAME_MEMUSE = 64;
 		public static readonly int STRING_LEN_TO_MEMUSE = 2;

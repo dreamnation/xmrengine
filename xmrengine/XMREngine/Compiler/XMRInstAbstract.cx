@@ -365,21 +365,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public abstract void StateChange  ();
         public abstract int  xmrStackLeft ();
 
-        [xmrMethodIsComplexAttribute] // calls CheckRun()
-        [xmrMethodIsNoisyAttribute]   // calls Stub<somethingorother>()
+        [xmrMethodCallsCheckRunAttribute] // calls CheckRun()
+        [xmrMethodIsNoisyAttribute]       // calls Stub<somethingorother>()
         public abstract LSL_List xmrEventDequeue (SCRIPTFLOAT timeout, int returnMask1, int returnMask2,
                                                   int backgroundMask1, int backgroundMask2);
 
-        [xmrMethodIsNoisyAttribute]   // calls Stub<somethingorother>()
+        [xmrMethodIsNoisyAttribute]       // calls Stub<somethingorother>()
         public abstract void xmrEventEnqueue (LSL_List ev);
 
-        [xmrMethodIsNoisyAttribute]   // calls Stub<somethingorother>()
+        [xmrMethodIsNoisyAttribute]       // calls Stub<somethingorother>()
         public abstract LSL_List xmrEventSaveDets ();
 
-        [xmrMethodIsNoisyAttribute]   // calls Stub<somethingorother>()
+        [xmrMethodIsNoisyAttribute]       // calls Stub<somethingorother>()
         public abstract void xmrEventLoadDets (LSL_List dpList);
 
-        [xmrMethodIsNoisyAttribute]   // calls Stub<somethingorother>()
+        [xmrMethodIsNoisyAttribute]       // calls Stub<somethingorother>()
         public abstract bool xmrSetObjRegPosRotAsync (LSL_Vector pos, LSL_Rotation rot, int evcode, LSL_List evargs);
 
         /**************************************************\
@@ -1935,7 +1935,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
     // Any xmr...() methods that call CheckRun() must be tagged with this attribute
     // so the ScriptCodeGen will know the method is non-trivial.
-    public class xmrMethodIsComplexAttribute : Attribute { }
+    public class xmrMethodCallsCheckRunAttribute : Attribute { }
 
     // Any xmr...() methods in xmrengtest that call Stub<somethingorother>() must be 
     // tagged with this attribute so the -builtins option will tell the user that 

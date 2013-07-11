@@ -25,6 +25,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static string[] noCheckRuns;
 		private static string[] keyReturns;
 
+		protected bool isTaggedCallsCheckRun;
+
 		/**
 		 * @brief Create a dictionary of inline backend API functions.
 		 */
@@ -65,6 +67,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				"llMD5String",
 				"llParseString2List",
 				"llParseStringKeepNulls",
+				"llRot2Euler",
 				"llStringLength",
 				"llStringToBase64",
 				"llStringTrim",
@@ -263,10 +266,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			TokenType retType = TokenType.FromSysType (null, methInfo.ReturnType);
 
+			this.isTaggedCallsCheckRun = IsTaggedCallsCheckRun (methInfo);
 			this.name       = new TokenName (null, methInfo.Name);
 			this.retType    = GetRetType (methInfo, retType);
 			this.argDecl    = GetArgDecl (methInfo.GetParameters ());
-			this.triviality = (doCheckRun || IsTaggedComplex (methInfo)) ? Triviality.complex : Triviality.trivial;
+			this.triviality = (doCheckRun || this.isTaggedCallsCheckRun) ? Triviality.complex : Triviality.trivial;
 			this.location   = new CompValuInline (this);
 
 			if (ifd == null) ifd = inlineFunctions;
@@ -288,15 +292,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief The above code assumes all methods beginning with 'xmr' are trivial, ie, 
 		 *        they do not call CheckRun() and also we do not generate a CheckRun() 
 		 *        call after they return.  So if an 'xmr' method does call CheckRun(), it 
-		 *        must be tagged with attribute 'xmrMethodIsComplexAttribute' so we know 
+		 *        must be tagged with attribute 'xmrMethodCallsCheckRunAttribute' so we know 
 		 *        the method is not trivial.  But in neither case do we emit our own call 
-		 *        to CheckRun(), the 'xmr' method must do its own.
+		 *        to CheckRun(), the 'xmr' method must do its own.  We do however set up a
+		 *        call label before the call to the non-trivial 'xmr' method so when we are
+		 *        restoring the call stack, the restore will call directly in to the 'xmr'
+		 *        method without re-executing any code before the call to the 'xmr' method.
 		 */
-		private static bool IsTaggedComplex (MethodInfo methInfo)
+		private static bool IsTaggedCallsCheckRun (MethodInfo methInfo)
 		{
 			if (methInfo != null) {
 				foreach (Attribute attr in Attribute.GetCustomAttributes (methInfo)) {
-					if (attr is xmrMethodIsComplexAttribute) return true;
+					if (attr is xmrMethodCallsCheckRunAttribute) return true;
 				}
 			}
 			return false;
@@ -492,14 +499,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		public override void CodeGen (ScriptCodeGen scg, Token errorAt, CompValuTemp result, CompValu[] args)
 		{
+			if (isTaggedCallsCheckRun) {                         // see if 'xmr' method that calls CheckRun() internally
+				new ScriptCodeGen.CallLabel (scg, errorAt);  // if so, put a call label immediately before it
+			                                                     // .. so restoring the frame will jump immediately to the
+			                                                     // .. call without re-executing any code before this
+			}
 			if (!methInfo.IsStatic) {
-				scg.PushXMRInst ();                       // XMRInstanceSuperType pointer
+				scg.PushXMRInst ();                          // XMRInstanceSuperType pointer
 				if (apiContextField != null) {
 					scg.ilGen.Emit (errorAt, OpCodes.Ldfld, apiContextField);
-				                                          // 'this' pointer for API function
+				                                             // 'this' pointer for API function
 				}
 			}
-			for (int i = 0; i < args.Length; i ++) {          // push arguments, boxing/unboxing as needed
+			for (int i = 0; i < args.Length; i ++) {             // push arguments, boxing/unboxing as needed
 				args[i].PushVal (scg, errorAt, argDecl.types[i]);
 			}
 			if (methInfo.Name == "llParcelMediaQuery") {
@@ -508,14 +520,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (methInfo.Name == "llParcelMediaCommandList") {
 				scg.ilGen.Emit (errorAt, OpCodes.Call, fixLLParcelMediaCommandList);
 			}
-			if (methInfo.IsVirtual) {                         // call API function
+			if (methInfo.IsVirtual) {                            // call API function
 				scg.ilGen.Emit (errorAt, OpCodes.Callvirt, methInfo);
 			} else {
 				scg.ilGen.Emit (errorAt, OpCodes.Call, methInfo);
 			}
-			result.Pop (scg, errorAt, retType);               // pop result, boxing/unboxing as needed
+			result.Pop (scg, errorAt, retType);                  // pop result, boxing/unboxing as needed
+			if (isTaggedCallsCheckRun) {
+				scg.openCallLabel = null;
+			}
 			if (doCheckRun) {
-				scg.EmitCallCheckRun (errorAt, false);    // maybe call CheckRun()
+				scg.EmitCallCheckRun (errorAt, false);       // maybe call CheckRun()
 			}
 		}
 	}
