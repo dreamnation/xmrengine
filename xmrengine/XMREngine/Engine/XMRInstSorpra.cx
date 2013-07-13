@@ -24,17 +24,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /**
          * @brief Move object to new position and rotation asynchronously.
          *        Can move object across region boundary.
-         * @param pos    = new position within current region (same coords as llGetPos())
-         * @param rot    = new rotation within current region (same coords as llGetRot())
-         * @param evcode = event handler code to post when move complete (XMREVENTCODE_whatever)
-         *                 -1 to not bother delivering event
-         * @param evargs = arguments to pass to event handler
+         * @param pos     = new position within current region (same coords as llGetPos())
+         * @param rot     = new rotation within current region (same coords as llGetRot())
+         * @param options = XMRSORPRA_FLYACROSS: use flying to get across border instead of walking
+         * @param evcode  = event handler code to post when move complete (XMREVENTCODE_whatever)
+         *                  -1 to not bother delivering event
+         * @param evargs  = arguments to pass to event handler
          * @returns false: completed synchronously, no event will be queued
          *           true: event will be queued when move completed
          */
-        public const double SORPRA_MIN_CROSS  = 1.0 / 512.0;  // ie, ~2mm
-        public const int    SORPRA_TIMEOUT_MS = 30000;        // ie, 30sec
-        public override bool xmrSetObjRegPosRotAsync (LSL_Vector pos, LSL_Rotation rot, int evcode, LSL_List evargs)
+        public const double Sorpra_MIN_CROSS  = 1.0 / 512.0;  // ie, ~2mm
+        public const int    Sorpra_TIMEOUT_MS = 30000;        // ie, 30sec
+        public override bool xmrSetObjRegPosRotAsync (LSL_Vector pos, LSL_Rotation rot, int options, int evcode, LSL_List evargs)
         {
             /*
              * Check for synchronous completion, ie, object stays within current region.
@@ -54,10 +55,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * We have to move a minimum amount though or some OpenSim components
              * seem to be confused, eg, moving to -0.0000001 doesn't work reliably.
              */
-            if ((pos.x <                   0.0) && (pos.x >                       -SORPRA_MIN_CROSS)) pos.x = -SORPRA_MIN_CROSS;
-            if ((pos.y <                   0.0) && (pos.y >                       -SORPRA_MIN_CROSS)) pos.y = -SORPRA_MIN_CROSS;
-            if ((pos.x >= Constants.RegionSize) && (pos.x < Constants.RegionSize + SORPRA_MIN_CROSS)) pos.x = Constants.RegionSize + SORPRA_MIN_CROSS;
-            if ((pos.y >= Constants.RegionSize) && (pos.y < Constants.RegionSize + SORPRA_MIN_CROSS)) pos.y = Constants.RegionSize + SORPRA_MIN_CROSS;
+            if ((pos.x <                   0.0) && (pos.x >                       -Sorpra_MIN_CROSS)) pos.x = -Sorpra_MIN_CROSS;
+            if ((pos.y <                   0.0) && (pos.y >                       -Sorpra_MIN_CROSS)) pos.y = -Sorpra_MIN_CROSS;
+            if ((pos.x >= Constants.RegionSize) && (pos.x < Constants.RegionSize + Sorpra_MIN_CROSS)) pos.x = Constants.RegionSize + Sorpra_MIN_CROSS;
+            if ((pos.y >= Constants.RegionSize) && (pos.y < Constants.RegionSize + Sorpra_MIN_CROSS)) pos.y = Constants.RegionSize + Sorpra_MIN_CROSS;
 
             double reglocx = (double)m_Engine.m_Scene.RegionInfo.RegionLocX * Constants.RegionSize;
             double reglocy = (double)m_Engine.m_Scene.RegionInfo.RegionLocY * Constants.RegionSize;
@@ -66,6 +67,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             sorpra.rot     = (OpenMetaverse.Quaternion)rot;
             sorpra.gblposx = reglocx + pos.x;
             sorpra.gblposy = reglocy + pos.y;
+            sorpra.options = options;
             if (evcode >= 0) {
                 string evn = ((ScriptEventCode)evcode).ToString ();
                 sorpra.eps = new EventParams (evn, evargs.Data, zeroDetectParams);
@@ -79,6 +81,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             public OpenMetaverse.Quaternion rot;
             public OpenMetaverse.Vector3 pos;
             public double gblposx, gblposy;
+            public int options;
 
             private bool objPushed;
             private DateTime timeoutAt;
@@ -90,7 +93,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             {
                 this.inst       = inst;
                 this.resetCount = inst.m_ResetCount;
-                this.timeoutAt  = DateTime.UtcNow + TimeSpan.FromMilliseconds (SORPRA_TIMEOUT_MS);
+                this.timeoutAt  = DateTime.UtcNow + TimeSpan.FromMilliseconds (Sorpra_TIMEOUT_MS);
             }
 
             /**
@@ -132,11 +135,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         }
 
                         // unseat all those avatars
+                        // force flying mode so they don't drop out of sky if this is an airplane
                         foreach (SeatedAv sav in seatedAvs) {
                             ScenePresence sp = scene.GetScenePresence (sav.avUUID);
                             if ((sp != null) && !sp.IsChildAgent) {
-                                SorpraDebug ("stand up " + sav.avUUID);
-                                sp.StandUp ();
+                                SorpraDebug ("stand up & fly " + sav.avUUID);
+                                if ((options & XMRSORPRA_FLYACROSS) != 0) {
+                                    AgentUpdateArgs agentData = new AgentUpdateArgs ();
+                                    agentData.ControlFlags = (uint)AgentManager.ControlFlags.AGENT_CONTROL_STAND_UP |
+                                                             (uint)AgentManager.ControlFlags.AGENT_CONTROL_FLY;
+                                    sp.ForceFly = true;
+                                    sp.HandleAgentUpdate (null, agentData);
+                                } else {
+                                    sp.StandUp ();
+                                }
                             }
                         }
                     }
@@ -207,6 +219,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     }
 
                     // everything pushed out of sending region
+
+                    // undo ForceFly in sending region in case avatar comes back to region
+                    // via walking or whatever, they won't be forced to fly.
+                    foreach (SeatedAv sav in seatedAvs) {
+                        ScenePresence sp = scene.GetScenePresence (sav.avUUID);
+                        if (sp != null) {
+                            sp.ForceFly = false;
+                        }
+                    }
+
                     // when the object arrives in its new location, Finish() will be called.
                 } catch (Exception e) {
                     m_log.Error ("[xmrSetObjRegPosRotAsync]: " + e.ToString ());
@@ -272,11 +294,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                 /*
                  * Sit everyone back down on object.
+                 * Also make sure ForceFly mode is turned off.
                  */
                 foreach (SeatedAv sav in seatedAvs) {
                     ScenePresence sp = scene.GetScenePresence (sav.avUUID);
                     if (sp != null) {
-                        SorpraDebug ("seating " + sav.avUUID);
+                        SorpraDebug ("seating " + sav.avUUID + " anim=" + sp.Animator.CurrentMovementAnimation);
+                        sp.ForceFly = false;
                         sp.HandleAgentRequestSit (null, UUID.Zero, sav.partID, OpenMetaverse.Vector3.Zero);
                     }
                 }

@@ -380,7 +380,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public abstract void xmrEventLoadDets (LSL_List dpList);
 
         [xmrMethodIsNoisyAttribute]       // calls Stub<somethingorother>()
-        public abstract bool xmrSetObjRegPosRotAsync (LSL_Vector pos, LSL_Rotation rot, int evcode, LSL_List evargs);
+        public abstract bool xmrSetObjRegPosRotAsync (LSL_Vector pos, LSL_Rotation rot, int options, int evcode, LSL_List evargs);
+
+        /************************************\
+         *  Constants available to scripts  *
+        \************************************/
+
+        public const int XMRSORPRA_FLYACROSS = 0x00000001;
 
         /**************************************************\
          *  Functions what don't require runtime support  *
@@ -645,6 +651,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public static int xmrHashCode (string s)
         {
             return s.GetHashCode ();
+        }
+
+        public bool xmrSetObjRegPosRotAsync (LSL_Vector pos, LSL_Rotation rot, int evcode, LSL_List evargs)
+        {
+            return xmrSetObjRegPosRotAsync (pos, rot, 0, evcode, evargs);
         }
 
         public string xmrTypeName (object o)

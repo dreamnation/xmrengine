@@ -111,7 +111,7 @@ XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs: XMREngCommit.cx
 	cpp -I../Compiler -DHAVE_MONOCONTS=1 -DHAVE_MMRUTHREADS=1 -C -P -nostdinc -o $@ $<
 
 ../Compiler/xmrengshare.dll: $(wildcard ../Compiler/*.cx) $(wildcard ../Compiler/*.h)
-	make -C ../Compiler ../Compiler/xmrengshare.dll
+	make -C ../Compiler xmrengshare.dll
 
 # ------------------------------------------------------------------------------
 

@@ -1238,9 +1238,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         [xmrMethodIsNoisyAttribute]  // calls Stub<somethingorother>
-        public override bool xmrSetObjRegPosRotAsync (LSL_Vector pos, LSL_Rotation rot, int evcode, LSL_List evargs)
+        public override bool xmrSetObjRegPosRotAsync (LSL_Vector pos, LSL_Rotation rot, int options, int evcode, LSL_List evargs)
         {
-            return StubLSLInteger ("xmrSetObjRegPosRotAsync", pos, rot, evcode, evargs) != 0;
+            return StubLSLInteger ("xmrSetObjRegPosRotAsync", pos, rot, options, evcode, evargs) != 0;
         }
     }
 
