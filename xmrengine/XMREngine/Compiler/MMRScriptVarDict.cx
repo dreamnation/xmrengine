@@ -129,13 +129,69 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		public TokenDeclVar FindExact (string name, TokenType[] argTypes)
 		{
+			/*
+			 * Look for list of stuff that matches the given name.
+			 */
 			Dictionary<ArgTypes, TokenDeclVar> typedic;
 			if (!master.TryGetValue (name, out typedic)) return null;
-			ArgTypes types;
-			types.argTypes = KeyTypesToStringTypes (argTypes);
-			TokenDeclVar var;
-			if (!typedic.TryGetValue (types, out var)) return null;
-			return var;
+
+			/*
+			 * Loop through all fields/methods declared by that name, regardless of arg signature.
+			 */
+			foreach (TokenDeclVar var in typedic.Values) {
+
+				/*
+				 * Get argument types of declaration.
+				 *   fields are always null
+				 *   methods are always non-null, though may be zero-length
+				 */
+				TokenType[] declArgs = (var.argDecl == null) ? null : var.argDecl.types;
+
+				/*
+				 * Convert any key args to string args.
+				 */
+				declArgs = KeyTypesToStringTypes (declArgs);
+
+				/*
+				 * If both are null, they are signature-less (ie, both are fields), and so match.
+				 */
+				if ((declArgs == null) && (argTypes == null)) return var;
+
+				/*
+				 * If calling a delegate, it is a match, regardless of delegate arg types.
+				 * If it turns out the arg types do not match, the compiler will give an error
+				 * trying to cast the arguments to the delegate arg types.
+				 * We don't allow overloading same field name with different delegate types.
+				 */
+				if ((declArgs == null) && (argTypes != null)) {
+					TokenType fieldType = var.type;
+					if (fieldType is TokenTypeSDTypeDelegate) return var;
+				}
+
+				/*
+				 * If not both null, no match, keep looking.
+				 */
+				if ((declArgs == null) || (argTypes == null)) continue;
+
+				/*
+				 * Both not null, match argument types to make sure we have correct overload.
+				 */
+				int i = declArgs.Length;
+				if (i != argTypes.Length) continue;
+				while (-- i >= 0) {
+					string da = declArgs[i].ToString ();
+					string ga = argTypes[i].ToString ();
+					if (da == "key") da = "string";
+					if (ga == "key") ga = "string";
+					if (da != ga) break;
+				}
+				if (i < 0) return var;
+			}
+
+			/*
+			 * No match.
+			 */
+			return null;
 		}
 
 		/**
