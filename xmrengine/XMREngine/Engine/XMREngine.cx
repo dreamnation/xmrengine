@@ -1003,7 +1003,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public IScriptApi GetApi(UUID itemID, string name)
         {
-            return null;
+            FieldInfo fi;
+            if (!m_XMRInstanceApiCtxFieldInfos.TryGetValue (name, out fi)) return null;
+            XMRInstance inst = GetInstance (itemID);
+            if (inst == null) return null;
+            return (IScriptApi)fi.GetValue (inst);
         }
 
         /**
