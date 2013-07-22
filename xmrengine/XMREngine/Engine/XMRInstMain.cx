@@ -37,29 +37,31 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
      *        ie, m_StartQueue, m_YieldQueue, m_SleepQueue, etc.
      * Allowed transitions:
      *   Starts in CONSTRUCT when constructed
-     *   CONSTRUCT->ONSTARTQ          : only by thread that constructed and compiled it
-     *   IDLE->ONSTARTQ,RESETTING     : by any thread but must have m_QueueLock when transitioning
-     *   ONSTARTQ->RUNNING,RESETTING  : only by thread that removed it from m_StartQueue
-     *   ONYIELDQ->RUNNING,RESETTING  : only by thread that removed it from m_YieldQueue
-     *   ONSLEEPQ->ONYIELDQ,RESETTING : only by thread that removed it from m_SleepQueue
-     *   RUNNING->whatever1           : only by thread that transitioned it to RUNNING
-     *                                  whatever1 = IDLE,ONSLEEPQ,ONYIELDQ,ONSTARTQ,SUSPENDED,FINISHED
-     *   FINSHED->whatever2           : only by thread that transitioned it to FINISHED
-     *                                  whatever2 = IDLE,ONSTARTQ,DISPOSED
-     *   SUSPENDED->ONSTARTQ          : by any thread (NOT YET IMPLEMENTED, should be under some kind of lock?)
-     *   RESETTING->ONSTARTQ          : only by the thread that transitioned it to RESETTING
+     *   CONSTRUCT->ONSTARTQ              : only by thread that constructed and compiled it
+     *   IDLE->ONSTARTQ,RESETTING         : by any thread but must have m_QueueLock when transitioning
+     *   ONSTARTQ->RUNNING,RESETTING      : only by thread that removed it from m_StartQueue
+     *   ONYIELDQ->RUNNING,RESETTING      : only by thread that removed it from m_YieldQueue
+     *   ONSLEEPQ->REMDFROMSLPQ           : by any thread but must have m_SleepQueue when transitioning
+     *   REMDFROMSLPQ->ONYIELDQ,RESETTING : only by thread that removed it from m_SleepQueue
+     *   RUNNING->whatever1               : only by thread that transitioned it to RUNNING
+     *                                      whatever1 = IDLE,ONSLEEPQ,ONYIELDQ,ONSTARTQ,SUSPENDED,FINISHED
+     *   FINSHED->whatever2               : only by thread that transitioned it to FINISHED
+     *                                      whatever2 = IDLE,ONSTARTQ,DISPOSED
+     *   SUSPENDED->ONSTARTQ              : by any thread (NOT YET IMPLEMENTED, should be under some kind of lock?)
+     *   RESETTING->ONSTARTQ              : only by the thread that transitioned it to RESETTING
      */
     public enum XMRInstState {
-        CONSTRUCT,  // it is being constructed
-        IDLE,       // nothing happening (finished last event and m_EventQueue is empty)
-        ONSTARTQ,   // inserted on m_Engine.m_StartQueue
-        RUNNING,    // currently being executed by RunOne()
-        ONSLEEPQ,   // inserted on m_Engine.m_SleepQueue
-        ONYIELDQ,   // inserted on m_Engine.m_YieldQueue
-        FINISHED,   // just finished handling an event
-        SUSPENDED,  // m_SuspendCount > 0
-        RESETTING,  // being reset via external call
-        DISPOSED    // has been disposed
+        CONSTRUCT,     // it is being constructed
+        IDLE,          // nothing happening (finished last event and m_EventQueue is empty)
+        ONSTARTQ,      // inserted on m_Engine.m_StartQueue
+        RUNNING,       // currently being executed by RunOne()
+        ONSLEEPQ,      // inserted on m_Engine.m_SleepQueue
+        REMDFROMSLPQ,  // removed from m_SleepQueue but not yet on m_YieldQueue
+        ONYIELDQ,      // inserted on m_Engine.m_YieldQueue
+        FINISHED,      // just finished handling an event
+        SUSPENDED,     // m_SuspendCount > 0
+        RESETTING,     // being reset via external call
+        DISPOSED       // has been disposed
     }
 
     public partial class XMRInstance : XMRInstAbstract, IDisposable

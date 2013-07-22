@@ -1514,13 +1514,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     return;
                 }
                 m_SleepQueue.Remove(inst);
+                inst.m_IState = XMRInstState.REMDFROMSLPQ;
             }
 
             /*
              * Put on end of list of scripts that are ready to run.
              */
-            inst.m_IState = XMRInstState.ONYIELDQ;
             lock (m_YieldQueue) {
+                inst.m_IState = XMRInstState.ONYIELDQ;
                 m_YieldQueue.InsertTail(inst);
             }
 
@@ -1670,6 +1671,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      * Remove the expired entry from the timer queue.
                      */
                     m_SleepQueue.RemoveHead();
+                    inst.m_IState = XMRInstState.REMDFROMSLPQ;
                 }
 
                 /*

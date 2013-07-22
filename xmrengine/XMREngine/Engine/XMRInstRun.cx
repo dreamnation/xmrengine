@@ -683,6 +683,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
 
                 /*
+                 * It was just removed from the sleep queue and is about to be put
+                 * on the yield queue (ie, is being woken up).
+                 * Let that thread complete transition and try again.
+                 */
+                case XMRInstState.REMDFROMSLPQ: {
+                    Sleep (10);
+                    goto checkstate;
+                }
+
+                /*
                  * If it's yielding, remove it from yield queue and transition it to
                  * resetting so no other thread will touch it.
                  */
@@ -702,7 +712,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * to its next state then check again.
                  */
                 case XMRInstState.FINISHED: {
-                    Sleep(1);
+                    Sleep (10);
                     goto checkstate;
                 }
 
