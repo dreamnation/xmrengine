@@ -108,6 +108,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 m_RunOnePhase = "GetExecutionState D"; CheckRunLockInvariants(true);
 
                 /*
+                 * "RegionCrossingTrap" has state of xmrTrapRegionCrossing().
+                 */
+                if (rctEnabled | rctArmed) {
+                    XmlElement regionCrossingTrapN = doc.CreateElement ("", "RegionCrossingTrap", "");
+                    regionCrossingTrapN.SetAttribute ("enabled", rctEnabled.ToString ());
+                    regionCrossingTrapN.SetAttribute ("armed",   rctArmed.ToString ());
+                    scriptStateN.AppendChild (regionCrossingTrapN);
+                }
+
+                /*
                  * More misc data.
                  */
                 XmlNode permissionsN = doc.CreateElement("", "Permissions", "");

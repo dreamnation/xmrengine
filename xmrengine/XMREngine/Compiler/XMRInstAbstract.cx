@@ -380,6 +380,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public abstract void xmrEventLoadDets (LSL_List dpList);
 
         [xmrMethodIsNoisyAttribute]       // calls Stub<somethingorother>()
+        public abstract void xmrTrapRegionCrossing (int en);
+
+        [xmrMethodIsNoisyAttribute]       // calls Stub<somethingorother>()
         public abstract bool xmrSetObjRegPosRotAsync (LSL_Vector pos, LSL_Rotation rot, int options, int evcode, LSL_List evargs);
 
         /************************************\

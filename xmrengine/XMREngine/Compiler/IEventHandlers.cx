@@ -39,5 +39,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         void touch_end (int num_detected);
         void transaction_result(string id, int success, string data);
         void path_update(int type, LSL_List data);
+        void region_cross(LSL_Vector pos);
     }
 }

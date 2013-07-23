@@ -74,6 +74,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
             if (m_Part != null)
             {
+                xmrTrapRegionCrossing (0);
                 m_Part.RemoveScriptEvents(m_ItemID);
                 AsyncCommandManager.RemoveScript(m_Engine, m_LocalID, m_ItemID);
                 m_Part = null;

@@ -10,6 +10,7 @@ using OpenSim.Region.Framework.Scenes;
 using OpenSim.Region.ScriptEngine.Shared;
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Xml;
 
 #include "lsltypes.h"
@@ -21,6 +22,52 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 {
     public partial class XMRInstance
     {
+        /**
+         * @brief If RegionCrossing trapping is enabled, any attempt to move the object
+         *        outside its current region will cause the event to fire and the object
+         *        will remain in its current region.
+         */
+        public override void xmrTrapRegionCrossing (int en)
+        {
+            TrapRegionCrossing (en != 0, en != 0);
+        }
+
+        private void TrapRegionCrossing (bool enable, bool arm)
+        {
+            Monitor.Enter (rctLock);
+            rctArmed = arm;
+            if (rctEnabled != enable) {
+                rctEnabled = enable;
+                Monitor.Exit (rctLock);
+                SceneObjectGroup sog = m_Part.ParentGroup;
+                if (enable) {
+                    sog.AddTrapRegionCrossing (RegionCrossingTrap);
+                } else {
+                    sog.RemTrapRegionCrossing (RegionCrossingTrap);
+                }
+            } else {
+                Monitor.Exit (rctLock);
+            }
+        }
+
+        private object rctLock    = new object ();
+        private bool   rctEnabled = false;
+        private bool   rctArmed   = false;
+
+        private void RegionCrossingTrap (Vector3 val)
+        {
+            Monitor.Enter (rctLock);
+            if (rctArmed) {
+                rctArmed = false;
+                Monitor.Exit (rctLock);
+                object[] eva = new object[] { val };
+                EventParams eps = new EventParams ("region_cross", eva, zeroDetectParams);
+                PostEvent (eps);
+            } else {
+                Monitor.Exit (rctLock);
+            }
+        }
+
         /**
          * @brief Move object to new position and rotation asynchronously.
          *        Can move object across region boundary.
