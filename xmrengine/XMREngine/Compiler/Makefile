@@ -42,6 +42,7 @@ SHARECSFILES := \
 
 REFDOPENSIMDLLS := \
 	OpenMetaverseTypes.dll \
+	OpenSim.Framework.dll \
 	OpenSim.Region.ScriptEngine.Shared.dll \
 	OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll
 
@@ -54,7 +55,7 @@ default: xmrengtest.zip xmrengshare.dll
 xmrengtest.zip: xmrengtest.exe $(patsubst %,$(OPENSIMDLLDIR)/%,$(REFDOPENSIMDLLS))
 	$(foreach dll,$(REFDOPENSIMDLLS),$(shell cp $(OPENSIMDLLDIR)/$(dll) $(dll)))
 	rm -f xmrengtest.zip
-	zip -D xmrengtest.zip xmrengtest.exe $(REFDOPENSIMDLLS)
+	zip -D xmrengtest.zip xmrengtest.exe xmrengtest.exe.mdb $(REFDOPENSIMDLLS)
 	rm -f $(REFDOPENSIMDLLS)
 
 xmrengtest.exe: $(TESTERCSFILES) $(wildcard *.h)
