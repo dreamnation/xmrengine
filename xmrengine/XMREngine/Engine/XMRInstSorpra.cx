@@ -54,13 +54,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private bool   rctEnabled = false;
         private bool   rctArmed   = false;
 
-        private void RegionCrossingTrap (Vector3 val)
+        private void RegionCrossingTrap (Vector3 newpos, Vector3 oldpos)
         {
             Monitor.Enter (rctLock);
             if (rctArmed) {
                 rctArmed = false;
                 Monitor.Exit (rctLock);
-                object[] eva = new object[] { val };
+                object[] eva = new object[] { newpos, oldpos };
                 EventParams eps = new EventParams ("region_cross", eva, zeroDetectParams);
                 PostEvent (eps);
             } else {
