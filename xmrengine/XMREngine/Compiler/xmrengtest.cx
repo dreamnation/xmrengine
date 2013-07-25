@@ -528,6 +528,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 return "0x" + x.ToString ("X8") + " = " + x.ToString ().PadLeft (11);
             }
             if (rVal is CompValuFloat) return ((CompValuFloat)rVal).x.ToString ();
+            if (rVal is CompValuString) {
+                StringBuilder sb = new StringBuilder ();
+                SCRIPTBASECLASS.PrintParam (sb, ((CompValuString)rVal).x);
+                return sb.ToString ();
+            }
             if (rVal is CompValuSField) {
                 FieldInfo fi = ((CompValuSField)rVal).field;
                 StringBuilder sb = new StringBuilder ();

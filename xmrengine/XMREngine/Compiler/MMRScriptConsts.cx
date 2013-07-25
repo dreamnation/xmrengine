@@ -93,6 +93,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 				/*
 				 * The location of a simple number is the number itself.
+				 * Access to the value gets compiled as an ldc instruction.
 				 */
 				if (fieldType == typeof (double)) {
 					cv = new CompValuFloat (new TokenTypeFloat (null),
@@ -106,7 +107,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				}
 
 				/*
+				 * The location of a string is the string itself.
+				 * Access to the value gets compiled as an ldstr instruction.
+				 */
+				else if (fieldType == typeof (string)) {
+					cv = new CompValuString (new TokenTypeStr (null), 
+					                         (string)constField.GetValue (null));
+				} else if (fieldType == typeof (LSL_String)) {
+					cv = new CompValuString (new TokenTypeStr (null), 
+					                         (string)(LSL_String)constField.GetValue (null));
+				}
+
+				/*
 				 * The location of everything else (objects) is the static field in the interface definition.
+				 * Access to the value gets compiled as an ldsfld instruction.
 				 */
 				else {
 					cv = new CompValuSField (TokenType.FromSysType (null, fieldType), constField);
