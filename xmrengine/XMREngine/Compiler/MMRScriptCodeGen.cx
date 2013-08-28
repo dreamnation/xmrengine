@@ -1083,15 +1083,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			TokenDeclVar objptrVar = new TokenDeclVar (newobjDeclFunc, newobjDeclFunc, tokenScript);
 			objptrVar.type         = newobjDeclFunc.retType;
 			objptrVar.name         = new TokenName (newobjDeclFunc, "$objptr");
-			VarDict newFrame       = new VarDict ();
+			VarDict newFrame       = new VarDict (false);
 			newFrame.outerVarDict  = ctorDeclFunc.argDecl.varDict;
 			newFrame.AddEntry (objptrVar);
 
 			/*
 			 * Set up '$objptr.$ctor'
 			 */
-			TokenLValName objptrLValName  = new TokenLValName (objptrVar.name);    // ref a var by giving its name
-			objptrLValName.stack          = newFrame;                              // what stack to look for it in
+			TokenLValName objptrLValName  = new TokenLValName (objptrVar.name, newFrame);
+			                                                                       // ref a var by giving its name
 			TokenLValIField objptrDotCtor = new TokenLValIField (newobjDeclFunc);  // an instance member reference
 			objptrDotCtor.baseRVal        = objptrLValName;                        // '$objptr'
 			objptrDotCtor.fieldName       = ctorDeclFunc.name;                     // '.' '$ctor'
@@ -1107,8 +1107,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			callCtorRVal.nArgs         = argList.Length;                       // ...that is nArgs we are passing to $objptr.$ctor()
 			for (int i = argList.Length; -- i >= 0;) {
 				TokenDeclVar arg          = argList[i];                    // find out about one of the args
-				TokenLValName argLValName = new TokenLValName (arg.name);  // pass arg of that name to $objptr.$ctor()
-				argLValName.stack         = ctorDeclFunc.argDecl.varDict;  // this is the VarDict the arg names are defined in
+				TokenLValName argLValName = new TokenLValName (arg.name, ctorDeclFunc.argDecl.varDict);
+				                                                           // pass arg of that name to $objptr.$ctor()
 				argLValName.nextToken     = callCtorRVal.args;             // link to list of args passed to $objptr.$ctor()
 				callCtorRVal.args         = argLValName;
 			}

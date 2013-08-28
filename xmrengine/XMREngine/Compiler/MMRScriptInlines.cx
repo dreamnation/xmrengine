@@ -109,7 +109,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				"llTransferLindenDollars"
 			};
 
-			VarDict ifd = new VarDict ();
+			VarDict ifd = new VarDict (false);
 
 			Type[] oneDoub  = new Type[] { typeof (double) };
 			Type[] twoDoubs = new Type[] { typeof (double), typeof (double) };

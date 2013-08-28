@@ -243,7 +243,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					TokenDeclVar var = ParseDeclVar (ref token, gviFunc);
 					if (var != null) {
 						// <name> = <init>;
-						TokenLValName left = new TokenLValName (var.name, tokenScript);
+						TokenLValName left = new TokenLValName (var.name, tokenScript.variablesStack);
 						DoVarInit (gviFunc, left, var.init);
 					}
 					continue;
@@ -2265,7 +2265,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			token = u.nextToken;
 
 			// start a var definition frame to collect the interface members
-			tokenScript.PushVarFrame ();
+			tokenScript.PushVarFrame (false);
 			tokdeclin.methsNProps = tokenScript.variablesStack;
 
 			// process declaration statements until '}'
@@ -2598,7 +2598,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			tokenStmtBlock.function = currentDeclFunc;
 			tokenStmtBlock.outerStmtBlock = currentStmtBlock;
 			currentStmtBlock = tokenStmtBlock;
-			tokenScript.PushVarFrame ();
+			tokenScript.PushVarFrame (true);
 			Token prevStmt = null;
 			token = token.nextToken;
 			while (!(token is TokenKwBrcClose)) {
@@ -2734,7 +2734,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			forStmtBlock.outerStmtBlock = currentStmtBlock;
 			forStmtBlock.function       = currentDeclFunc;
 			currentStmtBlock            = forStmtBlock;
-			tokenScript.PushVarFrame ();
+			tokenScript.PushVarFrame (true);
 
 			TokenDeclVar tokenDeclVar   = ParseDeclVar (ref token, null);
 			if (tokenDeclVar == null) {
@@ -2801,7 +2801,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			token = token.nextToken;
 
 			if (token is TokenName) {
-				tokenStmtForEach.keyLVal = new TokenLValName ((TokenName)token, tokenScript);
+				tokenStmtForEach.keyLVal = new TokenLValName ((TokenName)token, tokenScript.variablesStack);
 				token = token.nextToken;
 			}
 			if (!(token is TokenKwComma)) {
@@ -2811,7 +2811,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			}
 			token = token.nextToken;
 			if (token is TokenName) {
-				tokenStmtForEach.valLVal = new TokenLValName ((TokenName)token, tokenScript);
+				tokenStmtForEach.valLVal = new TokenLValName ((TokenName)token, tokenScript.variablesStack);
 				token = token.nextToken;
 			}
 			if (!(token is TokenKwIn)) {
@@ -3069,7 +3069,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					tokenStmtTry = new TokenStmtTry (tryKw);
 					tokenStmtTry.tryStmt           = WrapTryCatFinInBlock (body);
 					tokenStmtTry.catchVar          = tag;
-					tokenScript.PushVarFrame ();
+					tokenScript.PushVarFrame (false);
 					tokenScript.AddVarEntry (tag);
 					tokenStmtTry.catchStmt         = ParseStmtBlock (ref token);
 					tokenScript.PopVarFrame ();
@@ -3841,7 +3841,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * All we got left is <name>, eg, arg, function, global or local variable reference
 			 */
 			if (token is TokenName) {
-				TokenLValName name = new TokenLValName ((TokenName)token, tokenScript);
+				TokenLValName name = new TokenLValName ((TokenName)token, tokenScript.variablesStack);
 				token = token.nextToken;
 				return name;
 			}
@@ -4107,7 +4107,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenDeclSDTypeClass extends;         // only non-null for TokenDeclSDTypeClass's
 		public uint accessLevel;                     // SDT_PRIVATE, SDT_PROTECTED or SDT_PUBLIC
 		                                             // ... all top-level types are SDT_PUBLIC
-		public VarDict members = new VarDict ();     // declared fields, methods, properties if any
+		public VarDict members = new VarDict (false);  // declared fields, methods, properties if any
 
 		public Dictionary<string, int> genParams;    // list of parameters for generic prototypes
 		                                             // null for non-generic prototypes
@@ -4915,7 +4915,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	}
 
 	public class TokenDeclSDTypeInterface : TokenDeclSDType {
-		public VarDict methsNProps = new VarDict ();	// any class this implements this interface
+		public VarDict methsNProps = new VarDict (false);
+								// any class that implements this interface
 								// must implement all of these methods & properties
 
 		public List<TokenDeclSDTypeInterface> implements = new List<TokenDeclSDTypeInterface> ();
@@ -5261,7 +5262,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	 */
 	public class TokenArgDecl : Token
 	{
-		public VarDict varDict = new VarDict ();
+		public VarDict varDict = new VarDict (false);
 
 		public TokenArgDecl (Token original) : base (original) { }
 
@@ -5870,15 +5871,26 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenName name;
 		public VarDict stack;
 
-		public TokenLValName (TokenName name) : base (name)
+		public TokenLValName (TokenName name, VarDict stack) : base (name)
 		{
-			this.name = name;
-		}
-
-		public TokenLValName (TokenName name, TokenScript tokenScript) : base (name)
-		{
+			/*
+			 * Save name of variable/method/function/field.
+			 */
 			this.name  = name;
-			this.stack = tokenScript.variablesStack;
+
+			/*
+			 * Save where in the stack it can be looked up.
+			 * If the current stack is for locals, do not allow forward references.
+			 *     this allows idiocy like:
+			 *         list buttons = [ 1, 2, 3 ];
+			 *         x () {
+			 *             list buttons = llList2List (buttons, 0, 1);
+			 *             llOwnerSay (llList2CSV (buttons));
+			 *         }
+			 * If it is not locals, allow forward references.
+			 *     this allows function X() to call Y() and Y() to call X().
+			 */
+			this.stack = stack.FreezeLocals ();
 		}
 
 		public override TokenType GetRValType (ScriptCodeGen scg, TokenType[] argsig)
@@ -6788,9 +6800,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public int expiryDays = Int32.MaxValue;
 		public TokenDeclState defaultState;
 		public Dictionary<string, TokenDeclState> states = new Dictionary<string, TokenDeclState>  ();
-		public VarDict variablesStack = new VarDict ();  // initial one is used for global functions and variables
-		public TokenDeclVar globalVarInit;               // $globalvarinit function
-		                                                 // - performs explicit global var and static field inits
+		public VarDict variablesStack = new VarDict (false);  // initial one is used for global functions and variables
+		public TokenDeclVar globalVarInit;                    // $globalvarinit function
+		                                                      // - performs explicit global var and static field inits
 
 		public TokenScript (Token original) : base (original) { }
 
@@ -6799,9 +6811,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 * Generally a '{' pushes a new frame and a '}' pops the frame.
 		 * Function parameters are pushed in an additional frame (just outside the body's { ... } block)
 		 */
-		public void PushVarFrame ()
+		public void PushVarFrame (bool locals)
 		{
-			PushVarFrame (new VarDict ());
+			PushVarFrame (new VarDict (locals));
 		}
 		public void PushVarFrame (VarDict newFrame)
 		{
@@ -6896,7 +6908,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public Token statements;               // null-terminated list of statements, can also have TokenDeclVar's in here
 		public TokenStmtBlock outerStmtBlock;  // next outer stmtBlock or null if top-level, ie, function definition
 		public TokenDeclVar function;          // function it is part of
-		public VarDict variables = new VarDict ();  // variables declared herein
 		public bool isTry;                     // true iff it's a try statement block
 		public bool isCatch;                   // true iff it's a catch statement block
 		public bool isFinally;                 // true iff it's a finally statement block

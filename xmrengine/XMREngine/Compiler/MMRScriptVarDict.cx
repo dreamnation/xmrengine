@@ -60,17 +60,42 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 		}
 
-		private Dictionary<string, Dictionary<ArgTypes, TokenDeclVar>> master = new Dictionary<string, Dictionary<ArgTypes, TokenDeclVar>> ();
-		private int count = 0;
+		private struct TDVEntry {
+			public int count;
+			public TokenDeclVar var;
+		}
 
+		private bool isFrozen = false;
+		private bool locals;
+		private Dictionary<string, Dictionary<ArgTypes, TDVEntry>> master = new Dictionary<string, Dictionary<ArgTypes, TDVEntry>> ();
+		private int count = 0;
+		private VarDict frozenLocals = null;
+
+		/**
+		 * @brief Constructor.
+		 * @param locals = false: cannot be frozen, allows forward references
+		 *                  true: can be frozen, thus forbidding forward references
+		 */
+		public VarDict (bool locals)
+		{
+			this.locals = locals;
+		}
+
+		/**
+		 * @brief Add new variable to the dictionary.
+		 */
 		public bool AddEntry (TokenDeclVar var)
 		{
+			if (isFrozen) {
+				throw new Exception ("var dict is frozen");
+			}
+
 			/*
 			 * Make sure we have a sub-dictionary based on the bare name (ie, no signature)
 			 */
-			Dictionary<ArgTypes, TokenDeclVar> typedic;
+			Dictionary<ArgTypes, TDVEntry> typedic;
 			if (!master.TryGetValue (var.name.val, out typedic)) {
-				typedic = new Dictionary<ArgTypes, TokenDeclVar> ();
+				typedic = new Dictionary<ArgTypes, TDVEntry> ();
 				master.Add (var.name.val, typedic);
 			}
 
@@ -86,12 +111,59 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * It is unique, add to its name-specific sub-dictionary.
 			 */
-			typedic.Add (types, var);
-			count ++;
+			TDVEntry entry;
+			entry.count = ++ count;
+			entry.var   = var;
+			typedic.Add (types, entry);
 			return true;
 		}
 
 		public int Count { get { return count; } }
+
+		/**
+		 * @brief If this is not a local variable frame, just return the frame as is.
+		 *        If this is a local variable frame, return a version that is frozen,
+		 *        ie, one that does not contain any future additions.
+		 */
+		public VarDict FreezeLocals ()
+		{
+			/*
+			 * If not local var frame, return original frame as is.
+			 * This will allow forward references as the future additions
+			 * will be seen by lookups done in this dictionary.
+			 */
+			if (!locals) return this;
+
+			/*
+			 * If local var frame, return a copy frozen at this point.
+			 * This disallows forward referenes as those future additions
+			 * will not be seen by lookups done in the frozen dictionary.
+			 */
+			if ((frozenLocals == null) || (frozenLocals.count != this.count)) {
+
+				/*
+				 * Make a copy of the current var dictionary frame.
+				 * We copy a reference to the dictionary, and though it may
+				 * contain additions made after this point, those additions
+				 * will have a count .gt. frozen count and will be ignored.
+				 */
+				frozenLocals = new VarDict (true);
+
+				frozenLocals.outerVarDict = this.outerVarDict;
+				frozenLocals.thisClass    = this.thisClass;
+				frozenLocals.master       = this.master;
+				frozenLocals.count        = this.count;
+				frozenLocals.frozenLocals = frozenLocals;
+
+				/*
+				 * Mark it as being frozen.
+				 * - assert fail if any attempt is made to add to it
+				 * - ignore any additions to the dictionary with greater count
+				 */
+				frozenLocals.isFrozen = true;
+			}
+			return frozenLocals;
+		}
 
 		/**
 		 * @brief Find all functions/variables that are callable
@@ -109,12 +181,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			TokenDeclVar var = FindExact (name, argTypes);
 			if (var != null) return new TokenDeclVar[] { var };
 
-			Dictionary<ArgTypes, TokenDeclVar> typedic;
+			Dictionary<ArgTypes, TDVEntry> typedic;
 			if (!master.TryGetValue (name, out typedic)) return null;
 
 			found.Clear ();
-			foreach (KeyValuePair<ArgTypes, TokenDeclVar> kvp in typedic) {
-				if (kvp.Key.CanBeCalledBy (argTypes)) found.Add (kvp.Value);
+			foreach (KeyValuePair<ArgTypes, TDVEntry> kvp in typedic) {
+				if ((kvp.Value.count <= this.count) && kvp.Key.CanBeCalledBy (argTypes)) {
+					found.Add (kvp.Value.var);
+				}
 			}
 			return (found.Count > 0) ? found.ToArray () : null;
 		}
@@ -132,13 +206,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Look for list of stuff that matches the given name.
 			 */
-			Dictionary<ArgTypes, TokenDeclVar> typedic;
+			Dictionary<ArgTypes, TDVEntry> typedic;
 			if (!master.TryGetValue (name, out typedic)) return null;
 
 			/*
 			 * Loop through all fields/methods declared by that name, regardless of arg signature.
 			 */
-			foreach (TokenDeclVar var in typedic.Values) {
+			foreach (TDVEntry entry in typedic.Values) {
+				if (entry.count > this.count) continue;
+				TokenDeclVar var = entry.var;
 
 				/*
 				 * Get argument types of declaration.
@@ -228,16 +304,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		// IEnumerable
 		public IEnumerator GetEnumerator ()
 		{
-			return new VarDictEnumerator (this.master);
+			return new VarDictEnumerator (this.master, this.count);
 		}
 
 		private class VarDictEnumerator : IEnumerator {
 			private IEnumerator masterEnum;
 			private IEnumerator typedicEnum;
+			private int count;
 
-			public VarDictEnumerator (Dictionary<string, Dictionary<ArgTypes, TokenDeclVar>> master)
+			public VarDictEnumerator (Dictionary<string, Dictionary<ArgTypes, TDVEntry>> master, int count)
 			{
 				masterEnum = master.Values.GetEnumerator ();
+				this.count = count;
 			}
 
 			// IEnumerator
@@ -250,18 +328,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			// IEnumerator
 			public bool MoveNext ()
 			{
-				while ((typedicEnum == null) || !typedicEnum.MoveNext ()) {
-					typedicEnum = null;
+				while (true) {
+					if (typedicEnum != null) {
+						while (typedicEnum.MoveNext ()) {
+							if (((TDVEntry)typedicEnum.Current).count <= this.count) return true;
+						}
+						typedicEnum = null;
+					}
 					if (!masterEnum.MoveNext ()) return false;
-					Dictionary<ArgTypes, TokenDeclVar> ctd;
-					ctd = (Dictionary<ArgTypes, TokenDeclVar>)masterEnum.Current;
+					Dictionary<ArgTypes, TDVEntry> ctd;
+					ctd = (Dictionary<ArgTypes, TDVEntry>)masterEnum.Current;
 					typedicEnum = ctd.Values.GetEnumerator ();
 				}
-				return true;
 			}
 
 			// IEnumerator
-			public object Current { get { return typedicEnum.Current; } }
+			public object Current { get { return ((TDVEntry)typedicEnum.Current).var; } }
 		}
 	}
 }
