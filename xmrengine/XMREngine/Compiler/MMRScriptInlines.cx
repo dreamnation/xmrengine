@@ -147,14 +147,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * Includes the calls from ScriptBaseClass that has all the stubs
 			 * which convert XMRInstAbstract to the various <NAME>_Api contexts.
 			 */
-			List<MethodInfo> lcms = new List<MethodInfo> ();
-			foreach (MethodInfo meth in typeof (XMRInstAbstract).GetMethods ()) {
-				string name = meth.Name;
-				if ((name[0] >= 'a') && (name[0] <= 'z')) {
-					lcms.Add (meth);
-				}
-			}
-			AddInterfaceMethods (ifd, lcms.GetEnumerator (), null);
+			MethodInfo[] absmeths = typeof (XMRInstAbstract).GetMethods ();
+			AddInterfaceMethods (ifd, absmeths, null);
 
 			return ifd;
 		}
@@ -301,12 +295,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		private static bool IsTaggedCallsCheckRun (MethodInfo methInfo)
 		{
-			if (methInfo != null) {
-				foreach (Attribute attr in Attribute.GetCustomAttributes (methInfo)) {
-					if (attr is xmrMethodCallsCheckRunAttribute) return true;
-				}
-			}
-			return false;
+			return (methInfo != null) &&
+				Attribute.IsDefined (methInfo, typeof (xmrMethodCallsCheckRunAttribute));
 		}
 
 		/**
@@ -318,17 +308,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static TokenType GetRetType (MethodInfo methInfo, TokenType retType)
 		{
 			if ((methInfo != null) && (retType != null) && (retType is TokenTypeStr)) {
-				foreach (Attribute attr in Attribute.GetCustomAttributes (methInfo)) {
-					if (attr is xmrMethodReturnsKeyAttribute) {
-						return ChangeToKeyType (retType);
-					}
+				if (Attribute.IsDefined (methInfo, typeof (xmrMethodReturnsKeyAttribute))) {
+					return ChangeToKeyType (retType);
 				}
 
 				string mn = methInfo.Name;
 				foreach (string kr in keyReturns) {
-					if (kr == mn) {
-						return ChangeToKeyType (retType);
-					}
+					if (kr == mn) return ChangeToKeyType (retType);
 				}
 
 			}
