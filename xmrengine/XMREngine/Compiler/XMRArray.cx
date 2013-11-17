@@ -14,11 +14,10 @@ using System.Text;
 //
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
-
     /**
      * @brief Array objects.
      */
-    public class XMR_Array : IComparer<object> {
+    public class XMR_Array {
         private const int EMPTYHEAP = 64;
         private const int ENTRYHEAP = 24;
 
@@ -40,7 +39,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public XMR_Array (XMRInstAbstract inst)
         {
             this.inst = inst;
-            dnary = new SortedDictionary<object, object> (this);  // IComparer<object>
+            dnary = new SortedDictionary<object, object> (XMRArrayKeyComparer.singleton);
             heapUse = inst.UpdateHeapUse (0, EMPTYHEAP);
         }
 
@@ -283,7 +282,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * So strip off any LSL-ness from the types.
          * We also deep-strip any given lists used as keys (multi-dimensional arrays).
          */
-        public object FixKey (object key)
+        public static object FixKey (object key)
         {
             if (key is LSL_Integer) return (int)(LSL_Integer)key;
             if (key is LSL_Float)   return (SCRIPTFLOAT)(LSL_Float)key;
@@ -292,7 +291,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (key is LSL_List) {
                 object[] data = ((LSL_List)key).Data;
                 if (data.Length == 1) return FixKey (data[0]);
-                return new XMRArrayListKey ((LSL_List)key, this);
+                return new XMRArrayListKey ((LSL_List)key);
             }
             return key;  // int, SCRIPTFLOAT, string, LSL_Vector, LSL_Rotation, etc are ok as is
         }
@@ -307,15 +306,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (key is XMRArrayListKey) key = ((XMRArrayListKey)key).GetOriginal ();
             return key;
         }
+    }
+
+    public class XMRArrayKeyComparer : IComparer<object> {
+
+        public static XMRArrayKeyComparer singleton = new XMRArrayKeyComparer ();
 
         /**
          * @brief Compare two keys
          */
         public int Compare (object x, object y)  // IComparer<object>
         {
+            /*
+             * Use short type name (eg, String, Int32, XMRArrayListKey) as most significant part of key.
+             */
             string xtn = x.GetType ().Name;
             string ytn = y.GetType ().Name;
-            int ctn = String.Compare (xtn, ytn);
+            int ctn = String.CompareOrdinal (xtn, ytn);
             if (ctn != 0) return ctn;
 
             ComparerDelegate cd;
@@ -326,6 +333,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         private delegate int ComparerDelegate (object a, object b);
+
         private static Dictionary<string, ComparerDelegate> comparers = BuildComparers ();
 
         private static Dictionary<string, ComparerDelegate> BuildComparers ()
@@ -355,7 +363,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private static int MyListKeyComparer (object a, object b)
         {
             XMRArrayListKey alk = (XMRArrayListKey)a;
-            return alk.Compare (alk, (XMRArrayListKey)b);
+            XMRArrayListKey blk = (XMRArrayListKey)b;
+            return XMRArrayListKey.Compare (alk, blk);
         }
         private static int MyRotationComparer (object a, object b)
         {
@@ -373,7 +382,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
         private static int MyStringComparer (object a, object b)
         {
-            return String.Compare ((string)a, (string)b);
+            return String.CompareOrdinal ((string)a, (string)b);
         }
         private static int MyVectorComparer (object a, object b)
         {
@@ -397,7 +406,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
      *        the dictionary as they don't ever change.
      */
     public class XMRArrayListKey {
-        private XMR_Array array;
         private LSL_List original;
         private object[] cleaned;
         private int length;
@@ -407,9 +415,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * @brief Construct a sanitized object[] from a list.
          *        Also save the original list in case we need it later.
          */
-        public XMRArrayListKey (LSL_List key, XMR_Array array)
+        public XMRArrayListKey (LSL_List key)
         {
-            this.array = array;
             original = key;
             object[] given = key.Data;
             int len  = given.Length;
@@ -417,7 +424,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             cleaned  = new object[len];
             int hc   = len;
             for (int i = 0; i < len; i ++) {
-                object v   = array.FixKey (given[i]);
+                object v   = XMR_Array.FixKey (given[i]);
                 hc        += hc + ((hc < 0) ? 1 : 0);
                 hc        ^= v.GetHashCode ();
                 cleaned[i] = v;
@@ -461,12 +468,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /**
          * @brief Compare for key sorting.
          */
-        public int Compare (XMRArrayListKey x, XMRArrayListKey y)
+        public static int Compare (XMRArrayListKey x, XMRArrayListKey y)
         {
             int j = x.length - y.length;
             if (j == 0) {
                 for (int i = 0; i < x.length; i ++) {
-                    j = array.Compare (x.cleaned[i], y.cleaned[i]);
+                    object xo = x.cleaned[i];
+                    object yo = y.cleaned[i];
+                    j = XMRArrayKeyComparer.singleton.Compare (xo, yo);
                     if (j != 0) break;
                 }
             }
