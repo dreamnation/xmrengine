@@ -7,6 +7,11 @@ COMMITHASH  := $(strip $(shell git log -1 | grep ^commit | sed 's/commit//g'))
 COMMITDATE  := $(strip $(shell git log -1 --date=iso | grep ^Date: | sed 's/Date://g'))
 COMMITCLEAN := $(strip $(shell git status | grep -q modified: ; echo $$?))
 
+HAVE_MONOCONTS   ?= $(shell ../Compiler/findmonotasklet.sh $(MONOBINDIR) $(MONODLLDIR) Continuation)
+HAVE_MMRUTHREADS ?= $(shell ../Compiler/findmonotasklet.sh $(MONOBINDIR) $(MONODLLDIR) MMRUThread)
+
+DEFS := -DHAVE_MONOCONTS=$(HAVE_MONOCONTS) -DHAVE_MMRUTHREADS=$(HAVE_MMRUTHREADS)
+
 SOURCEFILES := \
 	IEventHandlers.cx \
 	MMRDelegateCommon.cx \
@@ -66,13 +71,13 @@ xmrengtest.exe: $(TESTERCSFILES) $(wildcard *.h)
 		$(TESTERCSFILES)
 
 xmrengtest_tester.cs: xmrengtest.cx makexmrengtestilslapi.inc $(wildcard *.h)
-	cpp -C -P -nostdinc -DSCRIPTBASECLASS=TestScriptBaseClass -o $@ $<
+	cpp -C -P -nostdinc $(DEFS) -DSCRIPTBASECLASS=TestScriptBaseClass -o $@ $<
 
 %_tester.cs: %.cx $(wildcard *.h)
-	cpp -C -P -nostdinc -DSCRIPTBASECLASS=TestScriptBaseClass -o $@ $<
+	cpp -C -P -nostdinc $(DEFS) -DSCRIPTBASECLASS=TestScriptBaseClass -o $@ $<
 
 XMRScriptUThread_tester.cs: ../Engine/XMRScriptUThread.cx $(wildcard *.h)
-	cpp -C -P -nostdinc -DHAVE_MONOCONTS=1 -DHAVE_MMRUTHREADS=1 -DSCRIPTBASECLASS=TestScriptBaseClass -o $@ $<
+	cpp -C -P -nostdinc $(DEFS) -DSCRIPTBASECLASS=TestScriptBaseClass -o $@ $<
 
 makexmrengtestilslapi.inc: makexmrengtestilslapi.exe
 	MONO_PATH=../../../bin mono --debug makexmrengtestilslapi.exe > makexmrengtestilslapi.tmp
@@ -99,13 +104,13 @@ xmrengshare.dll: $(SHARECSFILES) $(patsubst %,$(OPENSIMDLLDIR)/%,$(REFDOPENSIMDL
 		$(SHARECSFILES)
 
 %_shared.cs: %.cx $(wildcard *.h)
-	cpp -C -P -nostdinc -DSCRIPTBASECLASS=ScriptBaseClass -o $@ $<
+	cpp -C -P -nostdinc $(DEFS) -DSCRIPTBASECLASS=ScriptBaseClass -o $@ $<
 
 # ------------------------------------------------------------------------------
 
 MMRScriptCompCommit_$(COMMITHASH)_$(COMMITCLEAN).cs: MMRScriptCompCommit.cx
 	rm -f MMRScriptCompCommit_*.cs
-	cpp -C -P -nostdinc \
+	cpp -C -P -nostdinc $(DEFS) \
 		-DGITCOMMITHASH='"$(COMMITHASH)"' \
 		-DGITCOMMITDATE='"$(COMMITDATE)"' \
 		-DGITCOMMITCLEAN=$(COMMITCLEAN)   \

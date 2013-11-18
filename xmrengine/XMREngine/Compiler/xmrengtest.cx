@@ -7,7 +7,9 @@
  * @brief Main program for the script tester.
  */
 
+#if HAVE_MONOCONTS || HAVE_MMRUTHREADS
 using Mono.Tasklets;
+#endif
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -67,7 +69,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             string primUUID   = "";
             string sourceHash = null;
 
+#if HAVE_MMRUTHREADS
             uthreadType = "mmr";
+#elif HAVE_MMRCONTS
+            uthreadType = "con";
+#else
+            uthreadType = "sys";
+#endif
 
             for (int i = 0; i < args.Length; i ++) {
                 string arg = args[i];
@@ -229,12 +237,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
                 XMRInstance inst = new XMRInstance (scriptObjCode);
                 inst.m_DescName  = perPrims[i].name + ":" + srcFileName;
+#if HAVE_MONOCONTS
                 inst.engstack    = new Mono.Tasklets.Continuation ();
                 inst.engstack.Mark ();
                 inst.scrstack    = new Mono.Tasklets.Continuation ();
                 inst.scrstack.Mark ();
                 inst.wfistack    = new Mono.Tasklets.Continuation ();
                 inst.wfistack.Mark ();
+#endif
                 new ScriptRoot (inst, i, perPrims[i]);
             }
 
@@ -513,12 +523,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public static bool IsTaggedNoisy (MethodInfo methInfo)
         {
-            if (methInfo != null) {
-                foreach (Attribute attr in Attribute.GetCustomAttributes (methInfo)) {
-                    if (attr is xmrMethodIsNoisyAttribute) return true;
-                }
-            }
-            return false;
+            return (methInfo != null) && Attribute.IsDefined (methInfo, typeof (xmrMethodIsNoisyAttribute));
         }
 
         public static string BuiltInConstVal (CompValu rVal)
@@ -902,8 +907,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public void StepScript ()
         {
-            if ((inst.uthread is ScriptUThread_MMR) || (inst.uthread is ScriptUThread_Sys)) {
+            if (inst.uthread is ScriptUThread_Sys) {
                 StepScriptMMRSys ();
+#if HAVE_MMRUTHREADS
+            } else if (inst.uthread is ScriptUThread_MMR) {
+                StepScriptMMRSys ();
+#endif
             } else {
                 StepScriptOther ();
             }
@@ -974,18 +983,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Do a setjmp(0) that ReadRetVal() can use when it wants some input.
              */
+#if HAVE_MONOCONTS
             if (inst.wfistack.Store (0) != 0) {
                 if (iState != IState.WAITINGFORINPUT) throw new Exception ("bad iState " + iState);
                 return;
             }
+#endif
 
             /*
              * Now if we are stepping because we have input for ReadRetVal(),
              * do a longjmp() back into ReadRetVal().
              */
+#if HAVE_MONOCONTS
             if (iState == IState.GOTSOMEINPUT) {
                 inst.scrstack.Restore (1);
             }
+#endif
 
             /*
              * The uthread stack better not already be in use.
@@ -1027,7 +1040,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
             if (e != null) {
                 if (!(e is StackCaptureException)) {
-                    throw e;
+                    throw new Exception ("exception in script", e);
                 }
                 if (inst.callMode != XMRInstAbstract.CallMode_SAVE) {
                     throw new Exception ("bad callmode " + inst.callMode, e);
@@ -1083,7 +1096,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public int m_StackSize = 1024*1024;
         public string m_DescName;
 
+#if HAVE_MONOCONTS
         public Mono.Tasklets.Continuation wfistack;
+#endif
 
         /**
          * @brief Initial instance for the given script
@@ -1113,9 +1128,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_ObjCode  = inst.m_ObjCode;
             m_DescName = inst.m_DescName;
             heapLimit  = HEAPLIMIT;
+#if HAVE_MONOCONTS
             engstack   = inst.engstack;
             scrstack   = inst.scrstack;
             wfistack   = inst.wfistack;
+#endif
             suspendOnCheckRunHold = XMREngTest.doCheckRun;
             InitUThread ();
         }
@@ -1123,14 +1140,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private void InitUThread ()
         {
             switch (XMREngTest.uthreadType) {
+#if HAVE_MONOCONTS
                 case "con": {
                     uthread = new ScriptUThread_Con (this);
                     break;
                 }
+#endif
+#if HAVE_MMRUTHREADS
                 case "mmr": {
                     uthread = new ScriptUThread_MMR (this);
                     break;
                 }
+#endif
                 case "sys": {
                     uthread = new ScriptUThread_Sys (this);
                     break;
@@ -3386,7 +3407,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             scriptRoot.wfiType = type;
             scriptRoot.iState  = IState.WAITINGFORINPUT;
 
-            if ((uthread is ScriptUThread_MMR) || (uthread is ScriptUThread_Sys)) {
+            if (
+#if HAVE_MMRUTHREADS
+                (uthread is ScriptUThread_MMR) ||
+#endif
+                                                  (uthread is ScriptUThread_Sys)) {
 
                 /*
                  * Save this stack pointer and switch back to the stack pointer
@@ -3404,6 +3429,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * Do a setjmp(0) that the input reader can use to resume us
                  * when it is ready to.
                  */
+#if HAVE_MONOCONTS
                 if (((XMRInstance)this).scrstack.Store (0) == 0) {
 
                     /*
@@ -3412,6 +3438,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      */
                     ((XMRInstance)this).wfistack.Restore (1);
                 }
+#endif
 
                 /*
                  * StepScriptOther() did a longjmp(1) here to tell us our input is ready.
