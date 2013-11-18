@@ -1542,7 +1542,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             if (typ == typeof (char))         return new TokenTypeChar      (original);
             if (typ == typeof (Exception))    return new TokenTypeExc       (original);
 
-            throw new Exception ("unknown type " + typ.ToString ());
+            throw new Exception ("unknown script type " + typ.ToString ());
         }
 
         public static TokenType FromLSLType (Token original, string typ)
