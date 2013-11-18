@@ -49,6 +49,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static MethodInfo objectToVectorMethodInfo   = typeof (TypeCast).GetMethod ("ObjectToVector",    new Type[] { typeof (object) });
 		private static MethodInfo rotationToBoolMethodInfo   = typeof (TypeCast).GetMethod ("RotationToBool",    new Type[] { typeof (LSL_Rotation) });
 		private static MethodInfo rotationToStringMethodInfo = typeof (TypeCast).GetMethod ("RotationToString",  new Type[] { typeof (LSL_Rotation) });
+		private static MethodInfo stringToBoolMethodInfo     = typeof (TypeCast).GetMethod ("StringToBool",      new Type[] { typeof (string) });
 		private static MethodInfo vectorToBoolMethodInfo     = typeof (TypeCast).GetMethod ("VectorToBool",      new Type[] { typeof (LSL_Vector) });
 		private static MethodInfo vectorToStringMethodInfo   = typeof (TypeCast).GetMethod ("VectorToString",    new Type[] { typeof (LSL_Vector) });
 		private static MethodInfo sdTypeClassCastClass2ClassMethodInfo = typeof (XMRSDTypeClObj).GetMethod ("CastClass2Class", new Type[] { typeof (object),     typeof (int) });
@@ -585,10 +586,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		private static void TypeCastString2Bool (IScriptCodeGen scg, Token errorAt)
 		{
-			scg.ilGen.Emit (errorAt, OpCodes.Ldstr, "");
-			scg.ilGen.Emit (errorAt, OpCodes.Ceq);
-			scg.ilGen.Emit (errorAt, OpCodes.Ldc_I4_1);
-			scg.ilGen.Emit (errorAt, OpCodes.Xor);
+			scg.ilGen.Emit (errorAt, OpCodes.Call, stringToBoolMethodInfo);
 		}
 		private static void TypeCastString2Object (IScriptCodeGen scg, Token errorAt)
 		{
@@ -672,6 +670,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * Because the calls are funky, let the compiler handle them.
 		 */
 		public static bool     RotationToBool    (LSL_Rotation x) { return !x.Equals (SCRIPTBASECLASS.ZERO_ROTATION); }
+		public static bool     StringToBool      (string x)       { return x.Length > 0; }
 		public static bool     VectorToBool      (LSL_Vector x)   { return !x.Equals (SCRIPTBASECLASS.ZERO_VECTOR); }
 		public static string   BoolToString      (bool x)         { return x ? "1" : "0"; }
 		public static string   CharToString      (char x)         { return x.ToString (); }
