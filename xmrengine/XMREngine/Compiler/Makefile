@@ -30,6 +30,7 @@ SOURCEFILES := \
 	MMRScriptTokenize.cx \
 	MMRScriptTypeCast.cx \
 	MMRScriptVarDict.cx \
+	MMRWebRequest.cx \
 	XMRArray.cx \
 	XMRHeapTracker.cx \
 	XMRInstAbstract.cx \

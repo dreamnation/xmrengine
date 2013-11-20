@@ -1025,10 +1025,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         private Dictionary<string, string> scriptIncludes = new Dictionary<string, string> ();
         private string ReadSourceFromURL (string url)
         {
-            WebResponse response = null;
             Stream stream = null;
             StreamReader reader = null;
-            WebRequest request = null;
 
             try {
 
@@ -1036,11 +1034,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                  * Get stream to read from webserver.
                  */
                 if (url.StartsWith ("file://")) {
-                    stream   = File.OpenRead (url.Substring (7));
+                    stream = File.OpenRead (url.Substring (7));
                 } else {
-                    request  = WebRequest.Create (url);
-                    response = request.GetResponse ();
-                    stream   = response.GetResponseStream ();
+                    stream = MMRWebRequest.MakeRequest ("GET", url, null, 0);
                 }
                 reader = new StreamReader (stream);
 
@@ -1104,7 +1100,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             } finally {
                      if (reader   != null) reader.Close ();
                 else if (stream   != null) stream.Close ();
-                else if (response != null) response.Close ();
             }
         }
     }
