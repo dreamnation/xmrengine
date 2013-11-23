@@ -779,11 +779,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 							}
 							if ((value >= 0) && (value <= 127)) {
 								opCode = OpCodes.Ldc_I4_S;
+								ilGen.Emit (OpCodes.Ldc_I4_S, (sbyte)value);
+								goto pemitint;
 							}
 						}
 
 						ilGen.Emit (opCode, value);
-
+					    pemitint:
 						LinePrefix (offset, dbg, opCode);
 						dbg.Append (value.ToString ());
 						dbg.Append ("   (int)");
