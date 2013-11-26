@@ -1764,8 +1764,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             foreach (XMRInstance ins in instanceArray)
             {
                 // Don't save attachments
-///             if (ins.m_Part.ParentGroup.RootPart.IsAttachment)
-///                 continue;
+                if (ins.m_Part.ParentGroup.IsAttachment)
+                    continue;
                 ins.GetExecutionState(new XmlDocument());
             }
         }
