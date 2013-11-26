@@ -104,6 +104,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             string envar;
 
             m_log.Info ("[XMREngine]: commit " + commitInfo);
+            m_log.Info ("[XMREngine]: fetchbinary fingerprint " + ScriptCompile.Fingerprint);
 
             envar = Environment.GetEnvironmentVariable ("XMREngineTraceCalls");
             m_TraceCalls = (envar != null) && ((envar[0] & 1) != 0);

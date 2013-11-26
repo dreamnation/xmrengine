@@ -52,7 +52,39 @@ REFDOPENSIMDLLS := \
 	OpenSim.Region.ScriptEngine.Shared.dll \
 	OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll
 
-default: xmrengtest.zip xmrengshare.dll
+default: xmrengcomp.zip xmrengcomp_secret.exe xmrengshare.dll xmrengtest.zip
+
+# ------------------------------------------------------------------------------
+#
+# Create xmrengcomp.exe
+#
+xmrengcomp.zip: xmrengcomp.exe $(patsubst %,$(OPENSIMDLLDIR)/%,$(REFDOPENSIMDLLS))
+	$(foreach dll,$(REFDOPENSIMDLLS),$(shell cp $(OPENSIMDLLDIR)/$(dll) $(dll)))
+	rm -f xmrengcomp.zip
+	zip -D xmrengcomp.zip xmrengcomp.exe xmrengcomp.exe.mdb $(REFDOPENSIMDLLS)
+	rm -f $(REFDOPENSIMDLLS)
+
+xmrengcomp.exe: xmrengcomp.cs $(wildcard *.h) xmrengshare.dll
+	$(MONOBINDIR)/dmcs -debug -out:$@ \
+		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(REFDOPENSIMDLLS)) \
+		-reference:xmrengshare.dll \
+		-reference:$(MONODLLDIR)/Mono.Tasklets.dll \
+		-reference:$(MONODLLDIR)/System.Drawing.dll \
+		xmrengcomp.cs
+
+xmrengcomp.cs: xmrengcomp.cx $(wildcard *.h)
+	cpp -C -P -nostdinc $(DEFS) -o $@ $<
+
+xmrengcomp_secret.exe: xmrengcomp_secret.cs $(wildcard *.h) xmrengshare.dll
+	$(MONOBINDIR)/dmcs -debug -out:$@ \
+		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(REFDOPENSIMDLLS)) \
+		-reference:xmrengshare.dll \
+		-reference:$(MONODLLDIR)/Mono.Tasklets.dll \
+		-reference:$(MONODLLDIR)/System.Drawing.dll \
+		xmrengcomp_secret.cs
+
+xmrengcomp_secret.cs: xmrengcomp.cx $(wildcard *.h)
+	cpp -C -P -nostdinc -DSECRET_STUFF $(DEFS) -o $@ $<
 
 # ------------------------------------------------------------------------------
 #

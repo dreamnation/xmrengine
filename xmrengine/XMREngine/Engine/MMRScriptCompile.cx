@@ -9,7 +9,12 @@
 
 using System;
 using System.IO;
+using System.IO.Compression;
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
+
+#define strcasecmp(s,t) String.Compare(s,t,StringComparison.OrdinalIgnoreCase)
 
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
@@ -88,23 +93,53 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     objFileStream = File.Create (tmpFileName);
 
                     /*
-                     * Create abstract syntax tree from raw tokens.
+                     * If source is 'XMROption' 'fetchbinary' ...,
+                     * read xmrobj file from the given URL.
                      */
-                    TokenScript tokenScript = ScriptReduce.Reduce(tokenBegin);
-                    if (tokenScript == null) {
-                        m_log.Debug ("[XMREngine]: reduction errors on " + assetID);
-                        return null;
-                    }
+                    if ((tokenBegin.nextToken is TokenName) &&
+                        (strcasecmp (((TokenName)tokenBegin.nextToken).val, "XMROption") == 0) &&
+                        (tokenBegin.nextToken.nextToken is TokenName) &&
+                        (strcasecmp (((TokenName)tokenBegin.nextToken.nextToken).val, "fetchbinary") == 0)) {
 
-                    /*
-                     * Compile abstract syntax tree to write object file.
-                     */
-                    BinaryWriter objFileWriter = new BinaryWriter (objFileStream);
-                    bool ok = ScriptCodeGen.CodeGen(tokenScript, objFileWriter, sourceHash);
-                    if (!ok) {
-                        m_log.Debug ("[XMREngine]: compile error on " + assetID);
-                        objFileStream.Close ();
-                        return null;
+                        /*
+                         * Open web stream.
+                         */
+                        Stream webStream = FetchBin (tokenBegin.nextToken.nextToken.nextToken, errorMessage);
+                        if (webStream == null) return null;
+
+                        /*
+                         * Copy object code from web and write to .xmrobj file.
+                         */
+                        try {
+                            byte[] buffer = new byte[32768];
+                            int len;
+                            while ((len = webStream.Read (buffer, 0, buffer.Length)) > 0) {
+                                objFileStream.Write (buffer, 0, len);
+                            }
+                        } finally {
+                            webStream.Close ();
+                        }
+                    } else {
+
+                        /*
+                         * Create abstract syntax tree from raw tokens.
+                         */
+                        TokenScript tokenScript = ScriptReduce.Reduce(tokenBegin);
+                        if (tokenScript == null) {
+                            m_log.Debug ("[XMREngine]: reduction errors on " + assetID);
+                            return null;
+                        }
+
+                        /*
+                         * Compile abstract syntax tree to write object file.
+                         */
+                        BinaryWriter objFileWriter = new BinaryWriter (objFileStream);
+                        bool ok = ScriptCodeGen.CodeGen(tokenScript, objFileWriter, sourceHash);
+                        if (!ok) {
+                            m_log.Debug ("[XMREngine]: compile error on " + assetID);
+                            objFileStream.Close ();
+                            return null;
+                        }
                     }
                     objFileStream.Close ();
 
@@ -169,5 +204,71 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             return scriptObjCode;
         }
+
+        /**
+         * @brief Read xmrbin file from a webserver somewhere out there.
+         * @param token = tokens after 'XMROption' 'fetchbinary'
+         * @param errorMessage = where to write error messages
+         * @returns null: some error
+         *          else: object file stream
+         */
+        private static Stream FetchBin (Token token, TokenErrorMessage errorMessage)
+        {
+            bool error = false;
+            string url = null;
+            TokenStr urlToken = null;
+
+            /*
+             * Parse parameters:
+             *    "url"
+             *    ;
+             */
+            for (; !(token is TokenEnd); token = token.nextToken) {
+                if (token is TokenKwSemi) break;
+                if (token is TokenStr) {
+                    if (urlToken == null) {
+                        urlToken = (TokenStr)token;
+                    } else {
+                        errorMessage (token, "only one url string allowed");
+                        error = true;
+                    }
+                    continue;
+                }
+                errorMessage (token, "unknown item in fetchbinary option");
+                error = true;
+            }
+            if (!(token is TokenKwSemi)) {
+                errorMessage (token, "missing ; at end of fetchbinary option");
+                error = true;
+            } else if (!(token.nextToken is TokenEnd)) {
+                errorMessage (token.nextToken, "extra stuff after fetchbinary option");
+                error = true;
+            } else if (urlToken == null) {
+                errorMessage (token, "missing url string");
+                error = true;
+            }
+            if (error) return null;
+
+            url = urlToken.val;
+            m_log.Debug ("[XMREngine]: fetching " + url);
+
+            try {
+
+                /*
+                 * Get stream to read from webserver.
+                 */
+                return Decrypt (MMRWebRequest.MakeRequest ("GET", url, null, 0));
+            } catch (Exception e) {
+
+                /*
+                 * Some error, output message.
+                 */
+                errorMessage (urlToken, "error fetching: " + e.ToString());
+                return null;
+            }
+        }
+
+#include "../Compiler/MMRScriptXmrBinEncrypt.h"
+#include "../Compiler/MMRScriptXmrBinDecrypt.h"
     }
 }
