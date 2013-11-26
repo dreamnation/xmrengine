@@ -1033,11 +1033,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                 /*
                  * Get stream to read from webserver.
                  */
-                if (url.StartsWith ("file://")) {
-                    stream = File.OpenRead (url.Substring (7));
-                } else {
-                    stream = MMRWebRequest.MakeRequest ("GET", url, null, 0);
-                }
+                stream = MMRWebRequest.MakeRequest ("GET", url, null, 0);
                 reader = new StreamReader (stream);
 
                 /*

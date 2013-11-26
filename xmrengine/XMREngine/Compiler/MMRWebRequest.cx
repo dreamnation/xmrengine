@@ -14,16 +14,25 @@ using System.Text;
 
 namespace OpenSim.Region.ScriptEngine.XMREngine {
     public class MMRWebRequest {
+        public static readonly bool allowFileURL = false;
 
         public static Stream MakeRequest (string verb, string requestUrl, string obj, int timeoutms)
         {
             /*
              * Pick apart the given URL and make sure we support it.
+             * For file:// URLs, just return a read-only stream of the file.
              */
             Uri uri = new Uri (requestUrl);
+            string supported = "http and https";
+            if (allowFileURL && (verb == "GET")) {
+                supported = "file, http and https";
+                if (uri.Scheme == "file") {
+                    return File.OpenRead (uri.AbsolutePath);
+                }
+            }
             bool https = uri.Scheme == "https";
             if (!https && (uri.Scheme != "http")) {
-                throw new WebException ("only support http and https, not " + uri.Scheme);
+                throw new WebException ("only support " + supported + ", not " + uri.Scheme);
             }
             string host = uri.Host;
             int port = uri.Port;
