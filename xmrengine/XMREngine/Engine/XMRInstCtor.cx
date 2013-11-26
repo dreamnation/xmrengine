@@ -145,6 +145,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * Allow lines of // comments at the beginning (for such as engine selection).
              */
             int i, j, len;
+            if (m_SourceCode == null) m_SourceCode = String.Empty;
             for (len = m_SourceCode.Length; len > 0; -- len) {
                 if (m_SourceCode[len-1] > ' ') break;
             }
@@ -295,7 +296,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                                                           m_CameFrom, 
                                                           GetScriptFileName, 
                                                           forceRecompile, 
-                                                          ErrorHandler);
+                                                          ErrorHandler,
+                                                          FetchSource);
             if (m_CompilerErrors.Count != 0)
             {
                 throw new Exception ("compilation errors");
@@ -306,6 +308,27 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             return objCode;
+        }
+
+        /*
+         * Retrieve source from asset server.
+         */
+        private string FetchSource (string cameFrom)
+        {
+            m_log.Debug ("[XMREngine]: fetching source " + cameFrom);
+            if (!cameFrom.StartsWith ("asset://")) {
+                throw new Exception ("unable to retrieve source from " + cameFrom);
+            }
+            string assetID = cameFrom.Substring (8);
+            AssetBase asset = m_Engine.World.AssetService.Get(assetID);
+            if (asset == null) {
+                throw new Exception ("source not found " + cameFrom);
+            }
+            string source = Encoding.UTF8.GetString (asset.Data);
+            if (ScriptCompile.EmptySource (source)) {
+                throw new Exception ("fetched source empty " + cameFrom);
+            }
+            return source;
         }
 
         /*
