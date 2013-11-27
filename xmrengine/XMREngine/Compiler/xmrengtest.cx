@@ -52,6 +52,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public static void Main (string[] args)
         {
+            MMRWebRequest.allowFileURL = true;
+
             /*
              * Tell code generator what type we do a 'new' of for script context.
              * Must be descended from XMRInstAbstract.
@@ -80,7 +82,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             for (int i = 0; i < args.Length; i ++) {
                 string arg = args[i];
                 if (arg == "-builtins") {
-                    PrintBuiltins ();
+                    TokenDeclInline.PrintBuiltins (true, Console.WriteLine);
                     return;
                 }
                 if (arg == "-checkrun") {
@@ -492,61 +494,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Console.WriteLine ("{0} {1}", token.SrcLoc, message);
         }
 
-        public static void PrintBuiltins ()
-        {
-            Console.WriteLine ("\nBuilt-in functions:\n");
-            SortedDictionary<string, TokenDeclInline> bifs = new SortedDictionary<string, TokenDeclInline> ();
-            foreach (TokenDeclVar bif in TokenDeclInline.inlineFunctions) {
-                bifs.Add (bif.fullName, (TokenDeclInline)bif);
-            }
-            foreach (TokenDeclInline bif in bifs.Values) {
-                char noisy = !IsTaggedNoisy (bif.GetMethodInfo ()) ? ' ' : (bif.retType is TokenTypeVoid) ? 'N' : 'R';
-                Console.WriteLine (noisy + "   " + bif.retType.ToString ().PadLeft (8) + " " + bif.fullName);
-            }
-            Console.WriteLine ("\nN - stub that writes name and arguments to stdout");
-            Console.WriteLine ("R - stub that writes name and arguments to stdout then reads return value from stdin");
-            Console.WriteLine ("    format is:  function_name : return_value");
-            Console.WriteLine ("      example:  llKey2Name:\"Kunta Kinte\"");
-
-            Console.WriteLine ("\nBuilt-in constants:\n");
-            SortedDictionary<string, ScriptConst> scs = new SortedDictionary<string, ScriptConst> ();
-            int widest = 0;
-            foreach (ScriptConst sc in ScriptConst.scriptConstants.Values) {
-                if (widest < sc.name.Length) widest = sc.name.Length;
-                scs.Add (sc.name, sc);
-            }
-            foreach (ScriptConst sc in scs.Values) {
-                Console.WriteLine ("    " + sc.rVal.type.ToString ().PadLeft (8) + " " + sc.name.PadRight (widest) + " = " + BuiltInConstVal (sc.rVal));
-            }
-            Console.WriteLine ("");
-        }
-
-        public static bool IsTaggedNoisy (MethodInfo methInfo)
-        {
-            return (methInfo != null) && Attribute.IsDefined (methInfo, typeof (xmrMethodIsNoisyAttribute));
-        }
-
-        public static string BuiltInConstVal (CompValu rVal)
-        {
-            if (rVal is CompValuInteger) {
-                int x = ((CompValuInteger)rVal).x;
-                return "0x" + x.ToString ("X8") + " = " + x.ToString ().PadLeft (11);
-            }
-            if (rVal is CompValuFloat) return ((CompValuFloat)rVal).x.ToString ();
-            if (rVal is CompValuString) {
-                StringBuilder sb = new StringBuilder ();
-                SCRIPTBASECLASS.PrintParam (sb, ((CompValuString)rVal).x);
-                return sb.ToString ();
-            }
-            if (rVal is CompValuSField) {
-                FieldInfo fi = ((CompValuSField)rVal).field;
-                StringBuilder sb = new StringBuilder ();
-                SCRIPTBASECLASS.PrintParam (sb, fi.GetValue (null));
-                return sb.ToString ();
-            }
-            return rVal.ToString ();  // just prints the type
-        }
-
         /**
          * @brief Parse out constant for event handler argument value.
          * @param token = points to beginning of constant
@@ -746,7 +693,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (XMREngTest.scriptRoots.Length > 1) {
                 if (primUUID != "") {
                     StringBuilder sb = new StringBuilder ();
-                    SCRIPTBASECLASS.PrintParam (sb, primUUID);
+                    TokenDeclInline.PrintParam (sb, primUUID);
                     sb.Append (") ");
                     this.msgPrefix = sb.ToString ();
                 } else {
@@ -776,7 +723,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     bool first = true;
                     foreach (object ehArg in inst.ehArgs) {
                         if (!first) sb.Append (',');
-                        SCRIPTBASECLASS.PrintParam (sb, ehArg);
+                        TokenDeclInline.PrintParam (sb, ehArg);
                         first = false;
                     }
                     sb.Append (')');
@@ -3323,71 +3270,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 for (int i = 0; i < parms.Length; i ++) {
                     object p = parms[i];
                     if (i > 0) sb.Append (", ");
-                    PrintParam (sb, p);
+                    TokenDeclInline.PrintParam (sb, p);
                 }
                 sb.Append (')');
             }
             Console.WriteLine (sb.ToString ());
-        }
-        public static void PrintParam (StringBuilder sb, object p)
-        {
-            if (p == null) {
-                sb.Append ("null");
-            } else if (p is LSL_List) {
-                sb.Append ('[');
-                object[] d = ((LSL_List)p).Data;
-                for (int i = 0; i < d.Length; i ++) {
-                    if (i > 0) sb.Append (',');
-                    PrintParam (sb, d[i]);
-                }
-                sb.Append (']');
-            } else if (p is LSL_Rotation) {
-                LSL_Rotation r = (LSL_Rotation)p;
-                sb.Append ('<');
-                sb.Append (r.x);
-                sb.Append (',');
-                sb.Append (r.y);
-                sb.Append (',');
-                sb.Append (r.z);
-                sb.Append (',');
-                sb.Append (r.s);
-                sb.Append ('>');
-            } else if (p is LSL_String) {
-                PrintParamString (sb, (string)(LSL_String)p);
-            } else if (p is LSL_Vector) {
-                LSL_Vector v = (LSL_Vector)p;
-                sb.Append ('<');
-                sb.Append (v.x);
-                sb.Append (',');
-                sb.Append (v.y);
-                sb.Append (',');
-                sb.Append (v.z);
-                sb.Append ('>');
-            } else if (p is string) {
-                PrintParamString (sb, (string)p);
-            } else {
-                sb.Append (p.ToString ());
-            }
-        }
-        private static void PrintParamString (StringBuilder sb, string p)
-        {
-            sb.Append ('"');
-            foreach (char c in p) {
-                if (c == '\n') {
-                    sb.Append ("\\n");
-                    continue;
-                }
-                if (c == '"') {
-                    sb.Append ("\\\"");
-                    continue;
-                }
-                if (c == '\\') {
-                    sb.Append ("\\\\");
-                    continue;
-                }
-                sb.Append (c);
-            }
-            sb.Append ('"');
         }
 
         /**

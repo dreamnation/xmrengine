@@ -334,6 +334,140 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			return null;
 		}
+
+		/**
+		 * @brief Print out a list of all the built-in functions and constants.
+		 */
+		public delegate void WriteLine (string str);
+		public static void PrintBuiltins (bool inclNoisyTag, WriteLine writeLine)
+		{
+			writeLine ("\nBuilt-in functions:\n");
+			SortedDictionary<string, TokenDeclInline> bifs = new SortedDictionary<string, TokenDeclInline> ();
+			foreach (TokenDeclVar bif in TokenDeclInline.inlineFunctions) {
+				bifs.Add (bif.fullName, (TokenDeclInline)bif);
+			}
+			foreach (TokenDeclInline bif in bifs.Values) {
+				char noisy = (!inclNoisyTag || !IsTaggedNoisy (bif.GetMethodInfo ())) ? ' ' : (bif.retType is TokenTypeVoid) ? 'N' : 'R';
+				writeLine (noisy + "   " + bif.retType.ToString ().PadLeft (8) + " " + bif.fullName);
+			}
+			if (inclNoisyTag) {
+				writeLine ("\nN - stub that writes name and arguments to stdout");
+				writeLine ("R - stub that writes name and arguments to stdout then reads return value from stdin");
+				writeLine ("    format is:  function_name : return_value");
+				writeLine ("      example:  llKey2Name:\"Kunta Kinte\"");
+			}
+
+			writeLine ("\nBuilt-in constants:\n");
+			SortedDictionary<string, ScriptConst> scs = new SortedDictionary<string, ScriptConst> ();
+			int widest = 0;
+			foreach (ScriptConst sc in ScriptConst.scriptConstants.Values) {
+				if (widest < sc.name.Length) widest = sc.name.Length;
+				scs.Add (sc.name, sc);
+			}
+			foreach (ScriptConst sc in scs.Values) {
+				writeLine ("    " + sc.rVal.type.ToString ().PadLeft (8) + " " + sc.name.PadRight (widest) + " = " + BuiltInConstVal (sc.rVal));
+			}
+		}
+
+		public static bool IsTaggedNoisy (MethodInfo methInfo)
+		{
+			return (methInfo != null) && Attribute.IsDefined (methInfo, typeof (xmrMethodIsNoisyAttribute));
+		}
+
+		public static string BuiltInConstVal (CompValu rVal)
+		{
+			if (rVal is CompValuInteger) {
+				int x = ((CompValuInteger)rVal).x;
+				return "0x" + x.ToString ("X8") + " = " + x.ToString ().PadLeft (11);
+			}
+			if (rVal is CompValuFloat) return ((CompValuFloat)rVal).x.ToString ();
+			if (rVal is CompValuString) {
+				StringBuilder sb = new StringBuilder ();
+				PrintParam (sb, ((CompValuString)rVal).x);
+				return sb.ToString ();
+			}
+			if (rVal is CompValuSField) {
+				FieldInfo fi = ((CompValuSField)rVal).field;
+				StringBuilder sb = new StringBuilder ();
+				PrintParam (sb, fi.GetValue (null));
+				return sb.ToString ();
+			}
+			return rVal.ToString ();  // just prints the type
+		}
+
+		public static void PrintParam (StringBuilder sb, object p)
+		{
+			if (p == null) {
+				sb.Append ("null");
+			} else if (p is LSL_List) {
+				sb.Append ('[');
+				object[] d = ((LSL_List)p).Data;
+				for (int i = 0; i < d.Length; i ++) {
+					if (i > 0) sb.Append (',');
+					PrintParam (sb, d[i]);
+				}
+				sb.Append (']');
+			} else if (p is LSL_Rotation) {
+				LSL_Rotation r = (LSL_Rotation)p;
+				sb.Append ('<');
+				sb.Append (r.x);
+				sb.Append (',');
+				sb.Append (r.y);
+				sb.Append (',');
+				sb.Append (r.z);
+				sb.Append (',');
+				sb.Append (r.s);
+				sb.Append ('>');
+			} else if (p is LSL_String) {
+				PrintParamString (sb, (string)(LSL_String)p);
+			} else if (p is LSL_Vector) {
+				LSL_Vector v = (LSL_Vector)p;
+				sb.Append ('<');
+				sb.Append (v.x);
+				sb.Append (',');
+				sb.Append (v.y);
+				sb.Append (',');
+				sb.Append (v.z);
+				sb.Append ('>');
+			} else if (p is string) {
+				PrintParamString (sb, (string)p);
+			} else {
+				sb.Append (p.ToString ());
+			}
+		}
+
+		private static void PrintParamString (StringBuilder sb, string p)
+		{
+			sb.Append ('"');
+			foreach (char c in p) {
+				if (c == '\b') {
+					sb.Append ("\\b");
+					continue;
+				}
+				if (c == '\n') {
+					sb.Append ("\\n");
+					continue;
+				}
+				if (c == '\r') {
+					sb.Append ("\\r");
+					continue;
+				}
+				if (c == '\t') {
+					sb.Append ("\\t");
+					continue;
+				}
+				if (c == '"') {
+					sb.Append ("\\\"");
+					continue;
+				}
+				if (c == '\\') {
+					sb.Append ("\\\\");
+					continue;
+				}
+				sb.Append (c);
+			}
+			sb.Append ('"');
+		}
 	}
 
 	/**

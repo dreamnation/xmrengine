@@ -22,16 +22,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /**
          * @brief Stand-alone compiler main program.
          *
-         * mono xmrengcomp.exe -out binfilename -asm asmfilename sourcefiles...
+         * mono xmrengcomp.exe -out objfilename -asm asmfilename sourcefiles...
          */
         public static void Main (string[] args)
         {
+            MMRWebRequest.allowFileURL = true;
+ 
 #ifdef SECRET_STUFF
             bool decode = false;
             string asmFileName = null;
 #endif
             bool plaintext = false;
-            string binFileName = null;
+            string objFileName = null;
             string sourceHash = null;
             List<string> sourceFileNames = new List<string> ();
 
@@ -72,8 +74,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     continue;
                 }
 #endif
+                if (arg == "-builtins") {
+                    TokenDeclInline.PrintBuiltins (false, Console.WriteLine);
+                    return;
+                }
                 if (arg == "-out") {
-                    binFileName = args[++i];
+                    objFileName = args[++i];
                     continue;
                 }
                 if (arg == "-version") {
@@ -90,7 +96,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     goto usage;
                 }
 
-                DecodeFile (sourceFileNames[0], asmFileName, binFileName, plaintext);
+                DecodeFile (sourceFileNames[0], asmFileName, objFileName, plaintext);
                 return;
             }
 #endif
@@ -100,7 +106,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * file was specified (where we will write the encrypted
              * object file).
              */
-            if (binFileName == null) {
+            if (objFileName == null) {
                 Console.WriteLine ("missing -out option");
                 goto usage;
             }
@@ -143,7 +149,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Attempt to compile AST to object code.
              */
-            Stream objFileStream = new FileStream (binFileName, FileMode.Create);
+            Stream objFileStream = new FileStream (objFileName, FileMode.Create);
             if (!plaintext) objFileStream = Encrypt (objFileStream);
             BinaryWriter objFileWriter = new BinaryWriter (objFileStream);
             bool ok;
@@ -153,7 +159,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 objFileWriter.Close ();
             }
             if (!ok) {
-                File.Delete (binFileName);
+                File.Delete (objFileName);
                 Console.WriteLine ("Compilation errors.");
                 Environment.Exit (1);
             }
@@ -163,7 +169,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
 #ifdef SECRET_STUFF
             if (asmFileName != null) {
-                objFileStream = new FileStream (binFileName, FileMode.Open);
+                objFileStream = new FileStream (objFileName, FileMode.Open);
                 if (!plaintext) objFileStream = Decrypt (objFileStream);
                 BinaryReader objFileReader = new BinaryReader (objFileStream);
                 TextWriter asmFileWriter = (asmFileName != "-") ? File.CreateText (asmFileName) : Console.Out;
@@ -180,12 +186,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 usage:
             Console.WriteLine ("");
-            Console.WriteLine ("xmrengcomp.exe -out <outputxmrobjfile> [<inputsourcefile> ...]");
+            Console.WriteLine ("xmrengcomp.exe -out <outputxmrobjfile> [-asm <outputxmrasmfile>] [<inputsourcefile> ...]");
             Console.WriteLine ("               omit inputsourcefiles to read from stdin");
+            Console.WriteLine ("xmrengcomp.exe -builtins");
             Console.WriteLine ("xmrengcomp.exe -version");
 #ifdef SECRET_STUFF
             Console.WriteLine ("xmrengcomp.exe -genkey");
-            Console.WriteLine ("xmrengcomp.exe -decode [-asm <outputxmrasmfile>] [-out <outputxmrobjfile>] [-plaintext] <inputbinaryfile>");
+            Console.WriteLine ("xmrengcomp.exe -decode [-asm <outputxmrasmfile>] [-plaintext] <inputbinaryfile>");
 #endif
 version:
             Console.WriteLine ("");
@@ -208,10 +215,10 @@ version:
          * @param decodeFileName = name of the one-and-only input file
          * @param asmFileName = null: don't bother disassembling
          *                      else: name of assembly output file
-         * @param binFileName = null: don't bother writing decrypted CIL binary file
-         *                      else: name of decrypted CIL binary file to write
+         * @param objFileName = null: don't bother writing decrypted CIL object file
+         *                      else: name of decrypted CIL object file to write
          */
-        private static void DecodeFile (string decodeFileName, string asmFileName, string binFileName, bool plaintext)
+        private static void DecodeFile (string decodeFileName, string asmFileName, string objFileName, bool plaintext)
         {
             /*
              * Open file to decode.
