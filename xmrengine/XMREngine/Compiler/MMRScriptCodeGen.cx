@@ -116,6 +116,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static MethodInfo heapTrackerObjectPush = typeof (HeapTrackerObject).GetMethod ("Push", new Type[0]);
 		private static MethodInfo heapTrackerStringPush = typeof (HeapTrackerString).GetMethod ("Push", new Type[0]);
 
+        private static MethodInfo catchExcToStrMethodInfo = GetStaticMethod (typeof (ScriptCodeGen),
+                                                                             "CatchExcToStr",
+                                                                             new Type[] { typeof (Exception) });
+
+		//private static MethodInfo consoleWriteMethodInfo      = GetStaticMethod (typeof (ScriptCodeGen), "ConsoleWrite",   new Type[] { typeof (string) });
+
 		public static bool CodeGen (TokenScript tokenScript, BinaryWriter objFileWriter, string sourceHash)
 		{
 			/*
@@ -3089,8 +3095,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 #endif
 			OutputCallNoSwitchStmt ();				//         switch (tryCallNo) ...
 
-			CompValuLocalVar catchVarLoc = new CompValuLocalVar (tryStmt.catchVar.type, tryStmt.catchVar.name.val, this);
-			tryStmt.catchVar.location = catchVarLoc;
+            CompValuLocalVar catchVarLocExc = null;
+            CompValuTemp catchVarLocStr = null;
+
+            if (tryStmt.catchVar.type.ToSysType () == typeof (Exception)) {
+                catchVarLocExc = new CompValuLocalVar (tryStmt.catchVar.type, tryStmt.catchVar.name.val, this);
+            } else if (tryStmt.catchVar.type.ToSysType () == typeof (String)) {
+                catchVarLocStr = new CompValuTemp (tryStmt.catchVar.type, this);
+            }
+
+            ScriptMyLocal excLocal = ilGen.DeclareLocal (typeof (String), "catchstr_" + tryStmt.Unique);
 
 			ilGen.BeginCatchBlock (typeof (Exception));		// start of the catch block that can catch any exception
 #if DEBUG_TRYSTMT
@@ -3116,12 +3130,25 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 										// exc = ScriptRestoreCatchException.Unwrap (exc);
 			ilGen.Emit (tryStmt.catchStmt, OpCodes.Dup);		// rethrow if IXMRUncatchable (eg, StackCaptureException)
 			ilGen.Emit (tryStmt.catchStmt, OpCodes.Brfalse, catchRetro);
-			if (catchVarLoc.type.ToSysType () != typeof (Exception)) {
-				throw new Exception ("bad catch var type " + catchVarLoc.type.ToString ());
-			}
-			ilGen.Emit (tryStmt.catchStmt, OpCodes.Dup);
-			catThrown.Pop (this, tryStmt);				// store exception object in catThrown
-			catchVarLoc.Pop (this, tryStmt.catchVar.name);  	// also store in script-visible variable
+            if (tryStmt.catchVar.type.ToSysType () == typeof (Exception)) {
+                tryStmt.catchVar.location = catchVarLocExc;
+                ilGen.Emit (tryStmt.catchStmt, OpCodes.Dup);
+                catThrown.Pop (this, tryStmt);				// store exception object in catThrown
+                catchVarLocExc.Pop (this, tryStmt.catchVar.name);      // also store in script-visible variable
+            } else if (tryStmt.catchVar.type.ToSysType () == typeof (String)) {
+                tryStmt.catchVar.location = catchVarLocStr;
+                ilGen.Emit (tryStmt.catchStmt, OpCodes.Dup);
+                catThrown.Pop (this, tryStmt);				// store exception object in catThrown
+                ilGen.Emit (tryStmt.catchStmt, OpCodes.Call, catchExcToStrMethodInfo);
+
+                ilGen.Emit (tryStmt.catchStmt, OpCodes.Stloc, excLocal);
+                catchVarLocStr.PopPre (this, tryStmt.catchVar.name);
+                ilGen.Emit (tryStmt.catchStmt, OpCodes.Ldloc, excLocal);
+                catchVarLocStr.PopPost (this, tryStmt.catchVar.name, tokenTypeStr);
+            } else {
+                throw new Exception ("bad catch var type " + tryStmt.catchVar.type.ToString ());
+            }
+
 			SetCallNo (tryStmt, tryCallNo, tryThrow.index);		// __tryCallNo = tryThrow so it knows to do 'throw catThrown' on restore
 
 			GetCallNo (tryStmt, catCallNo);				// if (__catCallNo >= 0) goto catchCallSw;
@@ -6046,6 +6073,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		// but http://wiki.secondlife.com/wiki/LSL_Language_Test (lslangtest1.lsl) says negate all 4 values
 		public static LSL_Rotation LSLRotationNegate (LSL_Rotation r) { return new LSL_Rotation (-r.x,-r.y,-r.z,-r.s); }
 		public static LSL_Vector   LSLVectorNegate   (LSL_Vector v)   { return -v; }
+        public static string       CatchExcToStr     (Exception exc)  { return exc.ToString(); }
+        //public static void         ConsoleWrite      (string str)     { Console.Write(str); }
 
 		/**
 		 * @brief Defines an internal label that is used as a target for 'break' and 'continue' statements.

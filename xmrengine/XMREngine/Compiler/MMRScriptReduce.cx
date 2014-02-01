@@ -3062,8 +3062,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					tag.name = (TokenName)token;
 					token    = token.nextToken.nextToken;  // skip over <varname> ')'
 
-					if (!(tag.type is TokenTypeExc)) {
-						ErrorMsg (tag.type, "must be type 'exception'");
+					if ((!(tag.type is TokenTypeExc)) && (!(tag.type is TokenTypeStr))) {
+						ErrorMsg (tag.type, "must be type 'exception' or 'string'");
 					}
 
 					tokenStmtTry = new TokenStmtTry (tryKw);
