@@ -90,6 +90,10 @@
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\..\..\..\opensim\bin\OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll</HintPath>
     </Reference>
+    <Reference Include="OpenSim.Services.Interfaces, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\..\..\opensim\bin\OpenSim.Services.Interfaces.dll</HintPath>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core">
       <RequiredTargetFramework>3.5</RequiredTargetFramework>
@@ -116,6 +120,7 @@
     <Compile Include="MMRScriptTokenize.cs" />
     <Compile Include="MMRScriptTypeCast.cs" />
     <Compile Include="MMRScriptVarDict.cs" />
+    <Compile Include="MMRWebRequest.cs" />
     <Compile Include="XMRArray.cs" />
     <Compile Include="XMREngCommit.cs" />
     <Compile Include="XMREngine.cs" />

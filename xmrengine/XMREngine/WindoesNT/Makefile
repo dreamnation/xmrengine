@@ -33,6 +33,7 @@ xmrengwincsfiles.zip: \
 		MMRScriptTokenize.cs   \
 		MMRScriptTypeCast.cs   \
 		MMRScriptVarDict.cs    \
+		MMRWebRequest.cs       \
 		XMRArray.cs            \
 		XMREngXmrTestLs.cs     \
 		XMREvents.cs           \
@@ -48,9 +49,10 @@ xmrengwincsfiles.zip: \
 		XMRInstSorpra.cs       \
 		XMRSDTypeClObj.cs      \
 		XMRScriptThread.cs     \
-		XMRScriptUThread.cs
+		XMRScriptUThread.cs    \
+		xmrengine.csproj
 	rm -f xmrengwincsfiles.zip
-	zip xmrengwincsfiles.zip *.cs
+	zip xmrengwincsfiles.zip $^
 
 XMREngCommit.cs: ../Engine/XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs
 	cp -a $< $@
