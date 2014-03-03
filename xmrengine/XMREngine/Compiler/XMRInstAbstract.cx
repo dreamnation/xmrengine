@@ -724,7 +724,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public void xmrEventCallHandler (LSL_List ev)
         {
             object[] data = ev.Data;
-            int evc = (int)ev.GetLSLIntegerItem (0);
+            int evc = (int)(ev.GetLSLIntegerItem (0).value & 0xFFFFFFFF);
             ScriptEventHandler seh = m_ObjCode.scriptEventHandlerTable[stateCode,evc];
             if (seh != null) {
                 int nargs = data.Length - 1;
