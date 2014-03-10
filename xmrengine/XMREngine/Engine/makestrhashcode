@@ -1,0 +1,7 @@
+
+strhashcode: GetStrHashCode.exe
+	mono GetStrHashCode.exe $(STR)
+
+GetStrHashCode.exe: GetStrHashCode.cs
+	gmcs -out:GetStrHashCode.exe GetStrHashCode.cs
+

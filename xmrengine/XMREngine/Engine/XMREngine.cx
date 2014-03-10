@@ -209,9 +209,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             numThreadScriptWorkers = m_Config.GetInt ("NumThreadScriptWorkers", 1);
             m_ScriptThreads        = new XMRScriptThread[numThreadScriptWorkers];
 
-            for (int i = 0; i < numThreadScriptWorkers; i ++) {
-                m_ScriptThreads[i] = new XMRScriptThread(this);
+#if EXTERNAL
+            string asu = "";
+            if (config.Configs["AssetService"] != null) asu = config.Configs["AssetService"].GetString("AssetServerURI", "").ToLowerInvariant ();
+            int m = asu.IndexOf ("//");
+            if (m >= 0) asu = asu.Substring (m + 2);    
+            m = asu.IndexOf (":");
+            if (m >= 0) asu = asu.Substring (0, m);
+            if (asu.GetHashCode () == EXTERNAL) {
+#endif
+                for (int i = 0; i < numThreadScriptWorkers; i ++) {
+                    m_ScriptThreads[i] = new XMRScriptThread(this);
+                }
+#if EXTERNAL
             }
+#endif
+
             m_SleepThread = Watchdog.StartThread (RunSleepThread, "xmrengine sleep", ThreadPriority.Normal, false, true);
             m_SliceThread = Watchdog.StartThread (RunSliceThread, "xmrengine slice", ThreadPriority.Normal, false, true);
 
@@ -774,6 +787,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_log.Info ("[XMREngine]: xmr suspend - suspend script processing");
                     m_log.Info ("[XMREngine]: xmr tracecalls [yes | no]");
                     m_log.Info ("[XMREngine]: xmr verbose [yes | no]");
+                    m_log.Info ("[XMREngine]: xmr version");
                     break;
                 }
                 case "ls": {
@@ -838,6 +852,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         m_Verbose = (args[2][0] & 1) != 0;
                     }
                     m_log.Info ("[XMREngine]: verbose " + (m_Verbose ? "yes" : "no"));
+                    break;
+                }
+                case "version": {
+                    m_log.Info ("[XMREngine]: compiler version " + ScriptCompCommit.commitInfo);
+                    m_log.Info ("[XMREngine]:   engine version " + commitInfo);
                     break;
                 }
                 default: {

@@ -7,12 +7,15 @@ COMMITHASH  := $(strip $(shell git log -1 | grep ^commit | sed 's/commit//g'))
 COMMITDATE  := $(strip $(shell git log -1 --date=iso | grep ^Date: | sed 's/Date://g'))
 COMMITCLEAN := $(strip $(shell git status | grep -q modified: ; echo $$?))
 
+EXTHASHCODE := $(shell make -s -f makestrhashcode STR=world.dreamnation.net)
+
 HAVE_MONOCONTS   ?= $(shell ../Compiler/findmonotasklet.sh $(MONOBINDIR) $(MONODLLDIR) Continuation)
 HAVE_MMRUTHREADS ?= $(shell ../Compiler/findmonotasklet.sh $(MONOBINDIR) $(MONODLLDIR) MMRUThread)
 
 XMRENGINEDLLS := xmrengine_sys.dll
 ifeq ($(HAVE_MONOCONTS),1)
   XMRENGINEDLLS += xmrengine_con.dll
+  XMRENGINEDLLS += xmrengine_con_ext.dll
 endif
 ifeq ($(HAVE_MMRUTHREADS),1)
   XMRENGINEDLLS += xmrengine_mmr.dll
@@ -86,6 +89,14 @@ xmrengine_con.dll: $(ENGINECXFILES:.cx=_con.cs) XMREngCommit_$(COMMITHASH)_$(COM
 		$(patsubst %.dll,-reference:%.dll,$(REFERENCED)) \
 		-reference:$(MONODLLDIR)/Mono.Tasklets.dll
 
+xmrengine_con_ext.dll: $(ENGINECXFILES:.cx=_con_ext.cs) XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs $(REFERENCED)
+	rm -f xmrengine_con_ext.dll*
+	$(MONOBINDIR)/dmcs -debug -target:library \
+		-out:$@ \
+		$(ENGINECXFILES:.cx=_con_ext.cs) XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs \
+		$(patsubst %.dll,-reference:%.dll,$(REFERENCED)) \
+		-reference:$(MONODLLDIR)/Mono.Tasklets.dll
+
 xmrengine_mmr.dll: $(ENGINECXFILES:.cx=_mmr.cs) XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs $(REFERENCED)
 	rm -f xmrengine_mmr.dll*
 	$(MONOBINDIR)/dmcs -debug -target:library \
@@ -102,13 +113,16 @@ XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs: XMREngCommit.cx
 		-DGITCOMMITCLEAN=$(COMMITCLEAN) -C -P -nostdinc -o $@ $<
 
 %_sys.cs: %.cx $(wildcard ../*/*.h)
-	cpp -I../Compiler -DHAVE_MONOCONTS=0 -DHAVE_MMRUTHREADS=0 -C -P -nostdinc -o $@ $<
+	cpp -I../Compiler -DHAVE_MONOCONTS=0 -DHAVE_MMRUTHREADS=0 -DEXTERNAL=0 -C -P -nostdinc -o $@ $<
 
 %_con.cs: %.cx $(wildcard ../*/*.h)
-	cpp -I../Compiler -DHAVE_MONOCONTS=1 -DHAVE_MMRUTHREADS=0 -C -P -nostdinc -o $@ $<
+	cpp -I../Compiler -DHAVE_MONOCONTS=1 -DHAVE_MMRUTHREADS=0 -DEXTERNAL=0 -C -P -nostdinc -o $@ $<
+
+%_con_ext.cs: %.cx $(wildcard ../*/*.h)
+	cpp -I../Compiler -DHAVE_MONOCONTS=1 -DHAVE_MMRUTHREADS=0 -DEXTERNAL=$(EXTHASHCODE) -C -P -nostdinc -o $@ $<
 
 %_mmr.cs: %.cx $(wildcard ../*/*.h)
-	cpp -I../Compiler -DHAVE_MONOCONTS=1 -DHAVE_MMRUTHREADS=1 -C -P -nostdinc -o $@ $<
+	cpp -I../Compiler -DHAVE_MONOCONTS=1 -DHAVE_MMRUTHREADS=1 -DEXTERNAL=0 -C -P -nostdinc -o $@ $<
 
 ../Compiler/xmrengshare.dll: $(wildcard ../Compiler/*.cx) $(wildcard ../Compiler/*.h)
 	make -C ../Compiler xmrengshare.dll
