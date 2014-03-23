@@ -968,8 +968,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 */
 		public static void DefineInternalType (string name, Type type)
 		{
-			string2Type.Add (name, type);
-			type2String.Add (type, name);
+            if (!string2Type.ContainsKey(name))
+            {
+                string2Type.Add (name, type);
+                type2String.Add (type, name);
+            }
 		}
 
 		private string GetStrFromType (Type t)
