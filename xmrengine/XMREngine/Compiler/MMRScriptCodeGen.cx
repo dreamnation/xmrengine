@@ -42,8 +42,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public static readonly int CALL_FRAME_MEMUSE = 64;
 		public static readonly int STRING_LEN_TO_MEMUSE = 2;
 
-		public static Type xmrInstSuperType;  // typeof whatever is actually malloc'd for script instances
-		                                      // - must inherit from XMRInstAbstract
+		public static Type xmrInstSuperType = null;  // typeof whatever is actually malloc'd for script instances
+		                                             // - must inherit from XMRInstAbstract
 
 		/*
 		 * Static tables that there only needs to be one copy of for all.

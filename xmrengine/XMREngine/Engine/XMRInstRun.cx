@@ -575,7 +575,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Display full exception message in log.
              */
-            Verbose (msg.ToString() + XMRExceptionFixString (e.ToString(), false) + 
+            if (m_Engine.m_ScriptDebug) m_log.DebugFormat (msg.ToString() + XMRExceptionFixString (e.ToString(), false) + 
                         "\n--------\n" + e.StackTrace);
 
             /*

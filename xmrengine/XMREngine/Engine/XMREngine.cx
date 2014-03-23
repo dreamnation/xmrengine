@@ -51,6 +51,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private bool m_LateInit;
         private bool m_TraceCalls;
         public  bool m_Verbose;
+        public  bool m_ScriptDebug;
         public  Scene m_Scene;
         private IConfigSource m_ConfigSource;
         private IConfig m_Config;
@@ -107,12 +108,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_log.Info ("[XMREngine]: fetchbinary fingerprint " + ScriptCompile.Fingerprint);
 
             envar = Environment.GetEnvironmentVariable ("XMREngineTraceCalls");
-            m_TraceCalls = (envar != null) && ((envar[0] & 1) != 0);
+            m_TraceCalls  = (envar != null) && ((envar[0] & 1) != 0);
             m_log.Info ("[XMREngine]: m_TraceCalls=" + m_TraceCalls);
 
             envar = Environment.GetEnvironmentVariable ("XMREngineVerbose");
-            m_Verbose    = (envar != null) && ((envar[0] & 1) != 0);
+            m_Verbose     = (envar != null) && ((envar[0] & 1) != 0);
             m_log.Info ("[XMREngine]: m_Verbose=" + m_Verbose);
+
+            envar = Environment.GetEnvironmentVariable ("XMREngineScriptDebug");
+            m_ScriptDebug = (envar != null) && ((envar[0] & 1) != 0);
+            m_log.Info ("[XMREngine]: m_ScriptDebug=" + m_ScriptDebug);
         }
 
         public string Name
@@ -341,26 +346,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private void OneTimeLateInitialization ()
         {
             /*
-             * Start creating type XMRInstanceSuperType that contains a field
-             * m_ApiManager_<APINAME> that points to the per-instance context
-             * struct for that API, ie, the 'this' value passed to all methods
-             * in that API.  It is in essence:
-             *
-             *  public class XMRInstanceSuperType : XMRInstance {
-             *      public XMRLSL_Api m_ApiManager_LSL;   // 'this' value for all ll...() functions
-             *      public MOD_Api    m_ApiManager_MOD;   // 'this' value for all mod...() functions
-             *      public OSSL_Api   m_ApiManager_OSSL;  // 'this' value for all os...() functions
-             *              ....
-             *  }
-             */
-            AssemblyName assemblyName = new AssemblyName ();
-            assemblyName.Name = "XMRInstanceSuperAssembly";
-            AssemblyBuilder assemblyBuilder = Thread.GetDomain ().DefineDynamicAssembly (assemblyName, AssemblyBuilderAccess.Run);
-            ModuleBuilder moduleBuilder = assemblyBuilder.DefineDynamicModule ("XMRInstanceSuperModule");
-            TypeBuilder typeBuilder = moduleBuilder.DefineType ("XMRInstanceSuperType", TypeAttributes.Public | TypeAttributes.Class);
-            typeBuilder.SetParent (typeof (XMRInstance));
-
-            /*
              * Build list of defined APIs and their 'this' types and define a field in XMRInstanceSuperType.
              */
             ApiManager am = new ApiManager ();
@@ -370,19 +355,46 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 IScriptApi scriptApi = am.CreateApi (api);
                 Type apiCtxType = scriptApi.GetType ();
                 if (api == "LSL") apiCtxType = typeof (XMRLSL_Api);
-                string fieldName = "m_ApiManager_" + api;
-                typeBuilder.DefineField (fieldName, apiCtxType, FieldAttributes.Public);
                 apiCtxTypes[api] = apiCtxType;
             }
 
-            /*
-             * Finalize definition of XMRInstanceSuperType.
-             * Give the compiler a short name to reference it by,
-             * otherwise it will try to use the AssemblyQualifiedName
-             * and fail miserably.
-             */
-            ScriptCodeGen.xmrInstSuperType = typeBuilder.CreateType ();
-            ScriptObjWriter.DefineInternalType ("xmrsuper", ScriptCodeGen.xmrInstSuperType);
+            if (ScriptCodeGen.xmrInstSuperType == null) // Only create type once!
+            {
+                /*
+                 * Start creating type XMRInstanceSuperType that contains a field
+                 * m_ApiManager_<APINAME> that points to the per-instance context
+                 * struct for that API, ie, the 'this' value passed to all methods
+                 * in that API.  It is in essence:
+                 *
+                 *  public class XMRInstanceSuperType : XMRInstance {
+                 *      public XMRLSL_Api m_ApiManager_LSL;   // 'this' value for all ll...() functions
+                 *      public MOD_Api    m_ApiManager_MOD;   // 'this' value for all mod...() functions
+                 *      public OSSL_Api   m_ApiManager_OSSL;  // 'this' value for all os...() functions
+                 *              ....
+                 *  }
+                 */
+                AssemblyName assemblyName = new AssemblyName ();
+                assemblyName.Name = "XMRInstanceSuperAssembly";
+                AssemblyBuilder assemblyBuilder = Thread.GetDomain ().DefineDynamicAssembly (assemblyName, AssemblyBuilderAccess.Run);
+                ModuleBuilder moduleBuilder = assemblyBuilder.DefineDynamicModule ("XMRInstanceSuperModule");
+                TypeBuilder typeBuilder = moduleBuilder.DefineType ("XMRInstanceSuperType", TypeAttributes.Public | TypeAttributes.Class);
+                typeBuilder.SetParent (typeof (XMRInstance));
+
+                foreach (string apiname in apiCtxTypes.Keys)
+                {
+                    string fieldName = "m_ApiManager_" + apiname;
+                    typeBuilder.DefineField (fieldName, apiCtxTypes[apiname], FieldAttributes.Public);
+                }
+
+                /*
+                 * Finalize definition of XMRInstanceSuperType.
+                 * Give the compiler a short name to reference it by,
+                 * otherwise it will try to use the AssemblyQualifiedName
+                 * and fail miserably.
+                 */
+                ScriptCodeGen.xmrInstSuperType = typeBuilder.CreateType ();
+                ScriptObjWriter.DefineInternalType ("xmrsuper", ScriptCodeGen.xmrInstSuperType);
+            }
 
             /*
              * Tell the compiler about all the constants and methods for each API.
@@ -1317,7 +1329,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     errors.Add(initerr.Message);
                 } else {
                     foreach (Object err in errors) {
-                        Verbose ("[XMREngine]:   {0}", err.ToString());
+                        if (m_ScriptDebug)
+                            m_log.DebugFormat ("[XMREngine]:   {0}", err.ToString());
                     }
                 }
                 lock (m_ScriptErrors) {
