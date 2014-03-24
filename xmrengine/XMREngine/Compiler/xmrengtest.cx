@@ -93,6 +93,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     eventIO = true;
                     continue;
                 }
+                if (arg == "-heaplimit") {
+                    try {
+                        XMRInstance.HEAPLIMIT = int.Parse (args[++i]);
+                    } catch {
+                        goto usage;
+                    }
+                    continue;
+                }
                 if (arg == "-ipcchannel") {
                     try {
                         ipcChannels.AddLast (int.Parse (args[++i]));
@@ -412,12 +420,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Environment.Exit (0);
 
         usage:
-            Console.WriteLine ("usage: mono xmrengtest.exe [ -builtins ] [ -checkrun ] [ -eventio ] [ -ipcchannel <channel> ] [ -linknum <number> ] [ -primname <name> ] [ -primuuid <uuid> ] [ -serialize ] [ -uthread <type> ] [ -version ] <sourcefile> ...");
+            Console.WriteLine ("usage: mono xmrengtest.exe [ -builtins ] [ -checkrun ] [ -eventio ] [ -heaplimit <numbytes> ] [ -ipcchannel <channel> ] [ -linknum <number> ] [ -primname <name> ] [ -primuuid <uuid> ] [ -serialize ] [ -uthread <type> ] [ -version ] <sourcefile> ...");
             Console.WriteLine ("     -builtins : print list of built-in functions and constants then exit");
             Console.WriteLine ("     -checkrun : simulate a thread slice at every opportunity");
             Console.WriteLine ("      -eventio : when default state_entry completes, read next event from stdin and keep doing so until eof");
             Console.WriteLine ("                 format is:  event_name ( arg1 , arg2 , ... )");
             Console.WriteLine ("                   example:  http_response(\"firstone\",3,[0,<1,2,3>,\"456\"],\"body\")");
+            Console.WriteLine ("    -heaplimit : max number of heap bytes allowed");
             Console.WriteLine ("   -ipcchannel : channel number for which llListen/llListenControl/llListenRemove/llRegionSay/llRegionSayTo/llSay are handled internally");
             Console.WriteLine ("      -linknum : link number returned by llGetLinkNumber() and used by llMessageLinked()");
             Console.WriteLine ("     -peakheap : print peak heap used");
@@ -987,7 +996,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
             if (e != null) {
                 if (!(e is StackCaptureException)) {
-                    throw new Exception ("exception in script", e);
+                    Console.WriteLine ("exception in script: " + e.Message);
+                    Console.WriteLine (inst.xmrExceptionStackTrace (e));
+                    Environment.Exit (3);
                 }
                 if (inst.callMode != XMRInstAbstract.CallMode_SAVE) {
                     throw new Exception ("bad callmode " + inst.callMode, e);
@@ -1035,7 +1046,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
      * @brief This stuff is re-instantiated on serialization.
      */
     public partial class XMRInstance : XMRInstAbstract {
-        public const int HEAPLIMIT = 65536;
+        public static int HEAPLIMIT = 65536;
         public SCRIPTBASECLASS m_ApiManager_LSL;
         public OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.IOSSL_Api m_ApiManager_OSSL;
 
