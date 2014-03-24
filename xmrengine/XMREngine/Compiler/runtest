@@ -49,6 +49,7 @@ fi
 echo uthread=$uthread
 
 majorbar
+testit overridevar
 testit melbuttons
 testev buildersbuddy
 testit listinserttest

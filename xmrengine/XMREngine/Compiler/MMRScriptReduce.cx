@@ -2598,30 +2598,32 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			tokenStmtBlock.function = currentDeclFunc;
 			tokenStmtBlock.outerStmtBlock = currentStmtBlock;
 			currentStmtBlock = tokenStmtBlock;
-			tokenScript.PushVarFrame (true);
-			Token prevStmt = null;
-			token = token.nextToken;
-			while (!(token is TokenKwBrcClose)) {
-				if (token is TokenEnd) {
-					ErrorMsg (tokenStmtBlock, "missing }");
-					currentStmtBlock = tokenStmtBlock.outerStmtBlock;
-					return null;
+			VarDict outerVariablesStack = tokenScript.variablesStack;
+			try {
+				Token prevStmt = null;
+				token = token.nextToken;
+				while (!(token is TokenKwBrcClose)) {
+					if (token is TokenEnd) {
+						ErrorMsg (tokenStmtBlock, "missing }");
+						return null;
+					}
+					Token thisStmt;
+					if (((token is TokenType) && (token.nextToken is TokenName)) || 
+					    (token is TokenKwConst)) {
+						thisStmt = ParseDeclVar (ref token, null);
+					} else {
+						thisStmt = ParseStmt (ref token);
+					}
+					if (thisStmt == null) return null;
+					if (prevStmt == null) tokenStmtBlock.statements = thisStmt;
+					                 else prevStmt.nextToken = thisStmt;
+					prevStmt = thisStmt;
 				}
-				Token thisStmt;
-				if (((token is TokenType) && (token.nextToken is TokenName)) || 
-				    (token is TokenKwConst)) {
-					thisStmt = ParseDeclVar (ref token, null);
-				} else {
-					thisStmt = ParseStmt (ref token);
-				}
-				if (thisStmt == null) return null;
-				if (prevStmt == null) tokenStmtBlock.statements = thisStmt;
-				                 else prevStmt.nextToken = thisStmt;
-				prevStmt = thisStmt;
+				token = token.nextToken;
+			} finally {
+				tokenScript.variablesStack = outerVariablesStack;
+				currentStmtBlock = tokenStmtBlock.outerStmtBlock;
 			}
-			token = token.nextToken;
-			tokenScript.PopVarFrame ();
-			currentStmtBlock = tokenStmtBlock.outerStmtBlock;
 			return tokenStmtBlock;
 		}
 
@@ -3229,6 +3231,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					token = SkipPastSemi (token);
 					return null;
 				}
+			}
+
+			/*
+			 * If doing local vars, each var goes in its own var frame,
+			 * to make sure no code before this point can reference it.
+			 */
+			if (currentStmtBlock != null) {
+				tokenScript.PushVarFrame (true);
 			}
 
 			/*
