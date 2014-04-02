@@ -108,6 +108,7 @@
     <Compile Include="MMRScriptBinOpStr.cs" />
     <Compile Include="MMRScriptCodeGen.cs" />
     <Compile Include="MMRScriptCollector.cs" />
+    <Compile Include="MMRScriptCompCommit.cs" />
     <Compile Include="MMRScriptCompile.cs" />
     <Compile Include="MMRScriptCompValu.cs" />
     <Compile Include="MMRScriptConsts.cs" />

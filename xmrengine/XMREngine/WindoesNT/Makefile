@@ -2,7 +2,9 @@ COMMITHASH  := $(strip $(shell git log -1 | grep ^commit | sed 's/commit//g'))
 COMMITDATE  := $(strip $(shell git log -1 --date=iso | grep ^Date: | sed 's/Date://g'))
 COMMITCLEAN := $(strip $(shell git status | grep -q modified: ; echo $$?))
 
-DEFS := -DHAVE_MONOCONTS=0 -DHAVE_MMRUTHREADS=0 -DSCRIPTBASECLASS=ScriptBaseClass
+EXTHASHCODE := 538609101 ## WindoesNT hash different than mono ## $(shell cd ../Engine ; make -s -f makestrhashcode STR=world.dreamnation.net)
+
+DEFS := -DEXTERNAL=$(EXTHASHCODE) -DHAVE_MONOCONTS=0 -DHAVE_MMRUTHREADS=0 -DSCRIPTBASECLASS=ScriptBaseClass
 
 KILLITALL := $(shell rm -f *.cs)
 
@@ -21,6 +23,7 @@ xmrengwincsfiles.zip: \
 		MMRScriptBinOpStr.cs   \
 		MMRScriptCodeGen.cs    \
 		MMRScriptCollector.cs  \
+		MMRScriptCompCommit.cs \
 		MMRScriptCompValu.cs   \
 		MMRScriptCompile.cs    \
 		MMRScriptConsts.cs     \
@@ -54,8 +57,14 @@ xmrengwincsfiles.zip: \
 	rm -f xmrengwincsfiles.zip
 	zip xmrengwincsfiles.zip $^
 
+MMRScriptCompCommit.cs: ../Compiler/MMRScriptCompCommit_$(COMMITHASH)_$(COMMITCLEAN).cs
+	cp -a $< $@
+
 XMREngCommit.cs: ../Engine/XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs
 	cp -a $< $@
+
+../Compiler/MMRScriptCompCommit_$(COMMITHASH)_$(COMMITCLEAN).cs: ../Compiler/MMRScriptCompCommit.cx
+	cd ../Compiler ; make MMRScriptCompCommit_$(COMMITHASH)_$(COMMITCLEAN).cs
 
 ../Engine/XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs: ../Engine/XMREngCommit.cx
 	cd ../Engine ; make XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs
