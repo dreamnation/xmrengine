@@ -168,12 +168,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         // see which avatars are on which part
                         foreach (SceneObjectPart sop in sops) {
                             if (sop.GetSittingAvatarsCount () > 0) {
-                                HashSet<UUID> seateds = sop.GetSittingAvatars ();
-                                foreach (UUID avid in seateds) {
-                                    ScenePresence sp = scene.GetScenePresence (avid);
-                                    if ((sp != null) && !sp.IsChildAgent) {
+                                HashSet<ScenePresence> seateds = sop.GetSittingAvatars ();
+                                foreach (ScenePresence sp in seateds) {
+                                    if (!sp.IsChildAgent) {
                                         SeatedAv sav = new SeatedAv ();
-                                        sav.avUUID = avid;
+                                        sav.avUUID = sp.ControllingClient.AgentId;
                                         sav.partID = sop.UUID;
                                         seatedAvs.Add (sav);
                                     }
