@@ -27,7 +27,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             if (allowFileURL && (verb == "GET")) {
                 supported = "file, http and https";
                 if (uri.Scheme == "file") {
-                    return File.OpenRead (uri.AbsolutePath);
+                    return File.OpenRead (requestUrl.Substring (7));
                 }
             }
             bool https = uri.Scheme == "https";
