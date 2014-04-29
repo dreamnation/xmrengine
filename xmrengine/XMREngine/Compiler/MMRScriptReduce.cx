@@ -4017,7 +4017,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 *          else: parenthesized expression token or constant token
 		 *          token = points past the close parenthesis
 		 */
-		private TokenRVal ParseRValParen (ref Token token)
+		private TokenRValParen ParseRValParen (ref Token token)
 		{
 			if (!(token is TokenKwParOpen)) {
 				ErrorMsg (token, "expecting (");
@@ -4675,6 +4675,53 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			}
 			return DelegateCommon.GetType (retType, argTypes, methSig);
 		}
+
+		public override void DebString (StringBuilder sb)
+		{
+			/*
+			 * Don't output if array of some type.
+			 * They will be re-instantiated as referenced by rest of script.
+			 */
+			if (arrayOfType != null) return;
+
+			/*
+			 * This class name and extended/implemented type declaration.
+			 */
+			sb.Append ("class ");
+			sb.Append (shortName.val);
+			bool first = true;
+			if (extends != null) {
+				sb.Append (" : ");
+				sb.Append (extends.longName);
+				first = false;
+			}
+			foreach (TokenDeclSDType impld in implements) {
+				sb.Append (first ? " : " : ", ");
+				sb.Append (impld.longName);
+				first = false;
+			}
+			sb.Append (" {");
+
+			/*
+			 * Inner type definitions.
+			 */
+			foreach (TokenDeclSDType subs in innerSDTypes.Values) {
+				subs.DebString (sb);
+			}
+
+			/*
+			 * Members (fields, methods, properties).
+			 */
+			foreach (TokenDeclVar memb in members) {
+				if ((memb == instFieldInit) || (memb == staticFieldInit)) {
+					memb.DebStringInitFields (sb);
+				} else if (memb.retType != null) {
+					memb.DebString (sb);
+				}
+			}
+
+			sb.Append ('}');
+		}
 	}
 
 	public class TokenDeclSDTypeDelegate : TokenDeclSDType {
@@ -5110,7 +5157,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		// debugging
 		public override void DebString (StringBuilder sb)
 		{
-			decl.DebString (sb);
+			sb.Append (decl.longName);
 		}
 	}
 
@@ -5219,7 +5266,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		// debugging
 		public override void DebString (StringBuilder sb)
 		{
-			decl.DebString (sb);
+			sb.Append (decl.longName);
 		}
 	}
 
@@ -5263,7 +5310,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		// debugging
 		public override void DebString (StringBuilder sb)
 		{
-			decl.DebString (sb);
+			sb.Append (decl.longName);
 		}
 	}
 
@@ -5339,6 +5386,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenStateBody body;
 
 		public TokenDeclState (Token original) : base (original) { }
+
+		public override void DebString (StringBuilder sb)
+		{
+			if (name == null) {
+				sb.Append ("default");
+			} else {
+				sb.Append ("state ");
+				sb.Append (name);
+			}
+			body.DebString (sb);
+		}
 	}
 
 	/**
@@ -5614,18 +5672,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		// debugging
 		public override void DebString (StringBuilder sb)
 		{
-			if ((sdtFlags & ScriptReduce.SDT_PRIVATE)   != 0) sb.Append ("private ");
-			if ((sdtFlags & ScriptReduce.SDT_PROTECTED) != 0) sb.Append ("protected ");
-			if ((sdtFlags & ScriptReduce.SDT_PUBLIC)    != 0) sb.Append ("public ");
-			if ((sdtFlags & ScriptReduce.SDT_ABSTRACT)  != 0) sb.Append ("abstract ");
-			if ((sdtFlags & ScriptReduce.SDT_FINAL)     != 0) sb.Append ("final ");
-			if ((sdtFlags & ScriptReduce.SDT_NEW)       != 0) sb.Append ("new ");
-			if ((sdtFlags & ScriptReduce.SDT_OVERRIDE)  != 0) sb.Append ("override ");
-			if ((sdtFlags & ScriptReduce.SDT_STATIC)    != 0) sb.Append ("static ");
-			if ((sdtFlags & ScriptReduce.SDT_VIRTUAL)   != 0) sb.Append ("virtual ");
+			DebStringSDTFlags (sb);
 
 			if (retType == null) {
-				sb.Append (type.ToString ());
+				sb.Append (constant ? "constant" : type.ToString ());
 				sb.Append (' ');
 				sb.Append (name.val);
 				if (init != null) {
@@ -5634,9 +5684,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				}
 				sb.Append (';');
 			} else {
-				sb.Append (retType.ToString ());
-				sb.Append (' ');
-				sb.Append (name.val);
+				if (!(retType is TokenTypeVoid)) {
+					sb.Append (retType.ToString ());
+					sb.Append (' ');
+				}
+				string namestr = name.val;
+				if (namestr == "$ctor") namestr = "constructor";
+				sb.Append (namestr);
 				sb.Append (" (");
 				for (int i = 0; i < argDecl.vars.Length; i ++) {
 					if (i > 0) sb.Append (", ");
@@ -5651,6 +5705,89 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 					body.DebString (sb);
 				}
 			}
+		}
+
+		// debugging
+		// - used to output contents of a $globalvarinit(), $instfieldinit() or $statisfieldinit() function
+		//   as a series of variable declaration statements with initial value assignments
+		//   so we get the initial value assignments done in same order as specified in script
+		public void DebStringInitFields (StringBuilder sb)
+		{
+			if ((retType == null) || !(retType is TokenTypeVoid)) throw new Exception ("bad return type " + retType.GetType ().Name);
+			if (argDecl.vars.Length != 0) throw new Exception ("has " + argDecl.vars.Length + " arg(s)");
+
+			for (Token stmt = body.statements; stmt != null; stmt = stmt.nextToken) {
+
+				/*
+				 * Body of the function should all be arithmetic statements (not eg for loops, if statements etc).
+				 */
+				TokenRVal rval = ((TokenStmtRVal)stmt).rVal;
+
+				/*
+				 * And the opcode should be a simple assignment operator.
+				 */
+				TokenRValOpBin rvob = (TokenRValOpBin)rval;
+				if (!(rvob.opcode is TokenKwAssign)) throw new Exception ("bad op type " + rvob.opcode.GetType ().Name);
+
+				/*
+				 * Get field or variable being assigned to.
+				 */
+				TokenDeclVar var = null;
+				TokenRVal left = rvob.rValLeft;
+				if (left is TokenLValIField) {
+					TokenLValIField ifield = (TokenLValIField)left;
+					TokenRValThis zhis = (TokenRValThis)ifield.baseRVal;
+					TokenDeclSDTypeClass sdt = zhis.sdtClass;
+					var = sdt.members.FindExact (ifield.fieldName.val, null);
+				}
+				if (left is TokenLValName) {
+					TokenLValName global = (TokenLValName)left;
+					var = global.stack.FindExact (global.name.val, null);
+				}
+				if (left is TokenLValSField) {
+					TokenLValSField sfield = (TokenLValSField)left;
+					TokenTypeSDTypeClass sdtc = (TokenTypeSDTypeClass)sfield.baseType;
+					TokenDeclSDTypeClass decl = sdtc.decl;
+					var = decl.members.FindExact (sfield.fieldName.val, null);
+				}
+				if (var == null) throw new Exception ("unknown var type " + left.GetType ().Name);
+
+				/*
+				 * Output flags, type name and bare variable name.
+				 * This should look like a declaration in the 'sb'
+				 * as it is not enclosed in a function.
+				 */
+				var.DebStringSDTFlags (sb);
+				var.type.DebString (sb);
+				sb.Append (' ');
+				sb.Append (var.name.val);
+
+				/*
+				 * Maybe it has a non-default initialization value.
+				 */
+				if ((var.init != null) && !(var.init is TokenRValInitDef)) {
+					sb.Append (" = ");
+					var.init.DebString (sb);
+				}
+
+				/*
+				 * End of declaration statement.
+				 */
+				sb.Append (';');
+			}
+		}
+
+		private void DebStringSDTFlags (StringBuilder sb)
+		{
+			if ((sdtFlags & ScriptReduce.SDT_PRIVATE)   != 0) sb.Append ("private ");
+			if ((sdtFlags & ScriptReduce.SDT_PROTECTED) != 0) sb.Append ("protected ");
+			if ((sdtFlags & ScriptReduce.SDT_PUBLIC)    != 0) sb.Append ("public ");
+			if ((sdtFlags & ScriptReduce.SDT_ABSTRACT)  != 0) sb.Append ("abstract ");
+			if ((sdtFlags & ScriptReduce.SDT_FINAL)     != 0) sb.Append ("final ");
+			if ((sdtFlags & ScriptReduce.SDT_NEW)       != 0) sb.Append ("new ");
+			if ((sdtFlags & ScriptReduce.SDT_OVERRIDE)  != 0) sb.Append ("override ");
+			if ((sdtFlags & ScriptReduce.SDT_STATIC)    != 0) sb.Append ("static ");
+			if ((sdtFlags & ScriptReduce.SDT_VIRTUAL)   != 0) sb.Append ("virtual ");
 		}
 	}
 
@@ -5732,6 +5869,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)
 		{
 			return baseRVal.IsRValTrivial (scg, null) && subRVal.IsRValTrivial (scg, null);
+		}
+
+		public override void DebString (StringBuilder sb)
+		{
+			baseRVal.DebString (sb);
+			sb.Append ('[');
+			subRVal.DebString (sb);
+			sb.Append (']');
 		}
 	}
 
@@ -5933,7 +6078,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public override void DebString (StringBuilder sb)
 		{
 			sb.Append (name.val);
-			sb.Append (' ');
 		}
 	}
 
@@ -5996,6 +6140,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			 * Calling a static method of anything else (arrays, rotations, vectors) is always trivial.
 			 */
 			return true;
+		}
+
+		public override void DebString (StringBuilder sb)
+		{
+			if (fieldName.val == "$new") {
+				sb.Append ("new ");
+				baseType.DebString (sb);
+			} else {
+				baseType.DebString (sb);
+				sb.Append ('.');
+				fieldName.DebString (sb);
+			}
 		}
 	}
 
@@ -6075,6 +6231,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			return lVal.IsRValTrivial (scg, null);
 		}
+
+		public override void DebString (StringBuilder sb)
+		{
+			lVal.DebString (sb);
+			sb.Append (' ');
+			postfix.DebString (sb);
+		}
 	}
 
 	/**
@@ -6094,6 +6257,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public override bool IsRValTrivial (ScriptCodeGen scg, TokenType[] argsig)
 		{
 			return lVal.IsRValTrivial (scg, null);
+		}
+
+		public override void DebString (StringBuilder sb)
+		{
+			prefix.DebString (sb);
+			sb.Append (' ');
+			lVal.DebString (sb);
 		}
 	}
 
@@ -6186,6 +6356,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			for (Token t = args; t != null; t = t.nextToken) {
 				if (!first) sb.Append (", ");
 				t.DebString (sb);
+				first = false;
 			}
 			sb.Append (")");
 		}
@@ -6269,6 +6440,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			}
 			return this;
 		}
+
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append ('(');
+			castTo.DebString (sb);
+			sb.Append (')');
+			rVal.DebString (sb);
+		}
 	}
 
 	/**
@@ -6319,9 +6498,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public override void DebString (StringBuilder sb)
 		{
 			condExpr.DebString (sb);
-			sb.Append ("? ");
+			sb.Append (" ? ");
 			trueExpr.DebString (sb);
-			sb.Append (": ");
+			sb.Append (" : ");
 			falseExpr.DebString (sb);
 		}
 	}
@@ -6401,6 +6580,62 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				default: throw new Exception ("unknown type");
 			}
 		}
+
+		public override void DebString (StringBuilder sb)
+		{
+			if (val is char) {
+				sb.Append ('\'');
+				EscapeQuotes (sb, new string (new char [] { (char)val }));
+				sb.Append ('\'');
+			} else if (val is int) {
+				sb.Append ((int)val);
+			} else if (val is SCRIPTFLOAT) {
+				string str = ((SCRIPTFLOAT)val).ToString ();
+				sb.Append (str);
+				if ((str.IndexOf ('.') < 0) &&
+				    (str.IndexOf ('E') < 0) &&
+				    (str.IndexOf ('e') < 0)) {
+					sb.Append (".0");
+				}
+			} else if (val is string) {
+				sb.Append ('"');
+				EscapeQuotes (sb, (string)val);
+				sb.Append ('"');
+			} else {
+				throw new Exception ("invalid constant type " + val.GetType ());
+			}
+		}
+		private static void EscapeQuotes (StringBuilder sb, string s)
+		{
+			foreach (char c in s) {
+				switch (c) {
+					case '\n': {
+						sb.Append ("\\n");
+						break;
+					}
+					case '\t': {
+						sb.Append ("\\t");
+						break;
+					}
+					case '\\': {
+						sb.Append ("\\\\");
+						break;
+					}
+					case '\'': {
+						sb.Append ("\\'");
+						break;
+					}
+					case '\"': {
+						sb.Append ("\\\"");
+						break;
+					}
+					default: {
+						sb.Append (c);
+						break;
+					}
+				}
+			}
+		}
 	}
 
 	/**
@@ -6426,6 +6661,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			// it's always just a constant so it's always very trivial
 			return true;
+		}
+
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append ("<default ");
+			sb.Append (type.ToString ());
+			sb.Append ('>');
 		}
 	}
 
@@ -6471,6 +6713,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			}
 			return true;
 		}
+
+		public override void DebString (StringBuilder sb)
+		{
+			bool first = true;
+			sb.Append ('[');
+			for (Token t = rVal; t != null; t = t.nextToken) {
+				if (!first) sb.Append (',');
+				sb.Append (' ');
+				t.DebString (sb);
+				first = false;
+			}
+			sb.Append (" ]");
+		}
 	}
 
 	/**
@@ -6481,6 +6736,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenList valueList;  // TokenList : a sub-list
 		                             // TokenKwComma : a default value
 		                             // TokenRVal    : init expression
+
 		public TokenRValNewArIni (Token original) : base (original)
 		{
 			valueList = new TokenList (original);
@@ -6510,10 +6766,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			}
 			return true;
 		}
+
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append ("new ");
+			arrayType.DebString (sb);
+			sb.Append (' ');
+			valueList.DebString (sb);
+		}
 	}
 	public class TokenList : Token {
 		public List<Token> tl = new List<Token> ();
 		public TokenList (Token original) : base (original) { }
+
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append ('{');
+			bool first = true;
+			foreach (Token t in tl) {
+				if (!first) sb.Append (", ");
+				t.DebString (sb);
+				first = false;
+			}
+			sb.Append ('}');
+		}
 	}
 
 	/**
@@ -6612,6 +6888,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public override void DebString (StringBuilder sb)
 		{
 			rValLeft.DebString (sb);
+			sb.Append (' ');
 			sb.Append (opcode.ToString ());
 			sb.Append (' ');
 			rValRight.DebString (sb);
@@ -6664,6 +6941,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		 * @brief Serialization/Deserialization.
 		 */
 		public TokenRValOpUn (Token original) : base (original) { }
+
+		// debugging
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append (opcode.ToString ());
+			rVal.DebString (sb);
+		}
 	}
 
 	/**
@@ -6701,6 +6985,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			}
 			return this;
 		}
+
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append ('(');
+			rVal.DebString (sb);
+			sb.Append (')');
+		}
 	}
 
 	public class TokenRValRot : TokenRVal {
@@ -6723,6 +7014,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			       yRVal.IsRValTrivial (scg, null) && 
 			       zRVal.IsRValTrivial (scg, null) && 
 			       wRVal.IsRValTrivial (scg, null);
+		}
+
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append ('<');
+			xRVal.DebString (sb);
+			sb.Append (',');
+			yRVal.DebString (sb);
+			sb.Append (',');
+			zRVal.DebString (sb);
+			sb.Append (',');
+			wRVal.DebString (sb);
+			sb.Append ('>');
 		}
 	}
 
@@ -6777,6 +7081,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		{
 			return true;
 		}
+
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append ("undef");
+		}
 	}
 
 	/**
@@ -6801,6 +7110,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 			       yRVal.IsRValTrivial (scg, null) && 
 			       zRVal.IsRValTrivial (scg, null);
 		}
+
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append ('<');
+			xRVal.DebString (sb);
+			sb.Append (',');
+			yRVal.DebString (sb);
+			sb.Append (',');
+			zRVal.DebString (sb);
+			sb.Append ('>');
+		}
 	}
 	
 	/**
@@ -6813,6 +7133,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public VarDict variablesStack = new VarDict (false);  // initial one is used for global functions and variables
 		public TokenDeclVar globalVarInit;                    // $globalvarinit function
 		                                                      // - performs explicit global var and static field inits
+
+		private Dictionary<string, TokenDeclSDType> sdSrcTypes = new Dictionary<string, TokenDeclSDType> ();
+		private bool sdSrcTypesSealed = false;
 
 		public TokenScript (Token original) : base (original) { }
 
@@ -6842,8 +7165,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		/*
 		 * Handle list of script-defined types.
 		 */
-		private Dictionary<string, TokenDeclSDType> sdSrcTypes = new Dictionary<string, TokenDeclSDType> ();
-		private bool sdSrcTypesSealed = false;
 		public void sdSrcTypesSeal ()
 		{
 			sdSrcTypesSealed = true;
@@ -6885,6 +7206,48 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 				return sdSrcTypes.Count;
 			}
 		}
+
+		/**
+		 * @brief Debug output.
+		 */
+		public override void DebString (StringBuilder sb)
+		{
+			/*
+			 * Script-defined types.
+			 */
+			foreach (TokenDeclSDType srcType in sdSrcTypes.Values) {
+				srcType.DebString (sb);
+			}
+
+			/*
+			 * Global constants.
+			 * Variables are handled by outputting the $globalvarinit function.
+			 */
+			foreach (TokenDeclVar var in variablesStack) {
+				if (var.constant) {
+					var.DebString (sb);
+				}
+			}
+
+			/*
+			 * Global functions.
+			 */
+			foreach (TokenDeclVar var in variablesStack) {
+				if (var == globalVarInit) {
+					var.DebStringInitFields (sb);
+				} else if (var.retType != null) {
+					var.DebString (sb);
+				}
+			}
+
+			/*
+			 * States and their event handler functions.
+			 */
+			defaultState.DebString (sb);
+			foreach (TokenDeclState st in states.Values) {
+				st.DebString (sb);
+			}
+		}
 	}
 
 	/**
@@ -6897,6 +7260,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public int index = -1;  // (codegen) row in ScriptHandlerEventTable (0=default)
 
 		public TokenStateBody (Token original) : base (original) { }
+
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append (" { ");
+			for (Token t = eventFuncs; t != null; t = t.nextToken) {
+				t.DebString (sb);
+			}
+			sb.Append (" } ");
+		}
 	}
 
 	/**
@@ -6949,6 +7321,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public ScriptMyLabel labelStruct;
 
 		public TokenStmtLabel (Token original) : base (original) { }
+
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append ('@');
+			name.DebString (sb);
+			sb.Append (';');
+		}
 	}
 
 	/**
@@ -6970,10 +7349,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 	public class TokenStmtBreak : TokenStmt {
 		public TokenStmtBreak (Token original) : base (original) { }
+
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append ("break;");
+		}
 	}
 
 	public class TokenStmtCont : TokenStmt {
 		public TokenStmtCont (Token original) : base (original) { }
+
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append ("continue;");
+		}
 	}
 
 	/**
@@ -6982,9 +7371,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	public class TokenStmtDo : TokenStmt {
 
 		public TokenStmt bodyStmt;
-		public TokenRVal testRVal;
+		public TokenRValParen testRVal;
 
 		public TokenStmtDo (Token original) : base (original) { }
+
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append ("do ");
+			bodyStmt.DebString (sb);
+			sb.Append (" while ");
+			testRVal.DebString (sb);
+			sb.Append (';');
+		}
 	}
 
 	/**
@@ -6998,6 +7396,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenStmt bodyStmt;  // there is always a body statement, though it may be a null statement
 
 		public TokenStmtFor (Token original) : base (original) { }
+
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append ("for (");
+			if (initStmt != null) initStmt.DebString (sb);
+			                 else sb.Append (';');
+			if (testRVal != null) testRVal.DebString (sb);
+			sb.Append (';');
+			if (incrRVal != null) incrRVal.DebString (sb);
+			sb.Append (") ");
+			bodyStmt.DebString (sb);
+		}
 	}
 
 	/**
@@ -7011,15 +7421,39 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenStmt bodyStmt;  // there is always a body statement, though it may be a null statement
 
 		public TokenStmtForEach (Token original) : base (original) { }
+
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append ("foreach (");
+			if (keyLVal != null) keyLVal.DebString (sb);
+			sb.Append (',');
+			if (valLVal != null) valLVal.DebString (sb);
+			sb.Append (" in ");
+			arrayRVal.DebString (sb);
+			sb.Append (')');
+			bodyStmt.DebString (sb);
+		}
 	}
 
 	public class TokenStmtIf : TokenStmt {
 
-		public TokenRVal testRVal;
+		public TokenRValParen testRVal;
 		public TokenStmt trueStmt;
 		public TokenStmt elseStmt;
 
 		public TokenStmtIf (Token original) : base (original) { }
+
+		public override void DebString (StringBuilder sb)
+                {
+			sb.Append ("if ");
+			testRVal.DebString (sb);
+			sb.Append (" ");
+			trueStmt.DebString (sb);
+			if (elseStmt != null) {
+				sb.Append (" else ");
+				elseStmt.DebString (sb);
+			}
+		}
 	}
 
 	public class TokenStmtJump : TokenStmt {
@@ -7027,11 +7461,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenName label;
 
 		public TokenStmtJump (Token original) : base (original) { }
+
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append ("jump ");
+			label.DebString (sb);
+			sb.Append (';');
+		}
 	}
 
 	public class TokenStmtNull : TokenStmt {
 
 		public TokenStmtNull (Token original) : base (original) { }
+
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append (';');
+		}
 	}
 
 	public class TokenStmtRet : TokenStmt {
@@ -7039,6 +7485,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenRVal rVal;  // null if void
 
 		public TokenStmtRet (Token original) : base (original) { }
+
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append ("return");
+			if (rVal != null) {
+				sb.Append (' ');
+				rVal.DebString (sb);
+			}
+			sb.Append (';');
+		}
 	}
 
 	/**
@@ -7049,6 +7505,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenName state;  // null for default
 
 		public TokenStmtState (Token original) : base (original) { }
+
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append ("state ");
+			sb.Append ((state == null) ? "default" : state.val);
+			sb.Append (';');
+		}
 	}
 
 	/**
@@ -7056,11 +7519,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 	 */
 	public class TokenStmtSwitch : TokenStmt {
 
-		public TokenRVal testRVal;               // the integer index expression
+		public TokenRValParen testRVal;          // the integer index expression
 		public TokenSwitchCase cases = null;     // list of all cases, linked by .nextCase
 		public TokenSwitchCase lastCase = null;  // used during reduce to point to last in 'cases' list
 
 		public TokenStmtSwitch (Token original) : base (original) { }
+
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append ("switch ");
+			testRVal.DebString (sb);
+			sb.Append ('{');
+			for (TokenSwitchCase kase = cases; kase != null; kase = kase.nextCase) {
+				kase.DebString (sb);
+			}
+			sb.Append ('}');
+		}
 	}
 
 	/**
@@ -7085,6 +7559,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenSwitchCase higherCase;
 
 		public TokenSwitchCase (Token original) : base (original) { }
+
+		public override void DebString (StringBuilder sb)
+		{
+			if (rVal1 == null) {
+				sb.Append ("default: ");
+			} else {
+				sb.Append ("case ");
+				rVal1.DebString (sb);
+				if (rVal2 != null) {
+					sb.Append (" ... ");
+					rVal2.DebString (sb);
+				}
+				sb.Append (": ");
+			}
+			for (Token t = stmts; t != null; t = t.nextToken) {
+				t.DebString (sb);
+			}
+		}
 	}
 
 	public class TokenStmtThrow : TokenStmt {
@@ -7092,6 +7584,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public TokenRVal rVal;  // null if rethrow style
 
 		public TokenStmtThrow (Token original) : base (original) { }
+
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append ("throw ");
+			rVal.DebString (sb);
+			sb.Append (';');
+		}
 	}
 
 	/**
@@ -7106,6 +7605,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public Dictionary<string, IntermediateLeave> iLeaves = new Dictionary<string, IntermediateLeave> ();
 
 		public TokenStmtTry (Token original) : base (original) { }
+
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append ("try ");
+			tryStmt.DebString (sb);
+			if (catchStmt != null) {
+				sb.Append ("catch (");
+				sb.Append (catchVar.type.ToString ());
+				sb.Append (' ');
+				sb.Append (catchVar.name.val);
+				sb.Append (") ");
+				catchStmt.DebString (sb);
+			}
+			if (finallyStmt != null) {
+				sb.Append ("finally ");
+				finallyStmt.DebString (sb);
+			}
+		}
 	}
 
 	public class IntermediateLeave {
@@ -7120,10 +7637,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 	public class TokenStmtWhile : TokenStmt {
 
-		public TokenRVal testRVal;
+		public TokenRValParen testRVal;
 		public TokenStmt bodyStmt;
 
 		public TokenStmtWhile (Token original) : base (original) { }
+
+		public override void DebString (StringBuilder sb)
+		{
+			sb.Append ("while ");
+			testRVal.DebString (sb);
+			sb.Append (' ');
+			bodyStmt.DebString (sb);
+		}
 	}
 
 	/**

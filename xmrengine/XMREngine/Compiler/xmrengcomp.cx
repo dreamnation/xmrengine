@@ -31,6 +31,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 #ifdef SECRET_STUFF
             bool decode = false;
             string asmFileName = null;
+            string srcFileName = null;
 #endif
             bool plaintext = false;
             string objFileName = null;
@@ -71,6 +72,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
                 if (arg == "-plaintext") {
                     plaintext = true;
+                    continue;
+                }
+                if (arg == "-src") {
+                    srcFileName = args[++i];
                     continue;
                 }
 #endif
@@ -145,6 +150,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 Console.WriteLine ("Reduction errors.");
                 Environment.Exit (1);
             }
+
+            /*
+             * If -src option, write reconstructed source code out.
+             */
+#ifdef SECRET_STUFF
+            if (srcFileName != null) {
+                StringBuilder sb = new StringBuilder ();
+                tokenScript.DebString (sb);
+                File.WriteAllText (srcFileName, new FormatSource (sb.ToString ()).ToString ());
+            }
+#endif
 
             /*
              * Attempt to compile AST to object code.
@@ -305,6 +321,122 @@ version:
             }
             sb.Append (" };");
             return sb.ToString ();
+        }
+#endif
+
+#ifdef SECRET_STUFF
+        private class FormatSource
+        {
+            private bool escaped = false;
+            private char quoted  = (char)0;
+            private int  begline = 0;
+            private int  indent  = 0;
+            private int  parens  = 0;
+            private StringBuilder sb = new StringBuilder ();
+
+            public FormatSource (string src)
+            {
+                foreach (char c in src)
+                {
+                    if (quoted != (char)0) {
+                        sb.Append (c);
+                        if (c == '\\') {
+                            escaped = !escaped;
+                        } else {
+                            if ((c == quoted) && !escaped) quoted = (char)0;
+                            escaped = false;
+                        }
+                        continue;
+                    }
+
+                    switch (c) {
+                        case ';': {
+                            TrimTrailingSpaces ();
+                            sb.Append (';');
+                            if (parens > 0) sb.Append (' ');
+                                       else NewLine ();
+                            break;
+                        }
+
+                        case '{': {
+                            TrimTrailingSpaces ();
+                            if ((sb.Length > 0) && (sb[sb.Length-1] > ' ')) {
+                                sb.Append (' ');
+                            }
+                            sb.Append ('{');
+                            indent ++;
+                            NewLine ();
+                            break;
+                        }
+
+                        case '}': {
+                            if (indent > 0) -- indent;
+                            TrimTrailingSpaces ();
+                            sb.Append ('}');
+                            NewLine ();
+                            break;
+                        }
+
+                        case '(': {
+                            parens ++;
+                            sb.Append ('(');
+                            break;
+                        }
+
+                        case ')': {
+                            if (parens > 0) -- parens;
+                            sb.Append (')');
+                            break;
+                        }
+
+                        case '\'':
+                        case '"': {
+                            sb.Append (c);
+                            quoted = c;
+                            break;
+                        }
+
+                        default: {
+                            if (c <= ' ') {
+                                TrimTrailingSpaces ();
+                                if (sb.Length > begline + indent * 4) sb.Append (' ');
+                            } else {
+                                sb.Append (c);
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+
+            private void TrimTrailingSpaces ()
+            {
+                int len = sb.Length;
+                while ((len > begline + indent * 4) && (sb[len-1] <= ' ')) {
+                    sb.Remove (-- len, 1);
+                }
+            }
+
+            private void NewLine ()
+            {
+                int len = sb.Length;
+                while (len > 0) {
+                    char c = sb[len-1];
+                    if (c == '\n') break;
+                    if (c >= ' ') break;
+                    sb.Remove (-- len, 1);
+                }
+                if ((len == 0) || (sb[len-1] != '\n')) {
+                    sb.Append ('\n');
+                }
+                begline = sb.Length;
+                sb.Append ("".PadRight (indent * 4));
+            }
+
+            public override string ToString ()
+            {
+                return sb.ToString ();
+            }
         }
 #endif
 
