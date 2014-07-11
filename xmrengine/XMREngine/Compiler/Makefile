@@ -1,7 +1,7 @@
-MONODIR       ?= /home/kunta/mono64.2109
+MONODIR       ?= /usr
 MONOBINDIR    ?= $(MONODIR)/bin
 MONODLLDIR    ?= $(MONODIR)/lib/mono/4.0
-OPENSIMDLLDIR ?= ../../../bin
+OPENSIMDLLDIR ?= ../../../bin_080
 
 COMMITHASH  := $(strip $(shell git log -1 | grep ^commit | sed 's/commit//g'))
 COMMITDATE  := $(strip $(shell git log -1 --date=iso | grep ^Date: | sed 's/Date://g'))
@@ -113,7 +113,7 @@ XMRScriptUThread_tester.cs: ../Engine/XMRScriptUThread.cx $(wildcard *.h)
 	cpp -C -P -nostdinc $(DEFS) -DSCRIPTBASECLASS=TestScriptBaseClass -o $@ $<
 
 makexmrengtestilslapi.inc: makexmrengtestilslapi.exe
-	MONO_PATH=../../../bin mono --debug makexmrengtestilslapi.exe > makexmrengtestilslapi.tmp
+	MONO_PATH=$(OPENSIMDLLDIR) mono --debug makexmrengtestilslapi.exe > makexmrengtestilslapi.tmp
 	mv -f makexmrengtestilslapi.tmp makexmrengtestilslapi.inc
 
 makexmrengtestilslapi.exe: makexmrengtestilslapi.cs

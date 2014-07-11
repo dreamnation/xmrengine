@@ -1,7 +1,7 @@
-MONODIR       ?= /home/kunta/mono64.2109
+MONODIR       ?= /usr
 MONOBINDIR    ?= $(MONODIR)/bin
 MONODLLDIR    ?= $(MONODIR)/lib/mono/4.0
-OPENSIMDLLDIR ?= ../../../bin
+OPENSIMDLLDIR ?= ../../../bin_080
 
 COMMITHASH  := $(strip $(shell git log -1 | grep ^commit | sed 's/commit//g'))
 COMMITDATE  := $(strip $(shell git log -1 --date=iso | grep ^Date: | sed 's/Date://g'))
@@ -19,6 +19,7 @@ ifeq ($(HAVE_MONOCONTS),1)
 endif
 ifeq ($(HAVE_MMRUTHREADS),1)
   XMRENGINEDLLS += xmrengine_mmr.dll
+  XMRENGINEDLLS += xmrengine_mmr_ext.dll
 endif
 
 ENGINECXFILES := XMREngine.cx \
@@ -105,6 +106,14 @@ xmrengine_mmr.dll: $(ENGINECXFILES:.cx=_mmr.cs) XMREngCommit_$(COMMITHASH)_$(COM
 		$(patsubst %.dll,-reference:%.dll,$(REFERENCED)) \
 		-reference:$(MONODLLDIR)/Mono.Tasklets.dll
 
+xmrengine_mmr_ext.dll: $(ENGINECXFILES:.cx=_mmr_ext.cs) XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs $(REFERENCED)
+	rm -f xmrengine_mmr_ext.dll*
+	$(MONOBINDIR)/dmcs -debug -target:library \
+		-out:$@ \
+		$(ENGINECXFILES:.cx=_mmr_ext.cs) XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs \
+		$(patsubst %.dll,-reference:%.dll,$(REFERENCED)) \
+		-reference:$(MONODLLDIR)/Mono.Tasklets.dll
+
 XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs: XMREngCommit.cx
 	rm -f XMREngCommit_*.cs
 	cpp -I../Compiler \
@@ -123,6 +132,9 @@ XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs: XMREngCommit.cx
 
 %_mmr.cs: %.cx $(wildcard ../*/*.h)
 	cpp -I../Compiler -DHAVE_MONOCONTS=1 -DHAVE_MMRUTHREADS=1 -DEXTERNAL=0 -C -P -nostdinc -o $@ $<
+
+%_mmr_ext.cs: %.cx $(wildcard ../*/*.h)
+	cpp -I../Compiler -DHAVE_MONOCONTS=1 -DHAVE_MMRUTHREADS=1 -DEXTERNAL=$(EXTHASHCODE) -C -P -nostdinc -o $@ $<
 
 ../Compiler/xmrengshare.dll: $(wildcard ../Compiler/*.cx) $(wildcard ../Compiler/*.h)
 	make -C ../Compiler xmrengshare.dll

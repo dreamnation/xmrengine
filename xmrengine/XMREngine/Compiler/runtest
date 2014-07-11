@@ -38,7 +38,7 @@ function testev {
 
 set -e
 time make xmrengtest.exe
-export MONO_PATH=../../../bin
+export MONO_PATH=../../../bin_080
 export PATH=~/mono64.2109/bin:$PATH
 
 uthread=mmr

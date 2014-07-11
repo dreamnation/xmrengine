@@ -3,7 +3,7 @@ xmroption advflowctl;
 xmroption arrays;
 xmroption objects;
 
-xmroption include "http://dreamnation.net/dictionary.lsl";
+xmroption include "dictionary.lsl";
 
 typedef Dictionary<K,V>   Kunta.Dictionary<K,V>;
 typedef IEnumerator<T>    Kunta.IEnumerator<T>;
