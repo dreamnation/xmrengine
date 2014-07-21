@@ -14,8 +14,6 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 
-#define strcasecmp(s,t) String.Compare(s,t,StringComparison.OrdinalIgnoreCase)
-
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
     public class ScriptCompile
@@ -228,6 +226,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if ((c > ' ') && !skipeol) return false;
             }
             return true;
+        }
+
+        private static int strcasecmp (string s, string t)
+        {
+            return String.Compare (s, t, StringComparison.OrdinalIgnoreCase);
         }
 
         /**
