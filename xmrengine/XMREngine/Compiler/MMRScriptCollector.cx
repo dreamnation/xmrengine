@@ -3,8 +3,6 @@
  *  All rights reserved.                           *
 \***************************************************/
 
-#define DEBUG 0
-
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 using System;
 using System.Collections.Generic;
@@ -13,45 +11,6 @@ using System.Reflection;
 using System.Reflection.Emit;
 using System.Text;
 
-/**
- * @brief GetNNEnumerable() gets the nextnode enumerable part of a GraphNode,
- *        which in turn gives the list of nodes that can possibly be next in 
- *        a flow-control sense.  It simply instantiates the NNEnumerator sub-
- *        class which does the actual enumeration.
- */
-#define BOILERPLATE_GETNNENUMERABLE(qual,GNT) \
-		protected qual System.Collections.Generic.IEnumerable<GraphNode> GetNNEnumerable ()						\
-		{																\
-			return new NNEnumerable (this);												\
-		}																\
-		private class NNEnumerable : System.Collections.Generic.IEnumerable<GraphNode> {						\
-			private GNT gn;														\
-			public NNEnumerable (GNT gn)												\
-			{															\
-				this.gn = gn;													\
-			}															\
-			System.Collections.Generic.IEnumerator<GraphNode> System.Collections.Generic.IEnumerable<GraphNode>.GetEnumerator ()	\
-			{															\
-				return new NNEnumerator (gn);											\
-			}															\
-			System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator ()						\
-			{															\
-				return new NNEnumerator (gn);											\
-			}															\
-		}
-
-/**
- * @brief These methods are required as part of the interface for a NNEnumerator class.
- *        They assume the current nextnode is stored in a member called 'nn'.
- */
-#define BOILERPLATE_NNENUMERATOR_CURRENT_DISPOSE \
-			GraphNode System.Collections.Generic.IEnumerator<GraphNode>.Current {	\
-				get { return this.nn; }						\
-			}									\
-			object System.Collections.IEnumerator.Current {				\
-				get { return this.nn; }						\
-			}									\
-			void System.IDisposable.Dispose() { }
 
 /**
  * @brief Wrapper class for ScriptMyILGen to do simple optimizations.
@@ -309,6 +268,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	 *        They form the CIL instruction stream of the function.
 	 */
 	public abstract class GraphNode {
+		public const bool DEBUG = false;
+
 		public const int OPINDENT =  4;
 		public const int OPDEBLEN = 12;
 
@@ -348,13 +309,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			this.tryBlock = coll.curTryBlock;
 			this.excBlock = coll.curExcBlock;
 
-#if DEBUG & 1
-			StringBuilder sb = new StringBuilder ("ChainLin*:");
-			sb.Append (coll.stackDepth.Count.ToString("D2"));
-			sb.Append (' ');
-			this.DebString (sb);
-			Console.WriteLine (sb.ToString ());
-#endif
+			if (DEBUG) {
+				StringBuilder sb = new StringBuilder ("ChainLin*:");
+				sb.Append (coll.stackDepth.Count.ToString("D2"));
+				sb.Append (' ');
+				this.DebString (sb);
+				Console.WriteLine (sb.ToString ());
+			}
 		}
 
 		/**
@@ -453,8 +414,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				return new NNEnumeratorCatchFinally (gn);
 			}
 		}
-		private class NNEnumeratorCatchFinally : System.Collections.Generic.IEnumerator<GraphNode> {
-			private GraphNode gn, nn;
+		private class NNEnumeratorCatchFinally : NNEnumeratorBase {
+			private GraphNode gn;
 			private int index = 0;
 			private System.Collections.Generic.IEnumerator<GraphNode> realEnumerator;
 			public NNEnumeratorCatchFinally (GraphNode gn)
@@ -462,7 +423,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				this.gn = gn;
 				this.realEnumerator = gn.nextNodes.GetEnumerator ();
 			}
-			public bool MoveNext ()
+			public override bool MoveNext ()
 			{
 				/*
 				 * First off, return any targets the instruction can come up with.
@@ -489,29 +450,38 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				nn = null;
 				return false;
 			}
-			public void Reset ()
+			public override void Reset ()
 			{
 				realEnumerator.Reset ();
 				index = 0;
 				nn = null;
 			}
-			BOILERPLATE_NNENUMERATOR_CURRENT_DISPOSE
 		}
 
 		/**
 		 * @brief This default iterator always returns the next inline node as the one-and-only next node.
 		 *        Other instructions need to override it if they can possibly do other than that.
 		 */
-		BOILERPLATE_GETNNENUMERABLE(virtual,GraphNode)
-		private class NNEnumerator : System.Collections.Generic.IEnumerator<GraphNode> {
+
+		/**
+		 * @brief GetNNEnumerable() gets the nextnode enumerable part of a GraphNode,
+		 *        which in turn gives the list of nodes that can possibly be next in 
+		 *        a flow-control sense.  It simply instantiates the NNEnumerator sub-
+		 *        class which does the actual enumeration.
+		 */
+		protected virtual System.Collections.Generic.IEnumerable<GraphNode> GetNNEnumerable ()
+		{
+			return new NNEnumerable (this, typeof (NNEnumerator));
+		}
+
+		private class NNEnumerator : NNEnumeratorBase {
 			private GraphNode gn;
-			private GraphNode nn;
 			private int index;
 			public NNEnumerator (GraphNode gn)
 			{
 				this.gn = gn;
 			}
-			public bool MoveNext ()
+			public override bool MoveNext ()
 			{
 				switch (index) {
 					case 0: {
@@ -526,12 +496,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				}
 				throw new Exception ();
 			}
-			public void Reset ()
+			public override void Reset ()
 			{
 				index = 0;
 				nn = null;
 			}
-			BOILERPLATE_NNENUMERATOR_CURRENT_DISPOSE
 		}
 	}
 
@@ -648,16 +617,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief The beginning of every catch { } conditinally branches to the beginning 
 		 *        of all outer catch { }s up to and including the next outer finally { }.
 		 */
-		BOILERPLATE_GETNNENUMERABLE(override,GraphNodeBeginCatchBlock)
-		private class NNEnumerator : System.Collections.Generic.IEnumerator<GraphNode> {
+		protected override System.Collections.Generic.IEnumerable<GraphNode> GetNNEnumerable ()
+		{
+			return new NNEnumerable (this, typeof (NNEnumerator));
+		}
+
+		private class NNEnumerator : NNEnumeratorBase {
 			private GraphNodeBeginCatchBlock gn;
-			private GraphNode nn;
 			private int index;
 			public NNEnumerator (GraphNodeBeginCatchBlock gn)
 			{
 				this.gn = gn;
 			}
-			public bool MoveNext ()
+			public override bool MoveNext ()
 			{
 				while (true) {
 					switch (index) {
@@ -705,12 +677,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					index ++;
 				}
 			}
-			public void Reset ()
+			public override void Reset ()
 			{
 				index = 0;
 				nn = null;
 			}
-			BOILERPLATE_NNENUMERATOR_CURRENT_DISPOSE
 		}
 	}
 
@@ -849,16 +820,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief If instruction is terminating, we say there is nothing following (eg, return).
 		 *        Otherwise, say the one-and-only next instruction is the next instruction inline.
 		 */
-		BOILERPLATE_GETNNENUMERABLE(override,GraphNodeEmit)
-		private class NNEnumerator : System.Collections.Generic.IEnumerator<GraphNode> {
+		protected override System.Collections.Generic.IEnumerable<GraphNode> GetNNEnumerable ()
+		{
+			return new NNEnumerable (this, typeof (NNEnumerator));
+		}
+
+		private class NNEnumerator : NNEnumeratorBase {
 			private GraphNodeEmit gn;
-			private GraphNode nn;
 			private int index;
 			public NNEnumerator (GraphNodeEmit gn)
 			{
 				this.gn = gn;
 			}
-			public bool MoveNext ()
+			public override bool MoveNext ()
 			{
 				switch (index) {
 					case 0: {
@@ -876,12 +850,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				}
 				throw new Exception ();
 			}
-			public void Reset ()
+			public override void Reset ()
 			{
 				index = 0;
 				nn = null;
 			}
-			BOILERPLATE_NNENUMERATOR_CURRENT_DISPOSE
 		}
 	}
 
@@ -1120,10 +1093,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 *          2) any of the corresponding BeginFinallyBlock's leaveTargets
 		 *          3) the next outer BeginFinallyBlock
 		 */
-		BOILERPLATE_GETNNENUMERABLE(override,GraphNodeEmitNullEndfinally)
-		private class NNEnumerator : System.Collections.Generic.IEnumerator<GraphNode> {
+		protected override System.Collections.Generic.IEnumerable<GraphNode> GetNNEnumerable ()
+		{
+			return new NNEnumerable (this, typeof (NNEnumerator));
+		}
+
+		private class NNEnumerator : NNEnumeratorBase {
 			private GraphNodeEmitNullEndfinally gn;
-			private GraphNode nn;
 			private IEnumerator<GraphNodeBlock> leaveTargetEnumerator;
 			private int index;
 			public NNEnumerator (GraphNodeEmitNullEndfinally gn)
@@ -1139,7 +1115,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				// get the list of the finally { } leave instruction targets
 				this.leaveTargetEnumerator = thisfin.leaveTargets.GetEnumerator ();
 			}
-			public bool MoveNext ()
+			public override bool MoveNext ()
 			{
 				while (true) {
 					switch (index) {
@@ -1189,13 +1165,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					index ++;
 				}
 			}
-			public void Reset ()
+			public override void Reset ()
 			{
 				leaveTargetEnumerator.Reset ();
 				index = 0;
 				nn = null;
 			}
-			BOILERPLATE_NNENUMERATOR_CURRENT_DISPOSE
 		}
 	}
 
@@ -1441,16 +1416,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 *        Unconditional branches return only the branch target
 		 *        But if the target is outside our scope (eg __retlbl), omit it from the list
 		 */
-		BOILERPLATE_GETNNENUMERABLE(override,GraphNodeEmitLabel)
-		private class NNEnumerator : System.Collections.Generic.IEnumerator<GraphNode> {
+		protected override System.Collections.Generic.IEnumerable<GraphNode> GetNNEnumerable ()
+		{
+			return new NNEnumerable (this, typeof (NNEnumerator));
+		}
+
+		private class NNEnumerator : NNEnumeratorBase {
 			private GraphNodeEmitLabel gn;
-			private GraphNode nn;
 			private int index;
 			public NNEnumerator (GraphNodeEmitLabel gn)
 			{
 				this.gn = gn;
 			}
-			public bool MoveNext ()
+			public override bool MoveNext ()
 			{
 				switch (gn.opcode.FlowControl) {
 					case FlowControl.Branch: {
@@ -1490,12 +1468,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					                              " of " + gn.opcode.ToString ());
 				}
 			}
-			public void Reset ()
+			public override void Reset ()
 			{
 				index = 0;
 				nn = null;
 			}
-			BOILERPLATE_NNENUMERATOR_CURRENT_DISPOSE
 		}
 	}
 
@@ -1512,16 +1489,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 *        Either the given target if within the same try block 
 		 *        or the beginning of the intervening finally block.
 		 */
-		BOILERPLATE_GETNNENUMERABLE(override,GraphNodeEmitLabelLeave)
-		private class NNEnumerator : System.Collections.Generic.IEnumerator<GraphNode> {
+		protected override System.Collections.Generic.IEnumerable<GraphNode> GetNNEnumerable ()
+		{
+			return new NNEnumerable (this, typeof (NNEnumerator));
+		}
+
+		private class NNEnumerator : NNEnumeratorBase {
 			private GraphNodeEmitLabelLeave gn;
-			private GraphNode nn;
 			private int index;
 			public NNEnumerator (GraphNodeEmitLabelLeave gn)
 			{
 				this.gn = gn;
 			}
-			public bool MoveNext ()
+			public override bool MoveNext ()
 			{
 				if (index == 0) {
 					nn = gn.unwindTo;
@@ -1531,12 +1511,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				nn = null;
 				return false;
 			}
-			public void Reset ()
+			public override void Reset ()
 			{
 				index = 0;
 				nn = null;
 			}
-			BOILERPLATE_NNENUMERATOR_CURRENT_DISPOSE
 		}
 	}
 
@@ -1587,16 +1566,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief Return list of all labels followed by the next linear instruction
 		 *        But if the target is outside our scope (eg __retlbl), omit it from the list
 		 */
-		BOILERPLATE_GETNNENUMERABLE(override,GraphNodeEmitLabels)
-		private class NNEnumerator : System.Collections.Generic.IEnumerator<GraphNode> {
+		protected override System.Collections.Generic.IEnumerable<GraphNode> GetNNEnumerable ()
+		{
+			return new NNEnumerable (this, typeof (NNEnumerator));
+		}
+
+		private class NNEnumerator : NNEnumeratorBase {
 			private GraphNodeEmitLabels gn;
-			private GraphNode nn;
 			private int index;
 			public NNEnumerator (GraphNodeEmitLabels gn)
 			{
 				this.gn = gn;
 			}
-			public bool MoveNext ()
+			public override bool MoveNext ()
 			{
 				/*
 				 * Return next from list of switch case labels.
@@ -1621,12 +1603,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				nn = null;
 				return false;
 			}
-			public void Reset ()
+			public override void Reset ()
 			{
 				index = 0;
 				nn = null;
 			}
-			BOILERPLATE_NNENUMERATOR_CURRENT_DISPOSE
 		}
 	}
 
@@ -1927,7 +1908,51 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	}
 
 
+	/**
+	 * @brief Generates enumerator that steps through list of nodes that can
+	 *        possibly be next in a flow-control sense.
+	 */
+	public class NNEnumerable : System.Collections.Generic.IEnumerable<GraphNode> {
+		private object[] cps;
+		private ConstructorInfo ci;
+
+		public NNEnumerable (GraphNode gn, Type nnEnumeratorType)
+		{
+			this.cps = new object[] { gn };
+			this.ci  = nnEnumeratorType.GetConstructor (new Type[] { gn.GetType () });
+		}
+		System.Collections.Generic.IEnumerator<GraphNode> System.Collections.Generic.IEnumerable<GraphNode>.GetEnumerator ()
+		{
+			return (System.Collections.Generic.IEnumerator<GraphNode>) ci.Invoke (cps);
+		}
+		System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator ()
+		{
+			return (System.Collections.IEnumerator) ci.Invoke (cps);
+		}
+	}
+
+
+	/**
+	 * @brief Steps through list of nodes that can possible be next in a flow-control sense.
+	 */
+	public abstract class NNEnumeratorBase : System.Collections.Generic.IEnumerator<GraphNode> {
+		protected GraphNode nn;
+
+		public abstract bool MoveNext ();
+		public abstract void Reset ();
+
+		GraphNode System.Collections.Generic.IEnumerator<GraphNode>.Current {
+			get { return this.nn; }
+		}
+		object System.Collections.IEnumerator.Current {
+			get { return this.nn; }
+		}
+		void System.IDisposable.Dispose() { }
+	}
+
+
 	public class ScriptCollector : ScriptMyILGen {
+		public const bool DEBUG = false;
 
 		public ScriptObjWriter wrapped;
 		public GraphNode firstLin, lastLin;
@@ -2436,24 +2461,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			/*
 			 * Dump out the results.
 			 */
-#if DEBUG & 2
-			Console.WriteLine ("");
-			Console.WriteLine (methName);
-			Console.WriteLine ("  resolveSequence=" + this.resolveSequence);
+			if (DEBUG) {
+				Console.WriteLine ("");
+				Console.WriteLine (methName);
+				Console.WriteLine ("  resolveSequence=" + this.resolveSequence);
 
-			Console.WriteLine ("  Locals:");
-			foreach (ScriptMyLocal loc in declaredLocals) {
-				Console.WriteLine ("    " + loc.type.Name + "  " + loc.name);
+				Console.WriteLine ("  Locals:");
+				foreach (ScriptMyLocal loc in declaredLocals) {
+					Console.WriteLine ("    " + loc.type.Name + "  " + loc.name);
+				}
+
+				Console.WriteLine ("  Labels:");
+				foreach (ScriptMyLabel lbl in definedLabels) {
+					Console.WriteLine ("    " + lbl.name);
+				}
+
+				Console.WriteLine ("  Code:");
+				DumpCode ();
 			}
-
-			Console.WriteLine ("  Labels:");
-			foreach (ScriptMyLabel lbl in definedLabels) {
-				Console.WriteLine ("    " + lbl.name);
-			}
-
-			Console.WriteLine ("  Code:");
-			DumpCode ();
-#endif
 		}
 
 		private void DumpCode ()
