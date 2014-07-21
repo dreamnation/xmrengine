@@ -41,6 +41,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		public const uint SDT_STATIC    = 128;
 		public const uint SDT_VIRTUAL   = 256;
 
+		private const int ASNPR = 50;
+
 		private static Dictionary<Type, int> precedence = PrecedenceInit ();
 
 		private static readonly Type[] brkCloseOnly     = new Type[] { typeof (TokenKwBrkClose) };
@@ -63,7 +65,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 			p.Add (typeof (TokenKwComma),     30);
 
-#define ASNPR 50
 			p.Add (typeof (TokenKwAsnLSh), ASNPR);  // all assignment operators of equal precedence
 			p.Add (typeof (TokenKwAsnRSh), ASNPR);  // ... so they get processed strictly right-to-left
 			p.Add (typeof (TokenKwAsnAdd), ASNPR);
