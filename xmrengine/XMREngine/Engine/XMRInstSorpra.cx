@@ -15,9 +15,6 @@ using System.Xml;
 
 #include "lsltypes.h"
 
-//#define SorpraDebug(msg) m_log.Debug ("[xmrSetObjRegPosRotAsync]*: " + msg)
-#define SorpraDebug(msg) do { } while (false)
-
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
     public partial class XMRInstance
@@ -545,6 +542,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     string evname = epsxml.GetAttribute ("Name");
                     eps = new EventParams (evname, evargs, new DetectParams[0]);
                 }
+            }
+
+            private static void SorpraDebug (string msg)
+            {
+                //m_log.Debug ("[xmrSetObjRegPosRotAsync]*: " + msg)
             }
 
             private class SeatedAv {
