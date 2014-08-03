@@ -923,20 +923,42 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return true;
         }
 
-        // Events targeted at an object as a whole
-        // ... like change() for an avatar wanting to sit at a table
-        //     posting the sit to all scripts in all prims of table.
+        // Events targeted at all scripts in the given prim.
+        //   localID = which prim
+        //   parms   = event to post
         //
-        public bool PostObjectEvent(uint localID, EventParams parms)
+        public bool PostObjectEvent (uint localID, EventParams parms)
         {
             SceneObjectPart part = m_Scene.GetSceneObjectPart(localID);
 
             if (part == null)
                 return false;
 
-            UUID partUUID = part.UUID;
-
             TraceCalls("[XMREngine]: XMREngine.PostObjectEvent({0},{1})", localID.ToString(), parms.EventName);
+
+            /*
+             * In SecondLife, attach events go to all scripts of all prims
+             * in a linked object.  So here we duplicate that functionality,
+             * as all we ever get is a single attach event for the whole
+             * object.
+             */
+            if (parms.EventName == "attach") {
+                bool posted = false;
+                foreach (SceneObjectPart primpart in part.ParentGroup.Parts) {
+                    posted |= PostPrimEvent (primpart, parms);
+                }
+                return posted;
+            }
+
+            /*
+             * Other events go to just the scripts in that prim.
+             */
+            return PostPrimEvent (part, parms);
+        }
+
+        private bool PostPrimEvent (SceneObjectPart part, EventParams parms)
+        {
+            UUID partUUID = part.UUID;
 
             /*
              * Get list of script instances running in the object.
