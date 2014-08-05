@@ -59,6 +59,33 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             inst.Die();
         }
+
+        /**
+         * @brief Seat the avatar that has given ANIMATION permission on the prim.
+         */
+        public int xmrSeatAvatar ()
+        {
+            // Get avatar to be seated and make sure they have given us ANIMATION permission
+
+            if (m_item.PermsGranter == UUID.Zero) {
+                return -1;
+            }
+            if ((m_item.PermsMask & ScriptBaseClass.PERMISSION_TRIGGER_ANIMATION) == 0) {
+                return -2;
+            }
+            ScenePresence presence = World.GetScenePresence (m_item.PermsGranter);
+            if (presence == null) {
+                return -3;
+            }
+
+            // remoteClient = not used by ScenePresence.HandleAgentRequestSit()
+            //      agentID = not used by ScenePresence.HandleAgentRequestSit()
+            //     targetID = UUID of prim to sit on
+            //       offset = offset of sitting position
+
+            presence.HandleAgentRequestSit (null, UUID.Zero, m_host.UUID, OpenMetaverse.Vector3.Zero);
+            return 0;
+        }
     }
 
     public partial class XMRInstance
