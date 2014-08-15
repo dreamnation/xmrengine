@@ -24,6 +24,7 @@ using OpenSim.Region.ScriptEngine.Shared.Api;
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 using OpenSim.Region.ScriptEngine.XMREngine;
 using OpenSim.Region.Framework.Scenes;
+using OpenSim.Region.Framework.Scenes.Scripting;
 using log4net;
 
 #include "lsltypes.h"
@@ -94,6 +95,52 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             presence.HandleAgentRequestSit (null, UUID.Zero, m_host.UUID, OpenMetaverse.Vector3.Zero);
             return 0;
+        }
+
+        /**
+         * @brief llTeleportAgent() is broken in that if you pass it a landmark,
+         *        it still subjects the position to spawn points, as it always
+         *        calls RequestTeleportLocation() with TeleportFlags.ViaLocation.
+         *        See llTeleportAgent() and CheckAndAdjustTelehub().
+         *
+         * @param agent    = what agent to teleport
+         * @param landmark = inventory name or UUID of a landmark object
+         * @param lookat   = looking direction after teleport
+         */
+        public void xmrTeleportAgent2Landmark (string agent, string landmark, LSL_Vector lookat)
+        {
+            // find out about agent to be teleported
+            UUID agentId;
+            if (!UUID.TryParse (agent, out agentId)) throw new ApplicationException ("bad agent uuid");
+            ScenePresence presence = World.GetScenePresence (agentId);
+            if (presence == null) throw new ApplicationException ("agent not present");
+            if (presence.PresenceType == PresenceType.Npc) throw new ApplicationException ("agent is an NPC");
+            if (presence.GodLevel >= 200) throw new ApplicationException ("agent is a god");
+
+            // prim must be owned by land owner or prim must be attached to agent
+            if (m_host.ParentGroup.AttachmentPoint == 0) {
+                if (m_host.OwnerID != World.LandChannel.GetLandObject (presence.AbsolutePosition).LandData.OwnerID) {
+                    throw new ApplicationException ("prim not owned by land's owner");
+                }
+            } else {
+                if (m_host.OwnerID != presence.UUID) throw new ApplicationException ("prim not attached to agent");
+            }
+
+            // find landmark in inventory or by UUID
+            UUID assetID = ScriptUtils.GetAssetIdFromKeyOrItemName (m_host, landmark);
+            if (assetID == UUID.Zero) throw new ApplicationException ("no such landmark");
+
+            // read it in and make sure it is a landmark
+            AssetBase lma = World.AssetService.Get (assetID.ToString ());
+            if ((lma == null) || (lma.Type != (sbyte)AssetType.Landmark)) throw new ApplicationException ("not a landmark");
+
+            // ok, do teleport
+            AssetLandmark lm = new AssetLandmark (lma);
+            World.RequestTeleportLocation (presence.ControllingClient,
+                                           lm.RegionHandle,
+                                           lm.Position,
+                                           lookat,
+                                           (uint)TeleportFlags.ViaLandmark);
         }
     }
 
