@@ -65,6 +65,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * @brief Seat avatar on prim.
          * @param owner = true: owner of prim script is running in
          *               false: avatar that has given ANIMATION permission on the prim
+         * @returns 0: successful
+         *         -1: no permission to animate
+         *         -2: no av granted perms
+         *         -3: av not in region
          */
         public int xmrSeatAvatar (bool owner)
         {
@@ -112,8 +116,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             // find out about agent to be teleported
             UUID agentId;
             if (!UUID.TryParse (agent, out agentId)) throw new ApplicationException ("bad agent uuid");
+
             ScenePresence presence = World.GetScenePresence (agentId);
-            if (presence == null) throw new ApplicationException ("agent not present");
+            if (presence == null) throw new ApplicationException ("agent not present in scene");
             if (presence.PresenceType == PresenceType.Npc) throw new ApplicationException ("agent is an NPC");
             if (presence.GodLevel >= 200) throw new ApplicationException ("agent is a god");
 
@@ -134,10 +139,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             AssetBase lma = World.AssetService.Get (assetID.ToString ());
             if ((lma == null) || (lma.Type != (sbyte)AssetType.Landmark)) throw new ApplicationException ("not a landmark");
 
-            // ok, do teleport
+            // parse the record
             AssetLandmark lm = new AssetLandmark (lma);
+
+            // the regionhandle (based on region's world X,Y) might be out of date
+            // re-read the handle so we can pass it to RequestTeleportLocation()
+            var region = World.GridService.GetRegionByUUID (World.RegionInfo.ScopeID, lm.RegionID);
+            if (region == null) throw new ApplicationException ("no such region");
+
+            // finally ready to teleport
             World.RequestTeleportLocation (presence.ControllingClient,
-                                           lm.RegionHandle,
+                                           region.RegionHandle,
                                            lm.Position,
                                            lookat,
                                            (uint)TeleportFlags.ViaLandmark);
