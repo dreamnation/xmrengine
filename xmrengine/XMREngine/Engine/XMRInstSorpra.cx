@@ -81,12 +81,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public const int    Sorpra_TIMEOUT_MS = 30000;        // ie, 30sec
         public override bool xmrSetObjRegPosRotAsync (LSL_Vector pos, LSL_Rotation rot, int options, int evcode, LSL_List evargs)
         {
+            RegionInfo regionInfo = m_Engine.m_Scene.RegionInfo;
+            double regionSizeX = regionInfo.RegionSizeX;
+            double regionSizeY = regionInfo.RegionSizeY;
+
             /*
              * Check for synchronous completion, ie, object stays within current region.
              * This case is handled correctly by SceneObjectGroup, including any seated avatars.
              */
-            if ((pos.x >= 0) && (pos.x < Constants.RegionSize) &&
-                (pos.y >= 0) && (pos.y < Constants.RegionSize)) {
+            if ((pos.x >= 0) && (pos.x < regionSizeX) &&
+                (pos.y >= 0) && (pos.y < regionSizeY)) {
                 SceneObjectGroup sog = m_Part.ParentGroup;
                 sog.UpdateGroupRotationPR (pos, rot);
                 return false;
@@ -99,13 +103,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * We have to move a minimum amount though or some OpenSim components
              * seem to be confused, eg, moving to -0.0000001 doesn't work reliably.
              */
-            if ((pos.x <                   0.0) && (pos.x >                       -Sorpra_MIN_CROSS)) pos.x = -Sorpra_MIN_CROSS;
-            if ((pos.y <                   0.0) && (pos.y >                       -Sorpra_MIN_CROSS)) pos.y = -Sorpra_MIN_CROSS;
-            if ((pos.x >= Constants.RegionSize) && (pos.x < Constants.RegionSize + Sorpra_MIN_CROSS)) pos.x = Constants.RegionSize + Sorpra_MIN_CROSS;
-            if ((pos.y >= Constants.RegionSize) && (pos.y < Constants.RegionSize + Sorpra_MIN_CROSS)) pos.y = Constants.RegionSize + Sorpra_MIN_CROSS;
+            if ((pos.x <          0.0) && (pos.x >              -Sorpra_MIN_CROSS)) pos.x = -Sorpra_MIN_CROSS;
+            if ((pos.y <          0.0) && (pos.y >              -Sorpra_MIN_CROSS)) pos.y = -Sorpra_MIN_CROSS;
+            if ((pos.x >= regionSizeX) && (pos.x < regionSizeX + Sorpra_MIN_CROSS)) pos.x = regionSizeX + Sorpra_MIN_CROSS;
+            if ((pos.y >= regionSizeY) && (pos.y < regionSizeY + Sorpra_MIN_CROSS)) pos.y = regionSizeY + Sorpra_MIN_CROSS;
 
-            double reglocx = (double)m_Engine.m_Scene.RegionInfo.RegionLocX * Constants.RegionSize;
-            double reglocy = (double)m_Engine.m_Scene.RegionInfo.RegionLocY * Constants.RegionSize;
+            double reglocx = (double)regionInfo.RegionLocX * Constants.RegionSize;
+            double reglocy = (double)regionInfo.RegionLocY * Constants.RegionSize;
             SetObjRegPosRotAsync sorpra = new SetObjRegPosRotAsync (this);
             sorpra.pos     = (OpenMetaverse.Vector3)pos;
             sorpra.rot     = (OpenMetaverse.Quaternion)rot;
@@ -322,13 +326,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if (DeadCheck ()) return;
 
                 Scene scene = inst.m_Engine.m_Scene;
+                RegionInfo regionInfo = scene.RegionInfo;
 
                 /*
                  * Move object to make sure it is at target coordinates.
                  * Theoretically this should always be a local move.
                  */
-                double reglocx = (double)scene.RegionInfo.RegionLocX * Constants.RegionSize;
-                double reglocy = (double)scene.RegionInfo.RegionLocY * Constants.RegionSize;
+                double reglocx = (double)regionInfo.RegionLocX * Constants.RegionSize;
+                double reglocy = (double)regionInfo.RegionLocY * Constants.RegionSize;
                 pos.X = (float)(gblposx - reglocx);
                 pos.Y = (float)(gblposy - reglocy);
                 SorpraDebug ("final move to " + pos);
