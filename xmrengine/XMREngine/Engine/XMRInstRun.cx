@@ -559,29 +559,37 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             StringBuilder msg = new StringBuilder();
 
-            msg.Append("[XMREngine]: Exception while running ");
-            msg.Append(m_ItemID);
-            msg.Append('\n');
+            msg.Append ("[XMREngine]: Exception while running ");
+            msg.Append (m_ItemID);
+            msg.Append ('\n');
 
             /*
              * Tell script owner what to do.
              */
-            msg.Append("Part: <");
-            msg.Append(m_Part.Name);
-            msg.Append(">, Item: <");
-            msg.Append(m_Item.Name);
-            msg.Append(">\nScript must be Reset to re-enable.\n");
+            msg.Append ("Prim: <");
+            msg.Append (m_Part.Name);
+            msg.Append (">, Script: <");
+            msg.Append (m_Item.Name);
+            msg.Append (">, Location: ");
+            msg.Append (m_Engine.World.RegionInfo.RegionName);
+            msg.Append (" <");
+            Vector3 pos = m_Part.AbsolutePosition;
+            msg.Append ((int) Math.Floor (pos.X));
+            msg.Append (',');
+            msg.Append ((int) Math.Floor (pos.Y));
+            msg.Append (',');
+            msg.Append ((int) Math.Floor (pos.Z));
+            msg.Append (">\nScript must be Reset to re-enable.\n");
 
             /*
              * Display full exception message in log.
              */
-            if (m_Engine.m_ScriptDebug) m_log.DebugFormat (msg.ToString() + XMRExceptionFixString (e.ToString(), false) + 
-                        "\n--------\n" + e.StackTrace);
+            m_log.Info (msg.ToString() + XMRExceptionFixString (e.ToString(), false), e);
 
             /*
              * Give script owner the stack dump.
              */
-            msg.Append(XMRExceptionFixString (e.ToString(), false));
+            msg.Append (XMRExceptionFixString (e.ToString(), false));
 
             /*
              * Send error message to owner.
@@ -590,6 +598,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             string msgst = msg.ToString();
             if (!msgst.EndsWith ("\n")) msgst += '\n';
             int j = 0;
+            StringBuilder imstr = new StringBuilder ();
             for (int i = 0; (i = msgst.IndexOf ('\n', i)) >= 0; j = ++ i) {
                 string line = msgst.Substring (j, i - j);
                 if (line.StartsWith ("at ")) {
@@ -598,6 +607,36 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     if (Int32.TryParse (line.Substring (k + 4), out k)) continue;
                 }
                 this.llOwnerSay (line);
+                imstr.Append (line);
+                imstr.Append ('\n');
+            }
+
+            /*
+             * Send as instant message in case user not online.
+             * Code modelled from llInstantMessage().
+             */
+            IMessageTransferModule transferModule = m_Engine.World.RequestModuleInterface<IMessageTransferModule>();
+            if (transferModule != null) {
+                UUID friendTransactionID = UUID.Random();
+                GridInstantMessage gim = new GridInstantMessage();
+                gim.fromAgentID = new Guid (m_Part.UUID.ToString());
+                gim.toAgentID = new Guid (m_Part.OwnerID.ToString ());
+                gim.imSessionID = new Guid(friendTransactionID.ToString());
+                gim.timestamp = (uint)Util.UnixTimeSinceEpoch();
+                gim.message = imstr.ToString ();
+                gim.dialog = (byte)19; // messgage from script
+                gim.fromGroup = false;
+                gim.offline = (byte)0;
+                gim.ParentEstateID = 0;
+                gim.Position = pos;
+                gim.RegionID = m_Engine.World.RegionInfo.RegionID.Guid;
+                gim.binaryBucket = Util.StringToBytes256(
+                    "{0}/{1}/{2}/{3}",
+                    m_Engine.World.RegionInfo.RegionName,
+                    (int)Math.Floor(pos.X),
+                    (int)Math.Floor(pos.Y),
+                    (int)Math.Floor(pos.Z));
+                transferModule.SendInstantMessage(gim, delegate(bool success) {});
             }
 
             /*

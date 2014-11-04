@@ -74,7 +74,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private Thread m_SleepThread = null;
         private Thread m_SliceThread = null;
         private bool m_Exiting = false;
-        private long m_InitializedAt = 0;
 
         private int m_MaintenanceInterval = 10;
         private System.Timers.Timer m_MaintenanceTimer;
@@ -315,8 +314,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_Scene.EventManager.OnAllInitialScenesStarted += OnAllInitialScenesStarted;
 
             m_Scene.StackModuleInterface<IScriptModule>(this);
-
-            m_InitializedAt = DateTime.UtcNow.Ticks;
         }
 
         /**
