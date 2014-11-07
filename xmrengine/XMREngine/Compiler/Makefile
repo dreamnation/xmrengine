@@ -10,7 +10,8 @@ COMMITCLEAN := $(strip $(shell git status | grep -q modified: ; echo $$?))
 HAVE_MONOCONTS   ?= $(shell ../Compiler/findmonotasklet.sh $(MONOBINDIR) $(MONODLLDIR) Continuation)
 HAVE_MMRUTHREADS ?= $(shell ../Compiler/findmonotasklet.sh $(MONOBINDIR) $(MONODLLDIR) MMRUThread)
 
-DEFS := -DHAVE_MONOCONTS=$(HAVE_MONOCONTS) -DHAVE_MMRUTHREADS=$(HAVE_MMRUTHREADS)
+DEFS  := -DHAVE_MONOCONTS=$(HAVE_MONOCONTS) -DHAVE_MMRUTHREADS=$(HAVE_MMRUTHREADS)
+DEFS0 := -DHAVE_MONOCONTS=0 -DHAVE_MMRUTHREADS=0
 
 SOURCEFILES := \
 	IEventHandlers.cx \
@@ -93,24 +94,23 @@ xmrengcomp_secret.cs: xmrengcomp.cx $(wildcard *.h)
 xmrengtest.zip: xmrengtest.exe $(patsubst %,$(OPENSIMDLLDIR)/%,$(REFDOPENSIMDLLS))
 	$(foreach dll,$(REFDOPENSIMDLLS),$(shell cp $(OPENSIMDLLDIR)/$(dll) $(dll)))
 	rm -f xmrengtest.zip
-	zip -D xmrengtest.zip xmrengtest.exe xmrengtest.exe.mdb $(REFDOPENSIMDLLS)
+	zip -D xmrengtest.zip xmrengtest.exe $(REFDOPENSIMDLLS)
 	rm -f $(REFDOPENSIMDLLS)
 
 xmrengtest.exe: $(TESTERCSFILES) $(wildcard *.h)
 	$(MONOBINDIR)/dmcs -debug -out:$@ \
 		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(REFDOPENSIMDLLS)) \
-		-reference:$(MONODLLDIR)/Mono.Tasklets.dll \
 		-reference:$(MONODLLDIR)/System.Drawing.dll \
 		$(TESTERCSFILES)
 
 xmrengtest_tester.cs: xmrengtest.cx makexmrengtestilslapi.inc $(wildcard *.h)
-	cpp -C -P -nostdinc $(DEFS) -DSCRIPTBASECLASS=TestScriptBaseClass -o $@ $<
+	cpp -C -P -nostdinc $(DEFS0) -DSCRIPTBASECLASS=TestScriptBaseClass -o $@ $<
 
 %_tester.cs: %.cx $(wildcard *.h)
-	cpp -C -P -nostdinc $(DEFS) -DSCRIPTBASECLASS=TestScriptBaseClass -o $@ $<
+	cpp -C -P -nostdinc $(DEFS0) -DSCRIPTBASECLASS=TestScriptBaseClass -o $@ $<
 
 XMRScriptUThread_tester.cs: ../Engine/XMRScriptUThread.cx $(wildcard *.h)
-	cpp -C -P -nostdinc $(DEFS) -DSCRIPTBASECLASS=TestScriptBaseClass -o $@ $<
+	cpp -C -P -nostdinc $(DEFS0) -DSCRIPTBASECLASS=TestScriptBaseClass -o $@ $<
 
 makexmrengtestilslapi.inc: makexmrengtestilslapi.exe
 	MONO_PATH=$(OPENSIMDLLDIR) mono --debug makexmrengtestilslapi.exe > makexmrengtestilslapi.tmp
@@ -122,7 +122,7 @@ makexmrengtestilslapi.exe: makexmrengtestilslapi.cs
 		$<
 
 makexmrengtestilslapi.cs: makexmrengtestilslapi.cx $(wildcard *.h)
-	cpp -C -P -nostdinc $(DEFS) -DSCRIPTBASECLASS=ScriptBaseClass -o $@ $<
+	cpp -C -P -nostdinc $(DEFS0) -DSCRIPTBASECLASS=ScriptBaseClass -o $@ $<
 
 # ------------------------------------------------------------------------------
 #
