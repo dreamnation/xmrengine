@@ -34,6 +34,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static FieldInfo  lslIntegerValueFieldInfo   = typeof (LSL_Integer).GetField ("value");
 		private static FieldInfo  lslStringValueFieldInfo    = typeof (LSL_String).GetField ("m_string");
 		private static FieldInfo  sdtcITableFieldInfo        = typeof (XMRSDTypeClObj).GetField ("sdtcITable");
+		private static MethodInfo boolToListMethodInfo       = typeof (TypeCast).GetMethod ("BoolToList",        new Type[] { typeof (bool) });
 		private static MethodInfo boolToStringMethodInfo     = typeof (TypeCast).GetMethod ("BoolToString",      new Type[] { typeof (bool) });
 		private static MethodInfo charToStringMethodInfo     = typeof (TypeCast).GetMethod ("CharToString",      new Type[] { typeof (char) });
 		private static MethodInfo excToStringMethodInfo      = typeof (TypeCast).GetMethod ("ExceptionToString", new Type[] { typeof (Exception), typeof (XMRInstAbstract) });
@@ -85,6 +86,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ltc.Add ("array object",     TypeCastArray2Object);
 			ltc.Add ("bool float",       TypeCastBool2Float);
 			ltc.Add ("bool integer",     TypeCastBool2Integer);
+			ltc.Add ("bool list",        TypeCastBool2List);
 			ltc.Add ("bool object",      TypeCastBool2Object);
 			ltc.Add ("bool string",      TypeCastBool2String);
 			ltc.Add ("char integer",     TypeCastChar2Integer);
@@ -611,6 +613,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Box, typeof (LSL_Vector));
 		}
+		private static void TypeCastBool2List (IScriptCodeGen scg, Token errorAt)
+		{
+			scg.ilGen.Emit (errorAt, OpCodes.Call, boolToListMethodInfo);
+		}
 		private static void TypeCastBool2String (IScriptCodeGen scg, Token errorAt)
 		{
 			scg.ilGen.Emit (errorAt, OpCodes.Call, boolToStringMethodInfo);
@@ -683,6 +689,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public static string   ObjectToString    (object x)       { return (x == null) ? null : x.ToString (); }
 		public static string   RotationToString  (LSL_Rotation x) { return x.ToString (); }
 		public static string   VectorToString    (LSL_Vector x)   { return x.ToString (); }
+		public static LSL_List BoolToList        (bool b)         { return new LSL_List (new object[] { new LSL_Integer (b ? 1 : 0) }); }
 		public static LSL_List CharToList        (char c)         { return new LSL_List (new object[] { new LSL_Integer (c) }); }
 		public static LSL_List ExcToList         (Exception e)    { return new LSL_List (new object[] { e }); }
 		public static LSL_List VectorToList      (LSL_Vector v)   { return new LSL_List (new object[] { v }); }

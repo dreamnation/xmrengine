@@ -40,5 +40,11 @@ default {
         after   = llListSort (before, 2, TRUE);
         llOwnerSay ("before=" + llList2CSV (before));
         llOwnerSay (" after=" + llList2CSV (after));
+
+        // also check bool->list type conversion
+        list flist = (list)(1 == 2);
+        llOwnerSay ("flist=" + flist);
+        list tlist = (list)(2 == 2);
+        llOwnerSay ("tlist=" + tlist);
     }
 }
