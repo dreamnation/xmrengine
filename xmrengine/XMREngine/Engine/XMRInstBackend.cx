@@ -1,7 +1,7 @@
 //////////////////////////////////////////////////////////////
 //
 // Copyright (c) 2009 Careminster Limited and Melanie Thielker
-// Copyright (c) 2010 Mike Rieker, Beverly, MA, USA
+// Copyright (c) 2010,2014 Mike Rieker, Beverly, MA, USA
 //
 // All rights reserved
 //
@@ -25,6 +25,7 @@ using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 using OpenSim.Region.ScriptEngine.XMREngine;
 using OpenSim.Region.Framework.Scenes;
 using OpenSim.Region.Framework.Scenes.Scripting;
+using OpenSim.Region.Framework.Interfaces;
 using log4net;
 
 #include "lsltypes.h"
@@ -153,6 +154,34 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                                            lm.Position,
                                            lookat,
                                            (uint)TeleportFlags.ViaLandmark);
+        }
+
+        /**
+         * @brief Allow any member of group given by config SetParcelMusicURLGroup to set music URL.
+         *        Code modelled after llSetParcelMusicURL().
+         * @param newurl = new URL to set (or "" to leave it alone)
+         * @returns previous URL string
+         */
+        public string xmrSetParcelMusicURLGroup (string newurl)
+        {
+            string groupname = m_ScriptEngine.Config.GetString ("SetParcelMusicURLGroup", "");
+            if (groupname == "") throw new ApplicationException ("no SetParcelMusicURLGroup config param set");
+
+            IGroupsModule igm = World.RequestModuleInterface<IGroupsModule> ();
+            if (igm == null) throw new ApplicationException ("no GroupsModule loaded");
+
+            GroupRecord grouprec = igm.GetGroupRecord (groupname);
+            if (grouprec == null) throw new ApplicationException ("no such group " + groupname);
+
+            GroupMembershipData gmd = igm.GetMembershipData (grouprec.GroupID, m_host.OwnerID);
+            if (gmd == null) throw new ApplicationException ("not a member of group " + groupname);
+
+            ILandObject land = World.LandChannel.GetLandObject (m_host.AbsolutePosition);
+            if (land == null) throw new ApplicationException ("no land at " + m_host.AbsolutePosition.ToString ());
+            string oldurl = land.GetMusicUrl ();
+            if (oldurl == null) oldurl = "";
+            if ((newurl != null) && (newurl != "")) land.SetMusicUrl (newurl);
+            return oldurl;
         }
     }
 
