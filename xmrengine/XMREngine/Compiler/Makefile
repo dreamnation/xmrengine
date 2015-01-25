@@ -112,7 +112,7 @@ xmrengtest_tester.cs: xmrengtest.cx makexmrengtestilslapi.inc $(wildcard *.h)
 XMRScriptUThread_tester.cs: ../Engine/XMRScriptUThread.cx $(wildcard *.h)
 	cpp -C -P -nostdinc $(DEFS0) -DSCRIPTBASECLASS=TestScriptBaseClass -o $@ $<
 
-makexmrengtestilslapi.inc: makexmrengtestilslapi.exe
+makexmrengtestilslapi.inc: makexmrengtestilslapi.exe $(patsubst %,$(OPENSIMDLLDIR)/%,$(REFDOPENSIMDLLS))
 	MONO_PATH=$(OPENSIMDLLDIR) mono --debug makexmrengtestilslapi.exe > makexmrengtestilslapi.tmp
 	mv -f makexmrengtestilslapi.tmp makexmrengtestilslapi.inc
 
