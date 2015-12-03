@@ -38,9 +38,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 Monitor.Exit (rctLock);
                 SceneObjectGroup sog = m_Part.ParentGroup;
                 if (enable) {
-                    sog.AddTrapRegionCrossing (RegionCrossingTrap);
+                    //TODO sog.AddTrapRegionCrossing (RegionCrossingTrap);
                 } else {
-                    sog.RemTrapRegionCrossing (RegionCrossingTrap);
+                    //TODO sog.RemTrapRegionCrossing (RegionCrossingTrap);
                 }
             } else {
                 Monitor.Exit (rctLock);

@@ -68,7 +68,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public XMRScriptThread(XMREngine eng)
         {
             engine = eng;
-            thd = Watchdog.StartThread (RunScriptThread, "xmrengine script", ThreadPriority.BelowNormal, false, true);
+            thd = XMREngine.StartMyThread (RunScriptThread, "xmrengine script", ThreadPriority.BelowNormal);
             lock (m_AllThreads) {
                 m_AllThreads.Add (thd, this);
             }
@@ -129,7 +129,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_ScriptThreadTID = System.Threading.Thread.CurrentThread.ManagedThreadId;
 
             while (!m_Exiting) {
-                Watchdog.UpdateThread ();
+                XMREngine.UpdateMyThread ();
 
                 /*
                  * Handle 'xmr resume/suspend' commands.
@@ -140,7 +140,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                                !m_Exiting &&
                                (engine.m_ThunkQueue.Count == 0)) {
                             Monitor.Wait (m_WakeUpLock, Watchdog.DEFAULT_WATCHDOG_TIMEOUT_MS / 2);
-                            Watchdog.UpdateThread ();
+                            XMREngine.UpdateMyThread ();
                         }
                     }
                 }

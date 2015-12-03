@@ -229,8 +229,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 #endif
 
-            m_SleepThread = Watchdog.StartThread (RunSleepThread, "xmrengine sleep", ThreadPriority.Normal, false, true);
-            m_SliceThread = Watchdog.StartThread (RunSliceThread, "xmrengine slice", ThreadPriority.Normal, false, true);
+            m_SleepThread = StartMyThread (RunSleepThread, "xmrengine sleep", ThreadPriority.Normal);
+            m_SliceThread = StartMyThread (RunSliceThread, "xmrengine slice", ThreadPriority.Normal);
 
             /*
              * Verify that our ScriptEventCode's match OpenSim's scriptEvent's.
@@ -1176,6 +1176,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return PostObjectEvent(part.LocalId, new EventParams(name, p, zeroDetectParams));
         }
 
+        // about the 3523rd entrypoint for a script to put itself to sleep
+        public void SleepScript(UUID itemID, int delay)
+        {
+            XMRInstance instance = GetInstance (itemID);
+            if (instance != null) {
+                instance.Sleep (delay);
+            }
+        }
+
         // Get a script instance loaded, compiling it if necessary
         //
         //  localID     = the object as a whole, may contain many scripts
@@ -1699,7 +1708,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      * Wait here until there is a script on the timer queue that has expired.
                      */
                     while (true) {
-                        Watchdog.UpdateThread ();
+                        UpdateMyThread ();
                         if (m_Exiting) return;
                         inst = m_SleepQueue.PeekHead();
                         if (inst == null) {
@@ -1742,7 +1751,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             int ms = m_Config.GetInt ("TimeSlice", 50);
             while (!m_Exiting) {
-                Watchdog.UpdateThread ();
+                UpdateMyThread ();
 
                 /*
                  * Let script run for a little bit.
@@ -1928,5 +1937,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             if (m_Verbose) m_log.DebugFormat (format, args);
         }
+
+        /**
+         * @brief Manage our threads.
+         */
+        //TODO - fix this up
+        public static Thread StartMyThread (ThreadStart start, string name, ThreadPriority priority)
+        {
+            m_log.Debug ("[XMREngine]: starting thread " + name);
+            Thread thread   = new Thread (start);
+            thread.Name     = name;
+            thread.Priority = priority;
+            thread.Start ();
+            return thread;
+        }
+
+        public static void UpdateMyThread ()
+        { }
     }
 }
