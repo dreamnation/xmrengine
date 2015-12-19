@@ -13,7 +13,7 @@ function testit {
     then
         input=$1.in
     fi
-    mono --debug xmrengtest.exe -uthread $uthread $1.lsl < $input 2>&1 | grep -v '^mmruthread: total stack' | tee $1.out
+    mono --debug xmrengtest.exe -uthread $uthread -xmrasm $1.lsl < $input 2>&1 | grep -v '^mmruthread: total stack' | tee $1.out
     diff $1.out $1.good
     minorbar
     mono --debug xmrengtest.exe -uthread $uthread -checkrun $1.lsl < $input 2>&1 | grep -v '^mmruthread: total stack' | tee $1.ckr
@@ -38,8 +38,7 @@ function testev {
 
 set -e
 time make xmrengtest.exe
-export MONO_PATH=../../../bin_080
-export PATH=~/mono64.2109/bin:$PATH
+export MONO_PATH=../../../bin_090
 
 uthread=sys
 if [ "x$1" != "x" ]

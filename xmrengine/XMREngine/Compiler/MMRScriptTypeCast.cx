@@ -45,6 +45,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static MethodInfo listToStringMethodInfo     = typeof (TypeCast).GetMethod ("ListToString",      new Type[] { typeof (LSL_List) });
 		private static MethodInfo objectToFloatMethodInfo    = typeof (TypeCast).GetMethod ("ObjectToFloat",     new Type[] { typeof (object) });
 		private static MethodInfo objectToIntegerMethodInfo  = typeof (TypeCast).GetMethod ("ObjectToInteger",   new Type[] { typeof (object) });
+		private static MethodInfo objectToListMethodInfo     = typeof (TypeCast).GetMethod ("ObjectToList",      new Type[] { typeof (object) });
 		private static MethodInfo objectToRotationMethodInfo = typeof (TypeCast).GetMethod ("ObjectToRotation",  new Type[] { typeof (object) });
 		private static MethodInfo objectToStringMethodInfo   = typeof (TypeCast).GetMethod ("ObjectToString",    new Type[] { typeof (object) });
 		private static MethodInfo objectToVectorMethodInfo   = typeof (TypeCast).GetMethod ("ObjectToVector",    new Type[] { typeof (object) });
@@ -541,6 +542,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		private static void TypeCastList2Object (IScriptCodeGen scg, Token errorAt)
 		{
+			scg.ilGen.Emit (errorAt, OpCodes.Box, typeof (LSL_List));
 		}
 		private static void TypeCastObject2Array (IScriptCodeGen scg, Token errorAt)
 		{
@@ -568,7 +570,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		}
 		private static void TypeCastObject2List (IScriptCodeGen scg, Token errorAt)
 		{
-			scg.ilGen.Emit (errorAt, OpCodes.Castclass, typeof (LSL_List));
+			scg.ilGen.Emit (errorAt, OpCodes.Call, objectToListMethodInfo);
 		}
 		private static void TypeCastObject2Rotation (IScriptCodeGen scg, Token errorAt)
 		{
@@ -714,6 +716,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (x is string)      return int.Parse ((string)x);
 			if (x is LSL_Integer) return (int)(LSL_Integer)x;
 			return (int)x;
+		}
+
+		public static LSL_List ObjectToList (object x)
+		{
+			return (LSL_List)x;
 		}
 
 		public static LSL_Rotation ObjectToRotation (object x)

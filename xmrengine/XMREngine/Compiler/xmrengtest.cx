@@ -1929,15 +1929,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
         public LSL_Integer llGetListLength (LSL_List src)
         {
-
-            if (src == null)
-            {
-                return 0;
-            }
-            else
-            {
-                return src.Length;
-            }
+            return src.Length;
         }
         public LSL_Integer llList2Integer (LSL_List src, int index)
         {
@@ -2154,8 +2146,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public LSL_List llListInsertList (LSL_List dest, LSL_List src, int index)
         {
 
-            LSL_List pref = null;
-            LSL_List suff = null;
+            LSL_List pref;
+            LSL_List suff;
 
 
             if (index < 0)
@@ -2196,7 +2188,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
         public LSL_List llListReplaceList (LSL_List dest, LSL_List src, int start, int end)
         {
-            LSL_List pref = null;
+            LSL_List pref;
 
 
             // Note that although we have normalized, both
