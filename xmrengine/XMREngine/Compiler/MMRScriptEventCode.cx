@@ -49,6 +49,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		object_rez           = 22,
 		remote_data          = 23,
 		at_rot_target        = 24,
+		transaction_result   = 25,
 		run_time_permissions = 28,
 		touch_end            = 29,
 		state_entry          = 30,
@@ -61,7 +62,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		sensor               = 37,
 		http_request         = 38,
 
-		transaction_result   = 39,
 		path_update          = 40,
 
 		// XMRE specific
