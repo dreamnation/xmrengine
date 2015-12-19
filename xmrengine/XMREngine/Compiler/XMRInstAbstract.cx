@@ -1570,6 +1570,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 SendObjValue (key.m_string);  // m_string can be null
                 return;
             }
+            if (graph is LSL_List) {
+                mow.Write ((byte)Ser.LSLLIST);
+                LSL_List list = (LSL_List)graph;
+                SendObjValue (list.Data);
+                return;
+            }
             if (graph is LSL_Rotation) {
                 mow.Write ((byte)Ser.LSLROT);
                 mow.Write ((double)((LSL_Rotation)graph).x);
@@ -1654,11 +1660,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * a DUPREF tag instead of trying to output the whole object 
              * again.
              */
-            if (graph is LSL_List) {
-                mow.Write ((byte)Ser.LSLLIST);
-                LSL_List list = (LSL_List)graph;
-                SendObjValue (list.Data);
-            } else if (graph is XMR_Array) {
+            if (graph is XMR_Array) {
                 mow.Write ((byte)Ser.XMRARRAY);
                 ((XMR_Array)graph).SendArrayObj (this.SendObjValue);
             } else if (graph is Array) {
@@ -1830,9 +1832,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     return new LSL_Key ((string)RecvObjValue ());
                 }
                 case Ser.LSLLIST: {
-                    LSL_List list =  new LSL_List (null);
-                    this.migrateInObjects.Add (ident, list);
-                    list.Data = (object[])RecvObjValue ();
+                    object[] vals = (object[])RecvObjValue ();
+                    LSL_List list = new LSL_List (vals);
                     return list;
                 }
                 case Ser.LSLROT: {

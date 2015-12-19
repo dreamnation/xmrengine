@@ -116,11 +116,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static MethodInfo heapTrackerObjectPush = typeof (HeapTrackerObject).GetMethod ("Push", new Type[0]);
 		private static MethodInfo heapTrackerStringPush = typeof (HeapTrackerString).GetMethod ("Push", new Type[0]);
 
-        private static MethodInfo catchExcToStrMethodInfo = GetStaticMethod (typeof (ScriptCodeGen),
+ 		private static MethodInfo catchExcToStrMethodInfo = GetStaticMethod (typeof (ScriptCodeGen),
                                                                              "CatchExcToStr",
                                                                              new Type[] { typeof (Exception) });
 
-		//private static MethodInfo consoleWriteMethodInfo      = GetStaticMethod (typeof (ScriptCodeGen), "ConsoleWrite",   new Type[] { typeof (string) });
+#if DEBUG_STACKCAPRES
+		private static MethodInfo consoleWriteMethodInfo      = GetStaticMethod (typeof (ScriptCodeGen), "ConsoleWrite",   new Type[] { typeof (object) });
+		public static void ConsoleWrite (object o)
+		{
+			if (o == null) o = "<<null>>";
+			Console.Write (o.ToString ());
+		}
+#endif
 
 		public static bool CodeGen (TokenScript tokenScript, BinaryWriter objFileWriter, string sourceHash)
 		{
@@ -1435,6 +1442,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ilGen.Emit (curDeclFunc, OpCodes.Ldc_I4, nSaves);
 			ilGen.Emit (curDeclFunc, OpCodes.Call, captureStackFrameMethodInfo);
 
+#if DEBUG_STACKCAPRES
+			ilGen.Emit (curDeclFunc, OpCodes.Ldstr, ilGen.methName + "*: capture mainCallNo=");
+			ilGen.Emit (curDeclFunc, OpCodes.Call, consoleWriteMethodInfo);
+			ilGen.Emit (curDeclFunc, OpCodes.Ldloc, actCallNo);
+			ilGen.Emit (curDeclFunc, OpCodes.Box, typeof (int));
+			ilGen.Emit (curDeclFunc, OpCodes.Call, consoleWriteMethodInfo);
+#endif
+
 			/*
 			 * Copy arg values to object array, boxing as needed.
 			 */
@@ -1443,6 +1458,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ilGen.Emit (curDeclFunc, OpCodes.Dup);
 				ilGen.Emit (curDeclFunc, OpCodes.Ldc_I4, i);
 				argVar.location.PushVal (this, argVar.name, tokenTypeObj);
+#if DEBUG_STACKCAPRES
+				ilGen.Emit (curDeclFunc, OpCodes.Ldstr, "\n    arg:" + argVar.name.val + "=");
+				ilGen.Emit (curDeclFunc, OpCodes.Call, consoleWriteMethodInfo);
+				ilGen.Emit (curDeclFunc, OpCodes.Dup);
+				ilGen.Emit (curDeclFunc, OpCodes.Call, consoleWriteMethodInfo);
+#endif
 				ilGen.Emit (curDeclFunc, OpCodes.Stelem_Ref);
 				i ++;
 			}
@@ -1470,8 +1491,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				if (t.IsValueType) {
 					ilGen.Emit (curDeclFunc, OpCodes.Box, t);
 				}
+#if DEBUG_STACKCAPRES
+				ilGen.Emit (curDeclFunc, OpCodes.Ldstr, "\n    lcl:" + lcl.name + "=");
+				ilGen.Emit (curDeclFunc, OpCodes.Call, consoleWriteMethodInfo);
+				ilGen.Emit (curDeclFunc, OpCodes.Dup);
+				ilGen.Emit (curDeclFunc, OpCodes.Call, consoleWriteMethodInfo);
+#endif
 				ilGen.Emit (curDeclFunc, OpCodes.Stelem_Ref);
 			}
+#if DEBUG_STACKCAPRES
+			ilGen.Emit (curDeclFunc, OpCodes.Ldstr, "\n");
+			ilGen.Emit (curDeclFunc, OpCodes.Call, consoleWriteMethodInfo);
+#endif
 
 			ilGen.Emit (curDeclFunc, OpCodes.Pop);
 		}
@@ -1494,9 +1525,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			ilGen.Emit (curDeclFunc, OpCodes.Call, restoreStackFrameMethodInfo);
 			ilGen.Emit (curDeclFunc, OpCodes.Stloc, objArray);
 #if DEBUG_STACKCAPRES
-			ilGen.Emit (curDeclFunc, OpCodes.Ldstr, ilGen.methName);
-			ilGen.Emit (curDeclFunc, OpCodes.Call, consoleWriteMethodInfo);
-			ilGen.Emit (curDeclFunc, OpCodes.Ldstr, "*: restore mainCallNo=");
+			ilGen.Emit (curDeclFunc, OpCodes.Ldstr, ilGen.methName + "*: restore mainCallNo=");
 			ilGen.Emit (curDeclFunc, OpCodes.Call, consoleWriteMethodInfo);
 			ilGen.Emit (curDeclFunc, OpCodes.Ldloc, actCallNo);
 			ilGen.Emit (curDeclFunc, OpCodes.Box, typeof (int));
@@ -1516,11 +1545,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ilGen.Emit (curDeclFunc, OpCodes.Ldc_I4, i);
 				ilGen.Emit (curDeclFunc, OpCodes.Ldelem_Ref);
 #if DEBUG_STACKCAPRES
-				ilGen.Emit (curDeclFunc, OpCodes.Ldstr, " ");
-				ilGen.Emit (curDeclFunc, OpCodes.Call, consoleWriteMethodInfo);
-				ilGen.Emit (curDeclFunc, OpCodes.Ldstr, argVar.name.val);
-				ilGen.Emit (curDeclFunc, OpCodes.Call, consoleWriteMethodInfo);
-				ilGen.Emit (curDeclFunc, OpCodes.Ldstr, "=");
+				ilGen.Emit (curDeclFunc, OpCodes.Ldstr, "\n    arg:" + argVar.name.val + "=");
 				ilGen.Emit (curDeclFunc, OpCodes.Call, consoleWriteMethodInfo);
 				ilGen.Emit (curDeclFunc, OpCodes.Dup);
 				ilGen.Emit (curDeclFunc, OpCodes.Call, consoleWriteMethodInfo);
@@ -1546,11 +1571,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 				ilGen.Emit (curDeclFunc, OpCodes.Ldc_I4, i ++);
 				ilGen.Emit (curDeclFunc, OpCodes.Ldelem_Ref);
 #if DEBUG_STACKCAPRES
-				ilGen.Emit (curDeclFunc, OpCodes.Ldstr, " ");
-				ilGen.Emit (curDeclFunc, OpCodes.Call, consoleWriteMethodInfo);
-				ilGen.Emit (curDeclFunc, OpCodes.Ldstr, lcl.name);
-				ilGen.Emit (curDeclFunc, OpCodes.Call, consoleWriteMethodInfo);
-				ilGen.Emit (curDeclFunc, OpCodes.Ldstr, "=");
+				ilGen.Emit (curDeclFunc, OpCodes.Ldstr, "\n    lcl:" + lcl.name + "=");
 				ilGen.Emit (curDeclFunc, OpCodes.Call, consoleWriteMethodInfo);
 				ilGen.Emit (curDeclFunc, OpCodes.Dup);
 				ilGen.Emit (curDeclFunc, OpCodes.Call, consoleWriteMethodInfo);
@@ -1561,8 +1582,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					ilGen.Emit (curDeclFunc, OpCodes.Castclass, u);
 				}
 				if (u != t) {
-					ilGen.Emit (curDeclFunc, OpCodes.Call, 
-					            t.GetMethod ("Pop", new Type[] { u }));
+					ilGen.Emit (curDeclFunc, OpCodes.Call, t.GetMethod ("Pop", new Type[] { u }));
 				} else {
 					ilGen.Emit (curDeclFunc, OpCodes.Stloc, lcl);
 				}
