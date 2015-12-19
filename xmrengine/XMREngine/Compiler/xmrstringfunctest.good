@@ -13,8 +13,8 @@ llOwnerSay: Unknown char: a
 llOwnerSay: 987
 llOwnerSay: Value too large or too small.
 llOwnerSay: 4421
-llOwnerSay: <9.900000,88.000000,-7.700000,0.660000>
+llOwnerSay: <9.900000, 88.000000, -7.700000, 0.660000>
 llOwnerSay: doesn't have exactly 2 commas
 llOwnerSay: Input string was not in the correct format
 llOwnerSay: doesn't have exactly 2 commas
-llOwnerSay: <0.750000,9.900000,-7.700000>
+llOwnerSay: <0.750000, 9.900000, -7.700000>

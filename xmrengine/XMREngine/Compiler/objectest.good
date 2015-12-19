@@ -8,7 +8,7 @@ llOwnerSay: typeof (stuffenum) = Kunta.LinkedList<string>.Enumerator
 llOwnerSay: element=(string) abcdef
 llOwnerSay: element=(string) 1
 llOwnerSay: element=(string) 234
-llOwnerSay: element=(string) <5.000000,6.000000,7.000000>
+llOwnerSay: element=(string) <5.000000, 6.000000, 7.000000>
 llOwnerSay: gblPropTrivial=987
 llOwnerSay: gblPropCheckRun: setting 789
 llOwnerSay: gblPropCheckRun: getting 789

@@ -1,8 +1,8 @@
 Compiling...
 Running...
-llOwnerSay: v=<1.000000,2.000000,3.000000>
+llOwnerSay: v=<1.000000, 2.000000, 3.000000>
 llOwnerSay: x=1.000000 y=2.000000 z=3.000000
-llOwnerSay: v=<1.000000,9.000000,3.000000>
+llOwnerSay: v=<1.000000, 9.000000, 3.000000>
 llOwnerSay: x=1.000000 y=9.000000 z=3.000000
 llOwnerSay: a, b, c
 llOwnerSay: a, b, c
