@@ -71,7 +71,7 @@ testev lslangtest1
 testev lslangtest2
 
 majorbar
-mono --debug xmrengtest.exe -uthread $uthread -eventio -ipcchannel -2135482309 \
+mono --debug xmrengtest.exe -uthread $uthread -xmrasm -eventio -ipcchannel -2135482309 \
     -primname controller -primuuid 0000 ipctest0.lsl \
     -primname player1 -primuuid 1111 ipctest1.lsl << EOF | grep -v '^mmruthread: total stack' | tee ipctest.out
 1)touch_start(0)
