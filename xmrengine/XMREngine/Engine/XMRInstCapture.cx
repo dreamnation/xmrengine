@@ -108,16 +108,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 m_RunOnePhase = "GetExecutionState D"; CheckRunLockInvariants(true);
 
                 /*
-                 * "RegionCrossingTrap" has state of xmrTrapRegionCrossing().
-                 */
-                if (rctEnabled | rctArmed) {
-                    XmlElement regionCrossingTrapN = doc.CreateElement ("", "RegionCrossingTrap", "");
-                    regionCrossingTrapN.SetAttribute ("enabled", rctEnabled.ToString ());
-                    regionCrossingTrapN.SetAttribute ("armed",   rctArmed.ToString ());
-                    scriptStateN.AppendChild (regionCrossingTrapN);
-                }
-
-                /*
                  * More misc data.
                  */
                 XmlNode permissionsN = doc.CreateElement("", "Permissions", "");
@@ -180,16 +170,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 AppendXMLObjectArray(doc, plugins, pluginData, "plugin");
                 scriptStateN.AppendChild(plugins);
                 m_RunOnePhase = "GetExecutionState H"; CheckRunLockInvariants(true);
-
-                /*
-                 * Maybe a SetObjRegPosRotAsync is in progress and
-                 * we are sending the context to the receiving sim.
-                 */
-                if (m_Sorpra != null) {
-                    XmlElement sorpraxml = doc.CreateElement ("", "SetObjRegPosRotAsync", "");
-                    m_Sorpra.GetXml (sorpraxml);
-                    scriptStateN.AppendChild (sorpraxml);
-                }
 
                 /*
                  * Let script run again.

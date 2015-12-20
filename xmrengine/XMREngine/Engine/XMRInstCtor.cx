@@ -531,15 +531,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             XmlElement doGblInitN = (XmlElement)scriptStateN.SelectSingleNode("DoGblInit");
             doGblInit = bool.Parse(doGblInitN.InnerText);
 
-            XmlElement regionCrossingTrapN = (XmlElement)scriptStateN.SelectSingleNode ("RegionCrossingTrap");
-            if (regionCrossingTrapN != null) {
-                bool rcten = bool.Parse (regionCrossingTrapN.GetAttribute ("enabled"));
-                bool rctar = bool.Parse (regionCrossingTrapN.GetAttribute ("armed"));
-                TrapRegionCrossing (rcten, rctar);
-            } else {
-                TrapRegionCrossing (false, false);
-            }
-
             XmlElement permissionsN = (XmlElement)scriptStateN.SelectSingleNode("Permissions");
             m_Item.PermsGranter = new UUID(permissionsN.GetAttribute("granter"));
             m_Item.PermsMask = Convert.ToInt32(permissionsN.GetAttribute("mask"));
@@ -587,15 +578,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             AsyncCommandManager.CreateFromData(m_Engine,
                     m_LocalID, m_ItemID, m_Part.UUID,
                     pluginData);
-
-            // Restore SetObjRegPosRotAsync data
-            // Then finish it off assuming we are now running on the destination sim
-            XmlElement sorpraxml = (XmlElement)scriptStateN.SelectSingleNode ("SetObjRegPosRotAsync");
-            if (sorpraxml != null) {
-                SetObjRegPosRotAsync sorpra = new SetObjRegPosRotAsync (this);
-                sorpra.SetXml (sorpraxml);
-                m_Engine.AddOnFrameUpdate (sorpra.Finish);
-            }
         }
 
         /**
