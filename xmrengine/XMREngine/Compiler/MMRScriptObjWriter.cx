@@ -29,8 +29,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		BegExcBlk, BegCatBlk, BegFinBlk, EndExcBlk
 	}
 
-	public delegate void ScriptObjWriterEndMethod (DynamicMethod method, Dictionary<int, ScriptSrcLoc> srcLocs);
-
 	public class ScriptObjWriter : ScriptMyILGen
 	{
 		private static readonly int OPCSTRWIDTH = 12;
@@ -341,10 +339,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @brief Take an object file created by ScriptObjWriter() and convert it to a series of dynamic methods.
 		 * @param sdTypes   = script-defined types
 		 * @param objReader = where to read object file from (as written by ScriptObjWriter above).
-		 * @param endMethod = called for each method defined
+		 * @param scriptObjCode.EndMethod = called for each method defined at the end of the methods definition
 		 * @param debWriter = debug file writer (or null if not wanted)
 		 */
-		public static void CreateObjCode (Dictionary<string, TokenDeclSDType> sdTypes, BinaryReader objReader, ScriptObjWriterEndMethod endMethod, TextWriter debWriter)
+		public static void CreateObjCode (Dictionary<string, TokenDeclSDType> sdTypes, BinaryReader objReader, ScriptObjCode scriptObjCode, TextWriter debWriter)
 		{
 			Dictionary<string, DynamicMethod> methods = new Dictionary<string, DynamicMethod> ();
 			DynamicMethod method = null;
@@ -422,7 +420,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					case ScriptObjWriterCode.EndMethod: {
 						ilGen = null;
 						ilGenArg[0] = null;
-						endMethod (method, srcLocs);
+						scriptObjCode.EndMethod (method, srcLocs);
 						srcLocs = null;
 						dbg.Append ("}");
 						break;

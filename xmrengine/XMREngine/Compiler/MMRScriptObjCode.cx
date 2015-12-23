@@ -135,12 +135,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Now fill in the methods (the hard part).
              */
-            EndMethodWrapper endMethodWrapper = new EndMethodWrapper ();
-            endMethodWrapper.scriptObjCode    = this;
             scriptEventHandlerTable = new ScriptEventHandler[nStates,(int)ScriptEventCode.Size];
             dynamicMethods          = new Dictionary<string, DynamicMethod> ();
             scriptSrcLocss          = new Dictionary<string, KeyValuePair<int, ScriptSrcLoc>[]> ();
-            ScriptObjWriter.CreateObjCode (sdObjTypesName, objFileReader, endMethodWrapper.EndMethod, asmFileWriter);
+            ScriptObjWriter.CreateObjCode (sdObjTypesName, objFileReader, this, asmFileWriter);
 
             /*
              * We enter all script event handler methods in the ScriptEventHandler table.
@@ -176,30 +174,34 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * @brief Called once for every method found in objFileReader file.
          *        It enters the method in the ScriptObjCode object table so it can be called.
          */
+        public void EndMethod (DynamicMethod method, Dictionary<int, ScriptSrcLoc> srcLocs)
+        {
+            /*
+             * Save method object code pointer.
+             */
+            dynamicMethods.Add (method.Name, method);
+
+            /*
+             * Build and sort iloffset -> source code location array.
+             */
+            int n = srcLocs.Count;
+            KeyValuePair<int, ScriptSrcLoc>[] srcLocArray = new KeyValuePair<int, ScriptSrcLoc>[n];
+            n = 0;
+            foreach (KeyValuePair<int, ScriptSrcLoc> kvp in srcLocs) srcLocArray[n++] = kvp;
+            Array.Sort (srcLocArray, endMethodWrapper);
+
+            /*
+             * Save sorted array.
+             */
+            scriptSrcLocss.Add (method.Name, srcLocArray);
+        }
+
+        /**
+         * @brief Called once for every method found in objFileReader file.
+         *        It enters the method in the ScriptObjCode object table so it can be called.
+         */
+        private static EndMethodWrapper endMethodWrapper = new EndMethodWrapper ();
         private class EndMethodWrapper : System.Collections.IComparer {
-            public ScriptObjCode scriptObjCode;
-            public void EndMethod (DynamicMethod method, Dictionary<int, ScriptSrcLoc> srcLocs)
-            {
-                /*
-                 * Save method object code pointer.
-                 */
-                scriptObjCode.dynamicMethods.Add (method.Name, method);
-
-                /*
-                 * Build and sort iloffset -> source code location array.
-                 */
-                int n = srcLocs.Count;
-                KeyValuePair<int, ScriptSrcLoc>[] srcLocArray = new KeyValuePair<int, ScriptSrcLoc>[n];
-                n = 0;
-                foreach (KeyValuePair<int, ScriptSrcLoc> kvp in srcLocs) srcLocArray[n++] = kvp;
-                Array.Sort (srcLocArray, this);
-
-                /*
-                 * Save sorted array.
-                 */
-                scriptObjCode.scriptSrcLocss.Add (method.Name, srcLocArray);
-            }
-
             public int Compare (object x, object y)
             {
                 KeyValuePair<int, ScriptSrcLoc> kvpx = (KeyValuePair<int, ScriptSrcLoc>)x;
