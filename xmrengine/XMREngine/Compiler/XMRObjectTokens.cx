@@ -51,7 +51,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public abstract void EndMethod ();
         public abstract void DefineLabel (int number, string name);
         public abstract void DefineLocal (int number, string name, string type, Type syType);
-        public abstract void DefineMethod (string methName, Type retType, Type[] argTypes);
+        public abstract void DefineMethod (string methName, Type retType, Type[] argTypes, string[] argNames);
         public abstract void MarkLabel (int offset, int number);
         public abstract void BegExcBlk (int offset);
         public abstract void BegCatBlk (int offset, Type excType);
@@ -149,7 +149,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             FlushLine ();
         }
 
-        public override void DefineMethod (string methName, Type retType, Type[] argTypes)
+        public override void DefineMethod (string methName, Type retType, Type[] argTypes, string[] argNames)
         { }
 
         public override void MarkLabel (int offset, int number)
@@ -421,6 +421,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         private Dictionary<int,OTLocal> eharglist;
         private Dictionary<int,OTLabel> labels;
         private Dictionary<int,OTLocal> locals;
+        private Dictionary<string,string[]> methargnames;
         private LinkedList<OTCilInstr> cilinstrs;
         private OTStmtBlock topBlock;
         private Stack<OTOpnd> opstack;
@@ -436,6 +437,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         {
             this.twout = twout;
             twout.Write ("xmroption dollarsigns;");
+            methargnames = new Dictionary<string,string[]> ();
         }
 
         public override void Close ()
@@ -529,7 +531,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
             /*
              * Strip the $n off of local vars that are not ambiguous.
-             * Make sure they don't mask globals as well.
+             * Make sure they don't mask globals and arguments as well.
              */
             Dictionary<string,int> namecounts = new Dictionary<string,int> ();
             foreach (Dictionary<int,string> varnames in scriptObjCode.globalVarNames.Values) {
@@ -537,6 +539,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                     int count;
                     if (!namecounts.TryGetValue (varname, out count)) count = 0;
                     namecounts[varname] = count + 1;
+                }
+            }
+            if (methargnames.ContainsKey (method.Name)) {
+                foreach (string argname in methargnames[method.Name]) {
+                    int count;
+                    if (!namecounts.TryGetValue (argname, out count)) count = 0;
+                    namecounts[argname] = count + 1;
                 }
             }
             foreach (OTLocal local in locals.Values) {
@@ -574,8 +583,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         {
             locals.Add (number, new OTLocal (number, name, type));
         }
-        public override void DefineMethod (string methName, Type retType, Type[] argTypes)
-        { }
+        public override void DefineMethod (string methName, Type retType, Type[] argTypes, string[] argNames)
+        {
+            methargnames[methName] = argNames;
+        }
         public override void MarkLabel (int offset, int number)
         {
             OTCilInstr label = labels[number];
@@ -808,8 +819,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
                 /*
                  * Output method name and argument list.
-                 * Note we don't have the original argument names,
-                 * so we substitute in arg$1, arg$2, etc.
                  */
                 int j = method.Name.IndexOf ('(');
                 if (j < 0) {
@@ -821,7 +830,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                     foreach (ParameterInfo pi in method.GetParameters ()) {
                         if (j > 0) {  // skip the XMRInstance arg$0 parameter
                             if (!first) twout.Write (", ");
-                            twout.Write (AbbrType (pi.ParameterType) + " arg$" + j);
+                            twout.Write (AbbrType (pi.ParameterType) + ' ' + MethArgName (j));
                             first = false;
                         }
                         j ++;
@@ -875,6 +884,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                 type = typeTranslator[type];
             }
             return type;
+        }
+
+        /**
+         * Get current method's argument name.
+         */
+        public string MethArgName (int index)
+        {
+            string[] argnames;
+            if (methargnames.TryGetValue (method.Name, out argnames) && (index < argnames.Length)) {
+                return argnames[index];
+            }
+            return "arg$" + index;
         }
 
         /**
@@ -1156,10 +1177,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                         break;
                     }
                     case "endfinally": break;
-                    case "ldarg.0": { decompile.opstack.Push (new OTOpndArg (0, false)); break; }
-                    case "ldarg.1": { decompile.opstack.Push (new OTOpndArg (1, false)); break; }
-                    case "ldarg.2": { decompile.opstack.Push (new OTOpndArg (2, false)); break; }
-                    case "ldarg.3": { decompile.opstack.Push (new OTOpndArg (3, false)); break; }
+                    case "ldarg.0": { decompile.opstack.Push (new OTOpndArg (0, false, decompile)); break; }
+                    case "ldarg.1": { decompile.opstack.Push (new OTOpndArg (1, false, decompile)); break; }
+                    case "ldarg.2": { decompile.opstack.Push (new OTOpndArg (2, false, decompile)); break; }
+                    case "ldarg.3": { decompile.opstack.Push (new OTOpndArg (3, false, decompile)); break; }
                     case "ldc.i4.0":  { decompile.opstack.Push (new OTOpndInt  (0)); break; }
                     case "ldc.i4.1":  { decompile.opstack.Push (new OTOpndInt  (1)); break; }
                     case "ldc.i4.2":  { decompile.opstack.Push (new OTOpndInt  (2)); break; }
@@ -1647,12 +1668,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                 switch (opCode.ToString ()) {
                     case "ldarg":
                     case "ldarg.s": {
-                        decompile.opstack.Push (new OTOpndArg (value, false));
+                        decompile.opstack.Push (new OTOpndArg (value, false, decompile));
                         break;
                     }
                     case "ldarga":
                     case "ldarga.s": {
-                        decompile.opstack.Push (new OTOpndArg (value, true));
+                        decompile.opstack.Push (new OTOpndArg (value, true, decompile));
                         break;
                     }
                     case "ldc.i4":
@@ -1662,7 +1683,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                     }
                     case "starg": {
                         OTOpnd val = decompile.opstack.Pop ();
-                        OTStmtStore.AddLast (decompile, new OTOpndArg (value, false), val);
+                        OTStmtStore.AddLast (decompile, new OTOpndArg (value, false, decompile), val);
                         break;
                     }
                     default: throw new Exception ("unknown opcode " + opCode.ToString ());
@@ -1759,10 +1780,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             public int index;
             public bool byref;
 
-            public OTOpndArg (int index, bool byref)
+            private OTDecompile decompile;
+
+            public OTOpndArg (int index, bool byref, OTDecompile decompile)
             {
                 this.index = index;
                 this.byref = byref;
+                this.decompile = decompile;
             }
 
             public override bool HasSideEffects {
@@ -1774,7 +1798,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             public override OTOpnd GetNonByRefOpnd ()
             {
                 if (!byref) return this;
-                return new OTOpndArg (index, false);
+                return new OTOpndArg (index, false, decompile);
             }
 
             public override bool SameAs (OTOpnd other)
@@ -1783,7 +1807,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                 return (((OTOpndArg) other).byref == byref) && (((OTOpndArg) other).index == index);
             }
 
-            public override string PrintableString { get { return "arg$" + index; } }
+            public override string PrintableString {
+                get {
+                    string argname = decompile.MethArgName (index);
+                    return byref ? ("ref " + argname) : argname;
+                }
+            }
         }
 
         /**

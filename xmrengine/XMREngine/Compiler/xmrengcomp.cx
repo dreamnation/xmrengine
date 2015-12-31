@@ -38,7 +38,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             string sourceHash = null;
             List<string> sourceFileNames = new List<string> ();
 
-            ScriptCodeGen.xmrInstSuperType = typeof (XMRInstAbstract);
+            ScriptCodeGen.xmrInstSuperType = typeof (XMRSuperType);
+            ScriptObjWriter.DefineInternalType ("xmrsuper", typeof (XMRSuperType));
 
             if (!encryption) {
                 Console.WriteLine("ENCRYPTION IS DISABLED");
@@ -353,5 +354,8 @@ version:
 #ifdef SECRET_STUFF
 #include "MMRScriptXmrBinDecrypt.h"
 #endif
+    }
+
+    public abstract class XMRSuperType : XMRInstAbstract {
     }
 }

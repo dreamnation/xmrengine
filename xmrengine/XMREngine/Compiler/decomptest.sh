@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #
 #  Decompiler test script
 #  Put .lsl files in zz subdirectory

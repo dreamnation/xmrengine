@@ -37,7 +37,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 	public class ScriptCodeGen : IScriptCodeGen
 	{
 		public static readonly string OBJECT_CODE_MAGIC = "XMRObjectCode";
-		public static int COMPILED_VERSION_VALUE = 19;  // incremented when compiler changes for compatibility testing
+		public static int COMPILED_VERSION_VALUE = 20;  // incremented when compiler changes for compatibility testing
 
 		public static readonly int CALL_FRAME_MEMUSE = 64;
 		public static readonly int STRING_LEN_TO_MEMUSE = 2;
@@ -60,6 +60,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		private static TokenTypeStr    tokenTypeStr  = new TokenTypeStr    (null);
 		private static TokenTypeVec    tokenTypeVec  = new TokenTypeVec    (null);
 		private static Type[] instanceTypeArg = new Type[] { typeof (XMRInstAbstract) };
+		private static string[] instanceNameArg = new string[] { "$xmrthis" };
 
 		private static ConstructorInfo lslFloatConstructorInfo = typeof (LSL_Float).GetConstructor (new Type[] { typeof (SCRIPTFLOAT) });
 		private static ConstructorInfo lslIntegerConstructorInfo = typeof (LSL_Integer).GetConstructor (new Type[] { typeof (int) });
@@ -893,6 +894,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			                              functionName,
 			                              typeof (void),
 			                              instanceTypeArg,
+			                              instanceNameArg,
 			                              objFileWriter);
 			StartFunctionBody (declFunc);
 
@@ -980,13 +982,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			TokenArgDecl argDecl = declFunc.argDecl;
 			int nArgs = argDecl.vars.Length;
 			Type[] argTypes = new Type[nArgs+1];
+			string[] argNames = new string[nArgs+1];
 			if (IsSDTInstMethod ()) {
 				argTypes[0] = typeof (XMRSDTypeClObj);
+				argNames[0] = "$sdtthis";
 			} else {
 				argTypes[0] = xmrInstSuperType;
+				argNames[0] = "$xmrthis";
 			}
 			for (int i = 0; i < nArgs; i ++) {
 				argTypes[i+1] = argDecl.vars[i].type.ToSysType ();
+				argNames[i+1] = argDecl.vars[i].name.val;
 			}
 
 			/*
@@ -997,6 +1003,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			                                      objCodeName,
 			                                      declFunc.retType.ToSysType (),
 			                                      argTypes,
+			                                      argNames,
 			                                      objFileWriter);
 
 			/*
@@ -6091,8 +6098,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		// but http://wiki.secondlife.com/wiki/LSL_Language_Test (lslangtest1.lsl) says negate all 4 values
 		public static LSL_Rotation LSLRotationNegate (LSL_Rotation r) { return new LSL_Rotation (-r.x,-r.y,-r.z,-r.s); }
 		public static LSL_Vector   LSLVectorNegate   (LSL_Vector v)   { return -v; }
-        public static string       CatchExcToStr     (Exception exc)  { return exc.ToString(); }
-        //public static void         ConsoleWrite      (string str)     { Console.Write(str); }
+		public static string       CatchExcToStr     (Exception exc)  { return exc.ToString(); }
+		//public static void       ConsoleWrite      (string str)     { Console.Write(str); }
 
 		/**
 		 * @brief Defines an internal label that is used as a target for 'break' and 'continue' statements.

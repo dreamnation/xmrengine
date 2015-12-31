@@ -79,7 +79,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * many constructors possible so we get function headers at the beginning
 		 * of the object file in case there are forward references to the functions.
 		 */
-		public ScriptObjWriter (TokenScript tokenScript, string methName, Type retType, Type[] argTypes, BinaryWriter objFileWriter)
+		public ScriptObjWriter (TokenScript tokenScript, string methName, Type retType, Type[] argTypes, string[] argNames, BinaryWriter objFileWriter)
 		{
 			this._methName     = methName;
 			this.retType       = retType;
@@ -107,6 +107,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			objFileWriter.Write (nArgs);
 			for (int i = 0; i < nArgs; i ++) {
 				objFileWriter.Write (GetStrFromType (argTypes[i]));
+				objFileWriter.Write (argNames[i]);
 			}
 		}
 
@@ -455,11 +456,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						int nArgs       = objReader.ReadInt32 ();
 
 						Type[] argTypes = new Type[nArgs];
+						string[] argNames = new string[nArgs];
 						for (int i = 0; i < nArgs; i ++) {
 							argTypes[i] = GetTypeFromStr (sdTypes, objReader.ReadString ());
+							argNames[i] = objReader.ReadString ();
 						}
 						methods.Add (methName, new DynamicMethod (methName, retType, argTypes));
-						if (objectTokens != null) objectTokens.DefineMethod (methName, retType, argTypes);
+						if (objectTokens != null) objectTokens.DefineMethod (methName, retType, argTypes, argNames);
 						break;
 					}
 
