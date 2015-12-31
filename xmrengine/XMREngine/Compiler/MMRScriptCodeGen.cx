@@ -2949,8 +2949,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			} else {
 				CompValu rVal = GenerateFromRVal (throwStmt.rVal);
 				rVal.PushVal (this, throwStmt.rVal, tokenTypeObj);
-				Type sysType = rVal.type.ToSysType ();
-				if (sysType.IsValueType) ilGen.Emit (throwStmt, OpCodes.Box, sysType);
 				ilGen.Emit (throwStmt, OpCodes.Call, thrownExceptionWrapMethodInfo);
 				ilGen.Emit (throwStmt, OpCodes.Throw);
 			}
