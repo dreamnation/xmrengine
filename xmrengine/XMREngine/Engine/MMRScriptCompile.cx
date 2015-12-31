@@ -41,7 +41,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                                              PathName scriptBasePath,
                                              bool forceRecompile,
                                              TokenErrorMessage errorMessage,
-                                             FetchSource fetchSource)
+                                             FetchSource fetchSource,
+                                             XMRInstance xmrinst)
         {
             bool oldObjFile = false;
             Stream objFileStream = null;
@@ -107,6 +108,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         (strcasecmp (((TokenName)tokenBegin.nextToken).val, "XMROption") == 0) &&
                         (tokenBegin.nextToken.nextToken is TokenName) &&
                         (strcasecmp (((TokenName)tokenBegin.nextToken.nextToken).val, "fetchbinary") == 0)) {
+
+                        string fbbad = xmrinst.CheckFetchbinaryAllowed ();
+                        if (fbbad != null) {
+                            throw new System.Security.SecurityException (fbbad);
+                        }
 
                         /*
                          * Open web stream.
@@ -206,7 +212,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
             if (oldObjFile && (scriptObjCode != null) && scriptObjCode.IsExpired ()) {
                 m_log.Debug ("[XMREngine]: expiration reached on " + objCodeKey + ", reloading");
-                scriptObjCode = Compile (source, objCodeKey, cameFrom, scriptBasePath, true, errorMessage, fetchSource);
+                scriptObjCode = Compile (source, objCodeKey, cameFrom, scriptBasePath, true, errorMessage, fetchSource, xmrinst);
             }
 
             return scriptObjCode;
