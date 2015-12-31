@@ -55,6 +55,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public int refCount;              // used by engine to keep track of number of 
                                           // instances that are using this object code
 
+        public Dictionary<string,Dictionary<int,string>> globalVarNames = new Dictionary<string,Dictionary<int,string>> ();
+
         public DateTime fileDateUtc;
         public int expiryDays = Int32.MaxValue;
         public bool IsExpired ()
@@ -66,9 +68,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * @brief Fill in ScriptObjCode from an XMREngine object file.
          *   'objFileReader' is a serialized form of the CIL code we generated
          *   'asmFileWriter' is where we write the disassembly to (or null if not wanted)
+         *   'srcFileWriter' is where we write the decompilation to (or null if not wanted)
          * Throws an exception if there is any error (theoretically).
          */
-        public ScriptObjCode (BinaryReader objFileReader, TextWriter asmFileWriter)
+        public ScriptObjCode (BinaryReader objFileReader, TextWriter asmFileWriter, TextWriter srcFileWriter)
         {
             /*
              * Check version number to make sure we know how to process file contents.
@@ -107,6 +110,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             while ((gblName = objFileReader.ReadString ()) != "") {
                 string gblType = objFileReader.ReadString ();
                 int gblIndex = objFileReader.ReadInt32 ();
+                Dictionary<int,string> names;
+                if (!globalVarNames.TryGetValue (gblType, out names)) {
+                    names = new Dictionary<int,string> ();
+                    globalVarNames.Add (gblType, names);
+                }
+                names.Add (gblIndex, gblName);
                 if (asmFileWriter != null) {
                     asmFileWriter.WriteLine ("  {0} = {1}[{2}]", gblName, gblType, gblIndex);
                 }
@@ -138,7 +147,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             scriptEventHandlerTable = new ScriptEventHandler[nStates,(int)ScriptEventCode.Size];
             dynamicMethods          = new Dictionary<string, DynamicMethod> ();
             scriptSrcLocss          = new Dictionary<string, KeyValuePair<int, ScriptSrcLoc>[]> ();
-            ScriptObjWriter.CreateObjCode (sdObjTypesName, objFileReader, this, asmFileWriter);
+
+            ObjectTokens objectTokens = null;
+            if (asmFileWriter != null) {
+                objectTokens = new OTDisassemble (this, asmFileWriter);
+            } else if (srcFileWriter != null) {
+                objectTokens = new OTDecompile (this, srcFileWriter);
+            }
+
+            try {
+                ScriptObjWriter.CreateObjCode (sdObjTypesName, objFileReader, this, objectTokens);
+            } finally {
+                if (objectTokens != null) objectTokens.Close ();
+            }
 
             /*
              * We enter all script event handler methods in the ScriptEventHandler table.

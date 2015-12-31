@@ -34,7 +34,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             string srcFileName = null;
 #endif
             bool plaintext = false;
-            string objFileName = null;
+            string outFileName = null;
             string sourceHash = null;
             List<string> sourceFileNames = new List<string> ();
 
@@ -84,7 +84,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     return;
                 }
                 if (arg == "-out") {
-                    objFileName = args[++i];
+                    outFileName = args[++i];
                     continue;
                 }
                 if (arg == "-version") {
@@ -101,7 +101,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     goto usage;
                 }
 
-                DecodeFile (sourceFileNames[0], asmFileName, objFileName, plaintext);
+                DecodeFile (sourceFileNames[0], asmFileName, srcFileName, plaintext);
                 return;
             }
 #endif
@@ -111,7 +111,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * file was specified (where we will write the encrypted
              * object file).
              */
-            if (objFileName == null) {
+            if (outFileName == null) {
                 Console.WriteLine ("missing -out option");
                 goto usage;
             }
@@ -152,20 +152,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             /*
-             * If -src option, write reconstructed source code out.
-             */
-#ifdef SECRET_STUFF
-            if (srcFileName != null) {
-                StringBuilder sb = new StringBuilder ();
-                tokenScript.DebString (sb);
-                File.WriteAllText (srcFileName, new FormatSource (sb.ToString ()).ToString ());
-            }
-#endif
-
-            /*
              * Attempt to compile AST to object code.
              */
-            Stream objFileStream = new FileStream (objFileName, FileMode.Create);
+            Stream objFileStream = new FileStream (outFileName, FileMode.Create);
             if (!plaintext) objFileStream = Encrypt (objFileStream);
             BinaryWriter objFileWriter = new BinaryWriter (objFileStream);
             bool ok;
@@ -175,7 +164,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 objFileWriter.Close ();
             }
             if (!ok) {
-                File.Delete (objFileName);
+                File.Delete (outFileName);
                 Console.WriteLine ("Compilation errors.");
                 Environment.Exit (1);
             }
@@ -185,16 +174,30 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
 #ifdef SECRET_STUFF
             if (asmFileName != null) {
-                objFileStream = new FileStream (objFileName, FileMode.Open);
+                objFileStream = new FileStream (outFileName, FileMode.Open);
                 if (!plaintext) objFileStream = Decrypt (objFileStream);
                 BinaryReader objFileReader = new BinaryReader (objFileStream);
                 TextWriter asmFileWriter = (asmFileName != "-") ? File.CreateText (asmFileName) : Console.Out;
                 try {
-                    new ScriptObjCode (objFileReader, asmFileWriter);
+                    new ScriptObjCode (objFileReader, asmFileWriter, null);
                 } finally {
                     objFileReader.Close ();
                     asmFileWriter.Flush ();
                     asmFileWriter.Close ();
+                }
+            }
+
+            if (srcFileName != null) {
+                objFileStream = new FileStream (outFileName, FileMode.Open);
+                if (!plaintext) objFileStream = Decrypt (objFileStream);
+                BinaryReader objFileReader = new BinaryReader (objFileStream);
+                TextWriter srcFileWriter = (srcFileName != "-") ? File.CreateText (srcFileName) : Console.Out;
+                try {
+                    new ScriptObjCode (objFileReader, null, srcFileWriter);
+                } finally {
+                    objFileReader.Close ();
+                    srcFileWriter.Flush ();
+                    srcFileWriter.Close ();
                 }
             }
 #endif
@@ -202,13 +205,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 usage:
             Console.WriteLine ("");
-            Console.WriteLine ("xmrengcomp.exe -out <outputxmrobjfile> [-asm <outputxmrasmfile>] [<inputsourcefile> ...]");
+#ifdef SECRET_STUFF
+            Console.WriteLine ("xmrengcomp.exe -out <outputxmrobjfile> [-asm <outputxmrasmfile>] [-plaintext] [-src <reconstructedsource>] [<inputsourcefile> ...]");
+#else
+            Console.WriteLine ("xmrengcomp.exe -out <outputxmrobjfile> [<inputsourcefile> ...]");
+#endif
             Console.WriteLine ("               omit inputsourcefiles to read from stdin");
             Console.WriteLine ("xmrengcomp.exe -builtins");
             Console.WriteLine ("xmrengcomp.exe -version");
 #ifdef SECRET_STUFF
             Console.WriteLine ("xmrengcomp.exe -genkey");
-            Console.WriteLine ("xmrengcomp.exe -decode [-asm <outputxmrasmfile>] [-plaintext] <inputbinaryfile>");
+            Console.WriteLine ("xmrengcomp.exe -decode [-asm <outputxmrasmfile>] [-plaintext] [-src <reconstructedsource>] <inputobjectfile>");
 #endif
 version:
             Console.WriteLine ("");
@@ -231,41 +238,59 @@ version:
          * @param decodeFileName = name of the one-and-only input file
          * @param asmFileName = null: don't bother disassembling
          *                      else: name of assembly output file
-         * @param objFileName = null: don't bother writing decrypted CIL object file
-         *                      else: name of decrypted CIL object file to write
+         * @param srcFileName = null: don't bother decompiling
+         *                      else: name of decompiled output file
          */
-        private static void DecodeFile (string decodeFileName, string asmFileName, string objFileName, bool plaintext)
+        private static void DecodeFile (string decodeFileName, string asmFileName, string srcFileName, bool plaintext)
         {
             /*
-             * Open file to decode.
+             * Maybe disassemble.
              */
-            Stream decodeFileStream = File.OpenRead (decodeFileName);
-            if (!plaintext) decodeFileStream = Decrypt (decodeFileStream);
-
-            /*
-             * decodeFileStream = CIL object file.
-             * If given an asmFileName, disassemble it.
-             */
-            TextWriter asmFileWriter = null;
             if (asmFileName != null) {
-                Console.WriteLine("Creating disassembly file " + asmFileName);
-                asmFileWriter = (asmFileName != "-") ? File.CreateText (asmFileName) : Console.Out;
-            }
 
-            /*
-             * Read object file to check it for errors.
-             * Maybe also write disassembly to a file for debugging.
-             */
-            BinaryReader objFileReader = new BinaryReader (decodeFileStream);
-            try {
-                new ScriptObjCode (objFileReader, asmFileWriter);
-            } finally {
-                objFileReader.Close ();
-                if (asmFileWriter != null) {
+                /*
+                 * Open file to decode.
+                 */
+                Stream decodeFileStream = File.OpenRead (decodeFileName);
+                if (!plaintext) decodeFileStream = Decrypt (decodeFileStream);
+
+                /*
+                 * Create file to write disassembly to.
+                 */
+                Console.WriteLine ("Creating disassembly file " + asmFileName);
+                TextWriter asmFileWriter = (asmFileName != "-") ? File.CreateText (asmFileName) : Console.Out;
+
+                /*
+                 * Write disassembly to a file for debugging.
+                 */
+                BinaryReader objFileReader = new BinaryReader (decodeFileStream);
+                try {
+                    new ScriptObjCode (objFileReader, asmFileWriter, null);
+                } finally {
+                    objFileReader.Close ();
                     asmFileWriter.Flush ();
                     asmFileWriter.Close ();
                 }
             }
+
+            /*
+             * Maybe decompile.
+             */
+            if (srcFileName != null) {
+                Stream decodeFileStream = File.OpenRead (decodeFileName);
+                if (!plaintext) decodeFileStream = Decrypt (decodeFileStream);
+                BinaryReader objFileReader = new BinaryReader (decodeFileStream);
+                Console.WriteLine ("Creating decompile file " + srcFileName);
+                TextWriter srcFileWriter = (srcFileName != "-") ? File.CreateText (srcFileName) : Console.Out;
+                try {
+                    new ScriptObjCode (objFileReader, null, srcFileWriter);
+                } finally {
+                    objFileReader.Close ();
+                    srcFileWriter.Flush ();
+                    srcFileWriter.Close ();
+                }
+            }
+
             Console.WriteLine("All done.");
         }
 
@@ -321,122 +346,6 @@ version:
             }
             sb.Append (" };");
             return sb.ToString ();
-        }
-#endif
-
-#ifdef SECRET_STUFF
-        private class FormatSource
-        {
-            private bool escaped = false;
-            private char quoted  = (char)0;
-            private int  begline = 0;
-            private int  indent  = 0;
-            private int  parens  = 0;
-            private StringBuilder sb = new StringBuilder ();
-
-            public FormatSource (string src)
-            {
-                foreach (char c in src)
-                {
-                    if (quoted != (char)0) {
-                        sb.Append (c);
-                        if (c == '\\') {
-                            escaped = !escaped;
-                        } else {
-                            if ((c == quoted) && !escaped) quoted = (char)0;
-                            escaped = false;
-                        }
-                        continue;
-                    }
-
-                    switch (c) {
-                        case ';': {
-                            TrimTrailingSpaces ();
-                            sb.Append (';');
-                            if (parens > 0) sb.Append (' ');
-                                       else NewLine ();
-                            break;
-                        }
-
-                        case '{': {
-                            TrimTrailingSpaces ();
-                            if ((sb.Length > 0) && (sb[sb.Length-1] > ' ')) {
-                                sb.Append (' ');
-                            }
-                            sb.Append ('{');
-                            indent ++;
-                            NewLine ();
-                            break;
-                        }
-
-                        case '}': {
-                            if (indent > 0) -- indent;
-                            TrimTrailingSpaces ();
-                            sb.Append ('}');
-                            NewLine ();
-                            break;
-                        }
-
-                        case '(': {
-                            parens ++;
-                            sb.Append ('(');
-                            break;
-                        }
-
-                        case ')': {
-                            if (parens > 0) -- parens;
-                            sb.Append (')');
-                            break;
-                        }
-
-                        case '\'':
-                        case '"': {
-                            sb.Append (c);
-                            quoted = c;
-                            break;
-                        }
-
-                        default: {
-                            if (c <= ' ') {
-                                TrimTrailingSpaces ();
-                                if (sb.Length > begline + indent * 4) sb.Append (' ');
-                            } else {
-                                sb.Append (c);
-                            }
-                            break;
-                        }
-                    }
-                }
-            }
-
-            private void TrimTrailingSpaces ()
-            {
-                int len = sb.Length;
-                while ((len > begline + indent * 4) && (sb[len-1] <= ' ')) {
-                    sb.Remove (-- len, 1);
-                }
-            }
-
-            private void NewLine ()
-            {
-                int len = sb.Length;
-                while (len > 0) {
-                    char c = sb[len-1];
-                    if (c == '\n') break;
-                    if (c >= ' ') break;
-                    sb.Remove (-- len, 1);
-                }
-                if ((len == 0) || (sb[len-1] != '\n')) {
-                    sb.Append ('\n');
-                }
-                begline = sb.Length;
-                sb.Append ("".PadRight (indent * 4));
-            }
-
-            public override string ToString ()
-            {
-                return sb.ToString ();
-            }
         }
 #endif
 

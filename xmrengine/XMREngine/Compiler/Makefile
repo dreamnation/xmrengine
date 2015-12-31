@@ -35,6 +35,7 @@ SOURCEFILES := \
 	XMRArray.cx \
 	XMRHeapTracker.cx \
 	XMRInstAbstract.cx \
+	XMRObjectTokens.cx \
 	XMRSDTypeClObj.cx
 
 TESTERCSFILES := \

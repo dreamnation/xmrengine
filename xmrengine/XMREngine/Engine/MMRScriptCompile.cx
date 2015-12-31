@@ -189,7 +189,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             BinaryReader objFileReader = new BinaryReader (objFileStream);
             ScriptObjCode scriptObjCode = null;
             try {
-                scriptObjCode = new ScriptObjCode (objFileReader, asmFileWriter);
+                scriptObjCode = new ScriptObjCode (objFileReader, asmFileWriter, null);
                 if (scriptObjCode != null) {
                     scriptObjCode.fileDateUtc = File.GetLastWriteTimeUtc (objFileName);
                 }

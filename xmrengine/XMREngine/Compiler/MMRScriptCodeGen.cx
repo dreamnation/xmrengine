@@ -2219,7 +2219,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			 * We are going to say that the label falls through.
 			 * It would be nice if we could analyze all referencing
 			 * goto's to see if all of them are not used but we are
-			 * going to assume that if the script writer put a goto
+			 * going to assume that if the script writer put a label
 			 * somewhere, it is probably going to be used.
 			 */
 			mightGetHere = true;

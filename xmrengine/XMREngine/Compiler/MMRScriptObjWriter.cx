@@ -31,8 +31,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 	public class ScriptObjWriter : ScriptMyILGen
 	{
-		private static readonly int OPCSTRWIDTH = 12;
-
 		private static Dictionary<short, OpCode> opCodes = PopulateOpCodes ();
 		private static Dictionary<string, Type> string2Type = PopulateS2T ();
 		private static Dictionary<Type, string> type2String = PopulateT2S ();
@@ -340,9 +338,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		 * @param sdTypes   = script-defined types
 		 * @param objReader = where to read object file from (as written by ScriptObjWriter above).
 		 * @param scriptObjCode.EndMethod = called for each method defined at the end of the methods definition
-		 * @param debWriter = debug file writer (or null if not wanted)
+		 * @param objectTokens = write disassemble/decompile data (or null if not wanted)
 		 */
-		public static void CreateObjCode (Dictionary<string, TokenDeclSDType> sdTypes, BinaryReader objReader, ScriptObjCode scriptObjCode, TextWriter debWriter)
+		public static void CreateObjCode (Dictionary<string, TokenDeclSDType> sdTypes, BinaryReader objReader,
+				ScriptObjCode scriptObjCode, ObjectTokens objectTokens)
 		{
 			Dictionary<string, DynamicMethod> methods = new Dictionary<string, DynamicMethod> ();
 			DynamicMethod method = null;
@@ -351,7 +350,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			Dictionary<int, LocalBuilder> locals = new Dictionary<int, LocalBuilder> ();
 			Dictionary<int, string> labelNames = new Dictionary<int, string> ();
 			Dictionary<int, string> localNames = new Dictionary<int, string> ();
-			StringBuilder dbg = new StringBuilder ();
 			object[] ilGenArg = new object[1];
 			int offset = 0;
 			Dictionary<int, ScriptSrcLoc> srcLocs = null;
@@ -360,11 +358,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			int    srcPosn = 0;
 
 			while (true) {
-
-				/*
-				 * Clear debug line (.xmrasm file) output buffer.
-				 */
-				dbg.Remove (0, dbg.Length);
 
 				/*
 				 * Get IL instruction offset at beginning of instruction.
@@ -384,7 +377,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 * Reached end-of-file so we are all done.
 					 */
 					case ScriptObjWriterCode.TheEnd: {
-						if (debWriter != null) debWriter.WriteLine ("TheEnd.");
 						return;
 					}
 
@@ -406,9 +398,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						localNames.Clear ();
 
 						srcLocs = new Dictionary<int, ScriptSrcLoc> ();
-
-						dbg.Append (methName);
-						dbg.Append (" {");
+						if (objectTokens != null) objectTokens.BegMethod (method);
 						break;
 					}
 
@@ -422,7 +412,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						ilGenArg[0] = null;
 						scriptObjCode.EndMethod (method, srcLocs);
 						srcLocs = null;
-						dbg.Append ("}");
+						if (objectTokens != null) objectTokens.EndMethod ();
 						break;
 					}
 
@@ -435,6 +425,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 						labels.Add (number, ilGen.DefineLabel ());
 						labelNames.Add (number, name + "_" + number.ToString ());
+						if (objectTokens != null) objectTokens.DefineLabel (number, name);
 						break;
 					}
 
@@ -449,11 +440,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 						locals.Add (number, ilGen.DeclareLocal (syType));
 						localNames.Add (number, name + "_" + number.ToString ());
-
-						dbg.Append ("          ");
-						dbg.Append (type.PadRight (OPCSTRWIDTH - 1));
-						dbg.Append (" ");
-						dbg.Append (localNames[number]);
+						if (objectTokens != null) objectTokens.DefineLocal (number, name, type, syType);
 						break;
 					}
 
@@ -472,16 +459,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 							argTypes[i] = GetTypeFromStr (sdTypes, objReader.ReadString ());
 						}
 						methods.Add (methName, new DynamicMethod (methName, retType, argTypes));
-
-						dbg.Append (retType.Name);
-						dbg.Append (" ");
-						dbg.Append (methName);
-						dbg.Append ("(");
-						for (int i = 0; i < nArgs; i ++) {
-							if (i > 0) dbg.Append (",");
-							dbg.Append (argTypes[i].Name);
-						}
-						dbg.Append (")");
+						if (objectTokens != null) objectTokens.DefineMethod (methName, retType, argTypes);
 						break;
 					}
 
@@ -492,10 +470,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						int number = objReader.ReadInt32 ();
 
 						ilGen.MarkLabel (labels[number]);
-						LinePrefix (offset, dbg);
 
-						dbg.Append (labelNames[number]);
-						dbg.Append (":");
+						if (objectTokens != null) objectTokens.MarkLabel (offset, number);
 						break;
 					}
 
@@ -504,31 +480,26 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 */
 					case ScriptObjWriterCode.BegExcBlk: {
 						ilGen.BeginExceptionBlock ();
-						LinePrefix (offset, dbg);
-						dbg.Append (" BeginExceptionBlock");
+						if (objectTokens != null) objectTokens.BegExcBlk (offset);
 						break;
 					}
 
 					case ScriptObjWriterCode.BegCatBlk: {
 						Type excType = GetTypeFromStr (sdTypes, objReader.ReadString ());
 						ilGen.BeginCatchBlock (excType);
-						LinePrefix (offset, dbg);
-						dbg.Append (" BeginCatchBlock ");
-						dbg.Append (excType.Name);
+						if (objectTokens != null) objectTokens.BegCatBlk (offset, excType);
 						break;
 					}
 
 					case ScriptObjWriterCode.BegFinBlk: {
 						ilGen.BeginFinallyBlock ();
-						LinePrefix (offset, dbg);
-						dbg.Append (" BeginFinallyBlock");
+						if (objectTokens != null) objectTokens.BegFinBlk (offset);
 						break;
 					}
 
 					case ScriptObjWriterCode.EndExcBlk: {
 						ilGen.EndExceptionBlock ();
-						LinePrefix (offset, dbg);
-						dbg.Append (" EndExceptionBlock");
+						if (objectTokens != null) objectTokens.EndExcBlk (offset);
 						break;
 					}
 
@@ -541,7 +512,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						SaveSrcLoc (srcLocs, offset, srcFile, srcLine, srcPosn);
 						ilGen.Emit (opCode);
 
-						LinePrefix (offset, dbg, opCode);
+						if (objectTokens != null) objectTokens.EmitNull (offset, opCode);
 						break;
 					}
 
@@ -556,14 +527,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						FieldInfo field    = reflectedType.GetField (fieldName);
 						SaveSrcLoc (srcLocs, offset, srcFile, srcLine, srcPosn);
 						ilGen.Emit (opCode, field);
-						LinePrefix (offset, dbg, opCode);
 
-						dbg.Append (reflectedType.Name);
-						dbg.Append (":");
-						dbg.Append (fieldName);
-						dbg.Append (" -> ");
-						dbg.Append (field.FieldType.Name);
-						dbg.Append ("   (field)");
+						if (objectTokens != null) objectTokens.EmitField (offset, opCode, field);
 						break;
 					}
 
@@ -576,9 +541,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						SaveSrcLoc (srcLocs, offset, srcFile, srcLine, srcPosn);
 						ilGen.Emit (opCode, locals[number]);
 
-						LinePrefix (offset, dbg, opCode);
-						dbg.Append (localNames[number]);
-						dbg.Append ("   (local)");
+						if (objectTokens != null) objectTokens.EmitLocal (offset, opCode, number);
 						break;
 					}
 
@@ -593,9 +556,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						SaveSrcLoc (srcLocs, offset, srcFile, srcLine, srcPosn);
 						ilGen.Emit (opCode, type);
 
-						LinePrefix (offset, dbg, opCode);
-						dbg.Append (type.Name);
-						dbg.Append ("   (type)");
+						if (objectTokens != null) objectTokens.EmitType (offset, opCode, type);
 						break;
 					}
 
@@ -609,9 +570,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						SaveSrcLoc (srcLocs, offset, srcFile, srcLine, srcPosn);
 						ilGen.Emit (opCode, labels[number]);
 
-						LinePrefix (offset, dbg, opCode);
-						dbg.Append (labelNames[number]);
-						dbg.Append ("   (label)");
+						if (objectTokens != null) objectTokens.EmitLabel (offset, opCode, number);
 						break;
 					}
 
@@ -631,15 +590,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						SaveSrcLoc (srcLocs, offset, srcFile, srcLine, srcPosn);
 						ilGen.Emit (opCode, lbls);
 
-						LinePrefix (offset, dbg, opCode);
-						int lineLen = dbg.Length;
-						for (int i = 0; i < nLabels; i ++) {
-							if (i > 0) {
-								dbg.AppendLine ();
-								dbg.Append (",".PadLeft (lineLen));
-							}
-							dbg.Append (labelNames[nums[i]]);
-						}
+						if (objectTokens != null) objectTokens.EmitLabels (offset, opCode, nums);
 						break;
 					}
 
@@ -660,17 +611,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						SaveSrcLoc (srcLocs, offset, srcFile, srcLine, srcPosn);
 						ilGen.Emit (opCode, methInfo);
 
-						LinePrefix (offset, dbg, opCode);
-						dbg.Append (methType.Name);
-						dbg.Append (":");
-						dbg.Append (methName);
-						dbg.Append ("(");
-						for (int i = 0; i < nArgs; i ++) {
-							if (i > 0) dbg.Append (",");
-							dbg.Append (argTypes[i].Name);
-						}
-						dbg.Append (") -> ");
-						dbg.Append (methInfo.ReturnType.Name);
+						if (objectTokens != null) objectTokens.EmitMethod (offset, opCode, methInfo);
 						break;
 					}
 
@@ -686,17 +627,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						SaveSrcLoc (srcLocs, offset, srcFile, srcLine, srcPosn);
 						ilGen.Emit (opCode, methInfo);
 
-						ParameterInfo[] parms = methInfo.GetParameters ();
-						int nArgs = parms.Length;
-						LinePrefix (offset, dbg, opCode);
-						dbg.Append (methName);
-						dbg.Append ("(");
-						for (int i = 0; i < nArgs; i ++) {
-							if (i > 0) dbg.Append (",");
-							dbg.Append (parms[i].ParameterType.Name);
-						}
-						dbg.Append (") -> ");
-						dbg.Append (methInfo.ReturnType.Name);
+						if (objectTokens != null) objectTokens.EmitMethod (offset, opCode, methInfo);
 						break;
 					}
 
@@ -716,14 +647,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						SaveSrcLoc (srcLocs, offset, srcFile, srcLine, srcPosn);
 						ilGen.Emit (opCode, ctorInfo);
 
-						LinePrefix (offset, dbg, opCode);
-						dbg.Append (ctorType.Name);
-						dbg.Append ("(");
-						for (int i = 0; i < nArgs; i ++) {
-							if (i > 0) dbg.Append (",");
-							dbg.Append (argTypes[i].Name);
-						}
-						dbg.Append (")");
+						if (objectTokens != null) objectTokens.EmitCtor (offset, opCode, ctorInfo);
 						break;
 					}
 
@@ -740,9 +664,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						SaveSrcLoc (srcLocs, offset, srcFile, srcLine, srcPosn);
 						ilGen.Emit (opCode, value);
 
-						LinePrefix (offset, dbg, opCode);
-						dbg.Append (value.ToString ());
-						dbg.Append ("   (double)");
+						if (objectTokens != null) objectTokens.EmitDouble (offset, opCode, value);
 						break;
 					}
 
@@ -756,9 +678,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						SaveSrcLoc (srcLocs, offset, srcFile, srcLine, srcPosn);
 						ilGen.Emit (opCode, value);
 
-						LinePrefix (offset, dbg, opCode);
-						dbg.Append (value.ToString ());
-						dbg.Append ("   (float)");
+						if (objectTokens != null) objectTokens.EmitFloat (offset, opCode, value);
 						break;
 					}
 
@@ -772,7 +692,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 							if ((value >= -1) && (value <= 8)) {
 								opCode = opCodesLdcI4M1P8[value+1];
 								ilGen.Emit (opCode);
-								LinePrefix (offset, dbg, opCode);
+								if (objectTokens != null) objectTokens.EmitNull (offset, opCode);
 								break;
 							}
 							if ((value >= 0) && (value <= 127)) {
@@ -784,9 +704,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
 						ilGen.Emit (opCode, value);
 					    pemitint:
-						LinePrefix (offset, dbg, opCode);
-						dbg.Append (value.ToString ());
-						dbg.Append ("   (int)");
+						if (objectTokens != null) objectTokens.EmitInteger (offset, opCode, value);
 						break;
 					}
 
@@ -797,10 +715,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 						SaveSrcLoc (srcLocs, offset, srcFile, srcLine, srcPosn);
 						ilGen.Emit (opCode, value);
 
-						LinePrefix (offset, dbg, opCode);
-						dbg.Append ("\"");
-						dbg.Append (value);
-						dbg.Append ("\"   (string)");
+						if (objectTokens != null) objectTokens.EmitString (offset, opCode, value);
 						break;
 					}
 
@@ -809,29 +724,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 					 */
 					default: throw new Exception ("bad ScriptObjWriterCode " + ((byte)code).ToString ());
 				}
-
-				/*
-				 * Write line to .xmrasm file.
-				 */
-				if ((debWriter != null) && (dbg.Length > 0)) {
-					debWriter.WriteLine (dbg.ToString ());
-				}
 			}
-		}
-
-		private static void LinePrefix (int offset, StringBuilder dbg, OpCode opCode)
-		{
-			LinePrefix (offset, dbg);
-			dbg.Append ("  ");
-			dbg.Append (opCode.ToString ().PadRight (OPCSTRWIDTH - 1));
-			dbg.Append (" ");
-		}
-
-		private static void LinePrefix (int offset, StringBuilder dbg)
-		{
-			dbg.Append ("  ");
-			dbg.Append (offset.ToString ("X4"));
-			dbg.Append ("  ");
 		}
 
 		/**

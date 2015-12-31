@@ -7,36 +7,47 @@ function minorbar {
     echo = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 }
 
+function makerealgood {
+    compdir=`pwd`
+    compdir=${compdir//\//\\/}
+    sed "s/in \/.*\/XMREngine\/Compiler\//in $compdir\//g" $1.good > $1.good.tmp
+}
+
 function testit {
+    makerealgood $1
     input=/dev/null
     if [ -f $1.in ]
     then
         input=$1.in
     fi
     mono --debug xmrengtest.exe -uthread $uthread -xmrasm $1.lsl < $input 2>&1 | grep -v '^mmruthread: total stack' | tee $1.out
-    diff $1.out $1.good
+    diff $1.out $1.good.tmp
     minorbar
     mono --debug xmrengtest.exe -uthread $uthread -checkrun $1.lsl < $input 2>&1 | grep -v '^mmruthread: total stack' | tee $1.ckr
-    diff $1.ckr $1.good
+    diff $1.ckr $1.good.tmp
     minorbar
     mono --debug xmrengtest.exe -uthread $uthread -serialize $1.lsl < $input 2>&1 | grep -v '^mmruthread: total stack' | tee $1.ser
-    diff $1.ser $1.good
+    diff $1.ser $1.good.tmp
     majorbar
+    rm -f $1.good.tmp
 }
 
 function testev {
+    makerealgood $1
     mono --debug xmrengtest.exe -uthread $uthread -eventio $1.lsl < $1.events 2>&1 | grep -v '^mmruthread: total stack' | tee $1.out
-    diff $1.out $1.good
+    diff $1.out $1.good.tmp
     minorbar
     mono --debug xmrengtest.exe -uthread $uthread -eventio -checkrun $1.lsl < $1.events 2>&1 | grep -v '^mmruthread: total stack' | tee $1.ckr
-    diff $1.ckr $1.good
+    diff $1.ckr $1.good.tmp
     minorbar
     mono --debug xmrengtest.exe -uthread $uthread -eventio -serialize $1.lsl < $1.events 2>&1 | grep -v '^mmruthread: total stack' | tee $1.ser
-    diff $1.ser $1.good
+    diff $1.ser $1.good.tmp
     majorbar
+    rm -f $1.good.tmp
 }
 
 set -e
+cd `dirname $0`
 time make xmrengtest.exe
 export MONO_PATH=../../../bin_090
 

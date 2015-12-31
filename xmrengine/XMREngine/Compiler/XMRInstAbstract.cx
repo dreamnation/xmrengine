@@ -1473,6 +1473,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return new LSL_List (output);
         }
 
+        /************************\
+         *  Used by decompiler  *
+        \************************/
+
+        public bool xmrRotationToBool (LSL_Rotation x) { return TypeCast.RotationToBool (x); }
+        public bool xmrStringToBool   (string x)       { return TypeCast.StringToBool   (x); }
+        public bool xmrVectorToBool   (LSL_Vector x)   { return TypeCast.VectorToBool   (x); }
+        public bool xmrKeyToBool      (string x)       { return TypeCast.KeyToBool      (x); }
+        public bool xmrListToBool     (LSL_List x)     { return TypeCast.ListToBool     (x); }
+
+        public int xmrStringCompare (string x, string y) { return string.Compare (x, y); }
+
         /**
          * @brief types of data we serialize
          */

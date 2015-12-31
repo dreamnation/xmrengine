@@ -158,6 +158,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             public bool objects;        // has seen 'XMROption objects;'
             public bool chars;          // has seen 'XMROption chars;'
             public bool noRightToLeft;  // has seen 'XMROption noRightToLeft;'
+            public bool dollarsigns;    // has seen 'XMROption dollarsigns;'
         }
 
         private bool youveAnError;      // there was some error tokenizing
@@ -435,7 +436,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                 /*
                  * Check for keywords/names.
                  */
-                if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c == '_')) {
+                if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c == '_') || (c == '$' && options.dollarsigns)) {
                     int j;
 
                     for (j = i; ++ j < source.Length;) {
@@ -443,6 +444,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                         if (c >= 'a' && c <= 'z') continue;
                         if (c >= 'A' && c <= 'Z') continue;
                         if (c >= '0' && c <= '9') continue;
+                        if (c == '$' && options.dollarsigns) continue;
                         if (c != '_') break;
                     }
                     if (j - i > MAX_NAME_LEN) {
@@ -495,6 +497,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                         options.chars = true;
                     } else if (strcasecmp (opt, "norighttoleft") == 0) {
                         options.noRightToLeft = true;
+                    } else if (strcasecmp (opt, "dollarsigns") == 0) {
+                        options.dollarsigns = true;
                     } else {
                         lastToken.ErrorMsg ("unknown XMROption");
                     }

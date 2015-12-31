@@ -431,7 +431,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			}
 		}
 
-		private static void PrintParamString (StringBuilder sb, string p)
+		public static void PrintParamString (StringBuilder sb, string p)
 		{
 			sb.Append ('"');
 			foreach (char c in p) {
