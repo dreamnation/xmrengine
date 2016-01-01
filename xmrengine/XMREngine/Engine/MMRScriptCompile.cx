@@ -16,33 +16,14 @@ using System.Text;
 
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
-    public class ScriptCompile
+    public partial class XMRInstance
     {
-        public delegate string FetchSource (string cameFrom);
-
-        private static readonly log4net.ILog m_log =
-            log4net.LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
-
         /**
          * @brief Compile a script to produce a ScriptObjCode object
-         * @param source = 'source' contains the whole script source
-         * @param objCodeKey = unique per script source file
-         * @param scriptBasePath = where to put files (a directory)
-         * @param forceRecompile = false: use existing object file if any
-         *                          true: ignore existing object file
-         * @param errorMessage = where to write error messages to
-         * @param engine = script engine
          * @returns object code pointer or null if compile error
+         *          also can throw compile error exception
          */
-        public delegate string PathName (string filename);
-        public static ScriptObjCode Compile (string source, 
-                                             string objCodeKey,
-                                             string cameFrom, 
-                                             PathName scriptBasePath,
-                                             bool forceRecompile,
-                                             TokenErrorMessage errorMessage,
-                                             FetchSource fetchSource,
-                                             XMRInstance xmrinst)
+        public ScriptObjCode Compile ()
         {
             bool oldObjFile = false;
             Stream objFileStream = null;
@@ -51,15 +32,15 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             string sourceHash = null;
             TextWriter saveSource = null;
 
-            string asmFileName = scriptBasePath (objCodeKey + ".xmrasm");
-            string lslFileName = scriptBasePath (objCodeKey + ".lsl");
-            string objFileName = scriptBasePath (objCodeKey + ".xmrobj");
-            string tmpFileName = scriptBasePath (objCodeKey + ".xmrtmp");
+            string asmFileName = GetScriptFileName (m_ScriptObjCodeKey + ".xmrasm");
+            string lslFileName = GetScriptFileName (m_ScriptObjCodeKey + ".lsl");
+            string objFileName = GetScriptFileName (m_ScriptObjCodeKey + ".xmrobj");
+            string tmpFileName = GetScriptFileName (m_ScriptObjCodeKey + ".xmrtmp");
 
             /*
              * If we already have an object file, don't bother compiling.
              */
-            if (!forceRecompile && File.Exists (objFileName)) {
+            if (!m_ForceRecomp && File.Exists (objFileName)) {
                 objFileStream = File.OpenRead (objFileName);
                 oldObjFile = true;
             } else {
@@ -67,8 +48,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 /*
                  * If source file empty, try to read from asset server.
                  */
-                if (EmptySource (source)) {
-                    source = fetchSource (cameFrom);
+                if (EmptySource (m_SourceCode)) {
+                    m_SourceCode = FetchSource (m_CameFrom);
                 }
 
                 /*
@@ -85,12 +66,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  */
                 TokenBegin tokenBegin;
                 try {
-                    tokenBegin = TokenBegin.Construct(cameFrom, saveSource, errorMessage, source, out sourceHash);
+                    tokenBegin = TokenBegin.Construct(m_CameFrom, saveSource, ErrorHandler, m_SourceCode, out sourceHash);
                 } finally {
                     if (saveSource != null) saveSource.Close ();
                 }
                 if (tokenBegin == null) {
-                    m_log.Debug ("[XMREngine]: parsing errors on " + objCodeKey);
+                    m_log.Debug ("[XMREngine]: parsing errors on " + m_ScriptObjCodeKey);
                     return null;
                 }
 
@@ -109,7 +90,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         (tokenBegin.nextToken.nextToken is TokenName) &&
                         (strcasecmp (((TokenName)tokenBegin.nextToken.nextToken).val, "fetchbinary") == 0)) {
 
-                        string fbbad = xmrinst.CheckFetchbinaryAllowed ();
+                        string fbbad = CheckFetchbinaryAllowed ();
                         if (fbbad != null) {
                             throw new System.Security.SecurityException (fbbad);
                         }
@@ -117,7 +98,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         /*
                          * Open web stream.
                          */
-                        Stream webStream = FetchBin (tokenBegin.nextToken.nextToken.nextToken, errorMessage);
+                        Stream webStream = FetchBin (tokenBegin.nextToken.nextToken.nextToken, ErrorHandler);
                         if (webStream == null) return null;
 
                         /*
@@ -139,7 +120,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                          */
                         TokenScript tokenScript = ScriptReduce.Reduce(tokenBegin);
                         if (tokenScript == null) {
-                            m_log.Debug ("[XMREngine]: reduction errors on " + objCodeKey);
+                            m_log.Debug ("[XMREngine]: reduction errors on " + m_ScriptObjCodeKey);
                             return null;
                         }
 
@@ -149,7 +130,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         BinaryWriter objFileWriter = new BinaryWriter (objFileStream);
                         bool ok = ScriptCodeGen.CodeGen(tokenScript, objFileWriter, sourceHash);
                         if (!ok) {
-                            m_log.Debug ("[XMREngine]: compile error on " + objCodeKey);
+                            m_log.Debug ("[XMREngine]: compile error on " + m_ScriptObjCodeKey);
                             objFileStream.Close ();
                             return null;
                         }
@@ -211,8 +192,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * Maybe an old object file has reached its expiration date.
              */
             if (oldObjFile && (scriptObjCode != null) && scriptObjCode.IsExpired ()) {
-                m_log.Debug ("[XMREngine]: expiration reached on " + objCodeKey + ", reloading");
-                scriptObjCode = Compile (source, objCodeKey, cameFrom, scriptBasePath, true, errorMessage, fetchSource, xmrinst);
+                m_log.Debug ("[XMREngine]: expiration reached on " + m_ScriptObjCodeKey + ", reloading");
+                m_ForceRecomp = true;
+                scriptObjCode = Compile ();
             }
 
             return scriptObjCode;

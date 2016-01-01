@@ -1522,7 +1522,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             try {
                 this.migrateOutWriter  = mow;
-                this.migrateOutObjects = new Dictionary<object, int> ();
+                this.migrateOutObjects = new Dictionary<object,int> ();
+                this.migrateOutLists   = new Dictionary<object[],ObjLslList> ();
                 this.SendObjValue (this.ehArgs);
                 mow.Write (this.doGblInit);
                 mow.Write (this.stateCode);
@@ -1541,6 +1542,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             } finally {
                 this.migrateOutWriter  = null;
                 this.migrateOutObjects = null;
+                this.migrateOutLists   = null;
             }
         }
 
@@ -1548,8 +1550,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * @brief Write an object to the output stream.
          * @param graph = object to send
          */
-        public BinaryWriter migrateOutWriter;
-        public Dictionary<object, int> migrateOutObjects;
+        private BinaryWriter migrateOutWriter;
+        private Dictionary<object,int> migrateOutObjects;
+        private Dictionary<object[],ObjLslList> migrateOutLists;
         public void SendObjValue (object graph)
         {
             BinaryWriter mow = this.migrateOutWriter;
@@ -1580,12 +1583,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 mow.Write ((byte)Ser.LSLKEY);
                 LSL_Key key = (LSL_Key)graph;
                 SendObjValue (key.m_string);  // m_string can be null
-                return;
-            }
-            if (graph is LSL_List) {
-                mow.Write ((byte)Ser.LSLLIST);
-                LSL_List list = (LSL_List)graph;
-                SendObjValue (list.Data);
                 return;
             }
             if (graph is LSL_Rotation) {
@@ -1644,6 +1641,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             /*
+             * Convert lists to object type.
+             * This is compatible with old migration data and also
+             * two vars pointing to same list won't duplicate it.
+             */
+            if (graph is LSL_List) {
+                object[] data = ((LSL_List) graph).Data;
+                ObjLslList oll;
+                if (!this.migrateOutLists.TryGetValue (data, out oll)) {
+                    oll = new ObjLslList ();
+                    oll.objarray = data;
+                    this.migrateOutLists[data] = oll;
+                }
+                graph = oll;
+            }
+
+            /*
              * If this same exact object was already serialized,
              * just output an index telling the receiver to use
              * that same old object, rather than creating a whole
@@ -1672,12 +1685,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * a DUPREF tag instead of trying to output the whole object 
              * again.
              */
-            if (graph is XMR_Array) {
+            if (graph is ObjLslList) {
+                mow.Write ((byte)Ser.LSLLIST);
+                ObjLslList oll = (ObjLslList) graph;
+                SendObjValue (oll.objarray);
+            } else if (graph is XMR_Array) {
                 mow.Write ((byte)Ser.XMRARRAY);
                 ((XMR_Array)graph).SendArrayObj (this.SendObjValue);
             } else if (graph is Array) {
-                mow.Write ((byte)Ser.SYSARRAY);
                 Array array = (Array)graph;
+                mow.Write ((byte)Ser.SYSARRAY);
                 mow.Write (SysType2String (array.GetType ().GetElementType ()));
                 mow.Write ((int)array.Length);
                 for (int i = 0; i < array.Length; i ++) {
@@ -1820,8 +1837,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * @brief Read a single value from the stream.
          * @returns value (boxed as needed)
          */
-        public BinaryReader migrateInReader;
-        public Dictionary<int, object> migrateInObjects;
+        private BinaryReader migrateInReader;
+        private Dictionary<int, object> migrateInObjects;
         public object RecvObjValue ()
         {
             BinaryReader mir = this.migrateInReader;
@@ -1844,8 +1861,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     return new LSL_Key ((string)RecvObjValue ());
                 }
                 case Ser.LSLLIST: {
-                    object[] vals = (object[])RecvObjValue ();
-                    LSL_List list = new LSL_List (vals);
+                    this.migrateInObjects.Add (ident, null);    // placeholder
+                    object[] data = (object[])RecvObjValue ();  // read data, maybe using another index
+                    LSL_List list = new LSL_List (data);        // make LSL-level list
+                    this.migrateInObjects[ident] = list;        // fill in slot
                     return list;
                 }
                 case Ser.LSLROT: {
@@ -1902,7 +1921,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
                 case Ser.DUPREF: {
                     ident = mir.ReadInt32 ();
-                    return this.migrateInObjects[ident];
+                    object obj = this.migrateInObjects[ident];
+                    if (obj is ObjLslList) obj = new LSL_List (((ObjLslList) obj).objarray);
+                    return obj;
                 }
                 case Ser.XMRINST: {
                     return this;
@@ -1945,6 +1966,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
                 default: throw new Exception ("bad stream code " + code.ToString ());
             }
+        }
+
+        // wrapper around list object arrays to make sure they are always object types for migration purposes
+        private class ObjLslList {
+            public object[] objarray;
         }
     }
 

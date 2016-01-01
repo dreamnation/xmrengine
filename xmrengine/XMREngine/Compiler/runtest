@@ -8,7 +8,7 @@ function minorbar {
 }
 
 function makerealgood {
-    compdir=`pwd`
+    compdir=`pwd -P`
     compdir=${compdir//\//\\/}
     sed "s/in \/.*\/XMREngine\/Compiler\//in $compdir\//g" $1.good > $1.good.tmp
 }

@@ -87,7 +87,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public  XMRInstance  m_PrevInst;
         public  XMRInstState m_IState;
 
-        public  bool m_ForceReset = false;
+        public  bool m_ForceRecomp = false;
         public  SceneObjectPart m_Part = null;
         public  uint m_LocalID = 0;
         public  TaskInventoryItem m_Item = null;

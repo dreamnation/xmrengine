@@ -44,8 +44,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * @param scriptBasePath = directory name where files are
          * @param stackSize = number of bytes to allocate for stacks
          * @param errors = return compiler errors in this array
-         * @param forceReset = reset script to default state (ignore saved state)
-         *                     (also forces recompilation if sourceCode != "")
+         * @param forceRecomp = force recompile
          * Throws exception if any error, so it was successful if it returns.
          */
         public void Initialize(XMREngine engine, string scriptBasePath,
@@ -199,19 +198,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * we can use.  If not, try to compile it.
              */
             lock (m_CompileLock) {
-                if (!m_CompiledScriptObjCode.TryGetValue (m_ScriptObjCodeKey, out objCode)) {
-                    try {
-                        objCode = TryToCompile (m_ForceReset);
-                    } catch (Exception e) {
-                        if (m_ForceReset) throw;
-
-                        m_log.Info ("[XMREngine]: attempting recompile " + m_Item.AssetID.ToString() + " after exception " + e.Message);
-
-                        // might be something like mismatched compiled code version
-                        // try deleting object code only (leaving .state file intact)
-                        // ... and recompile
-                        objCode = TryToCompile (true);
-                    }
+                if (!m_CompiledScriptObjCode.TryGetValue (m_ScriptObjCodeKey, out objCode) || m_ForceRecomp) {
+                    objCode = TryToCompile ();
                     compiledIt = true;
                 }
 
@@ -280,7 +268,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         // Try to create object code from source code
         // If error, just throw exception
-        private ScriptObjCode TryToCompile(bool forceRecompile)
+        private ScriptObjCode TryToCompile ()
         {
             m_CompilerErrors.Clear();
 
@@ -291,14 +279,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
             string assetID  = m_Item.AssetID.ToString();
             m_CameFrom = "asset://" + assetID;
-            ScriptObjCode objCode = ScriptCompile.Compile(m_SourceCode, 
-                                                          m_ScriptObjCodeKey, 
-                                                          m_CameFrom, 
-                                                          GetScriptFileName, 
-                                                          forceRecompile, 
-                                                          ErrorHandler,
-                                                          FetchSource,
-                                                          this);
+            ScriptObjCode objCode = Compile ();
             if (m_CompilerErrors.Count != 0)
             {
                 throw new Exception ("compilation errors");
@@ -326,7 +307,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 throw new Exception ("source not found " + cameFrom);
             }
             string source = Encoding.UTF8.GetString (asset.Data);
-            if (ScriptCompile.EmptySource (source)) {
+            if (EmptySource (source)) {
                 throw new Exception ("fetched source empty " + cameFrom);
             }
             return source;
@@ -380,11 +361,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         //
         private void LoadInitialState()
         {
-            if (m_ForceReset) {
-                Verbose ("[XMREngine]: deleting " + m_StateFileName);
-                File.Delete(m_StateFileName);
-            }
-
             /*
              * If no .state file exists, start from default state
              * Otherwise, read initial state from the .state file

@@ -104,7 +104,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             string envar;
 
             m_log.Info ("[XMREngine]: commit " + commitInfo);
-            m_log.Info ("[XMREngine]: fetchbinary fingerprint " + ScriptCompile.Fingerprint);
+            m_log.Info ("[XMREngine]: fetchbinary fingerprint " + XMRInstance.Fingerprint);
 
             envar = Environment.GetEnvironmentVariable ("XMREngineTraceCalls");
             m_TraceCalls  = (envar != null) && ((envar[0] & 1) != 0);
@@ -1217,7 +1217,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * Very first line might contain "//" scriptengine ":".
              */
             string firstline = "";
-            string restof1st = "";
             if (script.StartsWith("//")) {
                 int lineEnd = script.IndexOf('\n');
                 if (lineEnd > 1) firstline = script.Substring(0, lineEnd).Trim();
@@ -1225,7 +1224,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if (colon >= 2) {
                     engineName = firstline.Substring(2, colon - 2).Trim();
                     if (engineName == "") engineName = defEngine;
-                    restof1st  = "," + firstline.Substring(colon + 1).Trim().ToLowerInvariant() + ",";
                 }
             }
 
@@ -1262,7 +1260,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * Put on object/instance lists.
              */
             XMRInstance instance   = (XMRInstance)Activator.CreateInstance (ScriptCodeGen.xmrInstSuperType);
-            instance.m_ForceReset  = restof1st.Contains (",forcereset,");
             instance.m_LocalID     = localID;
             instance.m_ItemID      = itemID;
             instance.m_SourceCode  = script;
@@ -1320,14 +1317,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             } catch (Exception e1) {
                 initerr = e1;
             }
-            if ((initerr != null) && !instance.m_ForceReset) {
+            if ((initerr != null) && !instance.m_ForceRecomp) {
                 UUID itemID = instance.m_ItemID;
-                Verbose ("[XMREngine]: {0}/{2} first load failed ({1}), retrying after reset", 
+                Verbose ("[XMREngine]: {0}/{2} first load failed ({1}), retrying after recompile", 
                         itemID.ToString(), initerr.Message, instance.m_Item.AssetID.ToString());
                 Verbose ("[XMREngine]:\n{0}", initerr.ToString ());
                 initerr = null;
                 errors = new ArrayList();
-                instance.m_ForceReset = true;
+                instance.m_ForceRecomp = true;
                 try {
                     instance.Initialize(this, m_ScriptBasePath, m_StackSize, m_HeapSize, errors);
                 } catch (Exception e2) {
