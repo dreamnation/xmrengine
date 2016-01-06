@@ -473,35 +473,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         private XMRInstance instance;
 
         public ScriptUThread_MMR (XMRInstance instance)
-                : base ((UIntPtr)(uint)instance.m_StackSize, instance.m_DescName)
+                : base ((IntPtr)instance.m_StackSize, instance.m_DescName)
         {
             this.instance = instance;
+        }
+
+        public Exception StartEx ()
+        {
+            return StartEx (instance.CallSEH);
         }
 
         public Exception ResumeEx ()
         {
             return ResumeEx (null);
-        }
-
-        /*
-         * Called on the microthread stack as part of StartEx().
-         * StartEx() returns when this method calls Suspend() or
-         * when this method returns (whichever happens first).
-         */
-        public override Exception MainEx ()
-        {
-            /*
-             * Run event handler according to stackFrames.
-             * In either case it is assumed that instance.stateCode and instance.eventCode
-             * indicate which event handler is to be called and that instance.ehArgs
-             * points to the event handler argument list.
-             */
-            try {
-                instance.CallSEH ();
-                return null;
-            } catch (Exception e) {
-                return e;
-            }
         }
 
         public void Hiber ()

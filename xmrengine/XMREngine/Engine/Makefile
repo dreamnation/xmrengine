@@ -2,6 +2,7 @@ MONODIR       ?= /usr
 MONOBINDIR    ?= $(MONODIR)/bin
 MONODLLDIR    ?= $(MONODIR)/lib/mono/4.0
 OPENSIMDLLDIR ?= ../../../bin_090
+TASKLETSDLL   ?= $(MONODLLDIR)/Mono.Tasklets.dll
 
 COMMITHASH  := $(strip $(shell git log -1 | grep ^commit | sed 's/commit//g'))
 COMMITDATE  := $(strip $(shell git log -1 --date=iso | grep ^Date: | sed 's/Date://g'))
@@ -88,7 +89,7 @@ xmrengine_con.dll: $(ENGINECXFILES:.cx=_con.cs) XMREngCommit_$(COMMITHASH)_$(COM
 		-out:$@ \
 		$(ENGINECXFILES:.cx=_con.cs) XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs \
 		$(patsubst %.dll,-reference:%.dll,$(REFERENCED)) \
-		-reference:$(MONODLLDIR)/Mono.Tasklets.dll
+		-reference:$(TASKLETSDLL)
 
 xmrengine_con_ext.dll: $(ENGINECXFILES:.cx=_con_ext.cs) XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs $(REFERENCED)
 	rm -f xmrengine_con_ext.dll*
@@ -96,7 +97,7 @@ xmrengine_con_ext.dll: $(ENGINECXFILES:.cx=_con_ext.cs) XMREngCommit_$(COMMITHAS
 		-out:$@ \
 		$(ENGINECXFILES:.cx=_con_ext.cs) XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs \
 		$(patsubst %.dll,-reference:%.dll,$(REFERENCED)) \
-		-reference:$(MONODLLDIR)/Mono.Tasklets.dll
+		-reference:$(TASKLETSDLL)
 
 xmrengine_mmr.dll: $(ENGINECXFILES:.cx=_mmr.cs) XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs $(REFERENCED)
 	rm -f xmrengine_mmr.dll*
@@ -104,7 +105,7 @@ xmrengine_mmr.dll: $(ENGINECXFILES:.cx=_mmr.cs) XMREngCommit_$(COMMITHASH)_$(COM
 		-out:$@ \
 		$(ENGINECXFILES:.cx=_mmr.cs) XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs \
 		$(patsubst %.dll,-reference:%.dll,$(REFERENCED)) \
-		-reference:$(MONODLLDIR)/Mono.Tasklets.dll
+		-reference:$(TASKLETSDLL)
 
 xmrengine_mmr_ext.dll: $(ENGINECXFILES:.cx=_mmr_ext.cs) XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs $(REFERENCED)
 	rm -f xmrengine_mmr_ext.dll*
@@ -112,7 +113,7 @@ xmrengine_mmr_ext.dll: $(ENGINECXFILES:.cx=_mmr_ext.cs) XMREngCommit_$(COMMITHAS
 		-out:$@ \
 		$(ENGINECXFILES:.cx=_mmr_ext.cs) XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs \
 		$(patsubst %.dll,-reference:%.dll,$(REFERENCED)) \
-		-reference:$(MONODLLDIR)/Mono.Tasklets.dll
+		-reference:$(TASKLETSDLL)
 
 XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs: XMREngCommit.cx
 	rm -f XMREngCommit_*.cs
