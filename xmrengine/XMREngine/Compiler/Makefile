@@ -1,6 +1,6 @@
 MONODIR       ?= /usr
 MONOBINDIR    ?= $(MONODIR)/bin
-MONODLLDIR    ?= $(MONODIR)/lib/mono/4.0
+MONODLLDIR    ?= $(MONODIR)/lib/mono/4.5
 OPENSIMDLLDIR ?= ../../../bin_090
 
 COMMITHASH  := $(strip $(shell git log -1 | grep ^commit | sed 's/commit//g'))

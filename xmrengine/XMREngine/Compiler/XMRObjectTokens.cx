@@ -3206,13 +3206,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                 }
             }
 
-            public virtual void CountRefs (bool writing)
+            public override void CountRefs (bool writing)
             {
                 arg0.CountRefs (writing);
                 arg1.CountRefs (writing);
             }
 
-            public virtual OTOpnd ReplaceOperand (OTOpnd oldopnd, OTOpnd newopnd, ref bool rc)
+            public override OTOpnd ReplaceOperand (OTOpnd oldopnd, OTOpnd newopnd, ref bool rc)
             {
                 if (SameAs (oldopnd)) {
                     rc = true;
@@ -3295,7 +3295,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
                 // (brtrue  (x beq y))  =>  (x beq y)  etc
                 if ((opCode == MyOp.Brtrue) && (value is OTOpndBinOp) && brfops.ContainsKey (((OTOpndBinOp) value).opCode.name)) {
-                    ((OTOpndBinOp) value).opCode = MyOp.GetByName (brfop);
                     return value;
                 }
 

@@ -1,6 +1,6 @@
 MONODIR       ?= /usr
 MONOBINDIR    ?= $(MONODIR)/bin
-MONODLLDIR    ?= $(MONODIR)/lib/mono/4.0
+MONODLLDIR    ?= $(MONODIR)/lib/mono/4.5
 OPENSIMDLLDIR ?= ../../../bin_090
 TASKLETSDLL   ?= $(MONODLLDIR)/Mono.Tasklets.dll
 
@@ -53,7 +53,8 @@ REFERENCED := ../Compiler/xmrengshare.dll \
               $(OPENSIMDLLDIR)/OpenSim.Region.Framework.dll \
               $(OPENSIMDLLDIR)/OpenSim.Region.ScriptEngine.Shared.dll \
               $(OPENSIMDLLDIR)/OpenSim.Region.ScriptEngine.Shared.Api.dll \
-              $(OPENSIMDLLDIR)/OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll
+              $(OPENSIMDLLDIR)/OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll \
+              $(OPENSIMDLLDIR)/OpenSim.Services.Interfaces.dll
 
 default: $(XMRENGINEDLLS)
 
