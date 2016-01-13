@@ -8,10 +8,10 @@ COMMITHASH  := $(strip $(shell git log -1 | grep ^commit | sed 's/commit//g'))
 COMMITDATE  := $(strip $(shell git log -1 --date=iso | grep ^Date: | sed 's/Date://g'))
 COMMITCLEAN := $(strip $(shell git status | grep -q modified: ; echo $$?))
 
-EXTHASHCODE := $(shell make -s -f makestrhashcode STR=world.dreamnation.net)
+EXTHASHCODE := $(shell MONOBINDIR=$(MONOBINDIR) $(MAKE) -s -f makestrhashcode STR=world.dreamnation.net)
 
-HAVE_MONOCONTS   ?= $(shell ../Compiler/findmonotasklet.sh $(MONOBINDIR) $(MONODLLDIR) Continuation)
-HAVE_MMRUTHREADS ?= $(shell ../Compiler/findmonotasklet.sh $(MONOBINDIR) $(MONODLLDIR) MMRUThread)
+HAVE_MONOCONTS   ?= $(shell ../Compiler/findmonotasklet.sh $(MONOBINDIR) $(TASKLETSDLL) Continuation)
+HAVE_MMRUTHREADS ?= $(shell ../Compiler/findmonotasklet.sh $(MONOBINDIR) $(TASKLETSDLL) MMRUThread)
 
 XMRENGINEDLLS := xmrengine_sys.dll
 ifeq ($(HAVE_MONOCONTS),1)
@@ -79,14 +79,14 @@ default: $(XMRENGINEDLLS)
 #
 xmrengine_sys.dll: $(ENGINECXFILES:.cx=_sys.cs) XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs $(REFERENCED)
 	rm -f xmrengine_sys.dll*
-	$(MONOBINDIR)/dmcs -debug -target:library \
+	$(MONOBINDIR)/mcs -debug -target:library \
 		-out:$@ \
 		$(ENGINECXFILES:.cx=_sys.cs) XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs \
 		$(patsubst %.dll,-reference:%.dll,$(REFERENCED))
 
 xmrengine_con.dll: $(ENGINECXFILES:.cx=_con.cs) XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs $(REFERENCED)
 	rm -f xmrengine_con.dll*
-	$(MONOBINDIR)/dmcs -debug -target:library \
+	$(MONOBINDIR)/mcs -debug -target:library \
 		-out:$@ \
 		$(ENGINECXFILES:.cx=_con.cs) XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs \
 		$(patsubst %.dll,-reference:%.dll,$(REFERENCED)) \
@@ -94,7 +94,7 @@ xmrengine_con.dll: $(ENGINECXFILES:.cx=_con.cs) XMREngCommit_$(COMMITHASH)_$(COM
 
 xmrengine_con_ext.dll: $(ENGINECXFILES:.cx=_con_ext.cs) XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs $(REFERENCED)
 	rm -f xmrengine_con_ext.dll*
-	$(MONOBINDIR)/dmcs -debug -target:library \
+	$(MONOBINDIR)/mcs -debug -target:library \
 		-out:$@ \
 		$(ENGINECXFILES:.cx=_con_ext.cs) XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs \
 		$(patsubst %.dll,-reference:%.dll,$(REFERENCED)) \
@@ -102,7 +102,7 @@ xmrengine_con_ext.dll: $(ENGINECXFILES:.cx=_con_ext.cs) XMREngCommit_$(COMMITHAS
 
 xmrengine_mmr.dll: $(ENGINECXFILES:.cx=_mmr.cs) XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs $(REFERENCED)
 	rm -f xmrengine_mmr.dll*
-	$(MONOBINDIR)/dmcs -debug -target:library \
+	$(MONOBINDIR)/mcs -debug -target:library \
 		-out:$@ \
 		$(ENGINECXFILES:.cx=_mmr.cs) XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs \
 		$(patsubst %.dll,-reference:%.dll,$(REFERENCED)) \
@@ -110,7 +110,7 @@ xmrengine_mmr.dll: $(ENGINECXFILES:.cx=_mmr.cs) XMREngCommit_$(COMMITHASH)_$(COM
 
 xmrengine_mmr_ext.dll: $(ENGINECXFILES:.cx=_mmr_ext.cs) XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs $(REFERENCED)
 	rm -f xmrengine_mmr_ext.dll*
-	$(MONOBINDIR)/dmcs -debug -target:library \
+	$(MONOBINDIR)/mcs -debug -target:library \
 		-out:$@ \
 		$(ENGINECXFILES:.cx=_mmr_ext.cs) XMREngCommit_$(COMMITHASH)_$(COMMITCLEAN).cs \
 		$(patsubst %.dll,-reference:%.dll,$(REFERENCED)) \

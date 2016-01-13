@@ -45,7 +45,7 @@ llOwnerSay: zz[4567]=four,five,six,seven
 llOwnerSay: success!
 llOwnerSay: xmrHashCode(2992)  = 2992
 llOwnerSay: xmrHashCode(29.92) = 1585822313 = 1585822313
-llOwnerSay: xmrHashCode(Hello World) = -862545276
+llOwnerSay: xmrHashCode(Hello World) = -1694160966
 llOwnerSay: test JSON parse:
 llOwnerSay: 1234:
 llOwnerSay:    = 1234

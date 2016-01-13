@@ -248,12 +248,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 XMRInstance inst = new XMRInstance (scriptObjCode);
                 inst.m_DescName  = perPrims[i].name + ":" + srcFileName;
 #if HAVE_MONOCONTS
-                inst.engstack    = new Mono.Tasklets.Continuation ();
-                inst.engstack.Mark ();
-                inst.scrstack    = new Mono.Tasklets.Continuation ();
-                inst.scrstack.Mark ();
-                inst.wfistack    = new Mono.Tasklets.Continuation ();
-                inst.wfistack.Mark ();
+                if (uthreadType == "con") {
+                    inst.engstack    = new Mono.Tasklets.Continuation ();
+                    inst.engstack.Mark ();
+                    inst.scrstack    = new Mono.Tasklets.Continuation ();
+                    inst.scrstack.Mark ();
+                    inst.wfistack    = new Mono.Tasklets.Continuation ();
+                    inst.wfistack.Mark ();
+                }
 #endif
                 new ScriptRoot (inst, i, perPrims[i]);
             }
