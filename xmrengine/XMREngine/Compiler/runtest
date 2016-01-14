@@ -20,13 +20,13 @@ function testit {
     then
         input=$1.in
     fi
-    mono --debug xmrengtest.exe -uthread $uthread -xmrasm $1.lsl < $input 2>&1 | grep -v '^mmruthread: total stack' | tee $1.out
+    $runxmrengtest -xmrasm $1.lsl < $input 2>&1 | grep -v '^mmruthread: total stack' | tee $1.out
     diff $1.out $1.good.tmp
     minorbar
-    mono --debug xmrengtest.exe -uthread $uthread -checkrun $1.lsl < $input 2>&1 | grep -v '^mmruthread: total stack' | tee $1.ckr
+    $runxmrengtest -checkrun $1.lsl < $input 2>&1 | grep -v '^mmruthread: total stack' | tee $1.ckr
     diff $1.ckr $1.good.tmp
     minorbar
-    mono --debug xmrengtest.exe -uthread $uthread -serialize $1.lsl < $input 2>&1 | grep -v '^mmruthread: total stack' | tee $1.ser
+    $runxmrengtest -serialize $1.lsl < $input 2>&1 | grep -v '^mmruthread: total stack' | tee $1.ser
     diff $1.ser $1.good.tmp
     majorbar
     rm -f $1.good.tmp
@@ -34,13 +34,13 @@ function testit {
 
 function testev {
     makerealgood $1
-    mono --debug xmrengtest.exe -uthread $uthread -eventio $1.lsl < $1.events 2>&1 | grep -v '^mmruthread: total stack' | tee $1.out
+    $runxmrengtest -eventio $1.lsl < $1.events 2>&1 | grep -v '^mmruthread: total stack' | tee $1.out
     diff $1.out $1.good.tmp
     minorbar
-    mono --debug xmrengtest.exe -uthread $uthread -eventio -checkrun $1.lsl < $1.events 2>&1 | grep -v '^mmruthread: total stack' | tee $1.ckr
+    $runxmrengtest -eventio -checkrun $1.lsl < $1.events 2>&1 | grep -v '^mmruthread: total stack' | tee $1.ckr
     diff $1.ckr $1.good.tmp
     minorbar
-    mono --debug xmrengtest.exe -uthread $uthread -eventio -serialize $1.lsl < $1.events 2>&1 | grep -v '^mmruthread: total stack' | tee $1.ser
+    $runxmrengtest -eventio -serialize $1.lsl < $1.events 2>&1 | grep -v '^mmruthread: total stack' | tee $1.ser
     diff $1.ser $1.good.tmp
     majorbar
     rm -f $1.good.tmp
@@ -51,12 +51,19 @@ cd `dirname $0`
 time make xmrengtest.exe
 export MONO_PATH=../../../bin_090
 
-uthread=sys
+uthread=mmr
 if [ "x$1" != "x" ]
 then
     uthread=$1
 fi
 echo uthread=$uthread
+
+if [ "$MONODIR" != "" ]
+then
+    runxmrengtest="$MONODIR/bin/mono --debug xmrengtest.exe -uthread $uthread"
+else
+    runxmrengtest="mono --debug xmrengtest.exe -uthread $uthread"
+fi
 
 majorbar
 testit overridevar
@@ -82,7 +89,7 @@ testev lslangtest1
 testev lslangtest2
 
 majorbar
-mono --debug xmrengtest.exe -uthread $uthread -xmrasm -eventio -ipcchannel -2135482309 \
+$runxmrengtest -xmrasm -eventio -ipcchannel -2135482309 \
     -primname controller -primuuid 0000 ipctest0.lsl \
     -primname player1 -primuuid 1111 ipctest1.lsl << EOF | grep -v '^mmruthread: total stack' | tee ipctest.out
 1)touch_start(0)
@@ -94,7 +101,7 @@ EOF
 diff ipctest.out ipctest.good
 
 minorbar
-mono --debug xmrengtest.exe -uthread $uthread -eventio -ipcchannel -2135482309 -checkrun \
+$runxmrengtest -eventio -ipcchannel -2135482309 -checkrun \
     -primname controller -primuuid 0000 ipctest0.lsl \
     -primname player1 -primuuid 1111 ipctest1.lsl << EOF | grep -v '^mmruthread: total stack' | tee ipctest.ckr
 1)touch_start(0)
@@ -106,7 +113,7 @@ EOF
 diff ipctest.ckr ipctest.gser
 
 minorbar
-mono --debug xmrengtest.exe -uthread $uthread -eventio -ipcchannel -2135482309 -serialize \
+$runxmrengtest -eventio -ipcchannel -2135482309 -serialize \
     -primname controller -primuuid 0000 ipctest0.lsl \
     -primname player1 -primuuid 1111 ipctest1.lsl << EOF | grep -v '^mmruthread: total stack' | tee ipctest.ser
 1)touch_start(0)
@@ -118,7 +125,7 @@ EOF
 diff ipctest.ser ipctest.gser
 
 majorbar
-mono --debug xmrengtest.exe -uthread $uthread -eventio -ipcchannel -646830961 \
+$runxmrengtest -eventio -ipcchannel -646830961 \
     -primname RummyBoard        -primuuid 1000 rummyboard.lsl \
     -primname Stock             -primuuid 1101 cardpanel.lsl \
     -primname Discard           -primuuid 1102 cardpanel.lsl \

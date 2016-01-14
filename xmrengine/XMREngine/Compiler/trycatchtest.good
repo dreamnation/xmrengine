@@ -34,10 +34,9 @@ llOwnerSay: multiple throw finallies 1b
 llOwnerSay: CallSomethingThatCallsSomethingThatThrows or we get optimized out
 llOwnerSay: CallSomethingThatThrows or we get optimized out
 llOwnerSay: inner catch: get me out!
-llOwnerSay: stack trace: at CallSomethingThatThrows(string) <trycatchtest.lsl(16,4)>
-at CallSomethingThatCallsSomethingThatThrows(string) <trycatchtest.lsl(10,28)>
-at default state_entry <trycatchtest.lsl(100,62)>
-
+llOwnerSay: stack trace:   at CallSomethingThatThrows(string) <trycatchtest.lsl(16,4)>
+  at CallSomethingThatCallsSomethingThatThrows(string) <trycatchtest.lsl(10,28)>
+  at default state_entry <trycatchtest.lsl(100,62)>
 llOwnerSay: multiple throw finallies 2a
 llOwnerSay: multiple throw finallies 2b
 llOwnerSay: multiple throw finallies 3a
@@ -47,12 +46,10 @@ llOwnerSay: multiple throw finallies 4b
 llOwnerSay: check stack trace capture/restore
 llOwnerSay:     argtype: exception
 llOwnerSay:      extype: ScriptThrownException
-llOwnerSay: whole thing: OpenSim.Region.ScriptEngine.XMREngine.ScriptThrownException: can you see me now?
-at default state_entry (OpenSim.Region.ScriptEngine.XMREngine.XMRInstAbstract) <trycatchtest.lsl(123,12)>
-
+llOwnerSay: whole thing: ScriptThrownException: can you see me now?
+  at default state_entry <trycatchtest.lsl(123,12)>
 llOwnerSay:     message: can you see me now?
-llOwnerSay: stack trace: at default state_entry <trycatchtest.lsl(123,12)>
-
+llOwnerSay: stack trace:   at default state_entry <trycatchtest.lsl(123,12)>
 llOwnerSay: catch filtering...
 llOwnerSay: caught integer 1
 llOwnerSay: caught string two

@@ -682,7 +682,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 		public static bool     VectorToBool      (LSL_Vector x)   { return !x.Equals (SCRIPTBASECLASS.ZERO_VECTOR); }
 		public static string   BoolToString      (bool x)         { return x ? "1" : "0"; }
 		public static string   CharToString      (char x)         { return x.ToString (); }
-		public static string   ExceptionToString (Exception x, XMRInstAbstract inst) { return inst.XMRExceptionFixString (x.ToString (), true); }
 		public static string   FloatToString     (SCRIPTFLOAT x)  { return x.ToString ("0.000000"); }
 		public static string   IntegerToString   (int x)          { return x.ToString (); }
 		public static bool     KeyToBool         (string x)       { return (x != "") && (x != SCRIPTBASECLASS.NULL_KEY); }
@@ -735,6 +734,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 			if (x is LSL_String) return new LSL_Vector (((LSL_String)x).m_string);
 			if (x is string)     return new LSL_Vector ((string)x);
 			return (LSL_Vector)x;
+		}
+
+		public static string ExceptionToString (Exception x, XMRInstAbstract inst)
+		{
+			return XMRInstAbstract.xmrExceptionTypeName (x) + ": " + XMRInstAbstract.xmrExceptionMessage (x) +
+				"\n" + inst.xmrExceptionStackTrace (x);
 		}
 
 		/*

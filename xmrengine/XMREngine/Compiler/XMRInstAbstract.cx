@@ -1394,7 +1394,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         // Return stack trace (no type or message, just stack trace lines: at ... \n)
         public string xmrExceptionStackTrace (Exception ex)
         {
-            return XMRExceptionFixString (ex.StackTrace, false);
+            return XMRExceptionStackString (ex);
         }
 
         // Return value thrown by a throw statement
@@ -1411,25 +1411,24 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         // internal use only: converts any IL addresses in script-defined methods to source location equivalent
         // at (wrapper dynamic-method) object.__seh_0_30_default_state_entry (OpenSim.Region.ScriptEngine.XMREngine.XMRInstAbstract) <IL 0x00d65, 0x03a53>
-        public string XMRExceptionFixString (string st, bool sys)
+        public string XMRExceptionStackString (Exception ex)
         {
+            string st = ex.StackTrace;
             StringBuilder sb = new StringBuilder ();
             int wrapDynMethObj = 0;
             int leftOffAt = 0;
-            while ((wrapDynMethObj = st.IndexOf ("(wrapper dynamic-method) object.", ++ wrapDynMethObj)) >= 0) {
+            while ((wrapDynMethObj = st.IndexOf ("(wrapper dynamic-method) System.Object:", ++ wrapDynMethObj)) >= 0) {
                 try {
-                    int begFuncName  = wrapDynMethObj + 32;
+                    int begFuncName  = wrapDynMethObj + 39;
                     int endFuncName  = st.IndexOf (" (", begFuncName);
                     string funcName  = st.Substring (begFuncName, endFuncName - begFuncName);
                     KeyValuePair<int, ScriptSrcLoc>[] srcLocs = m_ObjCode.scriptSrcLocss[funcName];
 
-                    int il0xPrefix   = st.IndexOf (" <IL 0x", endFuncName);
-                    int begILHex     = il0xPrefix + 7;
-                    int endILHex     = st.IndexOf (',', begILHex);
+                    int il0xPrefix   = st.IndexOf (" [0x", endFuncName);
+                    int begILHex     = il0xPrefix + 4;
+                    int endILHex     = st.IndexOf (']', begILHex);
                     string ilHex     = st.Substring (begILHex, endILHex - begILHex);
                     int offset       = Int32.Parse (ilHex, System.Globalization.NumberStyles.HexNumber);
-                    int closeAngle   = st.IndexOf ('>', endILHex);
-                    if (closeAngle  <= endILHex) continue;
 
                     int srcLocIdx;
                     int srcLocLen    = srcLocs.Length;
@@ -1439,20 +1438,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     ScriptSrcLoc srcLoc = srcLocs[--srcLocIdx].Value;
 
                     sb.Append (st.Substring (leftOffAt, wrapDynMethObj - leftOffAt));
-                    if (sys) {
-                        sb.Append (st.Substring (begFuncName, il0xPrefix - begFuncName));
-                    } else {
-                        sb.Append (st.Substring (begFuncName, endFuncName - begFuncName));
-                    }
+                    sb.Append (st.Substring (begFuncName, endFuncName - begFuncName));
                     sb.Append (" <");
                     sb.Append (srcLoc.file);
                     sb.Append ('(');
                     sb.Append (srcLoc.line);
                     sb.Append (',');
                     sb.Append (srcLoc.posn);
-                    sb.Append (')');
+                    sb.Append (")>");
 
-                    leftOffAt = closeAngle;
+                    leftOffAt = ++ endILHex;
                 } catch {
                 }
             }
