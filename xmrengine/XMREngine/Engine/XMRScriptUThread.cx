@@ -142,17 +142,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
          */
         private void CallSEHThread ()
         {
-            if (active <= 0) throw new Exception ("active=" + active);
+            lock (activeLock) {
+                if (active <= 0) throw new Exception ("active=" + active);
 
-            except = null;                  // assume completion without exception
-            try {
-                instance.CallSEH ();        // run script event handler
-            } catch (Exception e) {
-                except = e;                 // threw exception, save for Start()/Resume()
-            }
+                except = null;                  // assume completion without exception
+                try {
+                    instance.CallSEH ();        // run script event handler
+                } catch (Exception e) {
+                    except = e;                 // threw exception, save for Start()/Resume()
+                }
 
-            lock (activeLock) {             // tell Start() or Resume() we're done
-                active = 0;
+                active = 0;                     // tell Start() or Resume() we're done
                 Monitor.PulseAll (activeLock);
             }
         }
@@ -162,22 +162,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
          */
         public void Hiber ()
         {
-            lock (activeLock) {
-                if (active <= 0) throw new Exception ("active=" + active);
+            if (active <= 0) throw new Exception ("active=" + active);
 
-                // tell Start() or Resume() we are hibernating
-                active = -1;
-                Monitor.PulseAll (activeLock);
+            // tell Start() or Resume() we are hibernating
+            active = -1;
+            Monitor.PulseAll (activeLock);
 
-                // wait for Resume() or Dispose() to be called
-                while ((active < 0) && (instance != null)) {
-                    Monitor.Wait (activeLock);
-                }
+            // wait for Resume() or Dispose() to be called
+            while ((active < 0) && (instance != null)) {
+                Monitor.Wait (activeLock);
+            }
 
-                // don't execute any more script code, just exit
-                if (instance == null) {
-                    throw new AbortedByDisposeException ();
-                }
+            // don't execute any more script code, just exit
+            if (instance == null) {
+                throw new AbortedByDisposeException ();
             }
         }
 
@@ -197,14 +195,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         private class TredPoo {
             private static readonly TimeSpan idleTimeSpan = new TimeSpan (0, 0, 1, 0, 0);  // 1 minute
 
-            public static bool exiting = false;
-
-            private static int started = 0;
-            private static LinkedList<TredPoo> tredPooAvail = new LinkedList<TredPoo> ();
+            private static int tredPooAvail = 0;
             private static object tredPooLock = new object ();
             private static Queue<ThreadStart> tredPooQueue = new Queue<ThreadStart> ();
-
-            private LinkedListNode<TredPoo> availLinkNode;
 
             /**
              * @brief Queue a function for execution in a system thread.
@@ -214,8 +207,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                 lock (tredPooLock) {
                     tredPooQueue.Enqueue (entry);
                     Monitor.Pulse (tredPooLock);
-                    int availCount = tredPooAvail.Count + started;
-                    if (availCount < tredPooQueue.Count) {
+                    if (tredPooAvail < tredPooQueue.Count) {
                         new TredPoo ();
                     }
                 }
@@ -228,9 +220,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
              */
             private TredPoo ()
             {
-                availLinkNode = new LinkedListNode<TredPoo> (this);
-                new Thread (Main).Start ();
-                started ++;
+                Thread thread = new Thread (Main);
+                thread.Name   = "XMRUThread_sys";
+                thread.IsBackground = true;
+                thread.Start ();
+                tredPooAvail ++;
             }
 
             /**
@@ -239,21 +233,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
              */
             private void Main ()
             {
-                Monitor.Enter (tredPooLock);
-                -- started;
-                while (!exiting) {
-                    while (tredPooQueue.Count > 0) {
-                        ThreadStart entry = tredPooQueue.Dequeue ();
-                        Monitor.Exit (tredPooLock);
-                        entry ();
-                        Monitor.Enter (tredPooLock);
+                int first = 1;
+                ThreadStart entry;
+                while (true) {
+                    lock (tredPooLock) {
+                        tredPooAvail -= first;
+                        first = 0;
+                        while (tredPooQueue.Count <= 0) {
+                            tredPooAvail ++;
+                            bool keepgoing = Monitor.Wait (tredPooLock, idleTimeSpan);
+                            -- tredPooAvail;
+                            if (!keepgoing) return;
+                        }
+                        entry = tredPooQueue.Dequeue ();
                     }
-                    tredPooAvail.AddLast (availLinkNode);
-                    bool keepgoing = Monitor.Wait (tredPooLock, idleTimeSpan);
-                    tredPooAvail.Remove (availLinkNode);
-                    if (!keepgoing) break;
+                    entry ();
                 }
-                Monitor.Exit (tredPooLock);
             }
         }
     }
