@@ -323,8 +323,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         private void OnAllInitialScenesStarted ()
         {
-            m_log.Debug ("[XMREngine]: OnAllInitialScenesStarted");
-            m_Scene.EventManager.TriggerEmptyScriptCompileQueue (0, "");
+            m_log.Info ("[XMREngine]: ALL INITIAL SCENES STARTED " + m_Scene.RegionInfo.RegionName);
+            ////m_Scene.EventManager.TriggerEmptyScriptCompileQueue (0, "");
         }
 
         private void OneTimeLateInitialization ()
@@ -712,7 +712,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (!m_Enabled)
                 return;
 
-            TraceCalls("[XMREngine]: XMREngine.RegionLoaded({0})", scene.RegionInfo.RegionName);
+            m_log.Info ("[XMREngine]: REGION LOADED " + scene.RegionInfo.RegionName);
 
             m_Scene.EventManager.OnFrame += OnFrame;
             m_Scene.EventManager.OnRemoveScript += OnRemoveScript;
@@ -723,6 +723,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_Scene.EventManager.OnShutdown += OnShutdown;
 
             InitEvents();
+
+            m_Scene.EventManager.TriggerEmptyScriptCompileQueue (0, "");
         }
 
         public void StartProcessing()
@@ -1200,6 +1202,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             SceneObjectPart part = m_Scene.GetSceneObjectPart(localID);
             TaskInventoryItem item = part.Inventory.GetInventoryItem(itemID);
+
+            m_log.Info ("[XMREngine]: REZ SCRIPT " + itemID);
 
             if (!m_LateInit) {
                 m_LateInit = true;
