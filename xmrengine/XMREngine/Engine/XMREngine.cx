@@ -1203,8 +1203,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             SceneObjectPart part = m_Scene.GetSceneObjectPart(localID);
             TaskInventoryItem item = part.Inventory.GetInventoryItem(itemID);
 
-            m_log.Info ("[XMREngine]: REZ SCRIPT " + itemID);
-
             if (!m_LateInit) {
                 m_LateInit = true;
                 OneTimeLateInitialization ();
