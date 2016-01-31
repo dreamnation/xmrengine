@@ -41,6 +41,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             this.World.EventManager.OnScriptNotAtTargetEvent    += not_at_target;
             this.World.EventManager.OnScriptAtRotTargetEvent    += at_rot_target;
             this.World.EventManager.OnScriptNotAtRotTargetEvent += not_at_rot_target;
+            this.World.EventManager.OnScriptMovingStartEvent    += moving_start;
+            this.World.EventManager.OnScriptMovingEndEvent      += moving_end;
             this.World.EventManager.OnScriptControlEvent        += control;
             this.World.EventManager.OnScriptColliderStart       += collision_start;
             this.World.EventManager.OnScriptColliding           += collision;
@@ -320,14 +322,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         // dataserver: not handled here
         // link_message: not handled here
 
-        public void moving_start(uint localID, UUID itemID)
+        public void moving_start(uint localID)
         {
             this.PostObjectEvent(localID, new EventParams(
                     "moving_start",zeroObjectArray,
                     zeroDetectParams));
         }
 
-        public void moving_end(uint localID, UUID itemID)
+        public void moving_end(uint localID)
         {
             this.PostObjectEvent(localID, new EventParams(
                     "moving_end",zeroObjectArray,
