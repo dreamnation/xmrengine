@@ -120,7 +120,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                          */
                         TokenScript tokenScript = ScriptReduce.Reduce(tokenBegin);
                         if (tokenScript == null) {
-                            m_log.Debug ("[XMREngine]: reduction errors on " + m_ScriptObjCodeKey);
+                            m_log.Warn ("[XMREngine]: reduction errors on " + m_ScriptObjCodeKey + " (" + m_CameFrom + ")");
+                            PrintCompilerErrors ();
                             return null;
                         }
 
@@ -130,7 +131,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         BinaryWriter objFileWriter = new BinaryWriter (objFileStream);
                         bool ok = ScriptCodeGen.CodeGen(tokenScript, objFileWriter, sourceHash);
                         if (!ok) {
-                            m_log.Debug ("[XMREngine]: compile error on " + m_ScriptObjCodeKey);
+                            m_log.Warn ("[XMREngine]: compile error on " + m_ScriptObjCodeKey + " (" + m_CameFrom + ")");
+                            PrintCompilerErrors ();
                             objFileStream.Close ();
                             return null;
                         }
@@ -198,6 +200,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             return scriptObjCode;
+        }
+
+        private void PrintCompilerErrors ()
+        {
+            foreach (string error in m_CompilerErrors) {
+                m_log.Info ("[XMREngine]: - " + error);
+            }
         }
 
         /**
