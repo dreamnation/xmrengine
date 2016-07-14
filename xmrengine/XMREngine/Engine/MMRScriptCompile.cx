@@ -204,6 +204,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         private void PrintCompilerErrors ()
         {
+            m_log.Info ("[XMREngine]: - " + m_Part.GetWorldPosition () + " " + m_DescName);
             foreach (string error in m_CompilerErrors) {
                 m_log.Info ("[XMREngine]: - " + error);
             }
