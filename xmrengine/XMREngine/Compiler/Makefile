@@ -55,7 +55,7 @@ REFDOPENSIMDLLS := \
 	OpenSim.Region.ScriptEngine.Shared.dll \
 	OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll
 
-default: xmrengcomp.zip xmrengcomp_secret.exe xmrengshare.dll xmrengtest.zip
+default: xmrengcomp.zip xmrengcomp_secret.exe xmrengshare.dll.so xmrengtest.zip
 
 # ------------------------------------------------------------------------------
 #
@@ -132,6 +132,9 @@ makexmrengtestilslapi.cs: makexmrengtestilslapi.cx $(wildcard *.h)
 # Create shareable that contains types common to both the compilers and the
 # runtime engine, so the serialization/deserialization will have common types.
 #
+xmrengshare.dll.so: xmrengshare.dll
+	MONO_PATH=$(OPENSIMDLLDIR) $(MONOBINDIR)/mono --aot -O=all xmrengshare.dll
+
 xmrengshare.dll: $(SHARECSFILES) $(patsubst %,$(OPENSIMDLLDIR)/%,$(REFDOPENSIMDLLS))
 	rm -rf xmrengshare.dll*
 	$(MONOBINDIR)/mcs -debug -target:library -out:xmrengshare.dll \

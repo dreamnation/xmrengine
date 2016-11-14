@@ -56,7 +56,14 @@ REFERENCED := ../Compiler/xmrengshare.dll \
               $(OPENSIMDLLDIR)/OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll \
               $(OPENSIMDLLDIR)/OpenSim.Services.Interfaces.dll
 
-default: $(XMRENGINEDLLS)
+default: $(XMRENGINEDLLS:.dll=.dll.so)
+
+# ------------------------------------------------------------------------------
+#
+# AOT all our generated DLLs
+#
+%.dll.so: %.dll
+	MONO_PATH=../Compiler:$(OPENSIMDLLDIR) $(MONOBINDIR)/mono --aot -O=all $<
 
 # ------------------------------------------------------------------------------
 #
