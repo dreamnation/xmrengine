@@ -991,6 +991,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         //
         public void SetScriptState(UUID itemID, bool state, bool self)
         {
+            SetScriptState (itemID, state);
+        }
+        public void SetScriptState(UUID itemID, bool state)
+        {
             XMRInstance instance = GetInstance (itemID);
             if (instance != null) {
                 instance.Running = state;
