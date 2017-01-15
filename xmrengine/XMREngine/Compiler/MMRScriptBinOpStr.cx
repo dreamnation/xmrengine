@@ -232,18 +232,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 		private static void DefineBinOpsBoolX (Dictionary<string, BinOpStr> bos, string x)
 		{
-			bos.Add ("bool|"  + x, new BinOpStr (typeof (bool), BinOpStrBoolOrX));
-			bos.Add ("bool^"  + x, new BinOpStr (typeof (bool), BinOpStrBoolXorX));
-			bos.Add ("bool&"  + x, new BinOpStr (typeof (bool), BinOpStrBoolAndX));
+			bos.Add ("bool|"  + x, new BinOpStr (typeof (int),  BinOpStrBoolOrX));
+			bos.Add ("bool^"  + x, new BinOpStr (typeof (int),  BinOpStrBoolXorX));
+			bos.Add ("bool&"  + x, new BinOpStr (typeof (int),  BinOpStrBoolAndX));
 			bos.Add ("bool==" + x, new BinOpStr (typeof (bool), BinOpStrBoolEqX));
 			bos.Add ("bool!=" + x, new BinOpStr (typeof (bool), BinOpStrBoolNeX));
 		}
 
 		private static void DefineBinOpsXBool (Dictionary<string, BinOpStr> bos, string x)
 		{
-			bos.Add (x + "|bool",  new BinOpStr (typeof (bool), BinOpStrBoolOrX));
-			bos.Add (x + "^bool",  new BinOpStr (typeof (bool), BinOpStrBoolXorX));
-			bos.Add (x + "&bool",  new BinOpStr (typeof (bool), BinOpStrBoolAndX));
+			bos.Add (x + "|bool",  new BinOpStr (typeof (int),  BinOpStrBoolOrX));
+			bos.Add (x + "^bool",  new BinOpStr (typeof (int),  BinOpStrBoolXorX));
+			bos.Add (x + "&bool",  new BinOpStr (typeof (int),  BinOpStrBoolAndX));
 			bos.Add (x + "==bool", new BinOpStr (typeof (bool), BinOpStrBoolEqX));
 			bos.Add (x + "!=bool", new BinOpStr (typeof (bool), BinOpStrBoolNeX));
 		}
@@ -416,28 +416,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 		private static void BinOpStrBoolOrX (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
 			result.PopPre (scg, errorAt);
-			left.PushVal (scg, errorAt, tokenTypeBool);
-			right.PushVal (scg, errorAt, tokenTypeBool);
+			left.PushVal (scg, errorAt, tokenTypeInt);
+			right.PushVal (scg, errorAt, tokenTypeInt);
 			scg.ilGen.Emit (errorAt, OpCodes.Or);
-			result.PopPost (scg, errorAt, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeInt);
 		}
 
 		private static void BinOpStrBoolXorX (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
 			result.PopPre (scg, errorAt);
-			left.PushVal (scg, errorAt, tokenTypeBool);
-			right.PushVal (scg, errorAt, tokenTypeBool);
+			left.PushVal (scg, errorAt, tokenTypeInt);
+			right.PushVal (scg, errorAt, tokenTypeInt);
 			scg.ilGen.Emit (errorAt, OpCodes.Xor);
-			result.PopPost (scg, errorAt, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeInt);
 		}
 
 		private static void BinOpStrBoolAndX (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)
 		{
 			result.PopPre (scg, errorAt);
-			left.PushVal (scg, errorAt, tokenTypeBool);
-			right.PushVal (scg, errorAt, tokenTypeBool);
+			left.PushVal (scg, errorAt, tokenTypeInt);
+			right.PushVal (scg, errorAt, tokenTypeInt);
 			scg.ilGen.Emit (errorAt, OpCodes.And);
-			result.PopPost (scg, errorAt, tokenTypeBool);
+			result.PopPost (scg, errorAt, tokenTypeInt);
 		}
 
 		private static void BinOpStrBoolEqX (ScriptCodeGen scg, Token errorAt, CompValu left, CompValu right, CompValu result)

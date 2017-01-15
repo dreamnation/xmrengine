@@ -64,8 +64,10 @@ then
 else
     runxmrengtest="mono --debug xmrengtest.exe -uthread $uthread"
 fi
+echo runxmrengtest=$runxmrengtest
 
 majorbar
+testit misctest
 testit overridevar
 testit melbuttons
 testev buildersbuddy
