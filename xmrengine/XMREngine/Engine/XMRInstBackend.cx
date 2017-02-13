@@ -120,8 +120,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             ScenePresence presence = World.GetScenePresence (agentId);
             if (presence == null) throw new ApplicationException ("agent not present in scene");
-            if (presence.PresenceType == PresenceType.Npc) throw new ApplicationException ("agent is an NPC");
-            if (presence.GodLevel >= 200) throw new ApplicationException ("agent is a god");
+            if (presence.IsNPC) throw new ApplicationException ("agent is an NPC");
+            if (presence.IsGod) throw new ApplicationException ("agent is a god");
 
             // prim must be owned by land owner or prim must be attached to agent
             if (m_host.ParentGroup.AttachmentPoint == 0) {
