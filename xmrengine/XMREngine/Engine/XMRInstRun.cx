@@ -564,6 +564,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             msg.Append ('\n');
 
             /*
+             * Add exception message.
+             */
+            string des = e.Message;
+            des = (des == null) ? "" : (": " + des);
+            msg.Append (e.GetType ().Name + des + "\n");
+
+            /*
              * Tell script owner what to do.
              */
             msg.Append ("Prim: <");
