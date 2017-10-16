@@ -54,6 +54,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public static int Size (LSL_List lis)
         {
+            if (lis == null) return 0;
             return lis.Size;
         }
     }
