@@ -31,7 +31,13 @@ using System.Threading;
 using System.Timers;
 using System.Xml;
 
-#include "lsltypes.h"
+using LSL_Float = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLFloat;
+using LSL_Integer = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLInteger;
+using LSL_Key = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
+using LSL_List = OpenSim.Region.ScriptEngine.Shared.LSL_Types.list;
+using LSL_Rotation = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Quaternion;
+using LSL_String = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
+using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
 
 [assembly: Addin("XMREngine", OpenSim.VersionInfo.VersionNumber)]
 [assembly: AddinDependency("OpenSim.Region.Framework", OpenSim.VersionInfo.VersionNumber)]
@@ -102,9 +108,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public XMREngine()
         {
             string envar;
-
-            m_log.Info ("[XMREngine]: commit " + commitInfo);
-            m_log.Info ("[XMREngine]: fetchbinary fingerprint " + XMRInstance.Fingerprint);
 
             envar = Environment.GetEnvironmentVariable ("XMREngineTraceCalls");
             m_TraceCalls  = (envar != null) && ((envar[0] & 1) != 0);
@@ -178,30 +181,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 return;
             }
 
-#if HAVE_MMRUTHREADS
-            string uThreadModel = "MMR";
-#elif HAVE_MONOCONTS
-            string uThreadModel = "Con";
-#else
-            string uThreadModel = "Sys";
-#endif
+            string uThreadModel = "sys";  // will work anywhere
             uThreadModel = m_Config.GetString ("UThreadModel", uThreadModel);
             Type uThreadType = null;
-#if HAVE_MMRUTHREADS
             if (uThreadModel.ToLower () == "mmr") uThreadType = typeof (ScriptUThread_MMR);
-#endif
-#if HAVE_MONOCONTS
             if (uThreadModel.ToLower () == "con") uThreadType = typeof (ScriptUThread_Con);
-#endif
             if (uThreadModel.ToLower () == "sys") uThreadType = typeof (ScriptUThread_Sys);
             if (uThreadType == null) {
                 m_log.Error ("[XMREngine]: invalid thread model " + uThreadModel);
-#if HAVE_MONOCONTS
                 if (Type.GetType ("XMRScriptUThread_Con") != null) m_log.Error ("[XMREngine]: - Con");
-#endif
-#if HAVE_MMRUTHREADS
                 if (Type.GetType ("XMRScriptUThread_MMR") != null) m_log.Error ("[XMREngine]: - MMR");
-#endif
                 if (Type.GetType ("XMRScriptUThread_Sys") != null) m_log.Error ("[XMREngine]: - Sys");
                 m_Enabled = false;
                 return;
@@ -213,21 +202,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             numThreadScriptWorkers = m_Config.GetInt ("NumThreadScriptWorkers", 1);
             m_ScriptThreads        = new XMRScriptThread[numThreadScriptWorkers];
 
-#if EXTERNAL
-            string asu = "";
-            if (config.Configs["AssetService"] != null) asu = config.Configs["AssetService"].GetString("AssetServerURI", "").ToLowerInvariant ();
-            int m = asu.IndexOf ("//");
-            if (m >= 0) asu = asu.Substring (m + 2);    
-            m = asu.IndexOf (":");
-            if (m >= 0) asu = asu.Substring (0, m);
-            if (asu.GetHashCode () == EXTERNAL) {
-#endif
-                for (int i = 0; i < numThreadScriptWorkers; i ++) {
-                    m_ScriptThreads[i] = new XMRScriptThread(this);
-                }
-#if EXTERNAL
+            for (int i = 0; i < numThreadScriptWorkers; i ++) {
+                m_ScriptThreads[i] = new XMRScriptThread(this);
             }
-#endif
 
             m_SleepThread = StartMyThread (RunSleepThread, "xmrengine sleep", ThreadPriority.Normal);
             m_SliceThread = StartMyThread (RunSliceThread, "xmrengine slice", ThreadPriority.Normal);
@@ -790,7 +767,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_log.Info ("[XMREngine]: xmr suspend - suspend script processing");
                     m_log.Info ("[XMREngine]: xmr tracecalls [yes | no]");
                     m_log.Info ("[XMREngine]: xmr verbose [yes | no]");
-                    m_log.Info ("[XMREngine]: xmr version");
                     break;
                 }
                 case "ls": {
@@ -855,11 +831,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         m_Verbose = (args[2][0] & 1) != 0;
                     }
                     m_log.Info ("[XMREngine]: verbose " + (m_Verbose ? "yes" : "no"));
-                    break;
-                }
-                case "version": {
-                    m_log.Info ("[XMREngine]: compiler version " + ScriptCompCommit.commitInfo);
-                    m_log.Info ("[XMREngine]:   engine version " + commitInfo);
                     break;
                 }
                 default: {

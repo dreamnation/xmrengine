@@ -28,7 +28,13 @@ using OpenSim.Region.Framework.Scenes.Scripting;
 using OpenSim.Region.Framework.Interfaces;
 using log4net;
 
-#include "lsltypes.h"
+using LSL_Float = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLFloat;
+using LSL_Integer = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLInteger;
+using LSL_Key = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
+using LSL_List = OpenSim.Region.ScriptEngine.Shared.LSL_Types.list;
+using LSL_Rotation = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Quaternion;
+using LSL_String = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
+using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
 
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
@@ -292,7 +298,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         private static LSL_List emptyList = new LSL_List (new object[0]);
 
-        public override LSL_List xmrEventDequeue (SCRIPTFLOAT timeout, int returnMask1, int returnMask2,
+        public override LSL_List xmrEventDequeue (double timeout, int returnMask1, int returnMask2,
                                                   int backgroundMask1, int backgroundMask2)
         {
             DateTime sleepUntil = DateTime.UtcNow + TimeSpan.FromMilliseconds (timeout * 1000.0);
@@ -386,7 +392,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     for (int i = 0; i < plen;) {
                         object ob = evt.Params[i];
                              if (ob is int)         ob = (LSL_Integer)(int)ob;
-                        else if (ob is SCRIPTFLOAT) ob = (LSL_Float)(SCRIPTFLOAT)ob;
+                        else if (ob is double) ob = (LSL_Float)(double)ob;
                         else if (ob is string)      ob = (LSL_String)(string)ob;
                         plist[++i] = ob;
                     }

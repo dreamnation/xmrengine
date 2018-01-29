@@ -26,7 +26,13 @@ using System.Reflection;
 using System.Reflection.Emit;
 using System.Text;
 
-#include "lsltypes.h"
+using LSL_Float = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLFloat;
+using LSL_Integer = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLInteger;
+using LSL_Key = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
+using LSL_List = OpenSim.Region.ScriptEngine.Shared.LSL_Types.list;
+using LSL_Rotation = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Quaternion;
+using LSL_String = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
+using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
 
 /**
  * Contains classes that disassemble or decompile an xmrobj file.
@@ -905,7 +911,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         {
             if (op is OTOpndCast) {
                 OTOpndCast opcast = (OTOpndCast) op;
-                if ((opcast.type == typeof (SCRIPTFLOAT)) && (opcast.value is OTOpndInt)) {
+                if ((opcast.type == typeof (double)) && (opcast.value is OTOpndInt)) {
                     return opcast.value;
                 }
             }
@@ -1162,7 +1168,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                     case "conv.r4":
                     case "conv.r8": {
                         OTOpnd value = decompile.opstack.Pop ();
-                        decompile.opstack.Push (new OTOpndCast (typeof (SCRIPTFLOAT), value));
+                        decompile.opstack.Push (new OTOpndCast (typeof (double), value));
                         break;
                     }
                     case "dup": {
@@ -1447,7 +1453,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                                         (((OTLabel) linklbl.Value) == label)) {
                                     linkneg.List.Remove (linkneg);
                                     linklbl.List.Remove (linklbl);
-                                    MethodInfo method = typeof (SCRIPTBASECLASS).GetMethod ("llAbs");
+                                    MethodInfo method = typeof (ScriptBaseClass).GetMethod ("llAbs");
                                     OTOpnd[] args = new OTOpnd[] { new OTOpndNull (), decompile.opstack.Pop () };
                                     OTOpndCall.AddLast (decompile, method, args);
                                     break;
@@ -2100,17 +2106,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             private static Dictionary<string,MethodInfo> InitMathMeths ()
             {
                 Dictionary<string,MethodInfo> d = new Dictionary<string,MethodInfo> ();
-                d["Acos"]  = typeof (SCRIPTBASECLASS).GetMethod ("llAcos");
-                d["Asin"]  = typeof (SCRIPTBASECLASS).GetMethod ("llAsin");
-                d["Atan"]  = typeof (SCRIPTBASECLASS).GetMethod ("llAtan");
-                d["Cos"]   = typeof (SCRIPTBASECLASS).GetMethod ("llCos");
-                d["Abs"]   = typeof (SCRIPTBASECLASS).GetMethod ("llFabs");
-                d["Log"]   = typeof (SCRIPTBASECLASS).GetMethod ("llLog");
-                d["Log10"] = typeof (SCRIPTBASECLASS).GetMethod ("llLog10");
-                d["Round"] = typeof (SCRIPTBASECLASS).GetMethod ("llRound");
-                d["Sin"]   = typeof (SCRIPTBASECLASS).GetMethod ("llSin");
-                d["Sqrt"]  = typeof (SCRIPTBASECLASS).GetMethod ("llSqrt");
-                d["Tan"]   = typeof (SCRIPTBASECLASS).GetMethod ("llTan");
+                d["Acos"]  = typeof (ScriptBaseClass).GetMethod ("llAcos");
+                d["Asin"]  = typeof (ScriptBaseClass).GetMethod ("llAsin");
+                d["Atan"]  = typeof (ScriptBaseClass).GetMethod ("llAtan");
+                d["Cos"]   = typeof (ScriptBaseClass).GetMethod ("llCos");
+                d["Abs"]   = typeof (ScriptBaseClass).GetMethod ("llFabs");
+                d["Log"]   = typeof (ScriptBaseClass).GetMethod ("llLog");
+                d["Log10"] = typeof (ScriptBaseClass).GetMethod ("llLog10");
+                d["Round"] = typeof (ScriptBaseClass).GetMethod ("llRound");
+                d["Sin"]   = typeof (ScriptBaseClass).GetMethod ("llSin");
+                d["Sqrt"]  = typeof (ScriptBaseClass).GetMethod ("llSqrt");
+                d["Tan"]   = typeof (ScriptBaseClass).GetMethod ("llTan");
                 return d;
             }
 
@@ -2148,7 +2154,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                     return;
                 }
                 if ((nargs == 1) && (method.DeclaringType == typeof (TypeCast)) && method.Name.EndsWith ("ToFloat")) {
-                    decompile.opstack.Push (new OTOpndCast (typeof (SCRIPTFLOAT), args[0]));
+                    decompile.opstack.Push (new OTOpndCast (typeof (double), args[0]));
                     return;
                 }
                 if ((nargs == 1) && (method.DeclaringType == typeof (TypeCast)) && method.Name.EndsWith ("ToInteger")) {
@@ -2173,7 +2179,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                 }
 
                 if ((method.DeclaringType == typeof (XMRInstAbstract)) && (method.Name == "xmrHeapLeft")) {
-                    AddLast (decompile, typeof (SCRIPTBASECLASS).GetMethod ("llGetFreeMemory"), new OTOpnd[] { new OTOpndNull () });
+                    AddLast (decompile, typeof (ScriptBaseClass).GetMethod ("llGetFreeMemory"), new OTOpnd[] { new OTOpndNull () });
                     return;
                 }
 
@@ -2193,11 +2199,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                     return;
                 }
                 if ((method.DeclaringType == typeof (Math)) && (method.Name == "Atan2")) {
-                    AddLast (decompile, typeof (SCRIPTBASECLASS).GetMethod ("llAtan2"), new OTOpnd[] { new OTOpndNull (), args[0], args[1] });
+                    AddLast (decompile, typeof (ScriptBaseClass).GetMethod ("llAtan2"), new OTOpnd[] { new OTOpndNull (), args[0], args[1] });
                     return;
                 }
                 if ((method.DeclaringType == typeof (Math)) && (method.Name == "Pow")) {
-                    AddLast (decompile, typeof (SCRIPTBASECLASS).GetMethod ("llPow"), new OTOpnd[] { new OTOpndNull (), args[0], args[1] });
+                    AddLast (decompile, typeof (ScriptBaseClass).GetMethod ("llPow"), new OTOpnd[] { new OTOpndNull (), args[0], args[1] });
                     return;
                 }
 
@@ -2398,11 +2404,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                         return sb.ToString ();
                     }
 
-                    // methods that are part of SCRIPTBASECLASS are LSL functions such as llSay()
+                    // methods that are part of ScriptBaseClass are LSL functions such as llSay()
                     // so we want to skip outputting "arg$0," as it is the hidden "this" argument.
                     // and there are also XMRInstAbstract functions such as xmrEventDequeue().
                     int starti = 0;
-                    if ((method.DeclaringType == typeof (SCRIPTBASECLASS)) && !method.IsStatic) starti = 1;
+                    if ((method.DeclaringType == typeof (ScriptBaseClass)) && !method.IsStatic) starti = 1;
                     if ((method.DeclaringType == typeof (XMRInstAbstract)) && !method.IsStatic) starti = 1;
 
                     // likewise, method that have null as the declaring type are script-defined
@@ -2904,7 +2910,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                 if ((ctor.DeclaringType == typeof (LSL_Float)) && (args.Length == 1)) {
                     Type ptype = ctor.GetParameters ()[0].ParameterType;
                     if (ptype == typeof (string)) {
-                        return new OTOpndCast (typeof (SCRIPTFLOAT), args[0]);
+                        return new OTOpndCast (typeof (double), args[0]);
                     }
                     return args[0];
                 }
@@ -3101,7 +3107,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
             public override string PrintableString {
                 get {
-                    if (field.DeclaringType == typeof (SCRIPTBASECLASS)) return field.Name;
+                    if (field.DeclaringType == typeof (ScriptBaseClass)) return field.Name;
                     return field.DeclaringType.Name + "." + field.Name;
                 }
             }

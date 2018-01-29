@@ -27,9 +27,13 @@ using System.Reflection;
 using System.Reflection.Emit;
 using System.Text;
 
-#include "lsltypes.h"
-
-#define strcasecmp(s,t) String.Compare(s,t,StringComparison.OrdinalIgnoreCase)
+using LSL_Float = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLFloat;
+using LSL_Integer = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLInteger;
+using LSL_Key = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
+using LSL_List = OpenSim.Region.ScriptEngine.Shared.LSL_Types.list;
+using LSL_Rotation = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Quaternion;
+using LSL_String = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
+using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
 
 namespace OpenSim.Region.ScriptEngine.XMREngine {
 
@@ -601,6 +605,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             }
         }
 
+        private static int strcasecmp (String s, String t)
+        {
+            return String.Compare(s,t,StringComparison.OrdinalIgnoreCase);
+        }
+
         /**
          * @brief try to parse a floating-point number from the source
          * @param i = starting position within this.source of number
@@ -1132,8 +1141,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
     }
 
     public class TokenFloat : Token {
-        public SCRIPTFLOAT val;
-        public TokenFloat (TokenErrorMessage emsg, string file, int line, int posn, SCRIPTFLOAT val) : base (emsg, file, line, posn)
+        public double val;
+        public TokenFloat (TokenErrorMessage emsg, string file, int line, int posn, double val) : base (emsg, file, line, posn)
         {
             this.val = val;
         }
@@ -1242,115 +1251,99 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public TokenKw (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
         public TokenKw (Token original) : base (original)  { }
     }
-#define DEFTOKENKW(name,str,binopconst,unopconst,sdtcop) \
-    public class TokenKw##name : TokenKw {                                                                                \
-        public TokenKw##name (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) {  \
-            binOpConst = TokenRValConstOps.binopconst;                                                                    \
-            unOpConst  = TokenRValConstOps.unopconst;                                                                     \
-            sdtClassOp = sdtcop;                                                                                          \
-        }                                                                                                                 \
-        public TokenKw##name (Token original) : base (original) {                                                         \
-            binOpConst = TokenRValConstOps.binopconst;                                                                    \
-            unOpConst  = TokenRValConstOps.unopconst;                                                                     \
-            sdtClassOp = sdtcop;                                                                                          \
-        }                                                                                                                 \
-        public override string ToString () {                                                                              \
-            return str;                                                                                                   \
-        }                                                                                                                 \
-    }
 
-    DEFTOKENKW(DotDotDot, "...", Null, Null, false)
-    DEFTOKENKW(AndAndAnd, "&&&", Null, Null, false)
-    DEFTOKENKW(OrOrOr   , "|||", Null, Null, false)
-    DEFTOKENKW(AsnLSh   , "<<=", Null, Null, true)
-    DEFTOKENKW(AsnRSh   , ">>=", Null, Null, true)
-    DEFTOKENKW(CmpLE    , "<=",  Null, Null, true)
-    DEFTOKENKW(CmpGE    , ">=",  Null, Null, true)
-    DEFTOKENKW(CmpEQ    , "==",  Null, Null, true)
-    DEFTOKENKW(CmpNE    , "!=",  Null, Null, true)
-    DEFTOKENKW(Incr     , "++",  Null, Null, false)
-    DEFTOKENKW(Decr     , "--",  Null, Null, false)
-    DEFTOKENKW(AndAnd   , "&&",  Null, Null, true)
-    DEFTOKENKW(OrOr     , "||",  Null, Null, true)
-    DEFTOKENKW(AsnAdd   , "+=",  Null, Null, true)
-    DEFTOKENKW(AsnAnd   , "&=",  Null, Null, true)
-    DEFTOKENKW(AsnSub   , "-=",  Null, Null, true)
-    DEFTOKENKW(AsnMul   , "*=",  Null, Null, true)
-    DEFTOKENKW(AsnDiv   , "/=",  Null, Null, true)
-    DEFTOKENKW(AsnMod   , "%=",  Null, Null, true)
-    DEFTOKENKW(AsnOr    , "|=",  Null, Null, true)
-    DEFTOKENKW(AsnXor   , "^=",  Null, Null, true)
-    DEFTOKENKW(LSh      , "<<",  LSh,  Null, true)
-    DEFTOKENKW(RSh      , ">>",  RSh,  Null, true)
-    DEFTOKENKW(Tilde    , "~",   Null, Not,  true)
-    DEFTOKENKW(Exclam   , "!",   Null, Null, true)
-    DEFTOKENKW(At       , "@",   Null, Null, false)
-    DEFTOKENKW(Mod      , "%",   Mod,  Null, true)
-    DEFTOKENKW(Xor      , "^",   Xor,  Null, true)
-    DEFTOKENKW(And      , "&",   And,  Null, true)
-    DEFTOKENKW(Mul      , "*",   Mul,  Null, true)
-    DEFTOKENKW(ParOpen  , "(",   Null, Null, false)
-    DEFTOKENKW(ParClose , ")",   Null, Null, false)
-    DEFTOKENKW(Sub      , "-",   Sub,  Neg,  true)
-    DEFTOKENKW(Add      , "+",   Add,  Null, true)
-    DEFTOKENKW(Assign   , "=",   Null, Null, false)
-    DEFTOKENKW(BrcOpen  , "{",   Null, Null, false)
-    DEFTOKENKW(BrcClose , "}",   Null, Null, false)
-    DEFTOKENKW(BrkOpen  , "[",   Null, Null, false)
-    DEFTOKENKW(BrkClose , "]",   Null, Null, false)
-    DEFTOKENKW(Semi     , ";",   Null, Null, false)
-    DEFTOKENKW(Colon    , ":",   Null, Null, false)
-    DEFTOKENKW(CmpLT    , "<",   Null, Null, true)
-    DEFTOKENKW(CmpGT    , ">",   Null, Null, true)
-    DEFTOKENKW(Comma    , ",",   Null, Null, false)
-    DEFTOKENKW(Dot      , ".",   Null, Null, false)
-    DEFTOKENKW(QMark    , "?",   Null, Null, false)
-    DEFTOKENKW(Div      , "/",   Div,  Null, true)
-    DEFTOKENKW(Or       , "|",   Or,   Null, true)
-    DEFTOKENKW(Hash     , "#",   Null, Null, false)
+    public class TokenKwDotDotDot : TokenKw { public TokenKwDotDotDot (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwDotDotDot (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "..."; } }
+    public class TokenKwAndAndAnd : TokenKw { public TokenKwAndAndAnd (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwAndAndAnd (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "&&&"; } }
+    public class TokenKwOrOrOr : TokenKw { public TokenKwOrOrOr (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwOrOrOr (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "|||"; } }
+    public class TokenKwAsnLSh : TokenKw { public TokenKwAsnLSh (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public TokenKwAsnLSh (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public override string ToString () { return "<<="; } }
+    public class TokenKwAsnRSh : TokenKw { public TokenKwAsnRSh (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public TokenKwAsnRSh (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public override string ToString () { return ">>="; } }
+    public class TokenKwCmpLE : TokenKw { public TokenKwCmpLE (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public TokenKwCmpLE (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public override string ToString () { return "<="; } }
+    public class TokenKwCmpGE : TokenKw { public TokenKwCmpGE (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public TokenKwCmpGE (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public override string ToString () { return ">="; } }
+    public class TokenKwCmpEQ : TokenKw { public TokenKwCmpEQ (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public TokenKwCmpEQ (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public override string ToString () { return "=="; } }
+    public class TokenKwCmpNE : TokenKw { public TokenKwCmpNE (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public TokenKwCmpNE (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public override string ToString () { return "!="; } }
+    public class TokenKwIncr : TokenKw { public TokenKwIncr (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwIncr (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "++"; } }
+    public class TokenKwDecr : TokenKw { public TokenKwDecr (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwDecr (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "--"; } }
+    public class TokenKwAndAnd : TokenKw { public TokenKwAndAnd (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public TokenKwAndAnd (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public override string ToString () { return "&&"; } }
+    public class TokenKwOrOr : TokenKw { public TokenKwOrOr (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public TokenKwOrOr (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public override string ToString () { return "||"; } }
+    public class TokenKwAsnAdd : TokenKw { public TokenKwAsnAdd (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public TokenKwAsnAdd (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public override string ToString () { return "+="; } }
+    public class TokenKwAsnAnd : TokenKw { public TokenKwAsnAnd (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public TokenKwAsnAnd (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public override string ToString () { return "&="; } }
+    public class TokenKwAsnSub : TokenKw { public TokenKwAsnSub (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public TokenKwAsnSub (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public override string ToString () { return "-="; } }
+    public class TokenKwAsnMul : TokenKw { public TokenKwAsnMul (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public TokenKwAsnMul (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public override string ToString () { return "*="; } }
+    public class TokenKwAsnDiv : TokenKw { public TokenKwAsnDiv (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public TokenKwAsnDiv (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public override string ToString () { return "/="; } }
+    public class TokenKwAsnMod : TokenKw { public TokenKwAsnMod (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public TokenKwAsnMod (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public override string ToString () { return "%="; } }
+    public class TokenKwAsnOr : TokenKw { public TokenKwAsnOr (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public TokenKwAsnOr (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public override string ToString () { return "|="; } }
+    public class TokenKwAsnXor : TokenKw { public TokenKwAsnXor (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public TokenKwAsnXor (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public override string ToString () { return "^="; } }
+    public class TokenKwLSh : TokenKw { public TokenKwLSh (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.LSh; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public TokenKwLSh (Token original) : base (original) { binOpConst = TokenRValConstOps.LSh; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public override string ToString () { return "<<"; } }
+    public class TokenKwRSh : TokenKw { public TokenKwRSh (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.RSh; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public TokenKwRSh (Token original) : base (original) { binOpConst = TokenRValConstOps.RSh; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public override string ToString () { return ">>"; } }
+    public class TokenKwTilde : TokenKw { public TokenKwTilde (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Not; sdtClassOp = true; } public TokenKwTilde (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Not; sdtClassOp = true; } public override string ToString () { return "~"; } }
+    public class TokenKwExclam : TokenKw { public TokenKwExclam (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public TokenKwExclam (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public override string ToString () { return "!"; } }
+    public class TokenKwAt : TokenKw { public TokenKwAt (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwAt (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "@"; } }
+    public class TokenKwMod : TokenKw { public TokenKwMod (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Mod; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public TokenKwMod (Token original) : base (original) { binOpConst = TokenRValConstOps.Mod; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public override string ToString () { return "%"; } }
+    public class TokenKwXor : TokenKw { public TokenKwXor (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Xor; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public TokenKwXor (Token original) : base (original) { binOpConst = TokenRValConstOps.Xor; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public override string ToString () { return "^"; } }
+    public class TokenKwAnd : TokenKw { public TokenKwAnd (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.And; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public TokenKwAnd (Token original) : base (original) { binOpConst = TokenRValConstOps.And; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public override string ToString () { return "&"; } }
+    public class TokenKwMul : TokenKw { public TokenKwMul (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Mul; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public TokenKwMul (Token original) : base (original) { binOpConst = TokenRValConstOps.Mul; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public override string ToString () { return "*"; } }
+    public class TokenKwParOpen : TokenKw { public TokenKwParOpen (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwParOpen (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "("; } }
+    public class TokenKwParClose : TokenKw { public TokenKwParClose (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwParClose (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return ")"; } }
+    public class TokenKwSub : TokenKw { public TokenKwSub (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Sub; unOpConst = TokenRValConstOps.Neg; sdtClassOp = true; } public TokenKwSub (Token original) : base (original) { binOpConst = TokenRValConstOps.Sub; unOpConst = TokenRValConstOps.Neg; sdtClassOp = true; } public override string ToString () { return "-"; } }
+    public class TokenKwAdd : TokenKw { public TokenKwAdd (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Add; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public TokenKwAdd (Token original) : base (original) { binOpConst = TokenRValConstOps.Add; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public override string ToString () { return "+"; } }
+    public class TokenKwAssign : TokenKw { public TokenKwAssign (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwAssign (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "="; } }
+    public class TokenKwBrcOpen : TokenKw { public TokenKwBrcOpen (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwBrcOpen (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "{"; } }
+    public class TokenKwBrcClose : TokenKw { public TokenKwBrcClose (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwBrcClose (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "}"; } }
+    public class TokenKwBrkOpen : TokenKw { public TokenKwBrkOpen (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwBrkOpen (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "["; } }
+    public class TokenKwBrkClose : TokenKw { public TokenKwBrkClose (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwBrkClose (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "]"; } }
+    public class TokenKwSemi : TokenKw { public TokenKwSemi (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwSemi (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return ";"; } }
+    public class TokenKwColon : TokenKw { public TokenKwColon (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwColon (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return ":"; } }
+    public class TokenKwCmpLT : TokenKw { public TokenKwCmpLT (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public TokenKwCmpLT (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public override string ToString () { return "<"; } }
+    public class TokenKwCmpGT : TokenKw { public TokenKwCmpGT (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public TokenKwCmpGT (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public override string ToString () { return ">"; } }
+    public class TokenKwComma : TokenKw { public TokenKwComma (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwComma (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return ","; } }
+    public class TokenKwDot : TokenKw { public TokenKwDot (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwDot (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "."; } }
+    public class TokenKwQMark : TokenKw { public TokenKwQMark (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwQMark (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "?"; } }
+    public class TokenKwDiv : TokenKw { public TokenKwDiv (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Div; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public TokenKwDiv (Token original) : base (original) { binOpConst = TokenRValConstOps.Div; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public override string ToString () { return "/"; } }
+    public class TokenKwOr : TokenKw { public TokenKwOr (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Or; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public TokenKwOr (Token original) : base (original) { binOpConst = TokenRValConstOps.Or; unOpConst = TokenRValConstOps.Null; sdtClassOp = true; } public override string ToString () { return "|"; } }
+    public class TokenKwHash : TokenKw { public TokenKwHash (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwHash (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "#"; } }
 
-    DEFTOKENKW(Abstract   , "abstract",    Null, Null, false)
-    DEFTOKENKW(Base       , "base",        Null, Null, false)
-    DEFTOKENKW(Break      , "break",       Null, Null, false)
-    DEFTOKENKW(Case       , "case",        Null, Null, false)
-    DEFTOKENKW(Catch      , "catch",       Null, Null, false)
-    DEFTOKENKW(Class      , "class",       Null, Null, false)
-    DEFTOKENKW(Const      , "constant",    Null, Null, false)
-    DEFTOKENKW(Constructor, "constructor", Null, Null, false)
-    DEFTOKENKW(Cont       , "continue",    Null, Null, false)
-    DEFTOKENKW(Delegate   , "delegate",    Null, Null, false)
-    DEFTOKENKW(Default    , "default",     Null, Null, false)
-    DEFTOKENKW(Destructor , "destructor",  Null, Null, false)
-    DEFTOKENKW(Do         , "do",          Null, Null, false)
-    DEFTOKENKW(Else       , "else",        Null, Null, false)
-    DEFTOKENKW(Final      , "final",       Null, Null, false)
-    DEFTOKENKW(Finally    , "finally",     Null, Null, false)
-    DEFTOKENKW(For        , "for",         Null, Null, false)
-    DEFTOKENKW(ForEach    , "foreach",     Null, Null, false)
-    DEFTOKENKW(Get        , "get",         Null, Null, false)
-    DEFTOKENKW(If         , "if",          Null, Null, false)
-    DEFTOKENKW(In         , "in",          Null, Null, false)
-    DEFTOKENKW(Interface  , "interface",   Null, Null, false)
-    DEFTOKENKW(Is         , "is",          Null, Null, false)
-    DEFTOKENKW(Jump       , "jump",        Null, Null, false)
-    DEFTOKENKW(New        , "new",         Null, Null, false)
-    DEFTOKENKW(Override   , "override",    Null, Null, false)
-    DEFTOKENKW(Partial    , "partial",     Null, Null, false)
-    DEFTOKENKW(Private    , "private",     Null, Null, false)
-    DEFTOKENKW(Protected  , "protected",   Null, Null, false)
-    DEFTOKENKW(Public     , "public",      Null, Null, false)
-    DEFTOKENKW(Ret        , "return",      Null, Null, false)
-    DEFTOKENKW(Set        , "set",         Null, Null, false)
-    DEFTOKENKW(State      , "state",       Null, Null, false)
-    DEFTOKENKW(Static     , "static",      Null, Null, false)
-    DEFTOKENKW(Switch     , "switch",      Null, Null, false)
-    DEFTOKENKW(This       , "this",        Null, Null, false)
-    DEFTOKENKW(Throw      , "throw",       Null, Null, false)
-    DEFTOKENKW(Try        , "try",         Null, Null, false)
-    DEFTOKENKW(Typedef    , "typedef",     Null, Null, false)
-    DEFTOKENKW(Undef      , "undef",       Null, Null, false)
-    DEFTOKENKW(Virtual    , "virtual",     Null, Null, false)
-    DEFTOKENKW(While      , "while",       Null, Null, false)
+    public class TokenKwAbstract : TokenKw { public TokenKwAbstract (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwAbstract (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "abstract"; } }
+    public class TokenKwBase : TokenKw { public TokenKwBase (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwBase (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "base"; } }
+    public class TokenKwBreak : TokenKw { public TokenKwBreak (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwBreak (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "break"; } }
+    public class TokenKwCase : TokenKw { public TokenKwCase (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwCase (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "case"; } }
+    public class TokenKwCatch : TokenKw { public TokenKwCatch (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwCatch (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "catch"; } }
+    public class TokenKwClass : TokenKw { public TokenKwClass (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwClass (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "class"; } }
+    public class TokenKwConst : TokenKw { public TokenKwConst (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwConst (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "constant"; } }
+    public class TokenKwConstructor : TokenKw { public TokenKwConstructor (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwConstructor (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "constructor"; } }
+    public class TokenKwCont : TokenKw { public TokenKwCont (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwCont (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "continue"; } }
+    public class TokenKwDelegate : TokenKw { public TokenKwDelegate (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwDelegate (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "delegate"; } }
+    public class TokenKwDefault : TokenKw { public TokenKwDefault (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwDefault (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "default"; } }
+    public class TokenKwDestructor : TokenKw { public TokenKwDestructor (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwDestructor (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "destructor"; } }
+    public class TokenKwDo : TokenKw { public TokenKwDo (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwDo (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "do"; } }
+    public class TokenKwElse : TokenKw { public TokenKwElse (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwElse (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "else"; } }
+    public class TokenKwFinal : TokenKw { public TokenKwFinal (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwFinal (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "final"; } }
+    public class TokenKwFinally : TokenKw { public TokenKwFinally (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwFinally (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "finally"; } }
+    public class TokenKwFor : TokenKw { public TokenKwFor (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwFor (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "for"; } }
+    public class TokenKwForEach : TokenKw { public TokenKwForEach (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwForEach (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "foreach"; } }
+    public class TokenKwGet : TokenKw { public TokenKwGet (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwGet (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "get"; } }
+    public class TokenKwIf : TokenKw { public TokenKwIf (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwIf (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "if"; } }
+    public class TokenKwIn : TokenKw { public TokenKwIn (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwIn (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "in"; } }
+    public class TokenKwInterface : TokenKw { public TokenKwInterface (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwInterface (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "interface"; } }
+    public class TokenKwIs : TokenKw { public TokenKwIs (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwIs (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "is"; } }
+    public class TokenKwJump : TokenKw { public TokenKwJump (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwJump (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "jump"; } }
+    public class TokenKwNew : TokenKw { public TokenKwNew (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwNew (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "new"; } }
+    public class TokenKwOverride : TokenKw { public TokenKwOverride (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwOverride (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "override"; } }
+    public class TokenKwPartial : TokenKw { public TokenKwPartial (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwPartial (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "partial"; } }
+    public class TokenKwPrivate : TokenKw { public TokenKwPrivate (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwPrivate (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "private"; } }
+    public class TokenKwProtected : TokenKw { public TokenKwProtected (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwProtected (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "protected"; } }
+    public class TokenKwPublic : TokenKw { public TokenKwPublic (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwPublic (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "public"; } }
+    public class TokenKwRet : TokenKw { public TokenKwRet (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwRet (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "return"; } }
+    public class TokenKwSet : TokenKw { public TokenKwSet (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwSet (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "set"; } }
+    public class TokenKwState : TokenKw { public TokenKwState (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwState (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "state"; } }
+    public class TokenKwStatic : TokenKw { public TokenKwStatic (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwStatic (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "static"; } }
+    public class TokenKwSwitch : TokenKw { public TokenKwSwitch (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwSwitch (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "switch"; } }
+    public class TokenKwThis : TokenKw { public TokenKwThis (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwThis (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "this"; } }
+    public class TokenKwThrow : TokenKw { public TokenKwThrow (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwThrow (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "throw"; } }
+    public class TokenKwTry : TokenKw { public TokenKwTry (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwTry (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "try"; } }
+    public class TokenKwTypedef : TokenKw { public TokenKwTypedef (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwTypedef (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "typedef"; } }
+    public class TokenKwUndef : TokenKw { public TokenKwUndef (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwUndef (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "undef"; } }
+    public class TokenKwVirtual : TokenKw { public TokenKwVirtual (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwVirtual (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "virtual"; } }
+    public class TokenKwWhile : TokenKw { public TokenKwWhile (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public TokenKwWhile (Token original) : base (original) { binOpConst = TokenRValConstOps.Null; unOpConst = TokenRValConstOps.Null; sdtClassOp = false; } public override string ToString () { return "while"; } }
 
     /**
      * @brief These static functions attempt to perform arithmetic on two constant
@@ -1365,149 +1358,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
      * Note: it is ok for these to throw any exception (such as overflow or div-by-zero), 
      *       and it will be treated as the 'not able to perform computation' case.
      */
-#define DEFBINOP1(name,op) \
-        public static object name (object left, object right)       \
-        {                                                           \
-            if ((left is int) && (right is int)) {                  \
-                return (int)left op (int)right;                     \
-            }                                                       \
-            if ((left is int) && (right is SCRIPTFLOAT)) {          \
-                return (int)left op (SCRIPTFLOAT)right;             \
-            }                                                       \
-            if ((left is SCRIPTFLOAT) && (right is int)) {          \
-                return (SCRIPTFLOAT)left op (int)right;             \
-            }                                                       \
-            if ((left is SCRIPTFLOAT) && (right is SCRIPTFLOAT)) {  \
-                return (SCRIPTFLOAT)left op (SCRIPTFLOAT)right;     \
-            }                                                       \
-            return null;                                            \
-        }
-
-#define DEFBINOP2(name,op) \
-        public static object name (object left, object right)              \
-        {                                                                  \
-            if ((left is int) && (right is int)) {                         \
-                return (int)left op (int)right;                            \
-            }                                                              \
-            if ((left is int) && (right is SCRIPTFLOAT)) {                 \
-                return (int)left op (int)(SCRIPTFLOAT)right;               \
-            }                                                              \
-            if ((left is SCRIPTFLOAT) && (right is int)) {                 \
-                return (int)(SCRIPTFLOAT)left op (int)right;               \
-            }                                                              \
-            if ((left is SCRIPTFLOAT) && (right is SCRIPTFLOAT)) {         \
-                return (int)(SCRIPTFLOAT)left op (int)(SCRIPTFLOAT)right;  \
-            }                                                              \
-            return null;                                                   \
-        }
-
-#define DEFBINOP3(name,op) \
-        public static object name (object left, object right)                       \
-        {                                                                           \
-            if ((left is char) && (right is int)) {                                 \
-                return (char)((char)left op (int)right);                            \
-            }                                                                       \
-            if ((left is SCRIPTFLOAT) && (right is SCRIPTFLOAT)) {                  \
-                return (SCRIPTFLOAT)left op (SCRIPTFLOAT)right;                     \
-            }                                                                       \
-            if ((left is SCRIPTFLOAT) && (right is int)) {                          \
-                return (SCRIPTFLOAT)left op (int)right;                             \
-            }                                                                       \
-            if ((left is SCRIPTFLOAT) && (right is string)) {                       \
-                return TypeCast.FloatToString((SCRIPTFLOAT)left) op (string)right;  \
-            }                                                                       \
-            if ((left is int) && (right is SCRIPTFLOAT)) {                          \
-                return (int)left op (SCRIPTFLOAT)right;                             \
-            }                                                                       \
-            if ((left is int) && (right is int)) {                                  \
-                return (int)left op (int)right;                                     \
-            }                                                                       \
-            if ((left is int) && (right is string)) {                               \
-                return TypeCast.IntegerToString((int)left) op (string)right;        \
-            }                                                                       \
-            if ((left is string) && (right is char)) {                              \
-                return (string)left op (char)right;                                 \
-            }                                                                       \
-            if ((left is string) && (right is SCRIPTFLOAT)) {                       \
-                return (string)left op TypeCast.FloatToString((SCRIPTFLOAT)right);  \
-            }                                                                       \
-            if ((left is string) && (right is int)) {                               \
-                return (string)left op TypeCast.IntegerToString ((int)right);       \
-            }                                                                       \
-            if ((left is string) && (right is string)) {                            \
-                return (string)left op (string)right;                               \
-            }                                                                       \
-            return null;                                                            \
-        }
-
-#define DEFBINOP4(name,op) \
-        public static object name (object left, object right)       \
-        {                                                           \
-            if ((left is char) && (right is int)) {                 \
-                return (char)((char)left op (int)right);            \
-            }                                                       \
-            if ((left is int) && (right is int)) {                  \
-                return (int)left op (int)right;                     \
-            }                                                       \
-            if ((left is int) && (right is SCRIPTFLOAT)) {          \
-                return (int)left op (SCRIPTFLOAT)right;             \
-            }                                                       \
-            if ((left is SCRIPTFLOAT) && (right is int)) {          \
-                return (SCRIPTFLOAT)left op (int)right;             \
-            }                                                       \
-            if ((left is SCRIPTFLOAT) && (right is SCRIPTFLOAT)) {  \
-                return (SCRIPTFLOAT)left op (SCRIPTFLOAT)right;     \
-            }                                                       \
-            return null;                                            \
-        }
-
-#define DEFUNOP1(name,op) \
-        public static object name (object right)  \
-        {                                         \
-            if (right is int) {                   \
-                return op (int)right;             \
-            }                                     \
-            if (right is SCRIPTFLOAT) {           \
-                return op (SCRIPTFLOAT)right;     \
-            }                                     \
-            return null;                          \
-        }
-
-#define DEFUNOP2(name,op) \
-        public static object name (object right)  \
-        {                                         \
-            if (right is int) {                   \
-                return op (int)right;             \
-            }                                     \
-            return null;                          \
-        }
-
     public class TokenRValConstOps {
-        public static object Null (object left, object right)
-        {
-            return null;
-        }
-
-        DEFBINOP1(Div,/)
-        DEFBINOP1(Mod,%)
-        DEFBINOP1(Mul,*)
-
-        DEFBINOP2(And,&)
-        DEFBINOP2(LSh,<<)
-        DEFBINOP2(Or, |)
-        DEFBINOP2(RSh,>>)
-        DEFBINOP2(Xor,^)
-
-        DEFBINOP3(Add,+)
-        DEFBINOP4(Sub,-)
-
-        public static object Null (object right)
-        {
-            return null;
-        }
-
-        DEFUNOP1(Neg,-)
-        DEFUNOP2(Not,~)
+        public static object Null (object left, object right) { return null; }
+        public static object Div (object left, object right) { if ((left is int) && (right is int)) { return (int)left / (int)right; } if ((left is int) && (right is double)) { return (int)left / (double)right; } if ((left is double) && (right is int)) { return (double)left / (int)right; } if ((left is double) && (right is double)) { return (double)left / (double)right; } return null; }
+        public static object Mod (object left, object right) { if ((left is int) && (right is int)) { return (int)left % (int)right; } if ((left is int) && (right is double)) { return (int)left % (double)right; } if ((left is double) && (right is int)) { return (double)left % (int)right; } if ((left is double) && (right is double)) { return (double)left % (double)right; } return null; }
+        public static object Mul (object left, object right) { if ((left is int) && (right is int)) { return (int)left * (int)right; } if ((left is int) && (right is double)) { return (int)left * (double)right; } if ((left is double) && (right is int)) { return (double)left * (int)right; } if ((left is double) && (right is double)) { return (double)left * (double)right; } return null; }
+        public static object And (object left, object right) { if ((left is int) && (right is int)) { return (int)left & (int)right; } if ((left is int) && (right is double)) { return (int)left & (int)(double)right; } if ((left is double) && (right is int)) { return (int)(double)left & (int)right; } if ((left is double) && (right is double)) { return (int)(double)left & (int)(double)right; } return null; }
+        public static object LSh (object left, object right) { if ((left is int) && (right is int)) { return (int)left << (int)right; } if ((left is int) && (right is double)) { return (int)left << (int)(double)right; } if ((left is double) && (right is int)) { return (int)(double)left << (int)right; } if ((left is double) && (right is double)) { return (int)(double)left << (int)(double)right; } return null; }
+        public static object Or (object left, object right) { if ((left is int) && (right is int)) { return (int)left | (int)right; } if ((left is int) && (right is double)) { return (int)left | (int)(double)right; } if ((left is double) && (right is int)) { return (int)(double)left | (int)right; } if ((left is double) && (right is double)) { return (int)(double)left | (int)(double)right; } return null; }
+        public static object RSh (object left, object right) { if ((left is int) && (right is int)) { return (int)left >> (int)right; } if ((left is int) && (right is double)) { return (int)left >> (int)(double)right; } if ((left is double) && (right is int)) { return (int)(double)left >> (int)right; } if ((left is double) && (right is double)) { return (int)(double)left >> (int)(double)right; } return null; }
+        public static object Xor (object left, object right) { if ((left is int) && (right is int)) { return (int)left ^ (int)right; } if ((left is int) && (right is double)) { return (int)left ^ (int)(double)right; } if ((left is double) && (right is int)) { return (int)(double)left ^ (int)right; } if ((left is double) && (right is double)) { return (int)(double)left ^ (int)(double)right; } return null; }
+        public static object Add (object left, object right) { if ((left is char) && (right is int)) { return (char)((char)left + (int)right); } if ((left is double) && (right is double)) { return (double)left + (double)right; } if ((left is double) && (right is int)) { return (double)left + (int)right; } if ((left is double) && (right is string)) { return TypeCast.FloatToString((double)left) + (string)right; } if ((left is int) && (right is double)) { return (int)left + (double)right; } if ((left is int) && (right is int)) { return (int)left + (int)right; } if ((left is int) && (right is string)) { return TypeCast.IntegerToString((int)left) + (string)right; } if ((left is string) && (right is char)) { return (string)left + (char)right; } if ((left is string) && (right is double)) { return (string)left + TypeCast.FloatToString((double)right); } if ((left is string) && (right is int)) { return (string)left + TypeCast.IntegerToString ((int)right); } if ((left is string) && (right is string)) { return (string)left + (string)right; } return null; }
+        public static object Sub (object left, object right) { if ((left is char) && (right is int)) { return (char)((char)left - (int)right); } if ((left is int) && (right is int)) { return (int)left - (int)right; } if ((left is int) && (right is double)) { return (int)left - (double)right; } if ((left is double) && (right is int)) { return (double)left - (int)right; } if ((left is double) && (right is double)) { return (double)left - (double)right; } return null; }
+        public static object Null (object right) { return null; }
+        public static object Neg (object right) { if (right is int) { return - (int)right; } if (right is double) { return - (double)right; } return null; }
+        public static object Not (object right) { if (right is int) { return ~ (int)right; } return null; }
     }
 
     /*
@@ -1686,7 +1551,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
         public TokenTypeFloat (TokenErrorMessage emsg, string file, int line, int posn) : base (emsg, file, line, posn) { }
         public TokenTypeFloat (Token original) : base (original) { }
-        public override Type ToSysType () { return typeof (SCRIPTFLOAT); }
+        public override Type ToSysType () { return typeof (double); }
         public override string ToString () { return "float"; }
         public override void AssignVarSlot (TokenDeclVar declVar, XMRInstArSizes arSizes)
         {

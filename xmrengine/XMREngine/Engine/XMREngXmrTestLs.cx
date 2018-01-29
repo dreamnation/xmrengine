@@ -11,7 +11,13 @@ using System.Reflection;
 using System.Text;
 using System.Threading;
 
-#include "lsltypes.h"
+using LSL_Float = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLFloat;
+using LSL_Integer = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLInteger;
+using LSL_Key = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
+using LSL_List = OpenSim.Region.ScriptEngine.Shared.LSL_Types.list;
+using LSL_Rotation = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Quaternion;
+using LSL_String = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
+using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
 
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
@@ -261,23 +267,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 return new LSL_String (((TokenStr)token).val);
             }
             if (token is TokenKwCmpLT) {
-                List<SCRIPTFLOAT> valuelist = new List<SCRIPTFLOAT> ();
+                List<double> valuelist = new List<double> ();
                 while (!((token = token.nextToken) is TokenKwCmpGT)) {
                     if (!(token is TokenKwComma)) {
                         object value = ParseParamValue (ref token);
                         if (value == null) return null;
-                        if (value is int) value = (SCRIPTFLOAT)(int)value;
-                        if (!(value is SCRIPTFLOAT)) {
+                        if (value is int) value = (double)(int)value;
+                        if (!(value is double)) {
                             ErrorMsg (token, "must be float or integer constant");
                             return null;
                         }
-                        valuelist.Add ((SCRIPTFLOAT)value);
+                        valuelist.Add ((double)value);
                     } else if (token.prevToken is TokenKwComma) {
                         ErrorMsg (token, "missing constant");
                         return null;
                     }
                 }
-                SCRIPTFLOAT[] values = valuelist.ToArray ();
+                double[] values = valuelist.ToArray ();
                 switch (values.Length) {
                     case 3: {
                         return new LSL_Vector (values[0], values[1], values[2]);

@@ -8,7 +8,13 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
-#include "lsltypes.h"
+using LSL_Float = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLFloat;
+using LSL_Integer = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLInteger;
+using LSL_Key = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
+using LSL_List = OpenSim.Region.ScriptEngine.Shared.LSL_Types.list;
+using LSL_Rotation = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Quaternion;
+using LSL_String = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
+using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
 
 // This class exists in the main app domain
 //
@@ -285,7 +291,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public static object FixKey (object key)
         {
             if (key is LSL_Integer) return (int)(LSL_Integer)key;
-            if (key is LSL_Float)   return (SCRIPTFLOAT)(LSL_Float)key;
+            if (key is LSL_Float)   return (double)(LSL_Float)key;
             if (key is LSL_Key)     return (string)(LSL_Key)key;
             if (key is LSL_String)  return (string)(LSL_String)key;
             if (key is LSL_List) {
@@ -293,7 +299,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if (data.Length == 1) return FixKey (data[0]);
                 return new XMRArrayListKey ((LSL_List)key);
             }
-            return key;  // int, SCRIPTFLOAT, string, LSL_Vector, LSL_Rotation, etc are ok as is
+            return key;  // int, double, string, LSL_Vector, LSL_Rotation, etc are ok as is
         }
 
         /**
@@ -339,7 +345,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private static Dictionary<string, ComparerDelegate> BuildComparers ()
         {
             Dictionary<string, ComparerDelegate> cmps = new Dictionary<string, ComparerDelegate> ();
-            cmps.Add (typeof (SCRIPTFLOAT).Name,     MyFloatComparer);
+            cmps.Add (typeof (double).Name,     MyFloatComparer);
             cmps.Add (typeof (int).Name,             MyIntComparer);
             cmps.Add (typeof (XMRArrayListKey).Name, MyListKeyComparer);
             cmps.Add (typeof (LSL_Rotation).Name,    MyRotationComparer);
@@ -350,8 +356,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         private static int MyFloatComparer (object a, object b)
         {
-            SCRIPTFLOAT af = (SCRIPTFLOAT)a;
-            SCRIPTFLOAT bf = (SCRIPTFLOAT)b;
+            double af = (double)a;
+            double bf = (double)b;
             if (af < bf) return -1;
             if (af > bf) return  1;
             return 0;

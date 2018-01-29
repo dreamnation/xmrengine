@@ -3,9 +3,7 @@
  *  All rights reserved.                           *
 \***************************************************/
 
-#if HAVE_MONOCONTS || HAVE_MMRUTHREADS
 using Mono.Tasklets;
-#endif
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -256,8 +254,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 
 
-#if HAVE_MONOCONTS
-
 /*************************************\
  *  Use Mono.Tasklets.Continuations  *
  *  - memcpy's stack                 *
@@ -450,11 +446,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         }
     }
 }
-#endif
 
 
-
-#if HAVE_MMRUTHREADS
 
 /***********************************\
  *  Use Mono.Tasklets.MMRUThreads  *
@@ -494,5 +487,3 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         }
     }
 }
-
-#endif
