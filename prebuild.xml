@@ -1,0 +1,39 @@
+<Project name="XMREngine" path="addon-modules/XMREngine/Module" type="Library">
+    <Configuration name="Debug">
+        <Options>
+            <OutputPath>../../../bin/</OutputPath>
+        </Options>
+    </Configuration>
+    <Configuration name="Release">
+        <Options>
+            <OutputPath>../../../bin/</OutputPath>
+        </Options>
+    </Configuration>
+
+    <ReferencePath>../../../bin/</ReferencePath>
+    <Reference name="log4net"/>
+    <Reference name="Mono.Addins"/>
+    <Reference name="Mono.Tasklets"/>
+    <Reference name="Nini"/>
+    <Reference name="OpenMetaverse"/>
+    <Reference name="OpenMetaverse.StructuredData"/>
+    <Reference name="OpenMetaverseTypes"/>
+    <Reference name="OpenSim.Framework"/>
+    <Reference name="OpenSim.Framework.Console"/>
+    <Reference name="OpenSim.Framework.Monitoring"/>
+    <Reference name="OpenSim.Region.ClientStack.LindenCaps"/>
+    <Reference name="OpenSim.Region.CoreModules"/>
+    <Reference name="OpenSim.Region.Framework"/>
+    <Reference name="OpenSim.Region.ScriptEngine.Shared"/>
+    <Reference name="OpenSim.Region.ScriptEngine.Shared.Api"/>
+    <Reference name="OpenSim.Region.ScriptEngine.Shared.Api.Runtime"/>
+    <Reference name="OpenSim.Services.Interfaces"/>
+    <Reference name="System"/>
+    <Reference name="System.Drawing"/>
+    <Reference name="System.Xml"/>
+
+    <Files>
+        <Match pattern="MMR*.cs" recurse="true"/>
+        <Match pattern="XMR*.cs" recurse="true"/>
+    </Files>
+</Project>
