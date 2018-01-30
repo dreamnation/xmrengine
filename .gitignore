@@ -1,4 +1,6 @@
-bin
+/bin
+/obj
+/.vs
 xmrengine/XMREngine/Compiler/makexmrengtestilslapi.inc
 xmrengine/XMREngine/Compiler/xmrengcomp.zip
 xmrengine/XMREngine/Compiler/xmrengtest.zip

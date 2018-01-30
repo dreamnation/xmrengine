@@ -1,0 +1,136 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{E319D0F2-C060-4ED0-9F84-552B0255DF48}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <NoStandardLibraries>false</NoStandardLibraries>
+    <AssemblyName>XMREngine</AssemblyName>
+    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup>
+    <RootNamespace>OpenSim.Region.ScriptEngine.XMREngine</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="log4net">
+      <HintPath>..\..\bin\log4net.dll</HintPath>
+    </Reference>
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="Mono.Addins">
+      <HintPath>..\..\bin\Mono.Addins.dll</HintPath>
+    </Reference>
+    <Reference Include="Nini">
+      <HintPath>..\..\bin\Nini.dll</HintPath>
+    </Reference>
+    <Reference Include="OpenMetaverse">
+      <HintPath>..\..\bin\OpenMetaverse.dll</HintPath>
+    </Reference>
+    <Reference Include="OpenMetaverse.StructuredData">
+      <HintPath>..\..\bin\OpenMetaverse.StructuredData.dll</HintPath>
+    </Reference>
+    <Reference Include="OpenMetaverseTypes">
+      <HintPath>..\..\bin\OpenMetaverseTypes.dll</HintPath>
+    </Reference>
+    <Reference Include="OpenSim.Framework">
+      <HintPath>..\..\bin\OpenSim.Framework.dll</HintPath>
+    </Reference>
+    <Reference Include="OpenSim.Framework.Console">
+      <HintPath>..\..\bin\OpenSim.Framework.Console.dll</HintPath>
+    </Reference>
+    <Reference Include="OpenSim.Framework.Monitoring">
+      <HintPath>..\..\bin\OpenSim.Framework.Monitoring.dll</HintPath>
+    </Reference>
+    <Reference Include="OpenSim.Region.ClientStack.LindenCaps">
+      <HintPath>..\..\bin\OpenSim.Region.ClientStack.LindenCaps.dll</HintPath>
+    </Reference>
+    <Reference Include="OpenSim.Region.CoreModules">
+      <HintPath>..\..\bin\OpenSim.Region.CoreModules.dll</HintPath>
+    </Reference>
+    <Reference Include="OpenSim.Region.Framework">
+      <HintPath>..\..\bin\OpenSim.Region.Framework.dll</HintPath>
+    </Reference>
+    <Reference Include="OpenSim.Region.ScriptEngine.Shared">
+      <HintPath>..\..\bin\OpenSim.Region.ScriptEngine.Shared.dll</HintPath>
+    </Reference>
+    <Reference Include="OpenSim.Region.ScriptEngine.Shared.Api">
+      <HintPath>..\..\bin\OpenSim.Region.ScriptEngine.Shared.Api.dll</HintPath>
+    </Reference>
+    <Reference Include="OpenSim.Region.ScriptEngine.Shared.Api.Runtime">
+      <HintPath>..\..\bin\OpenSim.Region.ScriptEngine.Shared.Api.Runtime.dll</HintPath>
+    </Reference>
+    <Reference Include="OpenSim.Services.Interfaces">
+      <HintPath>..\..\bin\OpenSim.Services.Interfaces.dll</HintPath>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Xml" />
+    <Reference Include="System.Xml.Linq" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Module\dummytasklets.cs" />
+    <Compile Include="Module\MMRDelegateCommon.cs" />
+    <Compile Include="Module\MMRIEventHandlers.cs" />
+    <Compile Include="Module\MMRInternalFuncDict.cs" />
+    <Compile Include="Module\MMRScriptBinOpStr.cs" />
+    <Compile Include="Module\MMRScriptCodeGen.cs" />
+    <Compile Include="Module\MMRScriptCollector.cs" />
+    <Compile Include="Module\MMRScriptCompile.cs" />
+    <Compile Include="Module\MMRScriptCompValu.cs" />
+    <Compile Include="Module\MMRScriptConsts.cs" />
+    <Compile Include="Module\MMRScriptEventCode.cs" />
+    <Compile Include="Module\MMRScriptInlines.cs" />
+    <Compile Include="Module\MMRScriptMyILGen.cs" />
+    <Compile Include="Module\MMRScriptObjCode.cs" />
+    <Compile Include="Module\MMRScriptObjWriter.cs" />
+    <Compile Include="Module\MMRScriptReduce.cs" />
+    <Compile Include="Module\MMRScriptTokenize.cs" />
+    <Compile Include="Module\MMRScriptTypeCast.cs" />
+    <Compile Include="Module\MMRScriptVarDict.cs" />
+    <Compile Include="Module\MMRWebRequest.cs" />
+    <Compile Include="Module\XMRArray.cs" />
+    <Compile Include="Module\XMREngine.cs" />
+    <Compile Include="Module\XMREngXmrTestLs.cs" />
+    <Compile Include="Module\XMREvents.cs" />
+    <Compile Include="Module\XMRHeapTracker.cs" />
+    <Compile Include="Module\XMRInstAbstract.cs" />
+    <Compile Include="Module\XMRInstBackend.cs" />
+    <Compile Include="Module\XMRInstCapture.cs" />
+    <Compile Include="Module\XMRInstCtor.cs" />
+    <Compile Include="Module\XMRInstMain.cs" />
+    <Compile Include="Module\XMRInstMisc.cs" />
+    <Compile Include="Module\XMRInstQueue.cs" />
+    <Compile Include="Module\XMRInstRun.cs" />
+    <Compile Include="Module\XMRInstSorpra.cs" />
+    <Compile Include="Module\XMRObjectTokens.cs" />
+    <Compile Include="Module\XMRScriptThread.cs" />
+    <Compile Include="Module\XMRScriptUThread.cs" />
+    <Compile Include="Module\XMRSDTypeClObj.cs" />
+  </ItemGroup>
+  <ItemGroup />
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSHARP.Targets" />
+  <ProjectExtensions>
+    <VisualStudio AllowExistingFolder="true" />
+  </ProjectExtensions>
+</Project>
