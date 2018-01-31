@@ -1213,6 +1213,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * Then we try to handle it if we're the default engine, else we ignore it.
                  */
                 m_log.Warn ("[XMREngine]: " + itemID.ToString() + " requests undefined/disabled engine " + engineName);
+                m_log.Info ("[XMREngine]: - " + part.GetWorldPosition ());
                 m_log.Info ("[XMREngine]: first line: " + firstline);
                 if (defEngine != ScriptEngineName) {
                     m_log.Info ("[XMREngine]: leaving it to the default script engine (" + defEngine + ") to process it");
@@ -1301,6 +1302,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 Verbose ("[XMREngine]: Error starting script {0}/{2}: {1}",
                                   itemID.ToString(), initerr.Message, instance.m_Item.AssetID.ToString());
                 if (initerr.Message != "compilation errors") {
+                    Verbose ("[XMREngine]: - " + instance.m_Part.GetWorldPosition () + " " + instance.m_DescName);
                     Verbose ("[XMREngine]:   exception:\n{0}", initerr.ToString());
                 }
 
