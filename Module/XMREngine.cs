@@ -288,20 +288,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Directory.CreateDirectory(m_ScriptBasePath);
 
             m_Scene.EventManager.OnRezScript += OnRezScript;
-            m_Scene.EventManager.OnAllInitialScenesStarted += OnAllInitialScenesStarted;
 
             m_Scene.StackModuleInterface<IScriptModule>(this);
-        }
-
-        /**
-         * @brief Called after all initial scripts have been rezzed via OnRezScripts()
-         *        for all scenes.  Since we do everything as part of OnRezScript(), we
-         *        can correctly indicate that our compile queue is empty.
-         */
-        private void OnAllInitialScenesStarted ()
-        {
-            m_log.Debug ("[XMREngine]: OnAllInitialScenesStarted");
-            m_Scene.EventManager.TriggerEmptyScriptCompileQueue (0, "");
         }
 
         private void OneTimeLateInitialization ()
@@ -678,7 +666,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_Scene.EventManager.OnStopScript -= OnStopScript;
             m_Scene.EventManager.OnGetScriptRunning -= OnGetScriptRunning;
             m_Scene.EventManager.OnShutdown -= OnShutdown;
-            m_Scene.EventManager.OnAllInitialScenesStarted -= OnAllInitialScenesStarted;
 
             m_Enabled = false;
             m_Scene = null;
@@ -704,10 +691,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void StartProcessing()
         {
+            m_log.Debug ("[XMREngine]: StartProcessing entry");
+            m_Scene.EventManager.TriggerEmptyScriptCompileQueue (0, "");
             m_StartProcessing = true;
             for (int i = 0; i < numThreadScriptWorkers; i ++) {
                 XMRScriptThread.WakeUpOne();
             }
+            m_log.Debug ("[XMREngine]: StartProcessing return");
         }
 
         public void Close()
