@@ -1,9 +1,8 @@
 MONODIR       ?= /usr
 MONOBINDIR    ?= $(MONODIR)/bin
 MONODLLDIR    ?= $(MONODIR)/lib/mono/4.5
-OPENSIMDLLDIR ?= bin_090
-TASKLETSDLL   ?= $(MONODLLDIR)/Mono.Tasklets.dll
-SOURCEDIR     ?= ../../../Module
+OPENSIMDLLDIR ?= osbin
+SOURCEDIR     ?= ../Module
 
 COMMITHASH  := $(strip $(shell git log -1 | grep ^commit | sed 's/commit//g'))
 COMMITDATE  := $(strip $(shell git log -1 --date=iso | grep ^Date: | sed 's/Date://g'))

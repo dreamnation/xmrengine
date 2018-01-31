@@ -1,7 +1,0 @@
-#!/bin/bash -v
-set -e
-time make xmrengcomp_secret.exe
-export MONO_PATH=../../../bin
-export PATH=~/mono64.267/bin:$PATH
-mono --debug xmrengcomp_secret.exe -plaintext -out x.xmrobj -asm x.xmrasm arraytest.lsl
-mono --debug xmrengcomp_secret.exe -plaintext -out y.xmrobj -asm y.xmrasm objectest.lsl

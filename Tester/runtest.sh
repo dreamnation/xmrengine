@@ -1,5 +1,11 @@
 #!/bin/bash -v
-
+#
+#  Tests the XMREngine compiler by running scripts, supplying inputs and checking the outputs.
+#
+#    ./runtest.sh mmr       uses the micro thread model (requires patched mono)
+#    ./runtest.sh con       uses the continuations thread model (requires mono)
+#    ./runtest.sh sys       uses the system threads model (works with windows and mono)
+#
 function majorbar {
     echo ===============================================================================
 }
