@@ -1,7 +1,0 @@
-
-strhashcode: GetStrHashCode.exe
-	$(MONOBINDIR)/mono GetStrHashCode.exe $(STR)
-
-GetStrHashCode.exe: GetStrHashCode.cs
-	$(MONOBINDIR)/mcs -out:GetStrHashCode.exe GetStrHashCode.cs
-

@@ -11,5 +11,5 @@ llOwnerSay:  stacktrace:
 llOwnerSay:    typename: NullReferenceException
 llOwnerSay:     message: Object reference not set to an instance of an object
 llOwnerSay:  stacktrace:
-  at OpenSim.Region.ScriptEngine.XMREngine.TypeCast.ObjectToInteger (System.Object x) [0x0005e] in /data/home/kunta/xmrengine/xmrengine/XMREngine/Compiler/MMRScriptTypeCast_tester.cs:717
+  at OpenSim.Region.ScriptEngine.XMREngine.TypeCast.ObjectToInteger (System.Object x) [0x0005e] in /home/kunta/xmreng-0.9/Module/MMRScriptTypeCast.cs:728
   at default state_entry <trycatchexample.lsl(18,25)>

@@ -1,11 +1,3 @@
-/bin
-/obj
-/.vs
-xmrengine/XMREngine/Compiler/makexmrengtestilslapi.inc
-xmrengine/XMREngine/Compiler/xmrengcomp.zip
-xmrengine/XMREngine/Compiler/xmrengtest.zip
-xmrengine/XMREngine/Compiler/*.cs
-xmrengine/XMREngine/Engine/*.cs
 *~
 *.dll
 *.dll.mdb
@@ -16,6 +8,13 @@ xmrengine/XMREngine/Engine/*.cs
 *.xmrbin
 *.xmrobj
 *.xmrsrc
+/bin
+/obj
+/.vs
+xmrengine/XMREngine/Compiler/makexmrengtestilslapi.cs
+xmrengine/XMREngine/Compiler/makexmrengtestilslapi.inc
+xmrengine/XMREngine/Compiler/xmrengcomp.zip
+xmrengine/XMREngine/Compiler/xmrengtest.zip
 xmrengine/XMREngine/Compiler/*.ckr
 xmrengine/XMREngine/Compiler/*.out
 xmrengine/XMREngine/Compiler/*.ser

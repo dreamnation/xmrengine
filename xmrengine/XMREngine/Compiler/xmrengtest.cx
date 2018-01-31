@@ -7,9 +7,7 @@
  * @brief Main program for the script tester.
  */
 
-#if HAVE_MONOCONTS || HAVE_MMRUTHREADS
 using Mono.Tasklets;
-#endif
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -18,7 +16,13 @@ using System.Reflection.Emit;
 using System.Text;
 using System.Threading;
 
-#include "lsltypes.h"
+using LSL_Float = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLFloat;
+using LSL_Integer = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLInteger;
+using LSL_Key = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
+using LSL_List = OpenSim.Region.ScriptEngine.Shared.LSL_Types.list;
+using LSL_Rotation = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Quaternion;
+using LSL_String = OpenSim.Region.ScriptEngine.Shared.LSL_Types.LSLString;
+using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
 
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
@@ -71,13 +75,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             string primUUID   = "";
             string sourceHash = null;
 
-#if HAVE_MMRUTHREADS
-            uthreadType = "mmr";
-#elif HAVE_MMRCONTS
-            uthreadType = "con";
-#else
             uthreadType = "sys";
-#endif
 
             for (int i = 0; i < args.Length; i ++) {
                 string arg = args[i];
@@ -142,10 +140,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     if (++ i >= args.Length) goto usage;
                     uthreadType = args[i].ToLower ();
                     continue;
-                }
-                if (arg == "-version") {
-                    Console.WriteLine ("commit " + ScriptCompCommit.commitInfo);
-                    return;
                 }
                 if (arg == "-xmrasm") {
                     doXmrAsm = true;
@@ -247,7 +241,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
                 XMRInstance inst = new XMRInstance (scriptObjCode);
                 inst.m_DescName  = perPrims[i].name + ":" + srcFileName;
-#if HAVE_MONOCONTS
                 if (uthreadType == "con") {
                     inst.engstack    = new Mono.Tasklets.Continuation ();
                     inst.engstack.Mark ();
@@ -256,7 +249,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     inst.wfistack    = new Mono.Tasklets.Continuation ();
                     inst.wfistack.Mark ();
                 }
-#endif
                 new ScriptRoot (inst, i, perPrims[i]);
             }
 
@@ -422,7 +414,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Environment.Exit (0);
 
         usage:
-            Console.WriteLine ("usage: mono xmrengtest.exe [ -builtins ] [ -checkrun ] [ -eventio ] [ -heaplimit <numbytes> ] [ -ipcchannel <channel> ] [ -linknum <number> ] [ -primname <name> ] [ -primuuid <uuid> ] [ -serialize ] [ -uthread <type> ] [ -version ] <sourcefile> ...");
+            Console.WriteLine ("usage: mono xmrengtest.exe [ -builtins ] [ -checkrun ] [ -eventio ] [ -heaplimit <numbytes> ] [ -ipcchannel <channel> ] [ -linknum <number> ] [ -primname <name> ] [ -primuuid <uuid> ] [ -serialize ] [ -uthread <type> ] <sourcefile> ...");
             Console.WriteLine ("     -builtins : print list of built-in functions and constants then exit");
             Console.WriteLine ("     -checkrun : simulate a thread slice at every opportunity");
             Console.WriteLine ("      -eventio : when default state_entry completes, read next event from stdin and keep doing so until eof");
@@ -436,7 +428,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Console.WriteLine ("     -primuuid : give prim uuid for subsequent script(s) (returned by llGetObjectName())");
             Console.WriteLine ("    -serialize : serialize and deserialize stack at every opportunity");
             Console.WriteLine ("      -uthread : specify Con (stack memcpying), MMR (stack switching), Sys (system thread)");
-            Console.WriteLine ("      -version : print version number then exit");
             Environment.Exit (2);
         }
 
@@ -522,7 +513,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 Token opTok = token;
                 object val = ParseEHArg (ref token);
                 if (val is int) return -(int)val;
-                if (val is SCRIPTFLOAT) return -(SCRIPTFLOAT)val;
+                if (val is double) return -(double)val;
                 opTok.ErrorMsg ("invalid - operand");
                 return null;
             }
@@ -558,26 +549,26 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * '<'value,...'>', ie, rotation or vector
              */
             if (token is TokenKwCmpLT) {
-                List<SCRIPTFLOAT> valist = new List<SCRIPTFLOAT> ();
+                List<double> valist = new List<double> ();
                 Token openBkt = token;
                 do {
                     token = token.nextToken;
                     Token valTok = token;
                     object val = ParseEHArg (ref token);
                     if (val == null) return null;
-                    if (val is int) val = (SCRIPTFLOAT)(int)val;
-                    if (!(val is SCRIPTFLOAT)) {
+                    if (val is int) val = (double)(int)val;
+                    if (!(val is double)) {
                         valTok.ErrorMsg ("invalid rotation/vector constant");
                         return null;
                     }
-                    valist.Add ((SCRIPTFLOAT)val);
+                    valist.Add ((double)val);
                 } while (token is TokenKwComma);
                 if (!(token is TokenKwCmpGT)) {
                     token.ErrorMsg ("expecting , or > at end of rotation or vector");
                     return null;
                 }
                 token = token.nextToken;
-                SCRIPTFLOAT[] valarr = valist.ToArray ();
+                double[] valarr = valist.ToArray ();
                 switch (valarr.Length) {
                     case 3: {
                         return new LSL_Vector (valarr[0], valarr[1], valarr[2]);
@@ -603,7 +594,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     object val = ParseEHArg (ref token);
                     if (val == null) return null;
                     if (val is int)         val = new LSL_Integer ((int)val);
-                    if (val is SCRIPTFLOAT) val = new LSL_Float   ((SCRIPTFLOAT)val);
+                    if (val is double) val = new LSL_Float   ((double)val);
                     if (val is string)      val = new LSL_String  ((string)val);
                     values.Add (val);
                 } while (token is TokenKwComma);
@@ -619,14 +610,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * All we got left is <name>, lookup pre-defined constant.
              */
             if (token is TokenName) {
-                FieldInfo fi = typeof (SCRIPTBASECLASS).GetField (((TokenName)token).val);
+                FieldInfo fi = typeof (ScriptBaseClass).GetField (((TokenName)token).val);
                 if ((fi == null) || !fi.IsPublic || !fi.IsStatic) {
                     token.ErrorMsg ("unknown constant");
                     return null;
                 }
                 token = token.nextToken;
                 object val = fi.GetValue (null);
-                if (val is LSL_Float)   val = (SCRIPTFLOAT)((LSL_Float)  val);
+                if (val is LSL_Float)   val = (double)((LSL_Float)  val);
                 if (val is LSL_Integer) val = (int)        ((LSL_Integer)val);
                 if (val is LSL_String)  val = (string)     ((LSL_String) val);
                 return val;
@@ -867,10 +858,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             if (inst.uthread is ScriptUThread_Sys) {
                 StepScriptMMRSys ();
-#if HAVE_MMRUTHREADS
             } else if (inst.uthread is ScriptUThread_MMR) {
                 StepScriptMMRSys ();
-#endif
             } else {
                 StepScriptOther ();
             }
@@ -941,22 +930,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Do a setjmp(0) that ReadRetVal() can use when it wants some input.
              */
-#if HAVE_MONOCONTS
             if (inst.wfistack.Store (0) != 0) {
                 if (iState != IState.WAITINGFORINPUT) throw new Exception ("bad iState " + iState);
                 return;
             }
-#endif
 
             /*
              * Now if we are stepping because we have input for ReadRetVal(),
              * do a longjmp() back into ReadRetVal().
              */
-#if HAVE_MONOCONTS
             if (iState == IState.GOTSOMEINPUT) {
                 inst.scrstack.Restore (1);
             }
-#endif
 
             /*
              * The uthread stack better not already be in use.
@@ -1049,16 +1034,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
      */
     public partial class XMRInstance : XMRInstAbstract {
         public static int HEAPLIMIT = 65536;
-        public SCRIPTBASECLASS m_ApiManager_LSL;
+        public ScriptBaseClass m_ApiManager_LSL;
         public OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.IOSSL_Api m_ApiManager_OSSL;
 
         public int peakHeapUsed = 0;
         public int m_StackSize = 1024*1024;
         public string m_DescName;
 
-#if HAVE_MONOCONTS
         public Mono.Tasklets.Continuation wfistack;
-#endif
 
         /**
          * @brief Initial instance for the given script
@@ -1088,11 +1071,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_ObjCode  = inst.m_ObjCode;
             m_DescName = inst.m_DescName;
             heapLimit  = HEAPLIMIT;
-#if HAVE_MONOCONTS
             engstack   = inst.engstack;
             scrstack   = inst.scrstack;
             wfistack   = inst.wfistack;
-#endif
             suspendOnCheckRunHold = XMREngTest.doCheckRun;
             InitUThread ();
         }
@@ -1100,18 +1081,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private void InitUThread ()
         {
             switch (XMREngTest.uthreadType) {
-#if HAVE_MONOCONTS
                 case "con": {
                     uthread = new ScriptUThread_Con (this);
                     break;
                 }
-#endif
-#if HAVE_MMRUTHREADS
                 case "mmr": {
                     uthread = new ScriptUThread_MMR (this);
                     break;
                 }
-#endif
                 case "sys": {
                     uthread = new ScriptUThread_Sys (this);
                     break;
@@ -1199,7 +1176,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         [xmrMethodIsNoisyAttribute]  // calls Stub<somethingorother>
-        public override LSL_List xmrEventDequeue (SCRIPTFLOAT timeout, int returnMask1, int returnMask2,
+        public override LSL_List xmrEventDequeue (double timeout, int returnMask1, int returnMask2,
                                                   int backgroundMask1, int backgroundMask2)
         {
             return StubLSLList ("xmrEventDequeue", timeout, returnMask1, returnMask2, backgroundMask1, backgroundMask2);
@@ -1236,7 +1213,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
     }
 
-    public class SCRIPTBASECLASS :
+    public class ScriptBaseClass :
             OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.ILSL_Api,
             OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.IOSSL_Api {
 
@@ -3204,8 +3181,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             PrintParms (name, parms);
             object val = ReadRetVal (name, "float");
-            if (val is int) val = (SCRIPTFLOAT)(int)val;
-            return new LSL_Float ((SCRIPTFLOAT)val);
+            if (val is int) val = (double)(int)val;
+            return new LSL_Float ((double)val);
         }
         protected LSL_Integer StubLSLInteger (string name, params object[] parms)
         {
@@ -3241,8 +3218,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             PrintParms (name, parms);
             object val = ReadRetVal (name, "float");
-            if (val is int) val = (SCRIPTFLOAT)(int)val;
-            return (double)(SCRIPTFLOAT)val;
+            if (val is int) val = (double)(int)val;
+            return (double)(double)val;
         }
         protected int StubSysInteger (string name, params object[] parms)
         {
@@ -3299,11 +3276,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             scriptRoot.wfiType = type;
             scriptRoot.iState  = IState.WAITINGFORINPUT;
 
-            if (
-#if HAVE_MMRUTHREADS
-                (uthread is ScriptUThread_MMR) ||
-#endif
-                                                  (uthread is ScriptUThread_Sys)) {
+            if ((uthread is ScriptUThread_MMR) || (uthread is ScriptUThread_Sys)) {
 
                 /*
                  * Save this stack pointer and switch back to the stack pointer
@@ -3321,7 +3294,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * Do a setjmp(0) that the input reader can use to resume us
                  * when it is ready to.
                  */
-#if HAVE_MONOCONTS
                 if (((XMRInstance)this).scrstack.Store (0) == 0) {
 
                     /*
@@ -3330,7 +3302,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      */
                     ((XMRInstance)this).wfistack.Restore (1);
                 }
-#endif
 
                 /*
                  * StepScriptOther() did a longjmp(1) here to tell us our input is ready.
