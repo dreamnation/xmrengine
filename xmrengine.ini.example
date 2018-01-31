@@ -1,0 +1,32 @@
+
+    ;# {DefaultScriptEngine} {} {Default script engine} {XEngine} XEngine
+    ;; Default script engine to use. Currently, we only have XEngine
+    DefaultScriptEngine = "XMREngine"
+
+    ;; XMREngine parameters
+    ;; Add to OpenSim.ini, such as after [XEngine] section
+
+    ;; UThreadModel = sys (the default) works everywhere
+    ;;      sys = use system threads to run scripts
+    ;;      con = use mono continuations to run scripts
+    ;;      mmr = use patched mono microthreads to run scripts (most efficient)
+    ;;  if you have mono, you can use con
+    ;;      ...but you need to delete bin/Mono.Tasklets.dll from opensim
+    ;;          so it will go ahead and use the mono-supplied one
+    ;;  if you have patched mono, you can use mmr
+    ;;      ...again you need to delete bin/Mono.Tasklets.dll from opensim
+
+[XMREngine]
+    Enabled = true
+    UThreadModel = sys
+    AllowMODFunctions = true
+    AllowOSFunctions = true
+    ; MinTimerInterval = 0.1 ;; default 0.5
+    OSFunctionThreatLevel = VeryLow
+    ScriptStackSize = 256
+    ScriptHeapSize = 256
+    UseSourceHashCode = true
+
+    ;; any of this sort of thing you want...
+    Allow_osGetNotecardLine = true
+

@@ -1,4 +1,4 @@
-<Project name="XMREngine" path="addon-modules/XMREngine/Module" type="Library">
+<Project frameworkVersion="v4_0" name="XMREngine" path="addon-modules/XMREngine/Module" type="Library">
     <Configuration name="Debug">
         <Options>
             <OutputPath>../../../bin/</OutputPath>
