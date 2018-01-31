@@ -49,7 +49,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public void Pop (LSL_List lis)
         {
-            NewUse (lis.Size);
+            NewUse (Size (lis));
             value = lis;
         }
 
@@ -60,7 +60,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         public static int Size (LSL_List lis)
         {
-            return lis.Size;
+            return (!typeof (LSL_List).IsValueType && (lis == null)) ? 0 : lis.Size;
         }
     }
 

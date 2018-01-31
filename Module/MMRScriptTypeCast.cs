@@ -547,7 +547,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
         private static void TypeCastList2Object (IScriptCodeGen scg, Token errorAt)
         {
-            scg.ilGen.Emit (errorAt, OpCodes.Box, typeof (LSL_List));
+            if (typeof (LSL_List).IsValueType) {
+                scg.ilGen.Emit (errorAt, OpCodes.Box, typeof (LSL_List));
+            }
         }
         private static void TypeCastObject2Array (IScriptCodeGen scg, Token errorAt)
         {
@@ -575,7 +577,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
         private static void TypeCastObject2List (IScriptCodeGen scg, Token errorAt)
         {
-            scg.ilGen.Emit (errorAt, OpCodes.Call, objectToListMethodInfo);
+            if (typeof (LSL_List).IsValueType) {
+                scg.ilGen.Emit (errorAt, OpCodes.Call, objectToListMethodInfo);
+            } else {
+                scg.ilGen.Emit (errorAt, OpCodes.Castclass, typeof (LSL_List));
+            }
         }
         private static void TypeCastObject2Rotation (IScriptCodeGen scg, Token errorAt)
         {
