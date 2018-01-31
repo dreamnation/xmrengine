@@ -34,9 +34,7 @@ SOURCEFILES := \
 	$(SOURCEDIR)/XMRScriptUThread.cs \
 	$(SOURCEDIR)/XMRSDTypeClObj.cs
 
-TESTERCSFILES := \
-	xmrengtest.cs \
-	$(SOURCEFILES)
+TESTERCSFILE := xmrengtest_$(COMMITHASH)_$(COMMITCLEAN).cs
 
 REFDOPENSIMDLLS := \
 	OpenMetaverseTypes.dll \
@@ -52,15 +50,20 @@ xmrengtest.zip: xmrengtest.exe $(patsubst %,$(OPENSIMDLLDIR)/%,$(REFDOPENSIMDLLS
 	zip -D xmrengtest.zip xmrengtest.exe $(REFDOPENSIMDLLS)
 	rm -f $(REFDOPENSIMDLLS)
 
-xmrengtest.exe: $(TESTERCSFILES) $(wildcard *.h)
+xmrengtest.exe: $(TESTERCSFILE) $(SOURCEFILES)
 	$(MONOBINDIR)/mcs -debug -out:$@ \
 		$(patsubst %,-reference:$(OPENSIMDLLDIR)/%,$(REFDOPENSIMDLLS)) \
 		-reference:$(MONODLLDIR)/Mono.Tasklets.dll \
 		-reference:$(MONODLLDIR)/System.Drawing.dll \
-		$(TESTERCSFILES)
+		$(TESTERCSFILE) $(SOURCEFILES)
 
-xmrengtest.cs: xmrengtest.cx makexmrengtestilslapi.inc
-	cpp -C -P -nostdinc -o $@ $<
+$(TESTERCSFILE): xmrengtest.cx makexmrengtestilslapi.inc
+	rm -f xmrengtest*.cs
+	cpp -C -P -nostdinc \
+		-DGITCOMMITHASH='"$(COMMITHASH)"' \
+		-DGITCOMMITDATE='"$(COMMITDATE)"' \
+		-DGITCOMMITCLEAN=$(COMMITCLEAN)   \
+			-o $@ $<
 
 makexmrengtestilslapi.inc: makexmrengtestilslapi.exe $(patsubst %,$(OPENSIMDLLDIR)/%,$(REFDOPENSIMDLLS))
 	MONO_PATH=$(OPENSIMDLLDIR) $(MONOBINDIR)/mono --debug makexmrengtestilslapi.exe > makexmrengtestilslapi.tmp

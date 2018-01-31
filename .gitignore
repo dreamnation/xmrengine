@@ -15,5 +15,5 @@ Tester/*.xmrbin
 Tester/*.xmrobj
 Tester/*.xmrsrc
 Tester/makexmrengtestilslapi.inc
-Tester/xmrengtest.cs
+Tester/xmrengtest*.cs
 Tester/xmrengtest.zip

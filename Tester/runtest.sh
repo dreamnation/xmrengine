@@ -55,7 +55,7 @@ function testev {
 set -e
 cd `dirname $0`
 time make xmrengtest.exe
-export MONO_PATH=bin_090
+export MONO_PATH=osbin
 
 uthread=mmr
 if [ "x$1" != "x" ]

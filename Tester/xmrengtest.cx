@@ -47,6 +47,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public static ScriptRoot[] scriptRoots;
         public static string uthreadType;
 
+        public static readonly string commitInfo = GITCOMMITHASH + (new string[] { "(dirty)", "" })[GITCOMMITCLEAN] + " " + GITCOMMITDATE;
+
         private static int scriptRootIndex;
         private static int scriptStepIndex;
         private static Token nextInputToken;
@@ -140,6 +142,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     if (++ i >= args.Length) goto usage;
                     uthreadType = args[i].ToLower ();
                     continue;
+                }
+                if (arg == "-version") {
+                    Console.WriteLine (commitInfo);
+                    Environment.Exit (0);
                 }
                 if (arg == "-xmrasm") {
                     doXmrAsm = true;
@@ -414,7 +420,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Environment.Exit (0);
 
         usage:
-            Console.WriteLine ("usage: mono xmrengtest.exe [ -builtins ] [ -checkrun ] [ -eventio ] [ -heaplimit <numbytes> ] [ -ipcchannel <channel> ] [ -linknum <number> ] [ -primname <name> ] [ -primuuid <uuid> ] [ -serialize ] [ -uthread <type> ] <sourcefile> ...");
+            Console.WriteLine ("usage: mono xmrengtest.exe [ -builtins ] [ -checkrun ] [ -eventio ] [ -heaplimit <numbytes> ] [ -ipcchannel <channel> ] [ -linknum <number> ] [ -primname <name> ] [ -primuuid <uuid> ] [ -serialize ] [ -uthread <type> ] [ -version ] <sourcefile> ...");
             Console.WriteLine ("     -builtins : print list of built-in functions and constants then exit");
             Console.WriteLine ("     -checkrun : simulate a thread slice at every opportunity");
             Console.WriteLine ("      -eventio : when default state_entry completes, read next event from stdin and keep doing so until eof");
@@ -428,6 +434,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Console.WriteLine ("     -primuuid : give prim uuid for subsequent script(s) (returned by llGetObjectName())");
             Console.WriteLine ("    -serialize : serialize and deserialize stack at every opportunity");
             Console.WriteLine ("      -uthread : specify Con (stack memcpying), MMR (stack switching), Sys (system thread)");
+            Console.WriteLine ("      -version : print version information then exit");
             Environment.Exit (2);
         }
 
