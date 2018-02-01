@@ -141,6 +141,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if (arg == "-uthread") {
                     if (++ i >= args.Length) goto usage;
                     uthreadType = args[i].ToLower ();
+                    if (uthreadType == "mmr") {
+                        Exception e = ScriptUThread_MMR.LoadMono ();
+                        if (e != null) throw e;
+                    }
                     continue;
                 }
                 if (arg == "-version") {

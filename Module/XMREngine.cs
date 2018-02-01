@@ -183,18 +183,42 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
             string uThreadModel = "sys";  // will work anywhere
             uThreadModel = m_Config.GetString ("UThreadModel", uThreadModel);
+
             Type uThreadType = null;
-            if (uThreadModel.ToLower () == "mmr") uThreadType = typeof (ScriptUThread_MMR);
-            if (uThreadModel.ToLower () == "con") uThreadType = typeof (ScriptUThread_Con);
-            if (uThreadModel.ToLower () == "sys") uThreadType = typeof (ScriptUThread_Sys);
-            if (uThreadType == null) {
-                m_log.Error ("[XMREngine]: invalid thread model " + uThreadModel);
-                if (Type.GetType ("XMRScriptUThread_Con") != null) m_log.Error ("[XMREngine]: - Con");
-                if (Type.GetType ("XMRScriptUThread_MMR") != null) m_log.Error ("[XMREngine]: - MMR");
-                if (Type.GetType ("XMRScriptUThread_Sys") != null) m_log.Error ("[XMREngine]: - Sys");
-                m_Enabled = false;
-                return;
+            switch (uThreadModel.ToLower ()) {
+
+                // mono continuations - memcpy()s the stack
+                case "con": {
+                    uThreadType = typeof (ScriptUThread_Con);
+                    break;
+                }
+
+                // patched mono microthreads - switches stack pointer
+                case "mmr": {
+                    Exception e = ScriptUThread_MMR.LoadMono ();
+                    if (e != null) {
+                        m_log.Error ("[XMREngine]: mmr thread model not available\n", e);
+                        m_Enabled = false;
+                        return;
+                    }
+                    uThreadType = typeof (ScriptUThread_MMR);
+                    break;
+                }
+
+                // system threads - works on mono and windows
+                case "sys": {
+                    uThreadType = typeof (ScriptUThread_Sys);
+                    break;
+                }
+
+                // who knows what
+                default: {
+                    m_log.Error ("[XMREngine]: unknown thread model " + uThreadModel);
+                    m_Enabled = false;
+                    return;
+                }
             }
+
             uThreadCtor = uThreadType.GetConstructor (new Type[] { typeof (XMRInstance) });
             m_log.Info ("[XMREngine]: using thread model " + uThreadModel);
 

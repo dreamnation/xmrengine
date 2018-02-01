@@ -6,6 +6,7 @@
 using Mono.Tasklets;
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Threading;
 
 
@@ -456,34 +457,79 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
 namespace OpenSim.Region.ScriptEngine.XMREngine {
 
-    public class ScriptUThread_MMR : MMRUThread, IScriptUThread
+    public class ScriptUThread_MMR : IScriptUThread, IDisposable
     {
-        private XMRInstance instance;
+        private static Exception uthread_looked;
+        private static Type uttype;
+        private static Type uthread_entry;
+        private static MethodInfo uthread_dispose;
+        private static MethodInfo uthread_startex;
+        private static MethodInfo uthread_resumex;
+        private static MethodInfo uthread_suspend;
+        private static MethodInfo uthread_active;
+        private static MethodInfo uthread_stackleft;
+
+        public static Exception LoadMono ()
+        {
+            if ((uthread_looked == null) && (uthread_stackleft == null)) {
+                try {
+                    Assembly mt   = Assembly.Load ("Mono.Tasklets");
+                    uttype        = mt.GetType ("Mono.Tasklets.MMRUThread", true);
+                    uthread_entry = mt.GetType ("Mono.Tasklets.MMRUThread+Entry", true);
+
+                    uthread_dispose   = uttype.GetMethod ("Dispose");       // no parameters, no return value
+                    uthread_startex   = uttype.GetMethod ("StartEx");       // takes uthread_entry delegate as parameter, returns exception
+                    uthread_resumex   = uttype.GetMethod ("ResumeEx");      // takes exception as parameter, returns exception
+                    uthread_suspend   = uttype.GetMethod ("Suspend", new Type[] { });  // no return value
+                    uthread_active    = uttype.GetMethod ("Active");        // no parameters, returns int
+                    uthread_stackleft = uttype.GetMethod ("StackLeft");     // no parameters, returns IntPtr
+                } catch (Exception e) {
+                    uthread_looked = new NotSupportedException ("'mmr' thread model requires patched mono", e);
+                }
+            }
+            return uthread_looked;
+        }
+
+        private static object[] resumex_args = new object[] { null };
+
+        private object uthread;  // type MMRUThread
+        private object[] startex_args = new object[1];
 
         public ScriptUThread_MMR (XMRInstance instance)
-                : base ((IntPtr)instance.m_StackSize, instance.m_DescName)
         {
-            this.instance = instance;
+            this.uthread    = Activator.CreateInstance (uttype, new object[] { (IntPtr) instance.m_StackSize, instance.m_DescName });
+            startex_args[0] = Delegate.CreateDelegate (uthread_entry, instance, "CallSEH");
+        }
+
+        public void Dispose ()
+        {
+            uthread_dispose.Invoke (uthread, null);
+            uthread = null;
         }
 
         public Exception StartEx ()
         {
-            return StartEx (instance.CallSEH);
+            return (Exception) uthread_startex.Invoke (uthread, startex_args);
         }
 
         public Exception ResumeEx ()
         {
-            return ResumeEx (null);
+            return (Exception) uthread_resumex.Invoke (uthread, resumex_args);
         }
 
         public void Hiber ()
         {
-            MMRUThread.Suspend ();
+            uthread_suspend.Invoke (null, null);
         }
 
-        public new int StackLeft ()
+        public int Active ()
         {
-            return (int)MMRUThread.StackLeft ();
+            return (int) uthread_active.Invoke (uthread, null);
+        }
+
+        public int StackLeft ()
+        {
+            return (int) (IntPtr) uthread_stackleft.Invoke (null, null);
         }
     }
 }
