@@ -1,0 +1,6 @@
+Compiling...
+Running...
+llParcelMediaQuery([4,5,10,11,12])
+llParcelMediaQuery:["uuid Texture","U-R-L","mime type",1120,"description",29.92]
+llOwnerSay: uuid TextureU-R-Lmime type1120description29.920000
+llParcelMediaCommandList([0,1,2,3,4,"textureUUID",5,"urlString",6,11.450000,7,"agentUUID",8,9,1,10,"mimeType",11,29,92,12,"descrip"])

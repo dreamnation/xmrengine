@@ -1,0 +1,282 @@
+"1101") llGetOwner: "rbuuid"  // rummyboard
+"1102") llGetOwner: "rbuuid"
+"1103") llGetOwner: "rbuuid"
+"1104") llGetOwner: "rbuuid"
+"1105") llGetOwner: "rbuuid"
+"1101") osSetDynamicTextureURL: "bluback.png"
+"1103") osSetDynamicTextureData: "HelpButtonTextUUID"
+"1104") osSetDynamicTextureData: "ResetButtonTextUUID"
+"1105") osSetDynamicTextureData: "StartButtonTextUUID"
+"1200") llGetOwner: "rbuuid"
+"2000") llGetOwner: "rbuuid"
+"2001") llGetOwner: "rbuuid"
+"2002") llGetOwner: "rbuuid"
+"2003") llGetOwner: "rbuuid"
+"1201") llGetOwner: "rbuuid"
+"2010") llGetOwner: "rbuuid"
+"2011") llGetOwner: "rbuuid"
+"2012") llGetOwner: "rbuuid"
+"2013") llGetOwner: "rbuuid"
+"1202") llGetOwner: "rbuuid"
+"2020") llGetOwner: "rbuuid"
+"2021") llGetOwner: "rbuuid"
+"2022") llGetOwner: "rbuuid"
+"2023") llGetOwner: "rbuuid"
+"1203") llGetOwner: "rbuuid"
+"2030") llGetOwner: "rbuuid"
+"2031") llGetOwner: "rbuuid"
+"2032") llGetOwner: "rbuuid"
+"2033") llGetOwner: "rbuuid"
+"1204") llGetOwner: "rbuuid"
+"2040") llGetOwner: "rbuuid"
+"2041") llGetOwner: "rbuuid"
+"2042") llGetOwner: "rbuuid"
+"2043") llGetOwner: "rbuuid"
+"1300") llGetOwner: "rbuuid"
+"1301") llGetOwner: "rbuuid"
+"1302") llGetOwner: "rbuuid"
+"1303") llGetOwner: "rbuuid"
+"3000") llGetOwner: "p0uuid"  // player 0
+"3001") llGetOwner: "p0uuid"
+"3002") llGetOwner: "p0uuid"
+"3003") llGetOwner: "p0uuid"
+"3004") llGetOwner: "p0uuid"
+"3005") llGetOwner: "p0uuid"
+"3006") llGetOwner: "p0uuid"
+"3007") llGetOwner: "p0uuid"
+"3008") llGetOwner: "p0uuid"
+"3009") llGetOwner: "p0uuid"
+"3010") llGetOwner: "p0uuid"
+"3011") llGetOwner: "p0uuid"
+"3012") llGetOwner: "p0uuid"
+"3013") llGetOwner: "p0uuid"
+"3014") llGetOwner: "p0uuid"
+"3015") llGetOwner: "p0uuid"
+"3016") llGetOwner: "p0uuid"
+"3017") llGetOwner: "p0uuid"
+"3018") llGetOwner: "p0uuid"
+"3019") llGetOwner: "p0uuid"
+"1000") llKey2Name: "Player0 Name"
+"1000") llKey2Name: "Player0 Name"
+"1000") llKey2Name: "Player0 Name"
+"1000") llKey2Name: "Player0 Name"
+"1000") llKey2Name: "Player0 Name"
+"1000") llKey2Name: "Player0 Name"
+"1000") llKey2Name: "Player0 Name"
+"1000") llKey2Name: "Player0 Name"
+"1000") llKey2Name: "Player0 Name"
+"1000") llKey2Name: "Player0 Name"
+"1000") llKey2Name: "Player0 Name"
+"1000") llKey2Name: "Player0 Name"
+"1000") llKey2Name: "Player0 Name"
+"1000") llKey2Name: "Player0 Name"
+"1000") llKey2Name: "Player0 Name"
+"1000") llKey2Name: "Player0 Name"
+"1000") llKey2Name: "Player0 Name"
+"1000") llKey2Name: "Player0 Name"
+"1000") llKey2Name: "Player0 Name"
+"1000") llKey2Name: "Player0 Name"
+"3100") llGetOwner: "p1uuid"  // player 1
+"3101") llGetOwner: "p1uuid"
+"3102") llGetOwner: "p1uuid"
+"3103") llGetOwner: "p1uuid"
+"3104") llGetOwner: "p1uuid"
+"3105") llGetOwner: "p1uuid"
+"3106") llGetOwner: "p1uuid"
+"3107") llGetOwner: "p1uuid"
+"3108") llGetOwner: "p1uuid"
+"3109") llGetOwner: "p1uuid"
+"3110") llGetOwner: "p1uuid"
+"3111") llGetOwner: "p1uuid"
+"3112") llGetOwner: "p1uuid"
+"3113") llGetOwner: "p1uuid"
+"3114") llGetOwner: "p1uuid"
+"3115") llGetOwner: "p1uuid"
+"3116") llGetOwner: "p1uuid"
+"3117") llGetOwner: "p1uuid"
+"3118") llGetOwner: "p1uuid"
+"3119") llGetOwner: "p1uuid"
+"1000") llKey2Name: "Player1 Name"
+"1000") llKey2Name: "Player1 Name"
+"1000") llKey2Name: "Player1 Name"
+"1000") llKey2Name: "Player1 Name"
+"1000") llKey2Name: "Player1 Name"
+"1000") llKey2Name: "Player1 Name"
+"1000") llKey2Name: "Player1 Name"
+"1000") llKey2Name: "Player1 Name"
+"1000") llKey2Name: "Player1 Name"
+"1000") llKey2Name: "Player1 Name"
+"1000") llKey2Name: "Player1 Name"
+"1000") llKey2Name: "Player1 Name"
+"1000") llKey2Name: "Player1 Name"
+"1000") llKey2Name: "Player1 Name"
+"1000") llKey2Name: "Player1 Name"
+"1000") llKey2Name: "Player1 Name"
+"1000") llKey2Name: "Player1 Name"
+"1000") llKey2Name: "Player1 Name"
+"1000") llKey2Name: "Player1 Name"
+"1000") llKey2Name: "Player1 Name"
+
+// player 0 clicks start button with no players registered
+"1105") touch_start()         // start button
+"1105") llDetectedKey: "p0uuid"
+"1000") listen(-646830961,"Player0 Name","p0uuid","Shuffle")
+"1000") llListRandomize: 382583
+
+// player 0 registers
+"1300") touch_start()         // player status 0
+"1300") llDetectedKey: "p0uuid"
+"1300") osSetDynamicTextureData: "0 : Player0 Name : 0"
+
+// player 1 registers
+"1301") touch_start()         // player status 1
+"1301") llDetectedKey: "p1uuid"
+"1301") osSetDynamicTextureData: "0 : Player1 Name : 0"
+
+// player 0 clicks start button
+"1105") touch_start()         // start button
+"1105") llDetectedKey: "p0uuid"
+"1000") listen(-646830961,"Player0 Name","p0uuid","Shuffle")
+"1000") llListRandomize: 689425
+
+// cards dealt to player 0
+"3000") osSetDynamicTextureURL: "tc.png"  // p0 pcp0
+"3001") osSetDynamicTextureURL: "ah.png"  // p0 pcp1
+"3002") osSetDynamicTextureURL: "6d.png"  // p0 pcp2
+"3003") osSetDynamicTextureURL: "9d.png"  // p0 pcp3
+"3004") osSetDynamicTextureURL: "jd.png"  // p0 pcp4
+"3005") osSetDynamicTextureURL: "ac.png"  // p0 pcp5
+"3006") osSetDynamicTextureURL: "8d.png"  // p0 pcp6
+"3007") osSetDynamicTextureURL: "2s.png"  // p0 pcp7
+"3008") osSetDynamicTextureURL: "6c.png"  // p0 pcp8
+"3009") osSetDynamicTextureURL: "8c.png"  // p0 pcp9
+"1300") osSetDynamicTextureData: "10 : Player0 Name : 0"
+
+// cards dealt to player 1
+"3100") osSetDynamicTextureURL: "5s.png"  // p1 pcp0
+"3101") osSetDynamicTextureURL: "4s.png"  // p1 pcp1
+"3102") osSetDynamicTextureURL: "7h.png"  // p1 pcp2
+"3103") osSetDynamicTextureURL: "qc.png"  // p1 pcp3
+"3104") osSetDynamicTextureURL: "2h.png"  // p1 pcp4
+"3105") osSetDynamicTextureURL: "td.png"  // p1 pcp5
+"3106") osSetDynamicTextureURL: "as.png"  // p1 pcp6
+"3107") osSetDynamicTextureURL: "9h.png"  // p1 pcp7
+"3108") osSetDynamicTextureURL: "4h.png"  // p1 pcp8
+"3109") osSetDynamicTextureURL: "ad.png"  // p1 pcp9
+"1301") osSetDynamicTextureData: "10 : Player1 Name : 0"
+
+// discard
+"1102") osSetDynamicTextureURL: "3d.png"
+
+// player 1 clicks on stock (out of turn)
+"1101") touch_start()         // stock
+"1101") llDetectedKey: "p1uuid"
+
+// player 1 clicks on discard (out of turn)
+"1102") touch_start()         // discard
+"1102") llDetectedKey: "p1uuid"
+
+// player 0 clicks on stock then discards it
+"1101") touch_start()                     // stock
+"1101") llDetectedKey: "p0uuid"
+"3010") osSetDynamicTextureURL: "qh.png"  // p0 pcp10
+"3010") touch_start()                     // p0 pcp10
+"3010") llDetectedKey: "p0uuid"
+"1102") touch_start()                     // discard
+"1102") llDetectedKey: "p0uuid"
+"1102") osSetDynamicTextureURL: "qh.png"
+
+// player 1 clicks on stock then discards ten-diamonds
+"1101") touch_start()                     // stock
+"1101") llDetectedKey: "p1uuid"
+"3110") osSetDynamicTextureURL: "9s.png"  // p1 pcp10
+"3105") touch_start()                     // p1 pcp5
+"3105") llDetectedKey: "p1uuid"
+"1102") touch_start()                     // discard
+"1102") llDetectedKey: "p1uuid"
+"1102") osSetDynamicTextureURL: "td.png"
+
+// player 0 clicks on discard to get ten-diamonds
+"1102") touch_start()                     // discard
+"1102") llDetectedKey: "p0uuid"
+"1102") osSetDynamicTextureURL: "qh.png"  // discard
+"3010") osSetDynamicTextureURL: "td.png"  // p0 pcp10
+
+// player 0 clicks on {eight,nine,ten}-diamonds to select
+"3003") touch_start()
+"3003") llDetectedKey: "p0uuid"
+"3006") touch_start()
+"3006") llDetectedKey: "p0uuid"
+"3010") touch_start()
+"3010") llDetectedKey: "p0uuid"
+
+// player 0 clicks on MeldPanel0
+"1200") touch_start()
+"1200") llDetectedKey: "p0uuid"
+"2000") osSetDynamicTextureURL: "8d.png"
+"2001") osSetDynamicTextureURL: "9d.png"
+"2002") osSetDynamicTextureURL: "td.png"
+
+// player 1 clicks Start button to reshuffle and redeal
+// stack the deck so player 0 can go out right away
+"1105") touch_start()
+"1105") llDetectedKey: "p1uuid"
+"1000") listen(-646830961,"Player1 Name","p1uuid","Shuffle")
+"1000") llListRandomize: [ 0,26, 1,27, 2,28, 3,29, 4,30, 5,31, 6,32, 7,33, 8,34, 9,35,10,36,11,37,12,38,-
+                          13,39,14,40,15,41,16,42,17,43,18,44,19,45,20,46,21,47,22,48,23,49,24,50,25,51]
+
+// cards dealt to player 0
+"3000") osSetDynamicTextureURL: "as.png"  // p0 pcp0
+"3001") osSetDynamicTextureURL: "2s.png"  // p0 pcp1
+"3002") osSetDynamicTextureURL: "3s.png"  // p0 pcp2
+"3003") osSetDynamicTextureURL: "4s.png"  // p0 pcp3
+"3004") osSetDynamicTextureURL: "5s.png"  // p0 pcp4
+"3005") osSetDynamicTextureURL: "6s.png"  // p0 pcp5
+"3006") osSetDynamicTextureURL: "7s.png"  // p0 pcp6
+"3007") osSetDynamicTextureURL: "8s.png"  // p0 pcp7
+"3008") osSetDynamicTextureURL: "9s.png"  // p0 pcp8
+"3009") osSetDynamicTextureURL: "ts.png"  // p0 pcp9
+
+// cards dealt to player 1
+"3100") osSetDynamicTextureURL: "ah.png"  // p1 pcp0
+"3101") osSetDynamicTextureURL: "2h.png"  // p1 pcp1
+"3102") osSetDynamicTextureURL: "3h.png"  // p1 pcp2
+"3103") osSetDynamicTextureURL: "4h.png"  // p1 pcp3
+"3104") osSetDynamicTextureURL: "5h.png"  // p1 pcp4
+"3105") osSetDynamicTextureURL: "6h.png"  // p1 pcp5
+"3106") osSetDynamicTextureURL: "7h.png"  // p1 pcp6
+"3107") osSetDynamicTextureURL: "8h.png"  // p1 pcp7
+"3108") osSetDynamicTextureURL: "9h.png"  // p1 pcp8
+"3109") osSetDynamicTextureURL: "th.png"  // p1 pcp9
+
+// discard
+"1102") osSetDynamicTextureURL: "js.png"
+
+// player 0 clicks on discard, gets jack-spades
+"1102") touch_start()                     // discard
+"1102") llDetectedKey: "p0uuid"
+"3010") osSetDynamicTextureURL: "js.png"  // p0 pcp10
+
+// player 0 selects everything for melding (ace-spades .. jack-spades)
+"3000") touch_start() ; llDetectedKey: "p0uuid"
+"3001") touch_start() ; llDetectedKey: "p0uuid"
+"3002") touch_start() ; llDetectedKey: "p0uuid"
+"3003") touch_start() ; llDetectedKey: "p0uuid"
+"3004") touch_start() ; llDetectedKey: "p0uuid"
+"3005") touch_start() ; llDetectedKey: "p0uuid"
+"3006") touch_start() ; llDetectedKey: "p0uuid"
+"3007") touch_start() ; llDetectedKey: "p0uuid"
+"3008") touch_start() ; llDetectedKey: "p0uuid"
+"3009") touch_start() ; llDetectedKey: "p0uuid"
+"3010") touch_start() ; llDetectedKey: "p0uuid"
+
+// this should meld and go out
+"1202") touch_start() ; llDetectedKey: "p0uuid"
+"1300") osSetDynamicTextureData: "0 : Player0 Name : 0"
+"1301") osSetDynamicTextureData: "0 : Player1 Name : 0"
+"2020") osSetDynamicTextureURL: "as.png"
+"2021") osSetDynamicTextureURL: "2s.png"
+"2023") osSetDynamicTextureURL: "js.png"
+"1300") osSetDynamicTextureData: "0 : Player0 Name : 110"
+
+STATUS

@@ -1,0 +1,15 @@
+Compiling...
+Running...
+llOwnerSay: say something so we don't get inlined
+llOwnerSay: finished one way or another
+llOwnerSay:    typename: ScriptThrownException
+llOwnerSay:     message: try to catch this!
+llOwnerSay: thrownvalue: try to catch this!
+llOwnerSay:  stacktrace:
+  at CallSomethingThatThrows(string) <trycatchexample.lsl(28,4)>
+  at default state_entry <trycatchexample.lsl(10,36)>
+llOwnerSay:    typename: NullReferenceException
+llOwnerSay:     message: Object reference not set to an instance of an object
+llOwnerSay:  stacktrace:
+  at OpenSim.Region.ScriptEngine.XMREngine.TypeCast.ObjectToInteger (System.Object x) [0x0005e] in /home/kunta/xmreng-0.9/Module/MMRScriptTypeCast.cs:728
+  at default state_entry <trycatchexample.lsl(18,25)>

@@ -1,0 +1,96 @@
+Compiling...
+Running...
+llOwnerSay: something 1
+llOwnerSay: one
+llOwnerSay: One
+llOwnerSay: something 2
+llOwnerSay: two or tree
+llOwnerSay: Two Or Tree
+llOwnerSay: something 3
+llOwnerSay: two or tree
+llOwnerSay: Two Or Tree
+llOwnerSay: something 4
+llOwnerSay: four
+llOwnerSay: Four
+llOwnerSay: something 5
+llOwnerSay: fife
+llOwnerSay: Fife
+llOwnerSay: something 6
+llOwnerSay: something big
+llOwnerSay: Something Big
+llOwnerSay: done 6
+llOwnerSay: i=0
+llOwnerSay: m=0
+llOwnerSay: 0 &&& 0 ||| 0 &&& 0 = 0
+llOwnerSay: i=0
+llOwnerSay: m=0
+llOwnerSay: 0 &&& 0 ||| 0 &&& 1 = 0
+llOwnerSay: i=0
+llOwnerSay: m=1
+llOwnerSay: n=0
+llOwnerSay: 0 &&& 0 ||| 1 &&& 0 = 0
+llOwnerSay: i=0
+llOwnerSay: m=1
+llOwnerSay: n=1
+llOwnerSay: 0 &&& 0 ||| 1 &&& 1 = 1
+llOwnerSay: i=0
+llOwnerSay: m=0
+llOwnerSay: 0 &&& 1 ||| 0 &&& 0 = 0
+llOwnerSay: i=0
+llOwnerSay: m=0
+llOwnerSay: 0 &&& 1 ||| 0 &&& 1 = 0
+llOwnerSay: i=0
+llOwnerSay: m=1
+llOwnerSay: n=0
+llOwnerSay: 0 &&& 1 ||| 1 &&& 0 = 0
+llOwnerSay: i=0
+llOwnerSay: m=1
+llOwnerSay: n=1
+llOwnerSay: 0 &&& 1 ||| 1 &&& 1 = 1
+llOwnerSay: i=1
+llOwnerSay: j=0
+llOwnerSay: m=0
+llOwnerSay: 1 &&& 0 ||| 0 &&& 0 = 0
+llOwnerSay: i=1
+llOwnerSay: j=0
+llOwnerSay: m=0
+llOwnerSay: 1 &&& 0 ||| 0 &&& 1 = 0
+llOwnerSay: i=1
+llOwnerSay: j=0
+llOwnerSay: m=1
+llOwnerSay: n=0
+llOwnerSay: 1 &&& 0 ||| 1 &&& 0 = 0
+llOwnerSay: i=1
+llOwnerSay: j=0
+llOwnerSay: m=1
+llOwnerSay: n=1
+llOwnerSay: 1 &&& 0 ||| 1 &&& 1 = 1
+llOwnerSay: i=1
+llOwnerSay: j=1
+llOwnerSay: 1 &&& 1 ||| 0 &&& 0 = 1
+llOwnerSay: i=1
+llOwnerSay: j=1
+llOwnerSay: 1 &&& 1 ||| 0 &&& 1 = 1
+llOwnerSay: i=1
+llOwnerSay: j=1
+llOwnerSay: 1 &&& 1 ||| 1 &&& 0 = 1
+llOwnerSay: i=1
+llOwnerSay: j=1
+llOwnerSay: 1 &&& 1 ||| 1 &&& 1 = 1
+llOwnerSay: 0
+llOwnerSay: one
+llOwnerSay: two
+llOwnerSay: tree
+llOwnerSay: four
+llOwnerSay: fife
+llOwnerSay: six
+llOwnerSay: seven
+llOwnerSay: eight
+llOwnerSay: niner
+llOwnerSay: ten
+llOwnerSay: eleven
+llOwnerSay: twelve
+llOwnerSay: thirteen
+llOwnerSay: fourteen
+llOwnerSay: fifteen
+llOwnerSay: 16

@@ -1,0 +1,59 @@
+Compiling...
+Running...
+llOwnerSay: existing array:
+llOwnerSay: count=0
+llOwnerSay: arraytest
+llOwnerSay: count=2
+llOwnerSay: l=0, v=the cat is fat
+llOwnerSay: l=pig, v=dog
+llOwnerSay: 0: zz[0]=the cat is fat
+llOwnerSay: 1: zz[pig]=dog
+llOwnerSay: count=3
+llOwnerSay: l=0, v=the cat is fat
+llOwnerSay: l=pig, v=dog
+llOwnerSay: l=rat, v=snake
+llOwnerSay: 0: zz[0]=the cat is fat
+llOwnerSay: 1: zz[pig]=dog
+llOwnerSay: 2: zz[rat]=snake
+llOwnerSay: count=2
+llOwnerSay: l=pig, v=dog
+llOwnerSay: l=rat, v=snake
+llOwnerSay: 0: zz[pig]=dog
+llOwnerSay: 1: zz[rat]=snake
+llOwnerSay: count=2
+llOwnerSay: l=pig, v=schwein
+llOwnerSay: l=rat, v=snake
+llOwnerSay: 0: zz[pig]=schwein
+llOwnerSay: 1: zz[rat]=snake
+llOwnerSay: count=6
+llOwnerSay: l=pig, v=schwein
+llOwnerSay: l=rat, v=snake
+llOwnerSay: l=01, v=zero,one
+llOwnerSay: l=12, v=one,two
+llOwnerSay: l=two3, v=t.w.o,three
+llOwnerSay: l=4567, v=four,five,six,seven
+llOwnerSay: 0: zz[pig]=schwein
+llOwnerSay: 1: zz[rat]=snake
+llOwnerSay: 2: zz[01]=zero,one
+llOwnerSay: 3: zz[12]=one,two
+llOwnerSay: 4: zz[two3]=t.w.o,three
+llOwnerSay: 5: zz[4567]=four,five,six,seven
+llOwnerSay: zz[01]=zero,one
+llOwnerSay: zz[12]=one,two
+llOwnerSay: zz[two3]=t.w.o,three
+llOwnerSay: zz[4567]=four,five,six,seven
+llOwnerSay: success!
+llOwnerSay: xmrHashCode(2992)  = 2992
+llOwnerSay: xmrHashCode(29.92) = 1585822313 = 1585822313
+llOwnerSay: xmrHashCode(Hello World) = -1694160966
+llOwnerSay: test JSON parse:
+llOwnerSay: 1234:
+llOwnerSay:    = 1234
+llOwnerSay: 12.34e-5:
+llOwnerSay:    = 0.0001234
+llOwnerSay: { "one": "first element", "two": "second element", "three": [ 9, 8, 7 ]}:
+llOwnerSay:   one = first element
+llOwnerSay:   two = second element
+llOwnerSay:   three0 = 9
+llOwnerSay:   three1 = 8
+llOwnerSay:   three2 = 7

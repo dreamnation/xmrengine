@@ -1,0 +1,79 @@
+Compiling...
+Running...
+llOwnerSay: just set x = 1
+llOwnerSay: after CheckRun() in try block
+llOwnerSay: catch x=1
+llOwnerSay: after CheckRun() in catch block
+llOwnerSay: just set x = 2
+llOwnerSay: after CheckRun() in try block
+llOwnerSay: finally x=2
+llOwnerSay: after CheckRun() in finally block
+llOwnerSay: inside try { }
+llOwnerSay: inside first catch { } with something
+llOwnerSay: inside first finally { }
+llOwnerSay: inside second catch { } with something
+llOwnerSay: inside second finally { }
+llOwnerSay: generate first call to checkrun
+llOwnerSay: generate second call to checkrun
+llOwnerSay: generate first call to checkrun inside try
+llOwnerSay: generate second call to checkrun inside try
+llOwnerSay: throwing up
+llOwnerSay: caught some exception
+llOwnerSay: multiple finallies via jump test
+llOwnerSay: multiple jump finallies 1a
+llOwnerSay: multiple jump finallies 1b
+llOwnerSay: multiple jump finallies 2a
+llOwnerSay: multiple jump finallies 2b
+llOwnerSay: multiple jump finallies 3a
+llOwnerSay: multiple jump finallies 3b
+llOwnerSay: multiple jump finallies 4a
+llOwnerSay: multiple jump finallies 4b
+llOwnerSay: multiple finallies via throw test
+llOwnerSay: multiple throw finallies 1a
+llOwnerSay: multiple throw finallies 1b
+llOwnerSay: CallSomethingThatCallsSomethingThatThrows or we get optimized out
+llOwnerSay: CallSomethingThatThrows or we get optimized out
+llOwnerSay: inner catch: get me out!
+llOwnerSay: stack trace:   at CallSomethingThatThrows(string) <trycatchtest.lsl(16,4)>
+  at CallSomethingThatCallsSomethingThatThrows(string) <trycatchtest.lsl(10,28)>
+  at default state_entry <trycatchtest.lsl(100,62)>
+llOwnerSay: multiple throw finallies 2a
+llOwnerSay: multiple throw finallies 2b
+llOwnerSay: multiple throw finallies 3a
+llOwnerSay: multiple throw finallies 3b
+llOwnerSay: multiple throw finallies 4a
+llOwnerSay: multiple throw finallies 4b
+llOwnerSay: check stack trace capture/restore
+llOwnerSay:     argtype: exception
+llOwnerSay:      extype: ScriptThrownException
+llOwnerSay: whole thing: ScriptThrownException: can you see me now?
+  at default state_entry <trycatchtest.lsl(123,12)>
+llOwnerSay:     message: can you see me now?
+llOwnerSay: stack trace:   at default state_entry <trycatchtest.lsl(123,12)>
+llOwnerSay: catch filtering...
+llOwnerSay: caught integer 1
+llOwnerSay: caught string two
+llOwnerSay: caught float 3.000000
+llOwnerSay: caught vector <4.000000, 4.000000, 4.000000>
+llOwnerSay: caught unknown rotation <5.000000, 5.000000, 5.000000, 5.000000>
+llOwnerSay: * caught vase this is a VaseOne
+llOwnerSay: * caught vaseone this is a VaseOne
+llOwnerSay: finally 0
+llOwnerSay: normal 0
+llOwnerSay: DivideByZeroException
+llOwnerSay: next...
+llOwnerSay: finally 1
+llOwnerSay: finally 2
+llOwnerSay: normal 2
+llOwnerSay: 500
+llOwnerSay: finally 3
+llOwnerSay: finally 4
+llOwnerSay: normal 4
+llOwnerSay: 250
+llOwnerSay: finally 5
+llOwnerSay: finally 6
+llOwnerSay: normal 6
+llOwnerSay: 166
+llOwnerSay: finally 7
+llOwnerSay: finally 8
+llOwnerSay: all done

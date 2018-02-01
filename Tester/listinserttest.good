@@ -1,0 +1,10 @@
+Compiling...
+Running...
+llOwnerSay: before=1, 3, 0, 4, 2, 7
+llOwnerSay:  after=0, 4, 1, 3, 2, 7
+llOwnerSay: before=1.000000, 3.000000, 0.000000, 4.000000, 2.000000, 7.000000
+llOwnerSay:  after=0.000000, 4.000000, 1.000000, 3.000000, 2.000000, 7.000000
+llOwnerSay: before=1 one, 3 three, 0 zero, 4 four, 2 two, 7 seven
+llOwnerSay:  after=0 zero, 4 four, 1 one, 3 three, 2 two, 7 seven
+llOwnerSay: flist=0
+llOwnerSay: tlist=1

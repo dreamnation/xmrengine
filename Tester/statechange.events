@@ -1,0 +1,17 @@
+touch_start(0)
+timer()
+timer()
+sensor(3)
+llDetectedName:"Kunta Kinte"
+llDetectedName:"Waki Janus"
+llDetectedName:"Abitar Horan"
+timer()
+timer()
+llListen:11
+timer()
+timer()
+listen(0,"Kunta Kinte","12345-6789A-BCDEF","hello #320!")
+touch_start(0)
+timer()
+timer()
+touch_start(0)
