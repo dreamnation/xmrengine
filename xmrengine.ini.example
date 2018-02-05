@@ -9,13 +9,14 @@
 
     ;; UThreadModel = sys (the default) works on mono and windows
     ;;  sys = use system threads to run scripts
+    ;;  nul = use stack smashing to run scripts
     ;;  con = use mono continuations to run scripts
     ;;          memcpy()s stack
     ;;  mmr = use patched mono microthreads to run scripts
     ;;          swaps stack pointer
     ;;          available in https://www.dreamnation.net/downloads
-    ;;  if you have mono, you can use sys or con
-    ;;  if you have patched mono, you can use sys, con or mmr
+    ;;  if you have mono, you can use sys, nul or con
+    ;;  if you have patched mono, you can use sys, nul, con or mmr
     ;; Before using con or mmr,
     ;;  1) rename prebuild1.xml to prebuild1.xml.hide
     ;;  2) delete bin/XMREngine.dll* and bin/Mono.Tasklets.dll*
@@ -23,7 +24,7 @@
 
 [XMREngine]
     Enabled = true
-    UThreadModel = sys
+    UThreadModel = nul
     ScriptStackSize = 256
     ScriptHeapSize = 256
     UseSourceHashCode = true

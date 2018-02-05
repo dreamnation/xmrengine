@@ -200,7 +200,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 return;
             }
 
-            string uThreadModel = "sys";  // will work anywhere
+            string uThreadModel = "nul";  // will work anywhere
             uThreadModel = m_Config.GetString ("UThreadModel", uThreadModel);
 
             Type uThreadType = null;
@@ -221,6 +221,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         return;
                     }
                     uThreadType = typeof (ScriptUThread_MMR);
+                    break;
+                }
+
+                // smashes stack to hibernate
+                case "nul": {
+                    uThreadType = typeof (ScriptUThread_Nul);
                     break;
                 }
 
