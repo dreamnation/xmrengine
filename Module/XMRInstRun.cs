@@ -270,19 +270,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 Exception e = null;
 
                 /*
-                 * Maybe we have been disposed.
-                 */
-                m_RunOnePhase = "check disposed";
-                if (microthread == null)
-                {
-                    m_RunOnePhase = "return disposed";
-                    return XMRInstState.DISPOSED;
-                }
-
-                /*
                  * Do some more of the last event if it didn't finish.
                  */
-                else if (this.eventCode != ScriptEventCode.None)
+                if (this.eventCode != ScriptEventCode.None)
                 {
                     lock (m_QueueLock)
                     {
@@ -300,7 +290,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     m_LastRanAt   = now;
                     m_InstEHSlice ++;
                     callMode = CallMode_NORMAL;
-                    e = microthread.ResumeEx ();
+                    e = ResumeEx ();
                 }
 
                 /*
@@ -443,24 +433,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * If not executing any event handler, active should be 0 indicating the microthread stack is not in use.
              * If executing an event handler, active should be -1 indicating stack is in use but suspended.
              */
-            IScriptUThread uth = microthread;
-            if (uth != null) {
-                int active = uth.Active ();
-                ScriptEventCode ec = this.eventCode;
-                if (((ec == ScriptEventCode.None) && (active != 0)) ||
-                    ((ec != ScriptEventCode.None) && (active >= 0))) {
-                    Console.WriteLine("CheckRunLockInvariants: script=" + m_DescName);
-                    Console.WriteLine("CheckRunLockInvariants: eventcode=" + ec.ToString() + ", active=" + active.ToString());
-                    Console.WriteLine("CheckRunLockInvariants: m_RunOnePhase=" + m_RunOnePhase);
-                    Console.WriteLine("CheckRunLockInvariants: lastec=" + lastEventCode + ", lastAct=" + lastActive + ", lastPhase=" + lastRunPhase);
-                    if (throwIt) {
-                        throw new Exception("CheckRunLockInvariants: eventcode=" + ec.ToString() + ", active=" + active.ToString());
-                    }
+            int active = Active ();
+            ScriptEventCode ec = this.eventCode;
+            if (((ec == ScriptEventCode.None) && (active != 0)) ||
+                ((ec != ScriptEventCode.None) && (active >= 0))) {
+                Console.WriteLine("CheckRunLockInvariants: script=" + m_DescName);
+                Console.WriteLine("CheckRunLockInvariants: eventcode=" + ec.ToString() + ", active=" + active.ToString());
+                Console.WriteLine("CheckRunLockInvariants: m_RunOnePhase=" + m_RunOnePhase);
+                Console.WriteLine("CheckRunLockInvariants: lastec=" + lastEventCode + ", lastAct=" + lastActive + ", lastPhase=" + lastRunPhase);
+                if (throwIt) {
+                    throw new Exception("CheckRunLockInvariants: eventcode=" + ec.ToString() + ", active=" + active.ToString());
                 }
-                lastEventCode = ec;
-                lastActive    = active;
-                lastRunPhase  = m_RunOnePhase;
             }
+            lastEventCode = ec;
+            lastActive    = active;
+            lastRunPhase  = m_RunOnePhase;
         }
 
         /*
@@ -501,7 +488,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (this.eventCode != ScriptEventCode.None) {
                 throw new Exception ("still processing event " + this.eventCode.ToString ());
             }
-            int active = microthread.Active ();
+            int active = Active ();
             if (active != 0) {
                 throw new Exception ("microthread is active " + active.ToString ());
             }
@@ -520,9 +507,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * without doing any stack frame restores first.
              */
             this.stackFrames = null;
-            Exception e;
-            e = microthread.StartEx ();
-            return e;
+            return StartEx ();
         }
 
 
@@ -816,15 +801,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if (m_IState != XMRInstState.RESETTING) throw new Exception("bad state");
 
                 /*
-                 * If the microthread is active, that means it has call frame
-                 * context that we don't want.  Throw it out and get a fresh one.
-                 */
-                if (microthread.Active () < 0) {
-                    microthread.Dispose ();
-                    microthread = (IScriptUThread)m_Engine.uThreadCtor.Invoke (new object[] { this });
-                }
-
-                /*
                  * Mark it idle now so it can get queued to process new stuff.
                  */
                 m_IState = XMRInstState.IDLE;
@@ -998,7 +974,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  */
                 m_CheckRunPhase = "suspending";
                 suspendOnCheckRunTemp = false;
-                microthread.Hiber ();
+                Hiber ();
                 m_CheckRunPhase = "resumed";
             }
 

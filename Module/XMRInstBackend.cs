@@ -623,7 +623,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public override int xmrStackLeft ()
         {
-            return microthread.StackLeft ();
+            return StackLeft ();
         }
     }
 

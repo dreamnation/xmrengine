@@ -84,7 +84,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private bool m_Enabled = false;
         public  bool m_StartProcessing = false;
         public  bool m_UseSourceHashCode = false;
-        public  ConstructorInfo uThreadCtor;
         private Dictionary<UUID, ArrayList> m_ScriptErrors =
                 new Dictionary<UUID, ArrayList>();
         private Dictionary<UUID, List<UUID>> m_ObjectItemList =
@@ -95,7 +94,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 new Dictionary<string,FieldInfo> ();
         private int m_StackSize;
         private int m_HeapSize;
-        private XMRScriptThread[] m_ScriptThreads;
         private Thread m_SleepThread = null;
         private Thread m_SliceThread = null;
         private bool m_Exiting = false;
@@ -200,59 +198,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 return;
             }
 
-            string uThreadModel = "nul";  // will work anywhere
-            uThreadModel = m_Config.GetString ("UThreadModel", uThreadModel);
-
-            Type uThreadType = null;
-            switch (uThreadModel.ToLower ()) {
-
-                // mono continuations - memcpy()s the stack
-                case "con": {
-                    uThreadType = typeof (ScriptUThread_Con);
-                    break;
-                }
-
-                // patched mono microthreads - switches stack pointer
-                case "mmr": {
-                    Exception e = ScriptUThread_MMR.LoadMono ();
-                    if (e != null) {
-                        m_log.Error ("[XMREngine]: mmr thread model not available\n", e);
-                        m_Enabled = false;
-                        return;
-                    }
-                    uThreadType = typeof (ScriptUThread_MMR);
-                    break;
-                }
-
-                // smashes stack to hibernate
-                case "nul": {
-                    uThreadType = typeof (ScriptUThread_Nul);
-                    break;
-                }
-
-                // system threads - works on mono and windows
-                case "sys": {
-                    uThreadType = typeof (ScriptUThread_Sys);
-                    break;
-                }
-
-                // who knows what
-                default: {
-                    m_log.Error ("[XMREngine]: unknown thread model " + uThreadModel);
-                    m_Enabled = false;
-                    return;
-                }
-            }
-
-            uThreadCtor = uThreadType.GetConstructor (new Type[] { typeof (XMRInstance) });
-            m_log.Info ("[XMREngine]: using thread model " + uThreadModel);
-
             m_UseSourceHashCode    = m_Config.GetBoolean ("UseSourceHashCode", false);
             numThreadScriptWorkers = m_Config.GetInt ("NumThreadScriptWorkers", 1);
-            m_ScriptThreads        = new XMRScriptThread[numThreadScriptWorkers];
 
             for (int i = 0; i < numThreadScriptWorkers; i ++) {
-                m_ScriptThreads[i] = new XMRScriptThread(this);
+                StartThreadWorker ();
             }
 
             m_SleepThread = StartMyThread (RunSleepThread, "xmrengine sleep", ThreadPriority.Normal);
@@ -688,13 +638,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * one to finish (ie, script gets to CheckRun() call).
              */
             m_Exiting = true;
-            for (int i = 0; i < numThreadScriptWorkers; i ++) {
-                XMRScriptThread scriptThread = m_ScriptThreads[i];
-                if (scriptThread != null) {
-                    scriptThread.Terminate();
-                    m_ScriptThreads[i] = null;
-                }
-            }
+            StopThreadWorkers ();
             if (m_SleepThread != null) {
                 lock (m_SleepQueue) {
                     Monitor.PulseAll (m_SleepQueue);
@@ -743,9 +687,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_log.Debug ("[XMREngine]: StartProcessing entry");
             m_Scene.EventManager.TriggerEmptyScriptCompileQueue (0, "");
             m_StartProcessing = true;
-            for (int i = 0; i < numThreadScriptWorkers; i ++) {
-                XMRScriptThread.WakeUpOne();
-            }
+            ResumeThreads ();
             m_log.Debug ("[XMREngine]: StartProcessing return");
         }
 
@@ -846,16 +788,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
                 case "resume": {
                     m_log.Info ("[XMREngine]: resuming scripts");
-                    for (int i = 0; i < numThreadScriptWorkers; i ++) {
-                        m_ScriptThreads[i].ResumeThread();
-                    }
+                    ResumeThreads();
                     break;
                 }
                 case "suspend": {
                     m_log.Info ("[XMREngine]: suspending scripts");
-                    for (int i = 0; i < numThreadScriptWorkers; i ++) {
-                        m_ScriptThreads[i].SuspendThread();
-                    }
+                    SuspendThreads();
                     break;
                 }
                 case "tracecalls": {
@@ -1570,7 +1508,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if (inst.m_IState != XMRInstState.ONSTARTQ) throw new Exception("bad state");
                 m_StartQueue.InsertTail(inst);
             }
-            XMRScriptThread.WakeUpOne();
+            WakeUpOne();
         }
 
         /**
@@ -1600,7 +1538,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Make sure the OS thread is running so it will see the script.
              */
-            XMRScriptThread.WakeUpOne();
+            WakeUpOne();
         }
 
         /**
@@ -1756,7 +1694,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     inst.m_IState = XMRInstState.ONYIELDQ;
                     m_YieldQueue.InsertTail(inst);
                 }
-                XMRScriptThread.WakeUpOne ();
+                WakeUpOne ();
             }
         }
 
@@ -1778,10 +1716,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * If some script is running, flag it to suspend
                  * next time it calls CheckRun().
                  */
-                for (int i = 0; i < numThreadScriptWorkers; i ++) {
-                    XMRScriptThread st = m_ScriptThreads[i];
-                    if (st != null) st.TimeSlice();
-                }
+                TimeSliceScripts ();
             }
             MyThreadExiting ();
         }

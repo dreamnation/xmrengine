@@ -233,8 +233,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             // do all the work in the MigrateOutEventHandlerThread() method below
             moehstream = stream;
 
-            XMRScriptThread cst = XMRScriptThread.CurrentScriptThread ();
-            if (cst != null) {
+            if (XMREngine.IsScriptThread) {
 
                 // we might be getting called inside some LSL Api function
                 // so we are already in script thread and thus must do
@@ -243,10 +242,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             } else {
 
                 // some other thread, do migration via a script thread
-                lock (XMRScriptThread.m_WakeUpLock) {
+                lock (m_Engine.m_WakeUpLock) {
                     m_Engine.m_ThunkQueue.Enqueue (this.MigrateOutEventHandlerThread);
                 }
-                XMRScriptThread.WakeUpOne ();
+                m_Engine.WakeUpOne ();
 
                 // wait for it to complete
                 lock (moehdone) {
@@ -281,7 +280,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     // it should see captureStackFrames and throw StackCaptureException()
                     // ...generating XMRStackFrames as it unwinds
                     this.captureStackFrames = true;
-                    except = this.microthread.ResumeEx ();
+                    except = this.ResumeEx ();
                     this.captureStackFrames = false;
                     if (except == null) {
                         throw new Exception ("stack save did not complete");
@@ -305,7 +304,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  */
                 if (this.eventCode != ScriptEventCode.None) {
                     this.stackFramesRestored = false;
-                    except = this.microthread.StartEx ();
+                    except = this.StartEx ();
                     if (except != null) {
                         throw except;
                     }
@@ -318,7 +317,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             } finally {
 
                 // make sure CheckRunLockInvariants() won't puque
-                if (this.microthread.Active () == 0) {
+                if (this.Active () == 0) {
                     this.eventCode = ScriptEventCode.None;
                 }
 

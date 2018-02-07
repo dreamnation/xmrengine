@@ -175,11 +175,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private XMRLSL_Api m_XMRLSLApi;
 
         /*
-         * We will use this microthread to run the scripts event handlers.
-         */
-        private IScriptUThread microthread;
-
-        /*
          * Set to perform migration.
          */
         public bool stackFramesRestored; // set true by CheckRun() when stack has been 

@@ -80,21 +80,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             suspendOnCheckRunHold = true;
 
             /*
-             * Wait for it to stop executing and prevent it from starting again
-             * as it can't run without a microthread.
-             */
-            lock (m_RunLock)
-            {
-                if (microthread != null)
-                {
-                    m_RunOnePhase = "disposing";
-                    CheckRunLockInvariants(true);
-                    microthread.Dispose ();
-                    microthread = null;
-                }
-            }
-
-            /*
              * Don't send us any more events.
              */
             if (m_Part != null)

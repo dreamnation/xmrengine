@@ -107,23 +107,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             try {
-                for (int i = 0; i < numThreadScriptWorkers; i ++) {
-                    XMRScriptThread th = m_ScriptThreads[i];
-                    outFile.WriteLine("Script thread ID: " + th.m_ScriptThreadTID);
-                    long execTime = th.m_ScriptExecTime;
-                    if (execTime < 0) {
-                        execTime += (long)(DateTime.UtcNow - DateTime.MinValue).TotalMilliseconds;
-                    }
-                    outFile.WriteLine("  execution time: " + execTime + " mS");
-                    outFile.WriteLine("     last ran at: " + th.m_LastRanAt.ToString());
-                    XMRInstance rins = th.m_RunInstance;
-                    if (rins != null) {
-                        outFile.WriteLine("         running: " + rins.ItemID.ToString() + " " + rins.m_DescName);
-                        if (flagFull) {
-                            outFile.WriteLine (rins.RunTestLs (true));
-                        }
-                    }
-                }
 
                 /*
                  * Scan instance list to find those that match selection criteria.

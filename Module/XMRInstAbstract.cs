@@ -1993,18 +1993,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
     }
 
-    /**
-     * @brief Common access to script microthread.
-     */
-    public interface IScriptUThread : IDisposable
-    {
-        Exception ResumeEx  ();     // called by macrothread to resume execution at most recent Hiber()
-        Exception StartEx   ();     // called by macrothread to start execution at CallSEH()
-        int       Active    ();     // called by macrothread to query state of microthread
-        int       StackLeft ();     // called by microthread to query amount of remaining stack space
-        void      Hiber     ();     // called by microthread to hibernate
-    }
-
     // Any xmr...() methods that call CheckRun() must be tagged with this attribute
     // so the ScriptCodeGen will know the method is non-trivial.
     public class xmrMethodCallsCheckRunAttribute : Attribute { }

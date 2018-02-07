@@ -370,11 +370,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     }
                 }
             }
-
-            /*
-             * Set up microthread object which actually calls the script event handler functions.
-             */
-            this.microthread = (IScriptUThread)m_Engine.uThreadCtor.Invoke (new object[] { this });
         }
 
         //  LoadInitialState()
@@ -723,18 +718,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             // do all the work in the MigrateInEventHandlerThread() method below
             miehstream = stream;
 
-            XMRScriptThread cst = XMRScriptThread.CurrentScriptThread ();
-            if (cst != null) {
+            if (XMREngine.IsScriptThread) {
 
                 // in case we are getting called inside some LSL Api function
                 MigrateInEventHandlerThread ();
             } else {
 
                 // some other thread, do migration via a script thread
-                lock (XMRScriptThread.m_WakeUpLock) {
+                lock (m_Engine.m_WakeUpLock) {
                     m_Engine.m_ThunkQueue.Enqueue (this.MigrateInEventHandlerThread);
                 }
-                XMRScriptThread.WakeUpOne ();
+                m_Engine.WakeUpOne ();
 
                 // wait for it to complete
                 lock (miehdone) {
@@ -783,7 +777,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      * stack all restored.  It shouldn't ever throw an exception.
                      */
                     this.stackFramesRestored = false;
-                    Exception te = microthread.StartEx ();
+                    Exception te = StartEx ();
                     if (te != null) throw te;
                     if (!this.stackFramesRestored) throw new Exception ("migrate in did not complete");
                 }
