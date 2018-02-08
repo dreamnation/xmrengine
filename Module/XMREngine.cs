@@ -698,10 +698,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         private void RunTest (string module, string[] args)
         {
+            if (m_Scene != SceneManager.Instance.CurrentScene) return;
+
             if (args.Length < 2) {
                 m_log.Info ("[XMREngine]: missing command, try 'xmr help'");
                 return;
             }
+
+            m_log.Info ("[XMREngine]: " + m_Scene.RegionInfo.RegionName);
 
             switch (args[1]) {
                 case "cvv": {
