@@ -228,105 +228,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         private void MigrateOutEventHandler (Stream stream)
         {
-            moehexcep = null;
-
-            // do all the work in the MigrateOutEventHandlerThread() method below
-            moehstream = stream;
-
-            if (XMREngine.IsScriptThread) {
-
-                // we might be getting called inside some LSL Api function
-                // so we are already in script thread and thus must do
-                // migration directly
-                MigrateOutEventHandlerThread ();
-            } else {
-
-                // some other thread, do migration via a script thread
-                lock (m_Engine.m_WakeUpLock) {
-                    m_Engine.m_ThunkQueue.Enqueue (this.MigrateOutEventHandlerThread);
-                }
-                m_Engine.WakeUpOne ();
-
-                // wait for it to complete
-                lock (moehdone) {
-                    while (moehstream != null) {
-                        Monitor.Wait (moehdone);
-                    }
-                }
+            /*
+             * If there are stack frames, the script should be hibernating.
+             * Otherwise, the script should be idle.
+             */
+            int utactShouldBe = (stackFrames != null) ? -1 : 0;
+            if (utactive != utactShouldBe) {
+                throw new Exception ("utactive=" + utactive + " should be=" + utactShouldBe);
             }
 
-            // maybe it threw up
-            if (moehexcep != null) throw moehexcep;
-        }
-        private Exception moehexcep;
-        private object moehdone = new object ();
-        private Stream moehstream;
-        private void MigrateOutEventHandlerThread ()
-        {
-            Exception except;
-
-            try {
-
-                /*
-                 * Resume the microthread and it will throw a StackCaptureException()
-                 * with the stack frames saved to this.stackFrames.
-                 * Then write the saved stack frames to the output stream.
-                 *
-                 * There is a stack only if the event code is not None.
-                 */
-                if (this.eventCode != ScriptEventCode.None) {
-
-                    // tell microthread to continue
-                    // it should see captureStackFrames and throw StackCaptureException()
-                    // ...generating XMRStackFrames as it unwinds
-                    this.captureStackFrames = true;
-                    except = this.ResumeEx ();
-                    this.captureStackFrames = false;
-                    if (except == null) {
-                        throw new Exception ("stack save did not complete");
-                    }
-                    if (!(except is StackCaptureException)) {
-                        throw except;
-                    }
-                }
-
-                /*
-                 * Write script state out, frames and all, to the stream.
-                 * Does not change script state.
-                 */
-                moehstream.WriteByte (migrationVersion);
-                moehstream.WriteByte ((byte)16);
-                this.MigrateOut (new BinaryWriter (moehstream));
-
-                /*
-                 * Now restore script stack.
-                 * Microthread will suspend inside CheckRun() when restore is complete.
-                 */
-                if (this.eventCode != ScriptEventCode.None) {
-                    this.stackFramesRestored = false;
-                    except = this.StartEx ();
-                    if (except != null) {
-                        throw except;
-                    }
-                    if (!this.stackFramesRestored) {
-                        throw new Exception ("restore after save did not complete");
-                    }
-                }
-            } catch (Exception e) {
-                moehexcep = e;
-            } finally {
-
-                // make sure CheckRunLockInvariants() won't puque
-                if (this.Active () == 0) {
-                    this.eventCode = ScriptEventCode.None;
-                }
-
-                // wake the MigrateOutEventHandler() method above
-                lock (moehdone) {
-                    moehstream = null;
-                    Monitor.Pulse (moehdone);
-                }
-            }
+            /*
+             * Write script state out, frames and all, to the stream.
+             * Does not change script state.
+             */
+            stream.WriteByte (migrationVersion);
+            stream.WriteByte ((byte)16);
+            this.MigrateOut (new BinaryWriter (stream));
         }
 
         /**

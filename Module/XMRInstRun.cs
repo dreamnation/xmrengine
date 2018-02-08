@@ -270,6 +270,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 Exception e = null;
 
                 /*
+                 * Maybe it has been Disposed()
+                 */
+                if (m_Part == null) {
+                    m_RunOnePhase = "runone saw it disposed";
+                    return XMRInstState.DISPOSED;
+                }
+
+                /*
                  * Do some more of the last event if it didn't finish.
                  */
                 if (this.eventCode != ScriptEventCode.None)

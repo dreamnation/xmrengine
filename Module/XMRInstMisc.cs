@@ -82,12 +82,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Don't send us any more events.
              */
-            if (m_Part != null)
-            {
-                xmrTrapRegionCrossing (0);
-                m_Part.RemoveScriptEvents(m_ItemID);
-                AsyncCommandManager.RemoveScript(m_Engine, m_LocalID, m_ItemID);
-                m_Part = null;
+            lock (m_RunLock) {
+                if (m_Part != null) {
+                    m_Part.RemoveScriptEvents(m_ItemID);
+                    AsyncCommandManager.RemoveScript(m_Engine, m_LocalID, m_ItemID);
+                    m_Part = null;
+                }
             }
 
             /*

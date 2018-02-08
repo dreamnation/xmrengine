@@ -713,85 +713,28 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         private void MigrateInEventHandler (Stream stream)
         {
-            miehexcep = null;
-
-            // do all the work in the MigrateInEventHandlerThread() method below
-            miehstream = stream;
-
-            if (XMREngine.IsScriptThread) {
-
-                // in case we are getting called inside some LSL Api function
-                MigrateInEventHandlerThread ();
-            } else {
-
-                // some other thread, do migration via a script thread
-                lock (m_Engine.m_WakeUpLock) {
-                    m_Engine.m_ThunkQueue.Enqueue (this.MigrateInEventHandlerThread);
-                }
-                m_Engine.WakeUpOne ();
-
-                // wait for it to complete
-                lock (miehdone) {
-                    while (miehstream != null) {
-                        Monitor.Wait (miehdone);
-                    }
-                }
+            int mv = stream.ReadByte ();
+            if (mv != migrationVersion) {
+                throw new Exception ("incoming migration version " + mv + " but accept only " + migrationVersion);
             }
+            stream.ReadByte ();  // ignored
 
-            // maybe it threw up
-            if (miehexcep != null) throw miehexcep;
-        }
-        private Exception miehexcep;
-        private object miehdone = new object ();
-        private Stream miehstream;
-        private void MigrateInEventHandlerThread ()
-        {
-            try {
-                int mv = miehstream.ReadByte ();
-                if (mv != migrationVersion) {
-                    throw new Exception ("incoming migration version " + mv + " but accept only " + migrationVersion);
-                }
-                miehstream.ReadByte ();  // ignored
-
-                /*
-                 * Restore script variables and stack and other state from stream.
-                 * And it also marks us busy (by setting this.eventCode) so we can't be
-                 * started again and this event lost.
-                 */
-                BinaryReader br = new BinaryReader (miehstream);
+            /*
+             * Restore script variables and stack and other state from stream.
+             * And it also marks us busy (by setting this.eventCode) so we can't be
+             * started again and this event lost.  If it restores this.eventCode =
+             * None, the the script was idle.
+             */
+            lock (m_RunLock) {
+                BinaryReader br = new BinaryReader (stream);
                 this.MigrateIn (br);
 
-                /*
-                 * If eventCode is None, it means the script was idle when migrated.
-                 */
-                if (this.eventCode != ScriptEventCode.None) {
+                // if there are stack frames, the script should be hibernating
+                // otherwise, the script should be idle
+                utactive = (stackFrames != null) ? -1 : 0;
 
-                    /*
-                     * So microthread.Start() calls XMRScriptUThread.Main() which calls the
-                     * event handler function.  The event handler function sees the stack
-                     * frames in this.stackFrames and restores its args and locals, then calls
-                     * whatever it was calling when the snapshot was taken.  That function also
-                     * sees this.stackFrames and restores its args and locals, and so on...
-                     * Eventually it gets to the point of calling CheckRun() which sees we are
-                     * doing a restore and it suspends, returning here with the microthread
-                     * stack all restored.  It shouldn't ever throw an exception.
-                     */
-                    this.stackFramesRestored = false;
-                    Exception te = StartEx ();
-                    if (te != null) throw te;
-                    if (!this.stackFramesRestored) throw new Exception ("migrate in did not complete");
-                }
-            } catch (Exception e) {
-                miehexcep = e;
-            } finally {
-
-                /*
-                 * Wake the MigrateInEventHandler() method above.
-                 */
-                lock (miehdone) {
-                    miehstream = null;
-                    Monitor.Pulse (miehdone);
-                }
+                m_RunOnePhase = "MigrateInEventHandler finished";
+                CheckRunLockInvariants(true);
             }
         }
 
