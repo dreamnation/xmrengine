@@ -110,6 +110,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private static FieldInfo rotationZFieldInfo      = typeof (LSL_Rotation).GetField ("z");
         private static FieldInfo rotationSFieldInfo      = typeof (LSL_Rotation).GetField ("s");
         private static FieldInfo sdtXMRInstFieldInfo     = typeof (XMRSDTypeClObj).GetField ("xmrInst");
+        private static FieldInfo stackUsedFieldInfo      = typeof (XMRInstAbstract).GetField ("m_StackUsed");
         private static FieldInfo vectorXFieldInfo        = typeof (LSL_Vector).GetField ("x");
         private static FieldInfo vectorYFieldInfo        = typeof (LSL_Vector).GetField ("y");
         private static FieldInfo vectorZFieldInfo        = typeof (LSL_Vector).GetField ("z");
@@ -1220,7 +1221,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Alloc stack space for local vars.
              */
-            AllocLocalVarStackSpace ();
+            int stackframesize = AllocLocalVarStackSpace ();
+
+            /*
+             * Include argument variables in stack space for this frame.
+             */
+            foreach (TokenType tokType in curDeclFunc.argDecl.types) {
+                stackframesize += LocalVarStackSize (tokType);
+            }
 
             /*
              * Any return statements inside function body jump to this label
@@ -1235,6 +1243,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Output:
              *    int __mainCallNo = -1;
+             *    instance.m_StackUsed += stackframesize;
              *    try {
              *        if (instance.callMode != CallMode_NORMAL) goto __cmRestore;
              */
@@ -1243,6 +1252,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             if (!isTrivial) {
                 actCallNo = ilGen.DeclareLocal (typeof (int), "__mainCallNo");
                 SetCallNo (curDeclFunc, actCallNo, -1);
+                PushXMRInst ();
+                ilGen.Emit (curDeclFunc, OpCodes.Dup);
+                ilGen.Emit (curDeclFunc, OpCodes.Ldfld, stackUsedFieldInfo);
+                ilGen.Emit (curDeclFunc, OpCodes.Ldc_I4, stackframesize);
+                ilGen.Emit (curDeclFunc, OpCodes.Add);
+                ilGen.Emit (curDeclFunc, OpCodes.Stfld, stackUsedFieldInfo);
                 cmRestore = ilGen.DefineLabel ("__cmRestore");
                 ilGen.BeginExceptionBlock ();
                 PushXMRInst ();
@@ -1380,6 +1395,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * Output epilog that saves stack frame state if CallMode_SAVE.
              *
              *   finally {
+             *      instance.m_StackUsed -= stackframesize;
              *      if (instance.callMode != CallMode_SAVE) goto __endFin;
              *      GenerateFrameCaptureCode();
              *   __endFin:
@@ -1388,6 +1404,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             ScriptMyLabel endFin = null;
             if (!isTrivial) {
                 ilGen.BeginFinallyBlock ();
+                PushXMRInst ();
+                ilGen.Emit (curDeclFunc, OpCodes.Dup);
+                ilGen.Emit (curDeclFunc, OpCodes.Ldfld, stackUsedFieldInfo);
+                ilGen.Emit (curDeclFunc, OpCodes.Ldc_I4, stackframesize);
+                ilGen.Emit (curDeclFunc, OpCodes.Sub);
+                ilGen.Emit (curDeclFunc, OpCodes.Stfld, stackUsedFieldInfo);
                 endFin = ilGen.DefineLabel ("__endFin");
                 PushXMRInst ();
                 ilGen.Emit (curDeclFunc, OpCodes.Ldfld, callModeFieldInfo);
@@ -1427,9 +1449,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /**
          * @brief Allocate stack space for all local variables, regardless of
          *        which { } statement block they are actually defined in.
+         * @returns approximate stack frame size
          */
-        private void AllocLocalVarStackSpace ()
+        private int AllocLocalVarStackSpace ()
         {
+            int stackframesize = 64;  // RIP, RBX, RBP, R12..R15, one extra
             foreach (TokenDeclVar localVar in curDeclFunc.localVars) {
 
                 /*
@@ -1441,7 +1465,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * Get a stack location for the local variable.
                  */
                 localVar.location = new CompValuLocalVar (localVar.type, localVar.name.val, this);
+
+                /*
+                 * Stack size for the local variable.
+                 */
+                stackframesize += LocalVarStackSize (localVar.type);
             }
+            return stackframesize;
+        }
+
+        private static int LocalVarStackSize (TokenType tokType)
+        {
+            Type sysType = tokType.ToSysType ();
+            return sysType.IsValueType ? System.Runtime.InteropServices.Marshal.SizeOf (sysType) : 8;
         }
 
         /**

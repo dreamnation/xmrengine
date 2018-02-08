@@ -169,7 +169,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
          */
         public int StackLeft ()
         {
-            return 0x7FFFFFFF;
+            return m_Engine.m_StackSize - m_StackUsed;
         }
 
         public class StackHibernateException : Exception, IXMRUncatchable { }

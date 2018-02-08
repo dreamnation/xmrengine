@@ -92,7 +92,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 new Dictionary<UUID, XMRInstance[]>();
         public  Dictionary<string,FieldInfo> m_XMRInstanceApiCtxFieldInfos =
                 new Dictionary<string,FieldInfo> ();
-        private int m_StackSize;
+        public  int m_StackSize;
         private int m_HeapSize;
         private Thread m_SleepThread = null;
         private Thread m_SliceThread = null;

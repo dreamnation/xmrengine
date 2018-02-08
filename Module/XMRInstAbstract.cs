@@ -350,6 +350,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public bool suspendOnCheckRunHold;  // suspend script execution until explicitly set false
         public bool suspendOnCheckRunTemp;  // suspend script execution for single step only
         public int stackLimit;              // stack must have at least this many bytes free on entry to functions
+        public int m_StackUsed;             // total number of stack bytes currently in use (0 on entry to event handler)
 
         public ScriptObjCode m_ObjCode;     // script object code this instance was created from
 
@@ -485,6 +486,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      * Process event given by 'stateCode' and 'eventCode'.
                      * The event handler should call CheckRun() as often as convenient.
                      */
+                    m_StackUsed = 0;
                     int newState = this.stateCode;
                     seh = this.m_ObjCode.scriptEventHandlerTable[newState,(int)this.eventCode];
                     if (seh != null) {
@@ -515,6 +517,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 /*
                  * Call old state's state_exit() handler.
                  */
+                m_StackUsed = 0;
                 this.eventCode = ScriptEventCode.state_exit;
                 seh = this.m_ObjCode.scriptEventHandlerTable[this.stateCode,(int)ScriptEventCode.state_exit];
                 if (seh != null) {
