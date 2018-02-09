@@ -432,19 +432,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          * @brief Immediately after taking m_RunLock or just before releasing it, check invariants.
          */
         private ScriptEventCode lastEventCode = ScriptEventCode.None;
-        private int             lastActive    = 0;
+        private bool            lastActive    = false;
         private string          lastRunPhase  = "";
 
         public void CheckRunLockInvariants(bool throwIt)
         {
             /*
-             * If not executing any event handler, active should be 0 indicating the microthread stack is not in use.
-             * If executing an event handler, active should be -1 indicating stack is in use but suspended.
+             * If not executing any event handler, there shouldn't be any saved stack frames.
+             * If executing an event handler, there should be some saved stack frames.
              */
-            int active = Active ();
+            bool active = (stackFrames != null);
             ScriptEventCode ec = this.eventCode;
-            if (((ec == ScriptEventCode.None) && (active != 0)) ||
-                ((ec != ScriptEventCode.None) && (active >= 0))) {
+            if (((ec == ScriptEventCode.None) &&  active) ||
+                ((ec != ScriptEventCode.None) && !active)) {
                 Console.WriteLine("CheckRunLockInvariants: script=" + m_DescName);
                 Console.WriteLine("CheckRunLockInvariants: eventcode=" + ec.ToString() + ", active=" + active.ToString());
                 Console.WriteLine("CheckRunLockInvariants: m_RunOnePhase=" + m_RunOnePhase);
@@ -495,10 +495,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
             if (this.eventCode != ScriptEventCode.None) {
                 throw new Exception ("still processing event " + this.eventCode.ToString ());
-            }
-            int active = Active ();
-            if (active != 0) {
-                throw new Exception ("microthread is active " + active.ToString ());
             }
 
             /*
@@ -947,42 +943,39 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              */
             while (suspendOnCheckRunHold || suspendOnCheckRunTemp) {
                 m_CheckRunPhase = "top of while";
+                suspendOnCheckRunTemp = false;
 
-                /*
-                 * See if MigrateOutEventHandler() has been called.
-                 * If so, dump our stack to stackFrames and unwind.
-                 */
-                if (this.captureStackFrames) {
+                switch (this.callMode) {
 
                     /*
-                     * Puque our stack to the output stream.
-                     * But otherwise, our state remains intact.
+                     * Now we are ready to suspend the microthread.
+                     * This is like a longjmp() to the most recent StartEx() or ResumeEx()
+                     * with a simultaneous setjmp() so ResumeEx() can longjmp() back here.
                      */
-                    m_CheckRunPhase = "saving";
-                    this.callMode = CallMode_SAVE;
-                    this.stackFrames = null;
-                    throw new StackCaptureException ();
-                }
+                    // the script event handler wants to hibernate
+                    // capture stack frames and unwind to Start() or Resume()
+                    case CallMode_NORMAL: {
+                        m_CheckRunPhase = "suspending";
+                        callMode = XMRInstance.CallMode_SAVE;
+                        stackFrames = null;
+                        throw new StackHibernateException ();
+                    }
 
-                /*
-                 * We get here when the script state has been read in by MigrateInEventHandler().
-                 * Since the stack is completely restored at this point, any subsequent calls
-                 * within the functions should do their normal processing instead of trying to 
-                 * restore their state.
-                 */
-                if (this.callMode == CallMode_RESTORE) {
-                    stackFramesRestored = true;
-                    this.callMode = CallMode_NORMAL;
-                }
+                    /*
+                     * We get here when the script state has been read in by MigrateInEventHandler().
+                     * Since the stack is completely restored at this point, any subsequent calls
+                     * within the functions should do their normal processing instead of trying to 
+                     * restore their state.
+                     */
+                    // the stack has been restored as a result of calling ResumeEx()
+                    // tell script code to process calls normally
+                    case CallMode_RESTORE: {
+                        this.callMode = CallMode_NORMAL;
+                        break;
+                    }
 
-                /*
-                 * Now we are ready to suspend the microthread.
-                 * This is like a longjmp() to the most recent StartEx() or ResumeEx()
-                 * with a simultaneous setjmp() so ResumeEx() can longjmp() back here.
-                 */
-                m_CheckRunPhase = "suspending";
-                suspendOnCheckRunTemp = false;
-                Hiber ();
+                    default: throw new Exception ("callMode=" + callMode);
+                }
                 m_CheckRunPhase = "resumed";
             }
 

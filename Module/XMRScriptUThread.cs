@@ -34,10 +34,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
 
     public partial class XMRInstance
     {
-        private int utactive;   // -1: hibernating
-                                //  0: exited
-                                //  1: running
-
         /**
          * @brief Start script event handler from the beginning.
          *        Return when either the script event handler completes
@@ -48,33 +44,19 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public Exception StartEx ()
         {
             /*
-             * We should only be called when no event handler running.
-             */
-            if (utactive != 0) throw new Exception ("utactive=" + utactive);
-
-            /*
              * Start script event handler from very beginning.
              */
-            utactive = 1;
-            Exception except = null;
             callMode = XMRInstance.CallMode_NORMAL;
             try {
-                CallSEH ();                 // run script event handler
-                utactive = 0;
+                CallSEH ();
             } catch (StackHibernateException) {
                 if (callMode != XMRInstance.CallMode_SAVE) {
                     throw new Exception ("callMode=" + callMode);
                 }
-                utactive = -1;              // it is hibernating, can be resumed
             } catch (Exception e) {
-                utactive = 0;
-                except = e;                 // threw exception, save for Start()/Resume()
+                return e;
             }
-
-            /*
-             * Return whether or not script threw an exception.
-             */
-            return except;
+            return null;
         }
 
         /**
@@ -85,83 +67,20 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
         public Exception ResumeEx ()
         {
             /*
-             * We should only be called when script is hibernating.
-             */
-            if (utactive >= 0) throw new Exception ("utactive=" + utactive);
-
-            /*
              * Resume script from captured stack.
              */
             callMode = XMRInstance.CallMode_RESTORE;
             suspendOnCheckRunTemp = true;
-            Exception except = null;
             try {
                 CallSEH ();                 // run script event handler
-                utactive = 0;
             } catch (StackHibernateException) {
                 if (callMode != XMRInstance.CallMode_SAVE) {
                     throw new Exception ("callMode=" + callMode);
                 }
-                utactive = -1;
             } catch (Exception e) {
-                utactive = 0;
-                except = e;                 // threw exception, save for Start()/Resume()
+                return e;
             }
-
-            /*
-             * Return whether or not script threw an exception.
-             */
-            return except;
-        }
-
-        /**
-         * @brief Determine if script is active.
-         * Returns: 0: nothing started or has returned
-         *             Resume() must not be called
-         *             Start() may be called
-         *             Hiber() must not be called
-         *         -1: thread has called Hiber()
-         *             Resume() may be called
-         *             Start() may be called
-         *             Hiber() must not be called
-         *          1: thread is running
-         *             Resume() must not be called
-         *             Start() must not be called
-         *             Hiber() may be called
-         */
-        public int Active ()
-        {
-            return utactive;
-        }
-
-        /**
-         * @brief Called by the script event handler whenever it wants to hibernate.
-         */
-        public void Hiber ()
-        {
-            if (callMode != XMRInstance.CallMode_NORMAL) {
-                throw new Exception ("callMode=" + callMode);
-            }
-
-            switch (utactive) {
-
-                // the stack has been restored as a result of calling ResumeEx()
-                // say the microthread is now active and resume processing
-                case -1: {
-                    utactive = 1;
-                    return;
-                }
-
-                // the script event handler wants to hibernate
-                // capture stack frames and unwind to Start() or Resume()
-                case 1: {
-                    callMode = XMRInstance.CallMode_SAVE;
-                    stackFrames = null;
-                    throw new StackHibernateException ();
-                }
-
-                default: throw new Exception ("utactive=" + utactive);
-            }
+            return null;
         }
 
         public class StackHibernateException : Exception, IXMRUncatchable { }

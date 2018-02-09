@@ -175,15 +175,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private XMRLSL_Api m_XMRLSLApi;
 
         /*
-         * Set to perform migration.
-         */
-        public bool stackFramesRestored; // set true by CheckRun() when stack has been 
-                                         // restored and is about to suspend the microthread
-        public bool captureStackFrames;  // set true to tell CheckRun() to throw a
-                                         // StackCaptureException() causing it to capture a
-                                         // snapshot of the script's stack
-
-        /*
          * Makes sure migration data version is same on both ends.
          */
         public static byte migrationVersion = 10;

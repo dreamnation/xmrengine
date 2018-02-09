@@ -220,23 +220,12 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         /**
          * @brief Write script state to output stream.
-         *        The script microthread is at same state on return,
-         *        ie, either inactive or suspended inside CheckRun().
          *
          * Input:
          *  stream = stream to write event handler state information to
          */
         private void MigrateOutEventHandler (Stream stream)
         {
-            /*
-             * If there are stack frames, the script should be hibernating.
-             * Otherwise, the script should be idle.
-             */
-            int utactShouldBe = (stackFrames != null) ? -1 : 0;
-            if (utactive != utactShouldBe) {
-                throw new Exception ("utactive=" + utactive + " should be=" + utactShouldBe);
-            }
-
             /*
              * Write script state out, frames and all, to the stream.
              * Does not change script state.

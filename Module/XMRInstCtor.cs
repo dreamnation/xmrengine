@@ -730,10 +730,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 BinaryReader br = new BinaryReader (stream);
                 this.MigrateIn (br);
 
-                // if there are stack frames, the script should be hibernating
-                // otherwise, the script should be idle
-                utactive = (stackFrames != null) ? -1 : 0;
-
                 m_RunOnePhase = "MigrateInEventHandler finished";
                 CheckRunLockInvariants(true);
             }

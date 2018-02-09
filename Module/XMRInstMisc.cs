@@ -175,8 +175,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 sb.AppendLine("    m_InstEHSlice        = " + m_InstEHSlice.ToString());
                 sb.AppendLine("    m_CPUTime            = " + m_CPUTime);
                 sb.AppendLine("    callMode             = " + callMode);
-                sb.AppendLine("    captureStackFrames   = " + captureStackFrames);
-                sb.AppendLine("    stackFramesRestored  = " + stackFramesRestored);
                 lock (m_QueueLock)
                 {
                     sb.AppendLine("    m_Running            = " + m_Running);
