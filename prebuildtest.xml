@@ -1,0 +1,49 @@
+<Project frameworkVersion="v4_0" name="xmrengtest" path="addon-modules/XMREngine/Tester" type="Exe">
+    <Configuration name="Debug">
+        <Options>
+            <OutputPath>Tester/</OutputPath>
+        </Options>
+    </Configuration>
+    <Configuration name="Release">
+        <Options>
+            <OutputPath>Tester/</OutputPath>
+        </Options>
+    </Configuration>
+
+    <ReferencePath>../../../bin/</ReferencePath>
+    <Reference name="System"/>
+    <Reference name="System.Drawing"/>
+    <Reference name="OpenMetaverseTypes"/>
+    <Reference name="OpenSim.Framework"/>
+    <Reference name="OpenSim.Region.ScriptEngine.Shared"/>
+    <Reference name="OpenSim.Region.ScriptEngine.Shared.Api.Runtime"/>
+
+    <Files>
+        <Match pattern="xmrengtest.cs" />
+        <Match pattern="xmrengtestilslapi.cs" />
+        <Match path="../Module" pattern="MMRDelegateCommon.cs" />
+        <Match path="../Module" pattern="MMRIEventHandlers.cs" />
+        <Match path="../Module" pattern="MMRInternalFuncDict.cs" />
+        <Match path="../Module" pattern="MMRScriptBinOpStr.cs" />
+        <Match path="../Module" pattern="MMRScriptCodeGen.cs" />
+        <Match path="../Module" pattern="MMRScriptCollector.cs" />
+        <Match path="../Module" pattern="MMRScriptCompValu.cs" />
+        <Match path="../Module" pattern="MMRScriptConsts.cs" />
+        <Match path="../Module" pattern="MMRScriptEventCode.cs" />
+        <Match path="../Module" pattern="MMRScriptInlines.cs" />
+        <Match path="../Module" pattern="MMRScriptMyILGen.cs" />
+        <Match path="../Module" pattern="MMRScriptObjCode.cs" />
+        <Match path="../Module" pattern="MMRScriptObjWriter.cs" />
+        <Match path="../Module" pattern="MMRScriptReduce.cs" />
+        <Match path="../Module" pattern="MMRScriptTokenize.cs" />
+        <Match path="../Module" pattern="MMRScriptTypeCast.cs" />
+        <Match path="../Module" pattern="MMRScriptVarDict.cs" />
+        <Match path="../Module" pattern="MMRWebRequest.cs" />
+        <Match path="../Module" pattern="XMRArray.cs" />
+        <Match path="../Module" pattern="XMRHeapTracker.cs" />
+        <Match path="../Module" pattern="XMRInstAbstract.cs" />
+        <Match path="../Module" pattern="XMRObjectTokens.cs" />
+        <Match path="../Module" pattern="XMRScriptUThread.cs" />
+        <Match path="../Module" pattern="XMRSDTypeClObj.cs" />
+    </Files>
+</Project>

@@ -29,7 +29,6 @@
  * @brief Main program for the script tester.
  */
 
-using Mono.Tasklets;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -57,6 +56,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
     public class XMREngTest
     {
+        public const string GITCOMMITHASH = "GITCOMMITHASH";
+        public const string GITCOMMITDATE = "GITCOMMITDATE";
+        public const int   GITCOMMITCLEAN = 0;
+
         public static bool doCheckRun = false;
         public static bool haveLinkNums = false;
         public static bool printPeakHeap = false;
@@ -67,7 +70,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public static LinkedList<QueuedEvent> queuedEvents = new LinkedList<QueuedEvent> ();
         public static MemoryStream serializeStream = null;
         public static ScriptRoot[] scriptRoots;
-        public static string uthreadType;
 
         public static readonly string commitInfo = GITCOMMITHASH + (new string[] { "(dirty)", "" })[GITCOMMITCLEAN] + " " + GITCOMMITDATE;
 
@@ -98,8 +100,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             string primName   = "";
             string primUUID   = "";
             string sourceHash = null;
-
-            uthreadType = "sys";
 
             for (int i = 0; i < args.Length; i ++) {
                 string arg = args[i];
@@ -158,15 +158,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if (arg == "-serialize") {
                     doCheckRun = true;
                     serializeStream = new MemoryStream ();
-                    continue;
-                }
-                if (arg == "-uthread") {
-                    if (++ i >= args.Length) goto usage;
-                    uthreadType = args[i].ToLower ();
-                    if (uthreadType == "mmr") {
-                        Exception e = ScriptUThread_MMR.LoadMono ();
-                        if (e != null) throw e;
-                    }
                     continue;
                 }
                 if (arg == "-version") {
@@ -273,14 +264,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
                 XMRInstance inst = new XMRInstance (scriptObjCode);
                 inst.m_DescName  = perPrims[i].name + ":" + srcFileName;
-                if (uthreadType == "con") {
-                    inst.engstack    = new Mono.Tasklets.Continuation ();
-                    inst.engstack.Mark ();
-                    inst.scrstack    = new Mono.Tasklets.Continuation ();
-                    inst.scrstack.Mark ();
-                    inst.wfistack    = new Mono.Tasklets.Continuation ();
-                    inst.wfistack.Mark ();
-                }
                 new ScriptRoot (inst, i, perPrims[i]);
             }
 
@@ -446,7 +429,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Environment.Exit (0);
 
         usage:
-            Console.WriteLine ("usage: mono xmrengtest.exe [ -builtins ] [ -checkrun ] [ -eventio ] [ -heaplimit <numbytes> ] [ -ipcchannel <channel> ] [ -linknum <number> ] [ -primname <name> ] [ -primuuid <uuid> ] [ -serialize ] [ -uthread <type> ] [ -version ] <sourcefile> ...");
+            Console.WriteLine ("usage: mono xmrengtest.exe [ -builtins ] [ -checkrun ] [ -eventio ] [ -heaplimit <numbytes> ] [ -ipcchannel <channel> ] [ -linknum <number> ] [ -primname <name> ] [ -primuuid <uuid> ] [ -serialize ] [ -version ] <sourcefile> ...");
             Console.WriteLine ("     -builtins : print list of built-in functions and constants then exit");
             Console.WriteLine ("     -checkrun : simulate a thread slice at every opportunity");
             Console.WriteLine ("      -eventio : when default state_entry completes, read next event from stdin and keep doing so until eof");
@@ -459,7 +442,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Console.WriteLine ("     -primname : give prim name for subsequent script(s) (returned by llGetKey())");
             Console.WriteLine ("     -primuuid : give prim uuid for subsequent script(s) (returned by llGetObjectName())");
             Console.WriteLine ("    -serialize : serialize and deserialize stack at every opportunity");
-            Console.WriteLine ("      -uthread : specify Con (stack memcpying), MMR (stack switching), Sys (system thread)");
             Console.WriteLine ("      -version : print version information then exit");
             Environment.Exit (2);
         }
@@ -889,27 +871,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public void StepScript ()
         {
-            if (inst.uthread is ScriptUThread_Sys) {
-                StepScriptMMRSys ();
-            } else if (inst.uthread is ScriptUThread_MMR) {
-                StepScriptMMRSys ();
-            } else {
-                StepScriptOther ();
-            }
-        }
-
-        /**
-         * @brief MMR/Sys thread model case - ReadRetVal() uses uthread.Hiber()
-         *        when it wants input so we have to handle that case.
-         */
-        private void StepScriptMMRSys ()
-        {
-            /*
-             * The uthread stack pointer better not already be loaded in some CPU.
-             */
-            int active = inst.uthread.Active ();
-            if (active > 0) throw new Exception ("bad active [A] " + active);
-
             if (iState == IState.YIELDING) {
 
                 /*
@@ -926,7 +887,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * it left off.  Otherwise, the stack is not valid, so start the event hander
              * from very beginning.
              */
-            Exception e = (active < 0) ? inst.uthread.ResumeEx () : inst.uthread.StartEx ();
+            Exception e = (inst.stackFrames != null) ? inst.ResumeEx () : inst.StartEx ();
 
             /*
              * It called Hiber() in either CheckRun() or ReadRetVal() or it ran to the end.
@@ -954,62 +915,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
         }
 
-        /**
-         * @brief Con or Ser thread model cases - ReadRetVal() does longjmp()
-         *        to wfistack when it wants input, so handle that case.
-         */
-        private void StepScriptOther ()
-        {
-            /*
-             * Do a setjmp(0) that ReadRetVal() can use when it wants some input.
-             */
-            if (inst.wfistack.Store (0) != 0) {
-                if (iState != IState.WAITINGFORINPUT) throw new Exception ("bad iState " + iState);
-                return;
-            }
-
-            /*
-             * Now if we are stepping because we have input for ReadRetVal(),
-             * do a longjmp() back into ReadRetVal().
-             */
-            if (iState == IState.GOTSOMEINPUT) {
-                inst.scrstack.Restore (1);
-            }
-
-            /*
-             * The uthread stack better not already be in use.
-             */
-            int active = inst.uthread.Active ();
-            if (active > 0) throw new Exception ("bad active [B] " + active);
-
-            /*
-             * Say we are now running the script's code.
-             */
-            iState = IState.RUNNING;
-
-            /*
-             * Ok, run the script event handler code on the uthread stack until it calls
-             * Hiber() or it finishes.
-             * If the stack is active (ie it called Hiber() last time), resume from where 
-             * it left off.  Otherwise, the stack is not active, so start the event hander
-             * from very beginning.
-             */
-            Exception e = (active < 0) ? inst.uthread.ResumeEx () : inst.uthread.StartEx ();
-            StepScriptFinish (e);
-        }
-
         private void StepScriptFinish (Exception e)
         {
-            /*
-             * Set up new state based on whether it suspended via Hiber() or it finished.
-             */
-            int active = inst.uthread.Active ();
-            if (active > 0) {
-                if (e == null) e = new Exception ("bad active [C] " + active);
-                          else e = new Exception ("bad active [C] " + active, e);
-                throw e;
-            }
-            iState = (active < 0) ? IState.YIELDING : IState.WAITINGFOREVENT;
+            iState = (inst.stackFrames != null) ? IState.YIELDING : IState.WAITINGFOREVENT;
 
             /*
              * Maybe we are doing -serialize.
@@ -1024,11 +932,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     throw new Exception ("bad callmode " + inst.callMode, e);
                 }
                 if (XMREngTest.serializeStream == null) throw new Exception ("bad serializeStream", e);
-
-                /*
-                 * The uthread stack should be emptied, it got serialized out to inst.stackFrames.
-                 */
-                if (active != 0) throw new Exception ("bad active [D] " + active, e);
 
                 if (peakHeapUsed < inst.peakHeapUsed) {
                     peakHeapUsed = inst.peakHeapUsed;
@@ -1074,8 +977,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public int m_StackSize = 1024*1024;
         public string m_DescName;
 
-        public Mono.Tasklets.Continuation wfistack;
-
         /**
          * @brief Initial instance for the given script
          */
@@ -1085,7 +986,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             heapLimit = HEAPLIMIT;
             glblVars.AllocVarArrays (m_ObjCode.glblSizes);
             suspendOnCheckRunHold = XMREngTest.doCheckRun;
-            InitUThread ();
 
             /*
              * Run default state_entry() handler until it is ready for more input.
@@ -1104,34 +1004,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_ObjCode  = inst.m_ObjCode;
             m_DescName = inst.m_DescName;
             heapLimit  = HEAPLIMIT;
-            engstack   = inst.engstack;
-            scrstack   = inst.scrstack;
-            wfistack   = inst.wfistack;
             suspendOnCheckRunHold = XMREngTest.doCheckRun;
-            InitUThread ();
-        }
-
-        private void InitUThread ()
-        {
-            switch (XMREngTest.uthreadType) {
-                case "con": {
-                    uthread = new ScriptUThread_Con (this);
-                    break;
-                }
-                case "mmr": {
-                    uthread = new ScriptUThread_MMR (this);
-                    break;
-                }
-                case "sys": {
-                    uthread = new ScriptUThread_Sys (this);
-                    break;
-                }
-                default: {
-                    Console.WriteLine ("unsupported -uthread type: " + XMREngTest.uthreadType);
-                    Environment.Exit (2);
-                    break;
-                }
-            }
         }
 
         /*********************\
@@ -1160,7 +1033,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * -checkrun:  Just switch stacks back to StepScript(),
                  *             leaving the uthread stack intact.
                  */
-                uthread.Hiber ();
+                callMode = CallMode_SAVE;
+                throw new StackCaptureException ();
             } else {
 
                 /*
@@ -1195,11 +1069,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     default: throw new Exception ("bad callMode " + this.callMode);
                 }
             }
-        }
-
-        public override int xmrStackLeft ()
-        {
-            return uthread.StackLeft ();
         }
 
         public override void StateChange ()
@@ -1246,11 +1115,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
     }
 
-    public class ScriptBaseClass :
+    public partial class ScriptBaseClass :
             OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.ILSL_Api,
             OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.IOSSL_Api {
 
-        public IScriptUThread uthread;
         public ScriptRoot scriptRoot;
 
         public void llResetScript ()
@@ -3199,8 +3067,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          *  The rest of ILSL_Api  *
         \**************************/
 
-#include "makexmrengtestilslapi.inc"
-
         /**
          * @brief Called by the various ILSL_Api functions to print their parameters
          *        and if non-void return value, read return value from stdin.
@@ -3309,37 +3175,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             scriptRoot.wfiType = type;
             scriptRoot.iState  = IState.WAITINGFORINPUT;
 
-            if ((uthread is ScriptUThread_MMR) || (uthread is ScriptUThread_Sys)) {
-
-                /*
-                 * Save this stack pointer and switch back to the stack pointer
-                 * within StepScriptMMR().
-                 */
-                uthread.Hiber ();
-
-                /*
-                 * StepScriptMMR() called ResumeEx() to switch back to this
-                 * stack pointer to tell us our input is ready.
-                 */
-            } else {
-
-                /*
-                 * Do a setjmp(0) that the input reader can use to resume us
-                 * when it is ready to.
-                 */
-                if (((XMRInstance)this).scrstack.Store (0) == 0) {
-
-                    /*
-                     * Now do a longjmp(1) back to StepScriptOther().
-                     * It will do a longjmp(1) back here when it has input.
-                     */
-                    ((XMRInstance)this).wfistack.Restore (1);
-                }
-
-                /*
-                 * StepScriptOther() did a longjmp(1) here to tell us our input is ready.
-                 */
-            }
+            ((XMRInstance)this).suspendOnCheckRunTemp = true;
+            ((XMRInstance)this).CheckRunQuick ();
 
             /*
              * Our input should be ready now.

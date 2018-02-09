@@ -1,7 +1,10 @@
 *~
+*.csproj*
 *.dll
+*.dll.build
 *.dll.mdb
 *.exe
+*.exe.build
 *.exe.mdb
 /bin
 /obj
@@ -15,5 +18,5 @@ Tester/*.xmrbin
 Tester/*.xmrobj
 Tester/*.xmrsrc
 Tester/makexmrengtestilslapi.inc
-Tester/xmrengtest*.cs
+Tester/xmrengtestilslapi.cs
 Tester/xmrengtest.zip
