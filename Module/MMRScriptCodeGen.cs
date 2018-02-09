@@ -110,7 +110,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private static FieldInfo rotationZFieldInfo      = typeof (LSL_Rotation).GetField ("z");
         private static FieldInfo rotationSFieldInfo      = typeof (LSL_Rotation).GetField ("s");
         private static FieldInfo sdtXMRInstFieldInfo     = typeof (XMRSDTypeClObj).GetField ("xmrInst");
-        private static FieldInfo stackUsedFieldInfo      = typeof (XMRInstAbstract).GetField ("m_StackUsed");
+        private static FieldInfo stackLeftFieldInfo      = typeof (XMRInstAbstract).GetField ("m_StackLeft");
         private static FieldInfo vectorXFieldInfo        = typeof (LSL_Vector).GetField ("x");
         private static FieldInfo vectorYFieldInfo        = typeof (LSL_Vector).GetField ("y");
         private static FieldInfo vectorZFieldInfo        = typeof (LSL_Vector).GetField ("z");
@@ -1243,7 +1243,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Output:
              *    int __mainCallNo = -1;
-             *    instance.m_StackUsed += stackframesize;
+             *    instance.m_StackLeft -= stackframesize;
              *    try {
              *        if (instance.callMode != CallMode_NORMAL) goto __cmRestore;
              */
@@ -1254,10 +1254,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 SetCallNo (curDeclFunc, actCallNo, -1);
                 PushXMRInst ();
                 ilGen.Emit (curDeclFunc, OpCodes.Dup);
-                ilGen.Emit (curDeclFunc, OpCodes.Ldfld, stackUsedFieldInfo);
+                ilGen.Emit (curDeclFunc, OpCodes.Ldfld, stackLeftFieldInfo);
                 ilGen.Emit (curDeclFunc, OpCodes.Ldc_I4, stackframesize);
-                ilGen.Emit (curDeclFunc, OpCodes.Add);
-                ilGen.Emit (curDeclFunc, OpCodes.Stfld, stackUsedFieldInfo);
+                ilGen.Emit (curDeclFunc, OpCodes.Sub);
+                ilGen.Emit (curDeclFunc, OpCodes.Stfld, stackLeftFieldInfo);
                 cmRestore = ilGen.DefineLabel ("__cmRestore");
                 ilGen.BeginExceptionBlock ();
                 PushXMRInst ();
@@ -1395,7 +1395,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * Output epilog that saves stack frame state if CallMode_SAVE.
              *
              *   finally {
-             *      instance.m_StackUsed -= stackframesize;
+             *      instance.m_StackLeft += stackframesize;
              *      if (instance.callMode != CallMode_SAVE) goto __endFin;
              *      GenerateFrameCaptureCode();
              *   __endFin:
@@ -1406,10 +1406,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 ilGen.BeginFinallyBlock ();
                 PushXMRInst ();
                 ilGen.Emit (curDeclFunc, OpCodes.Dup);
-                ilGen.Emit (curDeclFunc, OpCodes.Ldfld, stackUsedFieldInfo);
+                ilGen.Emit (curDeclFunc, OpCodes.Ldfld, stackLeftFieldInfo);
                 ilGen.Emit (curDeclFunc, OpCodes.Ldc_I4, stackframesize);
-                ilGen.Emit (curDeclFunc, OpCodes.Sub);
-                ilGen.Emit (curDeclFunc, OpCodes.Stfld, stackUsedFieldInfo);
+                ilGen.Emit (curDeclFunc, OpCodes.Add);
+                ilGen.Emit (curDeclFunc, OpCodes.Stfld, stackLeftFieldInfo);
                 endFin = ilGen.DefineLabel ("__endFin");
                 PushXMRInst ();
                 ilGen.Emit (curDeclFunc, OpCodes.Ldfld, callModeFieldInfo);

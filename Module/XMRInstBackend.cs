@@ -617,14 +617,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 for (int i = m_EventCounts.Length; -- i >= 0;) m_EventCounts[i] = 0;
             }
         }
-
-        /**
-         * @brief Script is calling xmrStackLeft().
-         */
-        public override int xmrStackLeft ()
-        {
-            return StackLeft ();
-        }
     }
 
     /**

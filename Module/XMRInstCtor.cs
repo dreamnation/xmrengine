@@ -84,6 +84,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_Engine         = engine;
             m_ScriptBasePath = scriptBasePath;
             m_StackSize      = stackSize;
+            m_StackLeft      = stackSize;
             m_HeapSize       = heapSize;
             m_CompilerErrors = errors;
             m_StateFileName  = GetStateFileName(scriptBasePath, m_ItemID);

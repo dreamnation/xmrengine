@@ -164,14 +164,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
             }
         }
 
-        /**
-         * @brief Number of remaining stack bytes.
-         */
-        public int StackLeft ()
-        {
-            return m_Engine.m_StackSize - m_StackUsed;
-        }
-
         public class StackHibernateException : Exception, IXMRUncatchable { }
     }
 }
