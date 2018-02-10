@@ -331,9 +331,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         steppedSomething = false;
                         for (scriptStepIndex = 0; scriptStepIndex < scriptRoots.Length; scriptStepIndex ++) {
                             ScriptRoot sr = scriptRoots[(scriptRootIndex+scriptStepIndex)%scriptRoots.Length];
-                            if ((sr.iState == IState.YIELDING) || (sr.iState == IState.GOTSOMEINPUT)) {
-                                sr.StepScript ();  // NOTE: CAN BLOW AWAY ALL STACK-LOCAL VARIABLES
-                                                   //       BECAUSE OF MONO.CONTINUATIONS READING INPUT
+                            if (sr.iState == IState.YIELDING) {
+                                sr.StepScript ();
                                 steppedSomething = true;
                                 didSomething = true;
                             }
@@ -347,14 +346,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                 /*
                  * Not having -eventio means stop when everything is waiting for an event.
-                 * The only thing it should allow reading for is return values.
                  */
                 if (!eventIO) {
-                    for (int i = 0; i < scriptRoots.Length; i ++) {
-                        if (scriptRoots[i].iState == IState.WAITINGFORINPUT) goto gotone;
-                    }
                     break;
-                gotone:;
                 }
 
                 /*
@@ -408,8 +402,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                          * If that script isn't ready for input, step everything until it is.
                          */
                         ScriptRoot sr = scriptRoots[scriptRootIndex];
-                        if ((sr.iState != IState.WAITINGFORINPUT) &&
-                            (sr.iState != IState.WAITINGFOREVENT)) break;
+                        if (sr.iState != IState.WAITINGFOREVENT) break;
 
                         /*
                          * Process the input, getting the script ready to run again.
@@ -662,9 +655,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
     public enum IState {
         YIELDING,
         RUNNING,
-        WAITINGFORINPUT,
-        WAITINGFOREVENT,
-        GOTSOMEINPUT
+        WAITINGFOREVENT
     }
 
     public class Listener {
@@ -757,12 +748,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
             sb.Append ("] ");
             sb.Append (iState.ToString ());
-            if (iState == IState.WAITINGFORINPUT) {
-                sb.Append (' ');
-                sb.Append (wfiType);
-                sb.Append (' ');
-                sb.Append (wfiName);
-            }
             Console.WriteLine (sb.ToString ());
         }
 
@@ -832,31 +817,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     break;
                 }
 
-                case IState.WAITINGFORINPUT: {
-
-                    /*
-                     * Get function name and validate.
-                     */
-                    if (!(t is TokenName) || !(t.nextToken is TokenKwColon)) {
-                        t.ErrorMsg ("expecting function name :");
-                        return null;
-                    }
-                    if (((TokenName)t).val != wfiName) {
-                        t.ErrorMsg ("expecting function " + wfiName);
-                        return null;
-                    }
-                    t = t.nextToken.nextToken;
-
-                    /*
-                     * Parse out the value.
-                     */
-                    wfiValue = XMREngTest.ParseEHArg (ref t);
-                    if (wfiValue == null) return null;
-
-                    iState = IState.GOTSOMEINPUT;
-                    break;
-                }
-
                 default: {
                     throw new Exception ("bad istate " + iState);
                 }
@@ -880,58 +840,32 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public void StepScript ()
         {
-            if (iState == IState.YIELDING) {
-
-                /*
-                 * Hiber() was called inside CheckRun(),
-                 * say we are now running the script's code.
-                 */
-                iState = IState.RUNNING;
+            /*
+            Console.WriteLine ("StepScript*: iState=" + iState);
+            for (XMRStackFrame sf = inst.stackFrames; sf != null; sf = sf.nextSF) {
+                Console.WriteLine ("StepScript*:   " + sf.funcName + " " + sf.callNo);
             }
+            */
 
             /*
-             * Ok, run the script event handler code on the uthread stack until it calls
+             * Run the script event handler code on the uthread stack until it calls
              * Hiber() or it finishes.
              * If the stack is valid (ie it called Hiber() last time), resume from where 
              * it left off.  Otherwise, the stack is not valid, so start the event hander
              * from very beginning.
              */
+            iState = IState.RUNNING;
             try {
                 inst.CallSEH ();
+                iState = IState.WAITINGFOREVENT;
             } catch (StackCaptureException) {
+                iState = IState.YIELDING;
             } catch (Exception e) {
                 Console.WriteLine ("exception in script: " + e.Message);
                 Console.WriteLine (inst.xmrExceptionStackTrace (e));
                 Environment.Exit (3);
             }
 
-            /*
-             * It called Hiber() in either CheckRun() or ReadRetVal() or it ran to the end.
-             */
-            switch (iState) {
-
-                /*
-                 * Called Hiber() in CheckRun() or the event handler ran to the end or 
-                 * threw an exception.
-                 */
-                case IState.RUNNING: {
-                    StepScriptFinish ();
-                    break;
-                }
-
-                /*
-                 * Called Hiber() in ReadRetVal().
-                 */
-                case IState.WAITINGFORINPUT: {
-                    break;
-                }
-
-                default: throw new Exception ("bad iState " + iState);
-            }
-        }
-
-        private void StepScriptFinish ()
-        {
             if (peakHeapUsed < inst.peakHeapUsed) {
                 peakHeapUsed = inst.peakHeapUsed;
             }
@@ -963,8 +897,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     throw new Exception ("save/restore positions different");
                 }
             }
-
-            iState = (inst.stackFrames != null) ? IState.YIELDING : IState.WAITINGFOREVENT;
         }
     }
 
@@ -3147,31 +3079,22 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         private object ReadRetVal (string name, string type)
         {
-            XMRInstance inst = (XMRInstance)this;
-            switch (inst.callMode) {
-
-                /*
-                 * Set up what input we are waiting for.
-                 */
-                case XMRInstance.CallMode_NORMAL: {
-                    if (scriptRoot.iState != IState.RUNNING) throw new Exception ("bad iState " + scriptRoot.iState);
-                    scriptRoot.wfiName = name;
-                    scriptRoot.wfiType = type;
-                    scriptRoot.iState  = IState.WAITINGFORINPUT;
-                    throw new StackCaptureException ();
+            while (true) {
+                Token nextInputToken = XMREngTest.ReadInputTokens ();
+                while ((nextInputToken is TokenBegin) || (nextInputToken is TokenKwSemi)) {
+                    nextInputToken = nextInputToken.nextToken;
                 }
-
-                /*
-                 * Our input should be ready now.
-                 */
-                case XMRInstance.CallMode_RESTORE: {
-                    inst.callMode = XMRInstance.CallMode_NORMAL;
-                    if (scriptRoot.iState != IState.GOTSOMEINPUT) throw new Exception ("bad iState " + scriptRoot.iState);
-                    scriptRoot.iState = IState.RUNNING;
-                    return scriptRoot.wfiValue;
+                if (nextInputToken is TokenEnd) continue;
+                if (!(nextInputToken is TokenName) ||
+                    (((TokenName)nextInputToken).val != name) ||
+                    !(nextInputToken.nextToken is TokenKwColon)) {
+                    nextInputToken.ErrorMsg ("looking for " + name + ":<" + type + ">");
+                    continue;
                 }
+                nextInputToken = nextInputToken.nextToken.nextToken;
 
-                default: throw new Exception ("callMode=" + inst.callMode);
+                object val = XMREngTest.ParseEHArg (ref nextInputToken);
+                if (val != null) return val;
             }
         }
     }
