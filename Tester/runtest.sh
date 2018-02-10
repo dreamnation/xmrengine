@@ -26,28 +26,28 @@ function testit {
     then
         input=$1.in
     fi
-    $runxmrengtest -xmrasm $1.lsl < $input 2>&1 | grep -v '^mmruthread: total stack' | tee $1.out
+    $runxmrengtest -xmrasm $1.lsl < $input 2>&1 | tee $1.out
     diff $1.out $1.good.tmp
     minorbar
-    $runxmrengtest -checkrun $1.lsl < $input 2>&1 | grep -v '^mmruthread: total stack' | tee $1.ckr
+    $runxmrengtest -checkrun $1.lsl < $input 2>&1 | tee $1.ckr
     diff $1.ckr $1.good.tmp
     minorbar
-    $runxmrengtest -serialize $1.lsl < $input 2>&1 | grep -v '^mmruthread: total stack' | tee $1.ser
-    diff $1.ser $1.good.tmp
+    ##$runxmrengtest -serialize $1.lsl < $input 2>&1 | tee $1.ser
+    ##diff $1.ser $1.good.tmp
     majorbar
     rm -f $1.good.tmp
 }
 
 function testev {
     makerealgood $1
-    $runxmrengtest -eventio $1.lsl < $1.events 2>&1 | grep -v '^mmruthread: total stack' | tee $1.out
+    $runxmrengtest -eventio $1.lsl < $1.events 2>&1 | tee $1.out
     diff $1.out $1.good.tmp
     minorbar
-    $runxmrengtest -eventio -checkrun $1.lsl < $1.events 2>&1 | grep -v '^mmruthread: total stack' | tee $1.ckr
+    $runxmrengtest -eventio -checkrun $1.lsl < $1.events 2>&1 | tee $1.ckr
     diff $1.ckr $1.good.tmp
     minorbar
-    $runxmrengtest -eventio -serialize $1.lsl < $1.events 2>&1 | grep -v '^mmruthread: total stack' | tee $1.ser
-    diff $1.ser $1.good.tmp
+    ##$runxmrengtest -eventio -serialize $1.lsl < $1.events 2>&1 | tee $1.ser
+    ##diff $1.ser $1.good.tmp
     majorbar
     rm -f $1.good.tmp
 }
@@ -57,18 +57,11 @@ cd `dirname $0`
 time make xmrengtest.exe
 export MONO_PATH=osbin
 
-uthread=mmr
-if [ "x$1" != "x" ]
-then
-    uthread=$1
-fi
-echo uthread=$uthread
-
 if [ "$MONODIR" != "" ]
 then
-    runxmrengtest="$MONODIR/bin/mono --debug xmrengtest.exe -uthread $uthread"
+    runxmrengtest="$MONODIR/bin/mono --debug xmrengtest.exe"
 else
-    runxmrengtest="mono --debug xmrengtest.exe -uthread $uthread"
+    runxmrengtest="mono --debug xmrengtest.exe"
 fi
 echo runxmrengtest=$runxmrengtest
 
@@ -99,7 +92,7 @@ testev lslangtest2
 majorbar
 $runxmrengtest -xmrasm -eventio -ipcchannel -2135482309 \
     -primname controller -primuuid 0000 ipctest0.lsl \
-    -primname player1 -primuuid 1111 ipctest1.lsl << EOF | grep -v '^mmruthread: total stack' | tee ipctest.out
+    -primname player1 -primuuid 1111 ipctest1.lsl << EOF | tee ipctest.out
 1)touch_start(0)
 "0000")llListRandomize:69827238
 "1111")touch_start(0)
@@ -111,7 +104,7 @@ diff ipctest.out ipctest.good
 minorbar
 $runxmrengtest -eventio -ipcchannel -2135482309 -checkrun \
     -primname controller -primuuid 0000 ipctest0.lsl \
-    -primname player1 -primuuid 1111 ipctest1.lsl << EOF | grep -v '^mmruthread: total stack' | tee ipctest.ckr
+    -primname player1 -primuuid 1111 ipctest1.lsl << EOF | tee ipctest.ckr
 1)touch_start(0)
 0)llListRandomize:69827238
 1)touch_start(0)
@@ -121,16 +114,16 @@ EOF
 diff ipctest.ckr ipctest.gser
 
 minorbar
-$runxmrengtest -eventio -ipcchannel -2135482309 -serialize \
-    -primname controller -primuuid 0000 ipctest0.lsl \
-    -primname player1 -primuuid 1111 ipctest1.lsl << EOF | grep -v '^mmruthread: total stack' | tee ipctest.ser
-1)touch_start(0)
-0)llListRandomize:69827238
-1)touch_start(0)
-touch_start(0)
-touch_start(0)
-EOF
-diff ipctest.ser ipctest.gser
+##$runxmrengtest -eventio -ipcchannel -2135482309 -serialize \
+##    -primname controller -primuuid 0000 ipctest0.lsl \
+##    -primname player1 -primuuid 1111 ipctest1.lsl << EOF | tee ipctest.ser
+##1)touch_start(0)
+##0)llListRandomize:69827238
+##1)touch_start(0)
+##touch_start(0)
+##touch_start(0)
+##EOF
+##diff ipctest.ser ipctest.gser
 
 majorbar
 $runxmrengtest -eventio -ipcchannel -646830961 \
@@ -209,7 +202,7 @@ $runxmrengtest -eventio -ipcchannel -646830961 \
     -primname PlayerCardPanel17 -primuuid 3117 cardpanel.lsl \
     -primname PlayerCardPanel18 -primuuid 3118 cardpanel.lsl \
     -primname PlayerCardPanel19 -primuuid 3119 cardpanel.lsl \
-        < rummytest.in | grep -v '^mmruthread: total stack' | tee rummytest.out
+        < rummytest.in | tee rummytest.out
 diff rummytest.out rummytest.good
 
 majorbar

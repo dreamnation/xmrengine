@@ -160,6 +160,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     serializeStream = new MemoryStream ();
                     continue;
                 }
+                if (arg == "-stacksize") {
+                    try {
+                        XMRInstance.STACKSIZE = int.Parse (args[++i]);
+                    } catch {
+                        goto usage;
+                    }
+                    continue;
+                }
                 if (arg == "-version") {
                     Console.WriteLine (commitInfo);
                     Environment.Exit (0);
@@ -429,7 +437,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Environment.Exit (0);
 
         usage:
-            Console.WriteLine ("usage: mono xmrengtest.exe [ -builtins ] [ -checkrun ] [ -eventio ] [ -heaplimit <numbytes> ] [ -ipcchannel <channel> ] [ -linknum <number> ] [ -primname <name> ] [ -primuuid <uuid> ] [ -serialize ] [ -version ] <sourcefile> ...");
+            Console.WriteLine ("usage: mono xmrengtest.exe [ -builtins ] [ -checkrun ] [ -eventio ] [ -heaplimit <numbytes> ] [ -ipcchannel <channel> ] [ -linknum <number> ] [ -primname <name> ] [ -primuuid <uuid> ] [ -serialize ] [ -stacksize <numbytes> ] [ -version ] <sourcefile> ...");
             Console.WriteLine ("     -builtins : print list of built-in functions and constants then exit");
             Console.WriteLine ("     -checkrun : simulate a thread slice at every opportunity");
             Console.WriteLine ("      -eventio : when default state_entry completes, read next event from stdin and keep doing so until eof");
@@ -442,6 +450,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Console.WriteLine ("     -primname : give prim name for subsequent script(s) (returned by llGetKey())");
             Console.WriteLine ("     -primuuid : give prim uuid for subsequent script(s) (returned by llGetObjectName())");
             Console.WriteLine ("    -serialize : serialize and deserialize stack at every opportunity");
+            Console.WriteLine ("    -stacksize : max number of stack bytes allowed");
             Console.WriteLine ("      -version : print version information then exit");
             Environment.Exit (2);
         }
@@ -887,7 +896,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * it left off.  Otherwise, the stack is not valid, so start the event hander
              * from very beginning.
              */
-            Exception e = (inst.stackFrames != null) ? inst.ResumeEx () : inst.StartEx ();
+            try {
+                inst.CallSEH ();
+            } catch (StackCaptureException) {
+            } catch (Exception e) {
+                Console.WriteLine ("exception in script: " + e.Message);
+                Console.WriteLine (inst.xmrExceptionStackTrace (e));
+                Environment.Exit (3);
+            }
 
             /*
              * It called Hiber() in either CheckRun() or ReadRetVal() or it ran to the end.
@@ -899,7 +915,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * threw an exception.
                  */
                 case IState.RUNNING: {
-                    StepScriptFinish (e);
+                    StepScriptFinish ();
                     break;
                 }
 
@@ -907,7 +923,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * Called Hiber() in ReadRetVal().
                  */
                 case IState.WAITINGFORINPUT: {
-                    if (e != null) throw new Exception ("exception while WAITINGFORINPUT", e);
                     break;
                 }
 
@@ -915,26 +930,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
         }
 
-        private void StepScriptFinish (Exception e)
+        private void StepScriptFinish ()
         {
-            iState = (inst.stackFrames != null) ? IState.YIELDING : IState.WAITINGFOREVENT;
+            if (peakHeapUsed < inst.peakHeapUsed) {
+                peakHeapUsed = inst.peakHeapUsed;
+            }
 
             /*
              * Maybe we are doing -serialize.
              */
-            if (e != null) {
-                if (!(e is StackCaptureException)) {
-                    Console.WriteLine ("exception in script: " + e.Message);
-                    Console.WriteLine (inst.xmrExceptionStackTrace (e));
-                    Environment.Exit (3);
-                }
+            if (XMREngTest.serializeStream != null) {
                 if (inst.callMode != XMRInstAbstract.CallMode_SAVE) {
-                    throw new Exception ("bad callmode " + inst.callMode, e);
-                }
-                if (XMREngTest.serializeStream == null) throw new Exception ("bad serializeStream", e);
-
-                if (peakHeapUsed < inst.peakHeapUsed) {
-                    peakHeapUsed = inst.peakHeapUsed;
+                    throw new Exception ("bad callmode " + inst.callMode);
                 }
 
                 /*
@@ -955,13 +962,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if (savePos != XMREngTest.serializeStream.Position) {
                     throw new Exception ("save/restore positions different");
                 }
-
-                /*
-                 * Script is ready to be run again immediately.
-                 * But we will return to our caller so other scripts can get a time slice.
-                 */
-                iState = IState.YIELDING;
             }
+
+            iState = (inst.stackFrames != null) ? IState.YIELDING : IState.WAITINGFOREVENT;
         }
     }
 
@@ -970,6 +973,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
      */
     public partial class XMRInstance : XMRInstAbstract {
         public static int HEAPLIMIT = 65536;
+        public static int STACKSIZE = 65536;
         public ScriptBaseClass m_ApiManager_LSL;
         public OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.IOSSL_Api m_ApiManager_OSSL;
 
@@ -982,8 +986,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public XMRInstance (ScriptObjCode soc)
         {
-            m_ObjCode = soc;
-            heapLimit = HEAPLIMIT;
+            m_ObjCode   = soc;
+            heapLimit   = HEAPLIMIT;
+            m_StackLeft = STACKSIZE;
             glblVars.AllocVarArrays (m_ObjCode.glblSizes);
             suspendOnCheckRunHold = XMREngTest.doCheckRun;
 
@@ -1000,10 +1005,11 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public XMRInstance (XMRInstance inst)
         {
-            scriptRoot = inst.scriptRoot;
-            m_ObjCode  = inst.m_ObjCode;
-            m_DescName = inst.m_DescName;
-            heapLimit  = HEAPLIMIT;
+            scriptRoot  = inst.scriptRoot;
+            m_ObjCode   = inst.m_ObjCode;
+            m_DescName  = inst.m_DescName;
+            heapLimit   = HEAPLIMIT;
+            m_StackLeft = STACKSIZE;
             suspendOnCheckRunHold = XMREngTest.doCheckRun;
         }
 
@@ -1027,47 +1033,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public override void CheckRunWork ()
         {
-            if (XMREngTest.serializeStream == null) {
+            if (stackFrames != null) throw new Exception ("frames left over");
 
-                /*
-                 * -checkrun:  Just switch stacks back to StepScript(),
-                 *             leaving the uthread stack intact.
-                 */
-                callMode = CallMode_SAVE;
-                throw new StackCaptureException ();
-            } else {
+            switch (callMode) {
 
-                /*
-                 * -serialize:  Serialize the whole uthread stack out to 
-                 *              this.stackFramesand switch stacks back to 
-                 *              StepScript().
-                 */
-                switch (this.callMode) {
-
-                    /*
-                     * Code was running normally.
-                     * Suspend and write ustack frames to this.StackFrames,
-                     * unwinding them as we go, then return out to StepScript().
-                     */
-                    case CallMode_NORMAL: {
-                        this.callMode = CallMode_SAVE;
-                        this.stackFrames = null;
-                        throw new StackCaptureException ();
-                    }
-
-                    /*
-                     * Code just restored itself from this.StackFrames building up
-                     * the uthread stack just as was when we saved it.
-                     * Resume script where it left off until it calls CheckRun() again.
-                     */
-                    case CallMode_RESTORE: {
-                        if (this.stackFrames != null) throw new Exception ("frames left over");
-                        this.callMode = CallMode_NORMAL;
-                        break;
-                    }
-
-                    default: throw new Exception ("bad callMode " + this.callMode);
+                case CallMode_RESTORE: {
+                    callMode = CallMode_NORMAL;
+                    return;
                 }
+
+                case CallMode_NORMAL: {
+                    callMode = CallMode_SAVE;
+                    throw new StackCaptureException ();
+                }
+
+                default: throw new Exception ("callMode=" + callMode);
             }
         }
 
@@ -3167,23 +3147,32 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         private object ReadRetVal (string name, string type)
         {
-            /*
-             * Set up what input we are waiting for.
-             */
-            if (scriptRoot.iState != IState.RUNNING) throw new Exception ("bad iState " + scriptRoot.iState);
-            scriptRoot.wfiName = name;
-            scriptRoot.wfiType = type;
-            scriptRoot.iState  = IState.WAITINGFORINPUT;
+            XMRInstance inst = (XMRInstance)this;
+            switch (inst.callMode) {
 
-            ((XMRInstance)this).suspendOnCheckRunTemp = true;
-            ((XMRInstance)this).CheckRunQuick ();
+                /*
+                 * Set up what input we are waiting for.
+                 */
+                case XMRInstance.CallMode_NORMAL: {
+                    if (scriptRoot.iState != IState.RUNNING) throw new Exception ("bad iState " + scriptRoot.iState);
+                    scriptRoot.wfiName = name;
+                    scriptRoot.wfiType = type;
+                    scriptRoot.iState  = IState.WAITINGFORINPUT;
+                    throw new StackCaptureException ();
+                }
 
-            /*
-             * Our input should be ready now.
-             */
-            if (scriptRoot.iState != IState.GOTSOMEINPUT) throw new Exception ("bad iState " + scriptRoot.iState);
-            scriptRoot.iState = IState.RUNNING;
-            return scriptRoot.wfiValue;
+                /*
+                 * Our input should be ready now.
+                 */
+                case XMRInstance.CallMode_RESTORE: {
+                    inst.callMode = XMRInstance.CallMode_NORMAL;
+                    if (scriptRoot.iState != IState.GOTSOMEINPUT) throw new Exception ("bad iState " + scriptRoot.iState);
+                    scriptRoot.iState = IState.RUNNING;
+                    return scriptRoot.wfiValue;
+                }
+
+                default: throw new Exception ("callMode=" + inst.callMode);
+            }
         }
     }
 
