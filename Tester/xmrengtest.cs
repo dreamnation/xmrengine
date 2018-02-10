@@ -73,6 +73,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public static LinkedList<QueuedEvent> queuedEvents = new LinkedList<QueuedEvent> ();
         public static MemoryStream serializeStream = null;
         public static ScriptRoot[] scriptRoots;
+        public static Token inputTokens = null;
 
         public static readonly string commitInfo = GITCOMMITHASH + (new string[] { "(dirty)", "" })[GITCOMMITCLEAN] + " " + GITCOMMITDATE;
 
@@ -314,7 +315,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  */
                 while (queuedEvents.Count == 0) {
                     if (!eventIO) goto done;
-                    ReadInputLine ("queueing events");
+                    ReadInputLine ();
                 }
 
                 /*
@@ -361,133 +362,144 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /**
          * @brief Read a line of input and queue it wherever it goes.
          */
-        public static bool ReadInputLine (string why)
+        public static bool ReadInputLine ()
         {
-            string sourceHash;
-            Token t;
-            Token te = null;
-            TokenBegin tb;
-            TokenBegin tbb = null;
+            return ReadInputLine (inputTokens);
+        }
+        public static bool ReadInputLine (Token t)
+        {
+            while ((t != null) && ((t is TokenEnd) || (t is TokenKwSemi))) t = t.nextToken;
+            if (t == null) {
+                string sourceHash;
+                Token te = null;
+                TokenBegin tb;
+                TokenBegin tbb = null;
 
-            for (string inputLine; (inputLine = Console.ReadLine ()) != null;) {
-                ++ consoleLine;
-                Console.WriteLine (inputLine);
+                for (string inputLine; (inputLine = Console.ReadLine ()) != null;) {
+                    ++ consoleLine;
+                    Console.WriteLine (inputLine);
 
-                /*
-                 * Parse into tokens.
-                 * If error parsing, print error then read another line.
-                 * Also ignore blank lines.
-                 */
-                inputLine = "# " + consoleLine + " \"stdin\"\n" + inputLine;
-                tb = TokenBegin.Construct ("input", null, StandAloneErrorMessage, inputLine, out sourceHash);
-                if (tb == null) continue;
-                if (tb.nextToken is TokenEnd) continue;
+                    /*
+                     * Parse into tokens.
+                     * If error parsing, print error then read another line.
+                     * Also ignore blank lines.
+                     */
+                    inputLine = "# " + consoleLine + " \"stdin\"\n" + inputLine;
+                    tb = TokenBegin.Construct ("input", null, StandAloneErrorMessage, inputLine, out sourceHash);
+                    if (tb == null) continue;
+                    if (tb.nextToken is TokenEnd) continue;
 
-                /*
-                 * If this is our very first line, remember where it begins.
-                 */
-                if (tbb == null) tbb = tb;
+                    /*
+                     * If this is our very first line, remember where it begins.
+                     */
+                    if (tbb == null) tbb = tb;
 
-                /*
-                 * If this is a continuation, splice away.
-                 *   te = hyphen from previous line
-                 *   tb = begin token from this line
-                 */
-                if (te != null) {
-                    te.prevToken.nextToken = tb.nextToken;
-                    tb.nextToken.prevToken = te.prevToken;
-                }
-
-                /*
-                 * See if there is a continuation of this line by looking for a hyphen at the end.
-                 * If so, loop back to read in another line.
-                 */
-                for (t = tb; !(t is TokenEnd); t = t.nextToken) { }
-                if (t.prevToken is TokenKwSub) {
-                    te = t.prevToken;
-                    continue;
-                }
-
-                /*
-                 * We have a complete line, skip over the TokenBegin.
-                 */
-                for (t = tbb; (t is TokenBegin); t = t.nextToken) { }
-
-                /*
-                 * A question mark means display status of scripts.
-                 */
-                if (t is TokenKwQMark) {
-                    Console.WriteLine (why);
-                    foreach (ScriptRoot srr in scriptRoots) {
-                        srr.PrintStatus ();
+                    /*
+                     * If this is a continuation, splice away.
+                     *   te = hyphen from previous line
+                     *   tb = begin token from this line
+                     */
+                    if (te != null) {
+                        te.prevToken.nextToken = tb.nextToken;
+                        tb.nextToken.prevToken = te.prevToken;
                     }
-                    te = tbb = null;
-                    continue;
-                }
 
-                /*
-                 * Queue value or event to corresponding script.
-                 */
-
-                // integer) : set sri to the given integer
-                //  string) : set sri to the given prim name
-                if ((t is TokenInt) && (t.nextToken is TokenKwParClose)) {
-                    int i = ((TokenInt)t).val;
-                    if ((i < 0) || (i >= scriptRoots.Length)) {
-                        t.ErrorMsg ("script index out of range 0.." + (scriptRoots.Length - 1));
-                        te = tbb = null;
+                    /*
+                     * See if there is a continuation of this line by looking for a hyphen at the end.
+                     * If so, loop back to read in another line.
+                     */
+                    for (t = tb; !(t is TokenEnd); t = t.nextToken) { }
+                    if (t.prevToken is TokenKwSub) {
+                        te = t.prevToken;
                         continue;
                     }
-                    scriptRootIndex = i;
-                    t = t.nextToken.nextToken;
-                } else if ((t is TokenStr) && (t.nextToken is TokenKwParClose)) {
-                    string uuid = ((TokenStr)t).val;
-                    if (!scriptRootPrimUUIDs.ContainsKey (uuid)) {
-                        t.ErrorMsg ("unknown script prim uuid");
-                        te = tbb = null;
-                        continue;
-                    }
-                    scriptRootIndex = scriptRootPrimUUIDs[uuid].index;
-                    t = t.nextToken.nextToken;
+
+                    /*
+                     * Otherwise, it is our input tokens.
+                     */
+                    for (t = tbb; (t is TokenBegin); t = t.nextToken) { }
+                    return ReadInputLine (t);
                 }
 
-                ScriptRoot sr = scriptRoots[scriptRootIndex];
-
-                // <name> : <value>       is a return <value> for API function <name>
-                // <name> ( <arg>... )    is an event to queue to the script
-
-                if (!(t is TokenName)) {
-                    t.ErrorMsg ("expecting event or API function name");
-                    te = tbb = null;
-                    continue;
-                }
-                string name = ((TokenName)t).val;
-
-                // if name followed by (, queue the event to the event queue
-                if (t.nextToken is TokenKwParOpen) {
-                    QueuedEvent qe = new QueuedEvent (sr, name, t.nextToken.nextToken);
-                    queuedEvents.AddLast (qe);
-                    return true;
-                }
-
-                // if name followed by :, queue the value to the script's value queue
-                if (t.nextToken is TokenKwColon) {
-                    t = t.nextToken.nextToken;
-                    QueuedValue qv = new QueuedValue ();
-                    qv.name  = name;
-                    qv.value = ParseEHArg (ref t);
-                    sr.queuedValues.AddLast (qv);
-                    return true;
-                }
-
-                // neither, it's an error
-                t.ErrorMsg ("event or API name must be followed by ( or :");
-                te = tbb = null;
+                // end of file, won't get anything more
+                eventIO = false;
+                return false;
             }
 
-            // end of file, no more events will queue
-            eventIO = false;
-            return false;
+            /*
+             * STATUS prints the script status.
+             */
+            if ((t is TokenName) && (((TokenName)t).val == "STATUS")) {
+                foreach (ScriptRoot srr in scriptRoots) {
+                    srr.PrintStatus ();
+                }
+                return ReadInputLine (t.nextToken);
+            }
+
+            /*
+             * Decode which script the event/return value goes to.
+             */
+            // integer) : set sri to the given integer
+            //  string) : set sri to the given prim name
+            if ((t is TokenInt) && (t.nextToken is TokenKwParClose)) {
+                int i = ((TokenInt)t).val;
+                if ((i < 0) || (i >= scriptRoots.Length)) {
+                    t.ErrorMsg ("script index out of range 0.." + (scriptRoots.Length - 1));
+                    return ReadInputLine (null);
+                }
+                scriptRootIndex = i;
+                return ReadInputLine (t.nextToken.nextToken);
+            }
+            if ((t is TokenStr) && (t.nextToken is TokenKwParClose)) {
+                string uuid = ((TokenStr)t).val;
+                if (!scriptRootPrimUUIDs.ContainsKey (uuid)) {
+                    t.ErrorMsg ("unknown script prim uuid");
+                    return ReadInputLine (null);
+                }
+                scriptRootIndex = scriptRootPrimUUIDs[uuid].index;
+                return ReadInputLine (t.nextToken.nextToken);
+            }
+
+            /*
+             * We know what script the event/value is for.
+             * Set up to process whatever comes after it.
+             */
+            for (inputTokens = t; !(inputTokens is TokenEnd) && !(inputTokens is TokenKwSemi); inputTokens = inputTokens.nextToken) { }
+
+            /*
+             * Queue the event or value to its script.
+             */
+            ScriptRoot sr = scriptRoots[scriptRootIndex];
+
+            // <name> : <value>       is a return <value> for API function <name>
+            // <name> ( <arg>... )    is an event to queue to the script
+
+            if (!(t is TokenName)) {
+                t.ErrorMsg ("expecting event or API function name");
+                return ReadInputLine (null);
+            }
+            string name = ((TokenName)t).val;
+
+            // if name followed by (, queue the event to the event queue
+            if (t.nextToken is TokenKwParOpen) {
+                QueuedEvent qe = new QueuedEvent (sr, name, t.nextToken.nextToken);
+                queuedEvents.AddLast (qe);
+                return true;
+            }
+
+            // if name followed by :, queue the value to the script's value queue
+            if (t.nextToken is TokenKwColon) {
+                t = t.nextToken.nextToken;
+                QueuedValue qv = new QueuedValue ();
+                qv.name  = name;
+                qv.value = ParseEHArg (ref t);
+                sr.queuedValues.AddLast (qv);
+                return true;
+            }
+
+            // neither, it's an error
+            t.ErrorMsg ("event or API name must be followed by ( or :");
+            return ReadInputLine (null);
         }
 
         public static void StandAloneErrorMessage (Token token, string message)
@@ -3039,7 +3051,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             while (true) {
                 if (scriptRoot.queuedValues.Count == 0) {
-                    if (!XMREngTest.ReadInputLine (type + " return value for " + name + " of " + scriptRoot.msgPrefix)) {
+                    if (!XMREngTest.ReadInputLine ()) {
                         throw new Exception ("eof reading return value for " + name);
                     }
                 } else {
