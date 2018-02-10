@@ -1481,6 +1481,34 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
             }
             sb.Append (st.Substring (leftOffAt));
+
+            // convert lines in format '  at method (args) [IL offset] in /directory/file:line'
+            //                      to '  at method (args) [IL offset] in file:line'
+            st = sb.ToString ();
+            string[] lines = sb.ToString ().Split (new char[] { '\n' });
+            sb = new StringBuilder ();
+            bool first = true;
+            foreach (string line in lines) {
+                if (!first) sb.Append ('\n');
+                if (line.StartsWith ("  at ")) {
+                    int i;
+                    int j = -1;
+                    for (i = line.Length; -- i >= 0;) {
+                        char c = line[i];
+                        if (c <= ' ') break;
+                        if ((j < 0) && ((c == '/') || (c == '\\'))) j = i;
+                    }
+                    if ((i >= 0) && (j >= 0)) {
+                        sb.Append (line.Substring (0, ++ i));
+                        sb.Append (line.Substring (++ j));
+                    } else {
+                        sb.Append (line);
+                    }
+                } else {
+                    sb.Append (line);
+                }
+                first = false;
+            }
             return sb.ToString ();
         }
 
