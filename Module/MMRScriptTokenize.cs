@@ -376,7 +376,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine {
                     i = -- j;
                     continue;
                 }
-                if ((c == '.') && (source[i+1] >= '0') && (source[i+1] <= '9')) {
+                if ((c == '.') && (i + 1 < source.Length) && (source[i+1] >= '0') && (source[i+1] <= '9')) {
                     int j = TryParseFloat (i);
                     if (j > 0) i = -- j;
                     continue;

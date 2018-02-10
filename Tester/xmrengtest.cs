@@ -60,22 +60,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public const string GITCOMMITDATE = "GITCOMMITDATE";
         public const int   GITCOMMITCLEAN = 0;
 
-        public static bool doCheckRun = false;
-        public static bool haveLinkNums = false;
-        public static bool printPeakHeap = false;
+        public static bool doCheckRun     = false;
+        public static bool eventIO        = false;
+        public static bool haveLinkNums   = false;
+        public static bool printPeakHeap  = false;
+        public static bool printPeakStack = false;
         public static Dictionary<string, ScriptObjCode> scriptObjCodes = new Dictionary<string, ScriptObjCode> ();
         public static Dictionary<string, ScriptRoot> scriptRootPrimUUIDs = new Dictionary<string, ScriptRoot> ();
         public static int consoleLine = 0;
+        public static int scriptRootIndex = 0;
         public static LinkedList<int> ipcChannels = new LinkedList<int> ();
         public static LinkedList<QueuedEvent> queuedEvents = new LinkedList<QueuedEvent> ();
         public static MemoryStream serializeStream = null;
         public static ScriptRoot[] scriptRoots;
 
         public static readonly string commitInfo = GITCOMMITHASH + (new string[] { "(dirty)", "" })[GITCOMMITCLEAN] + " " + GITCOMMITDATE;
-
-        private static int scriptRootIndex;
-        private static int scriptStepIndex;
-        private static Token nextInputToken;
 
         /**
          * @brief Stand-alone test program.
@@ -94,7 +93,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * Parse command-line arguments.
              */
             bool doXmrAsm     = false;
-            bool eventIO      = false;
             List<PerPrim> perPrims = new List<PerPrim> ();
             int linkNum       = 0;
             string primName   = "";
@@ -143,6 +141,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
                 if (arg == "-peakheap") {
                     printPeakHeap = true;
+                    continue;
+                }
+                if (arg == "-peakstack") {
+                    printPeakStack = true;
                     continue;
                 }
                 if (arg == "-primname") {
@@ -288,149 +290,56 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
             }
 
-            scriptRootIndex = 0;
-            nextInputToken = null;
+            /*
+             * Step scripts until there is nothing more to do.
+             */
             while (true) {
 
                 /*
-                 * Keep processing -ipcchannel queues and stepping
-                 * scripts until all scripts are waiting for some
-                 * kind of input.
+                 * Step them all until they are waiting for an event.
                  */
                 bool didSomething;
                 do {
                     didSomething = false;
-
-                    /*
-                     * Maybe we can process internally queued events.
-                     * Get as many scripts ready for stepping at once as we can.
-                     */
-                checkQueuedEvents:
-                    foreach (QueuedEvent queuedEvent in queuedEvents) {
-                        if (queuedEvent.queuedTo.Count <= 0) {
-                            queuedEvents.Remove (queuedEvent);
-                            goto checkQueuedEvents;
-                        }
-                        foreach (ScriptRoot target in queuedEvent.queuedTo) {
-                            if (target.iState == IState.WAITINGFOREVENT) {
-                                queuedEvent.queuedTo.Remove (target);
-                                target.ProcessQueuedEvent (queuedEvent);
-                                didSomething = true;
-                                goto checkQueuedEvents;
-                            }
+                    foreach (ScriptRoot sr in scriptRoots) {
+                        if (sr.iState != IState.WAITINGFOREVENT) {
+                            sr.StepScript ();
+                            didSomething = true;
                         }
                     }
-
-                    /*
-                     * Step all scripts that need to be stepped.
-                     * They should theoretically all be waiting for some kind of
-                     * input after this completes.
-                     */
-                    bool steppedSomething;
-                    do {
-                        steppedSomething = false;
-                        for (scriptStepIndex = 0; scriptStepIndex < scriptRoots.Length; scriptStepIndex ++) {
-                            ScriptRoot sr = scriptRoots[(scriptRootIndex+scriptStepIndex)%scriptRoots.Length];
-                            if (sr.iState == IState.YIELDING) {
-                                sr.StepScript ();
-                                steppedSomething = true;
-                                didSomething = true;
-                            }
-                        }
-                    } while (steppedSomething);
-
-                    /*
-                     * If we stepped something, repeat back in case it queued another -ipcchannel message.
-                     */
                 } while (didSomething);
 
                 /*
-                 * Not having -eventio means stop when everything is waiting for an event.
+                 * Read next event from stdin.
                  */
-                if (!eventIO) {
-                    break;
+                while (queuedEvents.Count == 0) {
+                    if (!eventIO) goto done;
+                    ReadInputLine ("queueing events");
                 }
 
                 /*
-                 * Read input and pass to script.
+                 * Queue event to the script.
                  */
-                if ((nextInputToken == null) || (nextInputToken is TokenEnd)) {
-                    nextInputToken = ReadInputTokens ();
-                    if (nextInputToken == null) break;
-                }
-                while (true) {
-                    while ((nextInputToken is TokenBegin) || (nextInputToken is TokenKwSemi)) {
-                        nextInputToken = nextInputToken.nextToken;
-                    }
-                    if (nextInputToken is TokenEnd) break;
-
-                    /*
-                     * If 'STATUS' print each script status.
-                     */
-                    if ((nextInputToken is TokenName) && (((TokenName)nextInputToken).val == "STATUS")) {
-                        foreach (ScriptRoot sr in scriptRoots) {
-                            sr.PrintStatus ();
-                        }
-                        nextInputToken = nextInputToken.nextToken;
-                    } else {
-
-                        /*
-                         * Get index token from first integer on line.
-                         * Can also be a string containing the prim uuid.
-                         */
-                        Token u = nextInputToken;
-                        if ((u is TokenInt) && (u.nextToken is TokenKwParClose)) {
-                            scriptRootIndex = ((TokenInt)u).val;
-                            if ((scriptRootIndex < 0) || (scriptRootIndex >= scriptRoots.Length)) {
-                                u.ErrorMsg ("script index out of range 0.." + (scriptRoots.Length - 1));
-                                nextInputToken = null;
-                                continue;
-                            }
-                            u = u.nextToken.nextToken;
-                        } else if ((u is TokenStr) && (u.nextToken is TokenKwParClose)) {
-                            string uuid = ((TokenStr)u).val;
-                            if (!scriptRootPrimUUIDs.ContainsKey (uuid)) {
-                                u.ErrorMsg ("unknown script prim uuid");
-                                nextInputToken = null;
-                                continue;
-                            }
-                            scriptRootIndex = scriptRootPrimUUIDs[uuid].index;
-                            u = u.nextToken.nextToken;
-                        }
-
-                        /*
-                         * If that script isn't ready for input, step everything until it is.
-                         */
-                        ScriptRoot sr = scriptRoots[scriptRootIndex];
-                        if (sr.iState != IState.WAITINGFOREVENT) break;
-
-                        /*
-                         * Process the input, getting the script ready to run again.
-                         */
-                        nextInputToken = sr.ProcessInput (u);
-                    }
-
-                    /*
-                     * Check for end of input or if there is more to do before stepping scripts.
-                     */
-                    if (nextInputToken == null) break;
-                    if (nextInputToken is TokenEnd) break;
-                    if (!(nextInputToken is TokenKwSemi)) {
-                        nextInputToken.ErrorMsg ("extra stuff at end of line");
-                        nextInputToken = null;
-                        break;
-                    }
-                }
+                QueuedEvent qe = queuedEvents.First.Value;
+                queuedEvents.RemoveFirst ();
+                qe.scriptRoot.ProcessQueuedEvent (qe);
             }
+
+        done:
             if (printPeakHeap) {
                 foreach (ScriptRoot sr in scriptRoots) {
                     Console.WriteLine (sr.msgPrefix + "PeakHeapUsed = " + sr.GetPeakHeapUsed ());
                 }
             }
+            if (printPeakStack) {
+                foreach (ScriptRoot sr in scriptRoots) {
+                    Console.WriteLine (sr.msgPrefix + "PeakStackUsed = " + sr.GetPeakStackUsed ());
+                }
+            }
             Environment.Exit (0);
 
         usage:
-            Console.WriteLine ("usage: mono xmrengtest.exe [ -builtins ] [ -checkrun ] [ -eventio ] [ -heaplimit <numbytes> ] [ -ipcchannel <channel> ] [ -linknum <number> ] [ -primname <name> ] [ -primuuid <uuid> ] [ -serialize ] [ -stacksize <numbytes> ] [ -version ] <sourcefile> ...");
+            Console.WriteLine ("usage: mono xmrengtest.exe [ -builtins ] [ -checkrun ] [ -eventio ] [ -heaplimit <numbytes> ] [ -ipcchannel <channel> ] [ -linknum <number> ] [ -peakheap ] [ -peakstack ] [ -primname <name> ] [ -primuuid <uuid> ] [ -serialize ] [ -stacksize <numbytes> ] [ -version ] <sourcefile> ...");
             Console.WriteLine ("     -builtins : print list of built-in functions and constants then exit");
             Console.WriteLine ("     -checkrun : simulate a thread slice at every opportunity");
             Console.WriteLine ("      -eventio : when default state_entry completes, read next event from stdin and keep doing so until eof");
@@ -440,6 +349,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Console.WriteLine ("   -ipcchannel : channel number for which llListen/llListenControl/llListenRemove/llRegionSay/llRegionSayTo/llSay are handled internally");
             Console.WriteLine ("      -linknum : link number returned by llGetLinkNumber() and used by llMessageLinked()");
             Console.WriteLine ("     -peakheap : print peak heap used");
+            Console.WriteLine ("    -peakstack : print peak stack used");
             Console.WriteLine ("     -primname : give prim name for subsequent script(s) (returned by llGetKey())");
             Console.WriteLine ("     -primuuid : give prim uuid for subsequent script(s) (returned by llGetObjectName())");
             Console.WriteLine ("    -serialize : serialize and deserialize stack at every opportunity");
@@ -449,25 +359,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         /**
-         * @begin Read stream of tokens from input.
-         * @returns null: end-of-file on input
-         *          else: stream of tokens
+         * @brief Read a line of input and queue it wherever it goes.
          */
-        public static TokenBegin ReadInputTokens ()
+        public static bool ReadInputLine (string why)
         {
             string sourceHash;
             Token t;
-            TokenBegin tb, tbb;
             Token te = null;
+            TokenBegin tb;
+            TokenBegin tbb = null;
 
-            tbb = null;
-            while (true) {
-
-                /*
-                 * Read input line from stdin.
-                 */
-                string inputLine = Console.ReadLine ();
-                if (inputLine == null) return null;
+            for (string inputLine; (inputLine = Console.ReadLine ()) != null;) {
                 ++ consoleLine;
                 Console.WriteLine (inputLine);
 
@@ -476,7 +378,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  * If error parsing, print error then read another line.
                  * Also ignore blank lines.
                  */
-                inputLine = "# " + consoleLine + " \"input\"\n" + inputLine;
+                inputLine = "# " + consoleLine + " \"stdin\"\n" + inputLine;
                 tb = TokenBegin.Construct ("input", null, StandAloneErrorMessage, inputLine, out sourceHash);
                 if (tb == null) continue;
                 if (tb.nextToken is TokenEnd) continue;
@@ -498,15 +400,95 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                 /*
                  * See if there is a continuation of this line by looking for a hyphen at the end.
-                 * If not, we're all done so return the very first begin token.
-                 * Otherwise, loop back to read in another line.
+                 * If so, loop back to read in another line.
                  */
                 for (t = tb; !(t is TokenEnd); t = t.nextToken) { }
-                if (!(t.prevToken is TokenKwSub)) return tbb;
-                te = t.prevToken;
-            }
-        }
+                if (t.prevToken is TokenKwSub) {
+                    te = t.prevToken;
+                    continue;
+                }
 
+                /*
+                 * We have a complete line, skip over the TokenBegin.
+                 */
+                for (t = tbb; (t is TokenBegin); t = t.nextToken) { }
+
+                /*
+                 * A question mark means display status of scripts.
+                 */
+                if (t is TokenKwQMark) {
+                    Console.WriteLine (why);
+                    foreach (ScriptRoot srr in scriptRoots) {
+                        srr.PrintStatus ();
+                    }
+                    te = tbb = null;
+                    continue;
+                }
+
+                /*
+                 * Queue value or event to corresponding script.
+                 */
+
+                // integer) : set sri to the given integer
+                //  string) : set sri to the given prim name
+                if ((t is TokenInt) && (t.nextToken is TokenKwParClose)) {
+                    int i = ((TokenInt)t).val;
+                    if ((i < 0) || (i >= scriptRoots.Length)) {
+                        t.ErrorMsg ("script index out of range 0.." + (scriptRoots.Length - 1));
+                        te = tbb = null;
+                        continue;
+                    }
+                    scriptRootIndex = i;
+                    t = t.nextToken.nextToken;
+                } else if ((t is TokenStr) && (t.nextToken is TokenKwParClose)) {
+                    string uuid = ((TokenStr)t).val;
+                    if (!scriptRootPrimUUIDs.ContainsKey (uuid)) {
+                        t.ErrorMsg ("unknown script prim uuid");
+                        te = tbb = null;
+                        continue;
+                    }
+                    scriptRootIndex = scriptRootPrimUUIDs[uuid].index;
+                    t = t.nextToken.nextToken;
+                }
+
+                ScriptRoot sr = scriptRoots[scriptRootIndex];
+
+                // <name> : <value>       is a return <value> for API function <name>
+                // <name> ( <arg>... )    is an event to queue to the script
+
+                if (!(t is TokenName)) {
+                    t.ErrorMsg ("expecting event or API function name");
+                    te = tbb = null;
+                    continue;
+                }
+                string name = ((TokenName)t).val;
+
+                // if name followed by (, queue the event to the event queue
+                if (t.nextToken is TokenKwParOpen) {
+                    QueuedEvent qe = new QueuedEvent (sr, name, t.nextToken.nextToken);
+                    queuedEvents.AddLast (qe);
+                    return true;
+                }
+
+                // if name followed by :, queue the value to the script's value queue
+                if (t.nextToken is TokenKwColon) {
+                    t = t.nextToken.nextToken;
+                    QueuedValue qv = new QueuedValue ();
+                    qv.name  = name;
+                    qv.value = ParseEHArg (ref t);
+                    sr.queuedValues.AddLast (qv);
+                    return true;
+                }
+
+                // neither, it's an error
+                t.ErrorMsg ("event or API name must be followed by ( or :");
+                te = tbb = null;
+            }
+
+            // end of file, no more events will queue
+            eventIO = false;
+            return false;
+        }
 
         public static void StandAloneErrorMessage (Token token, string message)
         {
@@ -666,27 +648,66 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public int active;
     }
 
+    // script event read from input file
     public class QueuedEvent {
+        public ScriptRoot scriptRoot;
         public ScriptEventCode eventCode;
         public object[] ehArgs;
-        public LinkedList<ScriptRoot> queuedTo = new LinkedList<ScriptRoot> ();
 
-        public QueuedEvent (ScriptEventCode ec, int nargs)
+        // null stuff indicates where an api return value is in the input
+        public QueuedEvent () { }
+
+        // from input line
+        //  sr = which script it is queued to
+        //  name = name of event handler
+        //  t = event handler argument tokens, just after the '('
+        public QueuedEvent (ScriptRoot sr, string name, Token t)
         {
-            eventCode = ec;
-            ehArgs = new object[nargs];
+            scriptRoot = sr;
+            eventCode  = (ScriptEventCode) Enum.Parse (typeof (ScriptEventCode), name);
+
+            LinkedList<object> ehargs = new LinkedList<object> ();
+            if (!(t is TokenKwParClose)) {
+                while (true) {
+                    object val = XMREngTest.ParseEHArg (ref t);
+                    if (val == null) return;
+                    ehargs.AddLast (val);
+                    if (!(t is TokenKwComma)) break;
+                    t = t.nextToken;
+                }
+                if (!(t is TokenKwParClose)) {
+                    t.ErrorMsg ("expecting , or )");
+                    return;
+                }
+            }
+            ehArgs = new object[ehargs.Count];
+            int i = 0;
+            foreach (object eharg in ehargs) ehArgs[i++] = eharg;
         }
+
+        // internally generated
+        public QueuedEvent (ScriptRoot sr, ScriptEventCode ec, int nargs)
+        {
+            scriptRoot = sr;
+            eventCode  = ec;
+            ehArgs     = new object[nargs];
+        }
+    }
+
+    // api function return value read from input file
+    public class QueuedValue {
+        public string name;
+        public object value;
     }
 
     /**
      * @brief This stuff does not re-instantiate on serialization.
      */
     public class ScriptRoot {
-        public static object iStateLock = new object ();
-
         public  int         index;
         public  int         linkNum;
         private int         peakHeapUsed;
+        private int         peakStackUsed;
         public  IState      iState;
         public  Listener[]  listeners = new Listener[65];
         public  object      wfiValue;
@@ -696,6 +717,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public  string      wfiName;
         public  string      wfiType;
         private XMRInstance inst;
+
+        public  LinkedList<QueuedValue> queuedValues = new LinkedList<QueuedValue> ();
 
         public ScriptRoot (XMRInstance inst, int index, PerPrim perPrim)
         {
@@ -759,79 +782,21 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return peakHeapUsed;
         }
 
-        /**
-         * @brief Process a line of input for the script and step it until it wants more.
-         */
-        public Token ProcessInput (Token t)
+        public int GetPeakStackUsed ()
         {
-            switch (iState) {
-                case IState.WAITINGFOREVENT: {
-
-                    /*
-                     * Get event handler name and validate.
-                     */
-                    if (!(t is TokenName)) {
-                        t.ErrorMsg ("expecting event name");
-                        return null;
-                    }
-                    TokenName eventName = (TokenName)t;
-                    MethodInfo[] ifaceMethods = typeof (IEventHandlers).GetMethods ();
-                    MethodInfo ifaceMethod;
-                    foreach (MethodInfo ifm in ifaceMethods) {
-                        ifaceMethod = ifm;
-                        if (ifaceMethod.Name == eventName.val) goto gotEvent;
-                    }
-                    eventName.ErrorMsg ("unknown event " + eventName);
-                    return null;
-                gotEvent:
-                    inst.eventCode = (ScriptEventCode)Enum.Parse (typeof (ScriptEventCode), eventName.val);
-                    if (inst.m_ObjCode.scriptEventHandlerTable[inst.stateCode,(int)inst.eventCode] == null) {
-                        eventName.ErrorMsg ("event handler not defined for state " + inst.m_ObjCode.stateNames[inst.stateCode]);
-                        return null;
-                    }
-                    t = t.nextToken;
-
-                    /*
-                     * Parse argument list.
-                     */
-                    if (!(t is TokenKwParOpen)) {
-                        t.ErrorMsg ("expecting ( after event name");
-                        return null;
-                    }
-                    List<object> argList = new List<object> ();
-                    do {
-                        t = t.nextToken;
-                        if ((argList.Count == 0) && (t is TokenKwParClose)) break;
-                        object val = XMREngTest.ParseEHArg (ref t);
-                        if (val == null) break;
-                        argList.Add (val);
-                    } while (t is TokenKwComma);
-                    if (!(t is TokenKwParClose)) {
-                        t.ErrorMsg ("expecting , or ) in arg list");
-                        return null;
-                    }
-                    inst.ehArgs = argList.ToArray ();
-                    t = t.nextToken;
-
-                    iState = IState.YIELDING;
-                    break;
-                }
-
-                default: {
-                    throw new Exception ("bad istate " + iState);
-                }
+            if (peakStackUsed < inst.peakStackUsed) {
+                peakStackUsed = inst.peakStackUsed;
             }
-
-            return t;
+            return peakStackUsed;
         }
 
         /**
          * @brief Process internally queued events.
          */
-        public void ProcessQueuedEvent (QueuedEvent msg)
+        public void ProcessQueuedEvent (QueuedEvent qe)
         {
-            inst.eventCode = msg.eventCode;
-            inst.ehArgs    = msg.ehArgs;
+            inst.eventCode = qe.eventCode;
+            inst.ehArgs    = qe.ehArgs;
             iState = IState.YIELDING;
         }
 
@@ -861,13 +826,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             } catch (StackCaptureException) {
                 iState = IState.YIELDING;
             } catch (Exception e) {
-                Console.WriteLine ("exception in script: " + e.Message);
+                Console.WriteLine (msgPrefix + "exception in script: " + e.Message);
                 Console.WriteLine (inst.xmrExceptionStackTrace (e));
                 Environment.Exit (3);
             }
 
             if (peakHeapUsed < inst.peakHeapUsed) {
                 peakHeapUsed = inst.peakHeapUsed;
+            }
+
+            if (peakStackUsed < inst.peakStackUsed) {
+                peakStackUsed = inst.peakStackUsed;
             }
 
             /*
@@ -909,8 +878,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public ScriptBaseClass m_ApiManager_LSL;
         public OpenSim.Region.ScriptEngine.Shared.Api.Interfaces.IOSSL_Api m_ApiManager_OSSL;
 
-        public int peakHeapUsed = 0;
-        public int m_StackSize = 1024*1024;
+        public int peakHeapUsed  = 0;
+        public int peakStackUsed = 0;
         public string m_DescName;
 
         /**
@@ -922,7 +891,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             heapLimit   = HEAPLIMIT;
             m_StackLeft = STACKSIZE;
             glblVars.AllocVarArrays (m_ObjCode.glblSizes);
-            suspendOnCheckRunHold = XMREngTest.doCheckRun;
+            suspendOnCheckRunHold = XMREngTest.doCheckRun || XMREngTest.printPeakStack;
 
             /*
              * Run default state_entry() handler until it is ready for more input.
@@ -942,7 +911,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             m_DescName  = inst.m_DescName;
             heapLimit   = HEAPLIMIT;
             m_StackLeft = STACKSIZE;
-            suspendOnCheckRunHold = XMREngTest.doCheckRun;
+            suspendOnCheckRunHold = XMREngTest.doCheckRun || XMREngTest.printPeakStack;
         }
 
         /*********************\
@@ -960,11 +929,16 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         /**
          * @brief Gets called by scripts on entry to functions or in loops 
          *        whenever suspendOnCheckRunHold or suspendOnCheckRunTemp set.
-         *        In the tester, it thus gets called only when -checkrun or
-         *        -serialize options were given on the command line.
+         *        In the tester, it gets called only when -checkrun, -serialize
+         *        or -printstack options were given on the command line.
          */
         public override void CheckRunWork ()
         {
+            int stackUsed = STACKSIZE - m_StackLeft;
+            if (peakStackUsed < stackUsed) peakStackUsed = stackUsed;
+
+            if (!XMREngTest.doCheckRun) return;
+
             if (stackFrames != null) throw new Exception ("frames left over");
 
             switch (callMode) {
@@ -1160,12 +1134,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             /*
              * Maybe it gets queued as an -ipcchannel listen event somewhere.
              */
-            QueuedEvent queuedEvent = new QueuedEvent (ScriptEventCode.listen, 4);
-            queuedEvent.ehArgs[0] = channel;
-            queuedEvent.ehArgs[1] = scriptRoot.primName;
-            queuedEvent.ehArgs[2] = scriptRoot.primUUID;
-            queuedEvent.ehArgs[3] = msg;
-
             bool queued = false;
             foreach (ScriptRoot targsr in XMREngTest.scriptRoots) {
                 if ((targsr != scriptRoot) && (target == null || targsr.primUUID == target)) {
@@ -1175,19 +1143,18 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                             if ((lner.id   != "") && (lner.id   != scriptRoot.primUUID)) continue;
                             if ((lner.name != "") && (lner.name != scriptRoot.primName)) continue;
                             if ((lner.msg  != "") && (lner.msg  != msg))                 continue;
-                            queuedEvent.queuedTo.AddLast (targsr);
+
+                            QueuedEvent qe = new QueuedEvent (targsr, ScriptEventCode.listen, 4);
+                            qe.ehArgs[0]   = channel;
+                            qe.ehArgs[1]   = scriptRoot.primName;
+                            qe.ehArgs[2]   = scriptRoot.primUUID;
+                            qe.ehArgs[3]   = msg;
+                            XMREngTest.queuedEvents.AddLast (qe);
                             queued = true;
                             break;
                         }
                     }
                 }
-            }
-
-            /*
-             * If so, add to end of internal event queue.
-             */
-            if (queued) {
-                XMREngTest.queuedEvents.AddLast (queuedEvent);
             }
 
             /*
@@ -1225,7 +1192,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             object[] parms = new object[] { src, stride };
             PrintParms ("llListRandomize", parms);
-            object rv = ReadRetVal ("llListRandomize", "list");
+            object rv = ReadRetVal ("llListRandomize", "integer");
             if (!(rv is int)) return (LSL_List)rv;
 
             if (stride <= 0) stride = 1;
@@ -1284,16 +1251,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 return;
             }
 
-            QueuedEvent queuedEvent = new QueuedEvent (ScriptEventCode.link_message, 4);
-            queuedEvent.ehArgs[0] = scriptRoot.linkNum;
-            queuedEvent.ehArgs[1] = num;
-            queuedEvent.ehArgs[2] = str;
-            queuedEvent.ehArgs[3] = id;
-
             /*
              * See if it can be queued to any scripts.
              */
-            bool queued = false;
             foreach (ScriptRoot targsr in XMREngTest.scriptRoots) {
                 switch (link) {
                     case LINK_SET: {
@@ -1316,15 +1276,13 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                         continue;
                     }
                 }
-                queuedEvent.queuedTo.AddLast (targsr);
-                queued = true;
-            }
 
-            /*
-             * If so, add to end of internal event queue.
-             */
-            if (queued) {
-                XMREngTest.queuedEvents.AddLast (queuedEvent);
+                QueuedEvent qe = new QueuedEvent (targsr, ScriptEventCode.link_message, 4);
+                qe.ehArgs[0]   = scriptRoot.linkNum;
+                qe.ehArgs[1]   = num;
+                qe.ehArgs[2]   = str;
+                qe.ehArgs[3]   = id;
+                XMREngTest.queuedEvents.AddLast (qe);
             }
         }
 
@@ -3071,7 +3029,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         /**
-         * @brief Read return value from stdin.
+         * @brief Read API function return value from stdin.
          *        Must be in form <funcname>:<value>
          * @param name = name of function that the return value is for
          * @param type = script-visible return value type
@@ -3080,21 +3038,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private object ReadRetVal (string name, string type)
         {
             while (true) {
-                Token nextInputToken = XMREngTest.ReadInputTokens ();
-                while ((nextInputToken is TokenBegin) || (nextInputToken is TokenKwSemi)) {
-                    nextInputToken = nextInputToken.nextToken;
+                if (scriptRoot.queuedValues.Count == 0) {
+                    if (!XMREngTest.ReadInputLine (type + " return value for " + name + " of " + scriptRoot.msgPrefix)) {
+                        throw new Exception ("eof reading return value for " + name);
+                    }
+                } else {
+                    QueuedValue qv = scriptRoot.queuedValues.First.Value;
+                    scriptRoot.queuedValues.RemoveFirst ();
+                    if (qv.name == name) return qv.value;
+                    Console.WriteLine (scriptRoot.msgPrefix + "expecting return value for " + name + ", not " + qv.name);
+                    scriptRoot.queuedValues.Clear ();
                 }
-                if (nextInputToken is TokenEnd) continue;
-                if (!(nextInputToken is TokenName) ||
-                    (((TokenName)nextInputToken).val != name) ||
-                    !(nextInputToken.nextToken is TokenKwColon)) {
-                    nextInputToken.ErrorMsg ("looking for " + name + ":<" + type + ">");
-                    continue;
-                }
-                nextInputToken = nextInputToken.nextToken.nextToken;
-
-                object val = XMREngTest.ParseEHArg (ref nextInputToken);
-                if (val != null) return val;
             }
         }
     }
