@@ -63,10 +63,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private static Dictionary<string, Type> string2Type = PopulateS2T ();
         private static Dictionary<Type, string> type2String = PopulateT2S ();
 
-        private static MethodInfo monoGetCurrentOffset = typeof (ILGenerator).GetMethod ("Mono_GetCurrentOffset",
-                        BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic, null, 
-                        new Type[] { typeof (ILGenerator) }, null);
-
         private static readonly OpCode[] opCodesLdcI4M1P8 = new OpCode[] {
             OpCodes.Ldc_I4_M1, OpCodes.Ldc_I4_0, OpCodes.Ldc_I4_1, OpCodes.Ldc_I4_2, OpCodes.Ldc_I4_3, 
             OpCodes.Ldc_I4_4,  OpCodes.Ldc_I4_5, OpCodes.Ldc_I4_6, OpCodes.Ldc_I4_7, OpCodes.Ldc_I4_8
@@ -379,7 +375,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Dictionary<int, LocalBuilder> locals = new Dictionary<int, LocalBuilder> ();
             Dictionary<int, string> labelNames = new Dictionary<int, string> ();
             Dictionary<int, string> localNames = new Dictionary<int, string> ();
-            object[] ilGenArg = new object[1];
             int offset = 0;
             Dictionary<int, ScriptSrcLoc> srcLocs = null;
             string srcFile = "";
@@ -391,10 +386,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 /*
                  * Get IL instruction offset at beginning of instruction.
                  */
-                offset = 0;
-                if ((ilGen != null) && (monoGetCurrentOffset != null)) {
-                    offset = (int)monoGetCurrentOffset.Invoke (null, ilGenArg);
-                }
+                offset = (ilGen != null) ? ilGen.ILOffset : 0;
 
                 /*
                  * Read and decode next internal format code from input file (.xmrobj file).
@@ -419,7 +411,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
                         method = methods[methName];
                         ilGen  = method.GetILGenerator ();
-                        ilGenArg[0] = ilGen;
 
                         labels.Clear ();
                         locals.Clear ();
@@ -438,7 +429,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                      */
                     case ScriptObjWriterCode.EndMethod: {
                         ilGen = null;
-                        ilGenArg[0] = null;
                         scriptObjCode.EndMethod (method, srcLocs);
                         srcLocs = null;
                         if (objectTokens != null) objectTokens.EndMethod ();
