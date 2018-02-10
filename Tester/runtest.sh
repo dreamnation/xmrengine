@@ -32,8 +32,8 @@ function testit {
     $runxmrengtest -checkrun $1.lsl < $input 2>&1 | tee $1.ckr
     diff $1.ckr $1.good.tmp
     minorbar
-    ##$runxmrengtest -serialize $1.lsl < $input 2>&1 | tee $1.ser
-    ##diff $1.ser $1.good.tmp
+    $runxmrengtest -serialize $1.lsl < $input 2>&1 | tee $1.ser
+    diff $1.ser $1.good.tmp
     majorbar
     rm -f $1.good.tmp
 }
@@ -46,8 +46,8 @@ function testev {
     $runxmrengtest -eventio -checkrun $1.lsl < $1.events 2>&1 | tee $1.ckr
     diff $1.ckr $1.good.tmp
     minorbar
-    ##$runxmrengtest -eventio -serialize $1.lsl < $1.events 2>&1 | tee $1.ser
-    ##diff $1.ser $1.good.tmp
+    $runxmrengtest -eventio -serialize $1.lsl < $1.events 2>&1 | tee $1.ser
+    diff $1.ser $1.good.tmp
     majorbar
     rm -f $1.good.tmp
 }
@@ -114,16 +114,16 @@ EOF
 diff ipctest.ckr ipctest.gser
 
 minorbar
-##$runxmrengtest -eventio -ipcchannel -2135482309 -serialize \
-##    -primname controller -primuuid 0000 ipctest0.lsl \
-##    -primname player1 -primuuid 1111 ipctest1.lsl << EOF | tee ipctest.ser
-##1)touch_start(0)
-##0)llListRandomize:69827238
-##1)touch_start(0)
-##touch_start(0)
-##touch_start(0)
-##EOF
-##diff ipctest.ser ipctest.gser
+$runxmrengtest -eventio -ipcchannel -2135482309 -serialize \
+    -primname controller -primuuid 0000 ipctest0.lsl \
+    -primname player1 -primuuid 1111 ipctest1.lsl << EOF | tee ipctest.ser
+1)touch_start(0)
+0)llListRandomize:69827238
+1)touch_start(0)
+touch_start(0)
+touch_start(0)
+EOF
+diff ipctest.ser ipctest.gser
 
 majorbar
 $runxmrengtest -eventio -ipcchannel -646830961 \

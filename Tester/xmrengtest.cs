@@ -855,9 +855,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * Maybe we are doing -serialize.
              */
             if (XMREngTest.serializeStream != null) {
-                if (inst.callMode != XMRInstAbstract.CallMode_SAVE) {
-                    throw new Exception ("bad callmode " + inst.callMode);
-                }
 
                 /*
                  * Write global variables and stack frames out and discard them.
