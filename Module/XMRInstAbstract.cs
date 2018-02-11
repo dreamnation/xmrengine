@@ -31,7 +31,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Reflection.Emit;
-using System.Runtime.Serialization;
 using System.Text;
 using System.Threading;
 
@@ -1439,75 +1438,99 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         }
 
         // internal use only: converts any IL addresses in script-defined methods to source location equivalent
-        // at (wrapper dynamic-method) object.__seh_0_30_default_state_entry (OpenSim.Region.ScriptEngine.XMREngine.XMRInstAbstract) <IL 0x00d65, 0x03a53>
+
+        // Mono ex.StackTrace:
+        //   at OpenSim.Region.ScriptEngine.XMREngine.TypeCast.ObjectToInteger (System.Object x) [0x0005e] in /home/kunta/opensim-0.9/addon-modules/XMREngine/Module/MMRScriptTypeCast.cs:750
+        //   at (wrapper dynamic-method) System.Object:default state_entry (OpenSim.Region.ScriptEngine.XMREngine.XMRInstAbstract) [0x00196]
+
+        // Microsoft ex.StackTrace:
+        //    at OpenSim.Region.ScriptEngine.XMREngine.TypeCast.ObjectToInteger(Object x) in C:\Users\mrieker\opensim-0.9-source\addon-modules\XMREngine\Module\MMRScriptTypeCast.cs:line 750
+        //    at default state_entry (XMRInstAbstract )
         public string XMRExceptionStackString (Exception ex)
         {
-            string st = ex.StackTrace;
+            string stwhole = ex.StackTrace;
+            string[] stlines = stwhole.Split (new char[] { '\n' });
             StringBuilder sb = new StringBuilder ();
-            int wrapDynMethObj = 0;
-            int leftOffAt = 0;
-            while ((wrapDynMethObj = st.IndexOf ("(wrapper dynamic-method) System.Object:", ++ wrapDynMethObj)) >= 0) {
-                try {
-                    int begFuncName  = wrapDynMethObj + 39;
-                    int endFuncName  = st.IndexOf (" (", begFuncName);
-                    string funcName  = st.Substring (begFuncName, endFuncName - begFuncName);
-                    KeyValuePair<int, ScriptSrcLoc>[] srcLocs = m_ObjCode.scriptSrcLocss[funcName];
+            foreach (string st in stlines) {
+                string stline = st.Trim ();
+                if (stline == "") continue;
 
-                    int il0xPrefix   = st.IndexOf (" [0x", endFuncName);
-                    int begILHex     = il0xPrefix + 4;
-                    int endILHex     = st.IndexOf (']', begILHex);
-                    string ilHex     = st.Substring (begILHex, endILHex - begILHex);
-                    int offset       = Int32.Parse (ilHex, System.Globalization.NumberStyles.HexNumber);
-
-                    int srcLocIdx;
-                    int srcLocLen    = srcLocs.Length;
-                    for (srcLocIdx = 0; ++ srcLocIdx < srcLocLen;) {
-                        if (offset < srcLocs[srcLocIdx].Key) break;
-                    }
-                    ScriptSrcLoc srcLoc = srcLocs[--srcLocIdx].Value;
-
-                    sb.Append (st.Substring (leftOffAt, wrapDynMethObj - leftOffAt));
-                    sb.Append (st.Substring (begFuncName, endFuncName - begFuncName));
-                    sb.Append (" <");
-                    sb.Append (srcLoc.file);
-                    sb.Append ('(');
-                    sb.Append (srcLoc.line);
-                    sb.Append (',');
-                    sb.Append (srcLoc.posn);
-                    sb.Append (")>");
-
-                    leftOffAt = ++ endILHex;
-                } catch {
+                // strip 'at' off the front of line
+                if (stline.StartsWith ("at ")) {
+                    stline = stline.Substring (3);
                 }
-            }
-            sb.Append (st.Substring (leftOffAt));
 
-            // convert lines in format '  at method (args) [IL offset] in /directory/file:line'
-            //                      to '  at method (args) [IL offset] in file:line'
-            st = sb.ToString ();
-            string[] lines = sb.ToString ().Split (new char[] { '\n' });
-            sb = new StringBuilder ();
-            bool first = true;
-            foreach (string line in lines) {
-                if (!first) sb.Append ('\n');
-                if (line.StartsWith ("  at ")) {
-                    int i;
-                    int j = -1;
-                    for (i = line.Length; -- i >= 0;) {
-                        char c = line[i];
-                        if (c <= ' ') break;
-                        if ((j < 0) && ((c == '/') || (c == '\\'))) j = i;
-                    }
-                    if ((i >= 0) && (j >= 0)) {
-                        sb.Append (line.Substring (0, ++ i));
-                        sb.Append (line.Substring (++ j));
-                    } else {
-                        sb.Append (line);
-                    }
-                } else {
-                    sb.Append (line);
+                // strip '(wrapper ...' off front of line
+                if (stline.StartsWith ("(wrapper dynamic-method) System.Object:")) {
+                    stline = stline.Substring (39);
                 }
-                first = false;
+
+                // strip the (systemargtypes...) from our dynamic method names cuz it's messy
+                //  'default state_entry (XMRInstAbstract )'
+                //      => 'default state_entry'
+                //  'CallSomethingThatThrows(string) (OpenSim.Region.ScriptEngine.XMREngine.XMRInstance,string)'
+                //      => 'CallSomethingThatThrows(string)'
+                int kwin = stline.IndexOf (" in ");
+                int br0x = stline.IndexOf (" [0x");
+                int pastCloseParen = stline.Length;
+                if ((kwin >= 0) && (br0x >= 0)) pastCloseParen = Math.Min (kwin, br0x);
+                            else if (kwin >= 0) pastCloseParen = kwin;
+                            else if (br0x >= 0) pastCloseParen = br0x;
+                                           else pastCloseParen = stline.Length;
+                int endFuncName = pastCloseParen;
+                while (endFuncName > 0) {
+                    if (stline[--endFuncName] == '(') break;
+                }
+                while (endFuncName > 0) {
+                    if (stline[endFuncName-1] != ' ') break;
+                    -- endFuncName;
+                }
+                string funcName = stline.Substring (0, endFuncName);
+                KeyValuePair<int,ScriptSrcLoc>[] srcLocs;
+                if (m_ObjCode.scriptSrcLocss.TryGetValue (funcName, out srcLocs)) {
+                    stline = stline.Substring (0, endFuncName) + stline.Substring (pastCloseParen);
+                    kwin   = stline.IndexOf (" in ");
+                    br0x   = stline.IndexOf (" [0x");
+                }
+
+                // keyword 'in' is just before filename:linenumber that goes to end of line
+                // trim up the corresponding filename (ie, remove useless path info)
+                if (kwin >= 0) {
+                    int begfn = kwin + 4;
+                    int slash = begfn;
+                    for (int i = begfn; i < stline.Length; i ++) {
+                        char c = stline[i];
+                        if ((c == '/') || (c == '\\')) slash = i + 1;
+                    }
+                    stline = stline.Substring (0, begfn) + stline.Substring (slash);
+                } else if (srcLocs != null) {
+
+                    // no filename:linenumber info, try to convert IL offset
+                    if (br0x >= 0) {
+                        try {
+                            int begiloffs = br0x + 4;
+                            int endiloffs = stline.IndexOf ("]", begiloffs);
+                            int iloffset  = int.Parse (stline.Substring (begiloffs, endiloffs - begiloffs),
+                                                       System.Globalization.NumberStyles.HexNumber);
+
+                            int srcLocIdx;
+                            int srcLocLen  = srcLocs.Length;
+                            for (srcLocIdx = 0; ++ srcLocIdx < srcLocLen;) {
+                                if (iloffset < srcLocs[srcLocIdx].Key) break;
+                            }
+                            ScriptSrcLoc srcLoc = srcLocs[--srcLocIdx].Value;
+
+                            stline = stline.Substring (0, br0x) + " <" +
+                                        srcLoc.file + '(' + srcLoc.line + ',' + srcLoc.posn + ")>";
+                        } catch {
+                        }
+                    }
+                }
+
+                // put edited line in output string
+                if (sb.Length > 0) sb.AppendLine ();
+                sb.Append ("  at ");
+                sb.Append (stline);
             }
             return sb.ToString ();
         }
