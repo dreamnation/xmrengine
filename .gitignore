@@ -10,7 +10,6 @@
 /obj
 /.vs
 Tester/*.ckr
-Tester/*.o
 Tester/*.out
 Tester/*.ser
 Tester/*.xmrasm
@@ -18,5 +17,7 @@ Tester/*.xmrbin
 Tester/*.xmrobj
 Tester/*.xmrsrc
 Tester/makexmrengtestilslapi.inc
+Tester/osbin
 Tester/xmrengtestilslapi.cs
+Tester/xmrengtestver*.cs
 Tester/xmrengtest.zip

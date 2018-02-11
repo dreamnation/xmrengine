@@ -54,12 +54,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public string uuid;
     }
 
-    public class XMREngTest
+    public partial class XMREngTest
     {
-        public const string GITCOMMITHASH = "GITCOMMITHASH";
-        public const string GITCOMMITDATE = "GITCOMMITDATE";
-        public const int   GITCOMMITCLEAN = 0;
-
         public static bool doCheckRun     = false;
         public static bool eventIO        = false;
         public static bool haveLinkNums   = false;
@@ -74,8 +70,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         public static MemoryStream serializeStream = null;
         public static ScriptRoot[] scriptRoots;
         public static Token inputTokens = null;
-
-        public static readonly string commitInfo = GITCOMMITHASH + (new string[] { "(dirty)", "" })[GITCOMMITCLEAN] + " " + GITCOMMITDATE;
 
         /**
          * @brief Stand-alone test program.
@@ -172,6 +166,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     continue;
                 }
                 if (arg == "-version") {
+                    string commitInfo = gitcommithash +
+                                (new string[] { "(dirty)", "" })[gitcommitclean] +
+                                " " + gitcommitdate;
                     Console.WriteLine (commitInfo);
                     Environment.Exit (0);
                 }

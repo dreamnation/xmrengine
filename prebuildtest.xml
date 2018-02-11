@@ -19,8 +19,7 @@
     <Reference name="OpenSim.Region.ScriptEngine.Shared.Api.Runtime"/>
 
     <Files>
-        <Match pattern="xmrengtest.cs" />
-        <Match pattern="xmrengtestilslapi.cs" />
+        <Match pattern="xmrengtest*.cs" />
         <Match path="../Module" pattern="MMRDelegateCommon.cs" />
         <Match path="../Module" pattern="MMRIEventHandlers.cs" />
         <Match path="../Module" pattern="MMRInternalFuncDict.cs" />

@@ -34,7 +34,8 @@ SOURCEFILES := \
 	$(SOURCEDIR)/XMRScriptUThread.cs \
 	$(SOURCEDIR)/XMRSDTypeClObj.cs
 
-TESTERCSFILES := xmrengtest.cs xmrengtestilslapi.cs
+TESTERVERFILE := xmrengtestver_$(COMMITHASH)_$(COMMITCLEAN).cs
+TESTERCSFILES := xmrengtest.cs xmrengtestilslapi.cs $(TESTERVERFILE)
 
 REFDOPENSIMDLLS := \
 	OpenMetaverseTypes.dll \
@@ -58,6 +59,14 @@ xmrengtest.exe: $(TESTERCSFILES) $(SOURCEFILES)
 
 xmrengtestilslapi.cs: xmrengtestilslapi.pfx makexmrengtestilslapi.inc xmrengtestilslapi.sfx
 	cat xmrengtestilslapi.pfx makexmrengtestilslapi.inc xmrengtestilslapi.sfx > xmrengtestilslapi.cs
+
+$(TESTERVERFILE):
+	rm -f xmrengtestver*.cs
+	echo "namespace OpenSim.Region.ScriptEngine.XMREngine { public partial class XMREngTest {" > $(TESTERVERFILE)
+	echo "public static readonly string gitcommithash  = \"$(COMMITHASH)\";" >> $(TESTERVERFILE)
+	echo "public static readonly string gitcommitdate  = \"$(COMMITDATE)\";" >> $(TESTERVERFILE)
+	echo "public static readonly int    gitcommitclean = $(COMMITCLEAN);"    >> $(TESTERVERFILE)
+	echo "} }" >> $(TESTERVERFILE)
 
 makexmrengtestilslapi.inc: makexmrengtestilslapi.exe $(patsubst %,$(OPENSIMDLLDIR)/%,$(REFDOPENSIMDLLS))
 	MONO_PATH=$(OPENSIMDLLDIR) $(MONOBINDIR)/mono --debug makexmrengtestilslapi.exe > makexmrengtestilslapi.tmp
