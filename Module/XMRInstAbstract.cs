@@ -1461,7 +1461,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
 
                 // strip '(wrapper ...' off front of line
-                if (stline.StartsWith ("(wrapper dynamic-method) System.Object:")) {
+                if (stline.StartsWith ("(wrapper dynamic-method) System.Object:") ||
+                    stline.StartsWith ("(wrapper dynamic-method) System.Object.")) {
                     stline = stline.Substring (39);
                 }
 
