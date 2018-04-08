@@ -122,6 +122,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private string m_ScriptObjCodeKey;
 
         private XMREngine m_Engine = null;
+        public  long m_Instanced;
         private string m_ScriptBasePath;
         private string m_StateFileName;
         public  string m_SourceCode;

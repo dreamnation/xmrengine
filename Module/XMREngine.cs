@@ -105,9 +105,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private object m_FrameUpdateLock = new object ();
         private event ThreadStart m_FrameUpdateList = null;
 
-        public  object m_ScriptDBConnectLock;
         public  string m_ScriptDBConnectString;
+        public  object m_ScriptDBLock = new object ();
+        public  uint m_ScriptDBCacheSeq = 0;
+        public  uint m_ScriptDBCacheTimeout = 0;
+        public  int m_ScriptDBCacheAvailable;
         public  MySql.Data.MySqlClient.MySqlConnection m_ScriptDBConnection;
+        public  Dictionary<string,ScriptDBCacheEntry> m_ScriptDBCacheEntries = new Dictionary<string,ScriptDBCacheEntry> ();
+        public  LinkedList<ScriptDBCacheEntry> m_ScriptDBCacheAgeing = new LinkedList<ScriptDBCacheEntry> ();
 
         /*
          * Various instance lists:
@@ -266,6 +271,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             m_ScriptDBConnectString = m_Config.GetString ("ScriptDBConnection", "");
+            m_ScriptDBCacheAvailable = m_Config.GetInt ("ScriptDBCacheSize", 10000000);
 
             MainConsole.Instance.Commands.AddCommand("xmr", false,
                     "xmr",
@@ -1234,6 +1240,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             instance.m_Item        = item;
             instance.m_DescName    = part.Name + ":" + item.Name;
             instance.m_IState      = XMRInstState.CONSTRUCT;
+            lock (m_ScriptDBLock) { instance.m_Instanced = ++ m_ScriptDBCacheSeq; }
 
             lock (m_InstancesDict) {
                 m_LockedDict = "RegisterInstance";
@@ -1783,6 +1790,54 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 if (ins.m_Part.ParentGroup.IsAttachment)
                     continue;
                 ins.GetExecutionState(new XmlDocument());
+            }
+
+            // remove old script cache entries so they don't hog memory indefinitely
+            lock (m_ScriptDBLock) {
+                while (m_ScriptDBCacheAgeing.Count > 0) {
+                    ScriptDBCacheEntry entry = m_ScriptDBCacheAgeing.First.Value;
+                    if (entry.loaded >= m_ScriptDBCacheTimeout) break;
+                    RemFromScriptDBCache (entry);
+                }
+                m_ScriptDBCacheTimeout = ++ m_ScriptDBCacheSeq;
+            }
+        }
+
+        /**
+         * Add an entry to the script db cache.
+         *  Input:
+         *   entry = entry to be added
+         *  Output:
+         *   entry added to cache
+         *   if cache overflows, old entries removed
+         */
+        public void AddToScriptDBCache (ScriptDBCacheEntry entry)
+        {
+            // free of oldest entries to make room for this new entry
+            m_ScriptDBCacheAvailable -= entry.Size;
+            while ((m_ScriptDBCacheAvailable < 0) && (m_ScriptDBCacheAgeing.Count > 0)) {
+                RemFromScriptDBCache (m_ScriptDBCacheAgeing.First.Value);
+            }
+
+            // link this one up to the lists as newest entry
+            entry.loaded = m_ScriptDBCacheSeq;
+            m_ScriptDBCacheAgeing.AddLast (entry.links);
+            m_ScriptDBCacheEntries.Add (entry.sdbkey, entry);
+        }
+
+        /**
+         * Remove an entry to the script db cache.
+         *  Input:
+         *   entry = entry to be removed
+         *  Output:
+         *   entry removed from cache
+         */
+        public void RemFromScriptDBCache (ScriptDBCacheEntry entry)
+        {
+            if (entry != null) {
+                m_ScriptDBCacheAgeing.Remove (entry.links);
+                m_ScriptDBCacheEntries.Remove (entry.sdbkey);
+                m_ScriptDBCacheAvailable += entry.Size;
             }
         }
 

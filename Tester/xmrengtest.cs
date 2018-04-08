@@ -1176,7 +1176,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
             }
 
-            // keep going as long as ttere are 'like' chars
+            // keep going as long as there are 'like' chars
             while (li < lj) {
 
                 // get a like char and decode it

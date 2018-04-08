@@ -25,6 +25,24 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+// Provide script-accessible database
+//  Entries are name/value pairs with object (group) level scope
+//  sdb_key = (22-char base64 encoded obj uuid) concat (script-provided key)
+//  sdb_val = script-provided value
+
+// config entries (see XMREngine.cs)
+//  # MySql database connection
+//  ScriptDBConnection = "Data Source=hostname;Database=scriptdata;User ID=scriptdata;Password=????????;"
+//  # maximum number of characters of data to cache
+//  ScriptDBCacheSize = 10000000
+
+// database should be created with:
+//  create database scriptdata;
+//  use scriptdata;
+//  create table ScriptDBs (sdb_key varchar(255) primary key, sdb_val text);
+//  create user 'scriptdata'@'??????.%' identified by '????????';
+//  grant all privileges on scriptdata.* to 'scriptdata'@'??????.%';
+
 using MySql.Data.MySqlClient;
 using OpenMetaverse;
 using OpenSim.Framework;
@@ -45,13 +63,36 @@ using LSL_Vector = OpenSim.Region.ScriptEngine.Shared.LSL_Types.Vector3;
 
 namespace OpenSim.Region.ScriptEngine.XMREngine
 {
+    public class ScriptDBCacheEntry
+    {
+        public LinkedListNode<ScriptDBCacheEntry> links;
+        public uint loaded;     // m_ScriptDBCacheSeq the entry was read from/written to database
+        public string sdbkey;
+        public string sdbval;   // null if record not found
+
+        public ScriptDBCacheEntry ()
+        {
+            links = new LinkedListNode<ScriptDBCacheEntry> (this);
+        }
+
+        public int Size {
+            get {
+                int size = sdbkey.Length + 100;
+                if (sdbval != null) size += sdbval.Length;
+                return size;
+            }
+        }
+    }
+
     public partial class XMRInstance
     {
-        // create database scriptdata;
-        // use scriptdata;
-        // create table ScriptDBs (sdb_key varchar(255) primary key, sdb_val text);
-        // create user 'scriptdata'@'??????.%' identified by '????????????';
-        // grant all privileges on scriptdata.* to 'scriptdata'@'???????.%';
+        // get MySql command object and connection
+        private MySqlCommand getCommand ()
+        {
+            MySqlCommand cmd = new MySqlCommand ();
+            cmd.Connection = getConnection ();
+            return cmd;
+        }
 
         // get MySql server connection
         private MySqlConnection getConnection ()
@@ -81,6 +122,80 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 prefix = prefix.Substring (0, 22);
             }
             return prefix;
+        }
+
+        /**
+         * Read single entry from the cache (and database if not in cache).
+         *  Input:
+         *   key = key with prefix
+         *  Output:
+         *   returns cache entry (sdbval == null if record not found)
+         */
+        private ScriptDBCacheEntry ReadCache (string key)
+        {
+            // remove from cache wherever it is
+            // create new entry if we don't already have one
+            ScriptDBCacheEntry entry;
+            if (m_Engine.m_ScriptDBCacheEntries.TryGetValue (key, out entry)) {
+                //?? optimization ??// if (entry.loaded == m_Engine.m_ScriptDBCacheSeq) return entry;
+                m_Engine.RemFromScriptDBCache (entry);
+            } else {
+                entry = new ScriptDBCacheEntry ();
+                entry.sdbkey = key;
+            }
+
+            // make sure it was created at or after when this script was instanced so we know data isn't stale
+            if (entry.loaded < m_Instanced) {
+                using (MySqlCommand cmd = getCommand ()) {
+                    cmd.CommandText = "SELECT sdb_val FROM ScriptDBs WHERE sdb_key=?sdbkey";
+                    cmd.Parameters.AddWithValue ("?sdbkey", key);
+                    using (IDataReader rdr = cmd.ExecuteReader ()) {
+                        entry.sdbval = rdr.Read () ? rdr["sdb_val"].ToString () : null;
+                    }
+                }
+            }
+
+            // add (back to) cache as the newest entry
+            m_Engine.AddToScriptDBCache (entry);
+            return entry;
+        }
+
+        /**
+         * Write single entry to the cache and to the database.
+         *  Input:
+         *   key = key with prefix
+         *   val = value string
+         *  Output:
+         *   entry written to database
+         *   cache updated
+         */
+        private void WriteCache (string key, string val)
+        {
+            // write to database
+            using (MySqlCommand cmd = getCommand ()) {
+                string command = "INSERT INTO ScriptDBs SET sdb_key=?sdbkey,sdb_val=?sdbval";
+                command += " ON DUPLICATE KEY UPDATE sdb_val=?sdbval";
+                cmd.CommandText = command;
+                cmd.Parameters.AddWithValue ("?sdbkey", key);
+                cmd.Parameters.AddWithValue ("?sdbval", val);
+                cmd.ExecuteNonQuery ();
+            }
+
+            // remove from cache wherever it is
+            // make a new entry if not there already
+            ScriptDBCacheEntry entry;
+            if (m_Engine.m_ScriptDBCacheEntries.TryGetValue (key, out entry)) {
+                m_Engine.RemFromScriptDBCache (entry);
+            } else {
+                entry = new ScriptDBCacheEntry ();
+                entry.sdbkey = key;
+            }
+
+            // update cache value
+            entry.sdbval = val;
+
+            // re-insert into cache as newest entry
+            m_Engine.AddToScriptDBCache (entry);
         }
 
         /*******************************\
@@ -180,16 +295,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public override void xmrScriptDBWrite (string key, string value)
         {
-            lock (m_Engine.m_ScriptDBConnectLock) {
-                using (MySqlCommand cmd = new MySqlCommand ()) {
-                    string command = "INSERT INTO ScriptDBs SET sdb_key=?sdbkey,sdb_val=?sdbval";
-                    command += " ON DUPLICATE KEY UPDATE sdb_val=?sdbval";
-                    cmd.Connection = getConnection ();
-                    cmd.CommandText = command;
-                    cmd.Parameters.AddWithValue ("?sdbkey", getPrefix () + key);
-                    cmd.Parameters.AddWithValue ("?sdbval", value);
-                    cmd.ExecuteNonQuery ();
-                }
+            lock (m_Engine.m_ScriptDBLock) {
+                WriteCache (getPrefix () + key, value);
             }
         }
 
@@ -204,15 +311,9 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public override string xmrScriptDBReadOne (string key, string notfound)
         {
-            lock (m_Engine.m_ScriptDBConnectLock) {
-                using (MySqlCommand cmd = new MySqlCommand ()) {
-                    cmd.Connection = getConnection ();
-                    cmd.CommandText = "SELECT sdb_val FROM ScriptDBs WHERE sdb_key=?sdbkey";
-                    cmd.Parameters.AddWithValue ("?sdbkey", getPrefix () + key);
-                    using (IDataReader rdr = cmd.ExecuteReader ()) {
-                        return rdr.Read () ? rdr["sdb_val"].ToString () : notfound;
-                    }
-                }
+            lock (m_Engine.m_ScriptDBLock) {
+                ScriptDBCacheEntry entry = ReadCache (getPrefix () + key);
+                return (entry.sdbval == null) ? notfound : entry.sdbval;
             }
         }
 
@@ -225,7 +326,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public override int xmrScriptDBCount (string keylike)
         {
-            lock (m_Engine.m_ScriptDBConnectLock) {
+            lock (m_Engine.m_ScriptDBLock) {
                 using (MySqlCommand cmd = new MySqlCommand ()) {
                     cmd.Connection = getConnection ();
                     cmd.CommandText = "SELECT COUNT(sdb_key) AS count FROM ScriptDBs WHERE sdb_key LIKE ?sdbkey";
@@ -249,9 +350,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public override LSL_List xmrScriptDBList (string keylike, int limit, int offset)
         {
-            lock (m_Engine.m_ScriptDBConnectLock) {
-                using (MySqlCommand cmd = new MySqlCommand ()) {
-                    cmd.Connection = getConnection ();
+            lock (m_Engine.m_ScriptDBLock) {
+                using (MySqlCommand cmd = getCommand ()) {
                     cmd.CommandText = "SELECT sdb_key FROM ScriptDBs WHERE sdb_key LIKE ?sdbkey ORDER BY sdb_key LIMIT " + limit + " OFFSET " + offset;
                     cmd.Parameters.AddWithValue ("?sdbkey", getPrefix () + keylike);
                     using (IDataReader rdr = cmd.ExecuteReader ()) {
@@ -280,9 +380,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public override XMR_Array xmrScriptDBReadMany (string keylike, int limit, int offset)
         {
-            lock (m_Engine.m_ScriptDBConnectLock) {
-                using (MySqlCommand cmd = new MySqlCommand ()) {
-                    cmd.Connection = getConnection ();
+            lock (m_Engine.m_ScriptDBLock) {
+                using (MySqlCommand cmd = getCommand ()) {
                     cmd.CommandText = "SELECT sdb_key,sdb_val FROM ScriptDBs WHERE sdb_key LIKE ?sdbkey ORDER BY sdb_key LIMIT " + limit + " OFFSET " + offset;
                     cmd.Parameters.AddWithValue ("?sdbkey", getPrefix () + keylike);
                     using (IDataReader rdr = cmd.ExecuteReader ()) {
@@ -307,14 +406,116 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
          */
         public override int xmrScriptDBDelete (string keylike)
         {
-            lock (m_Engine.m_ScriptDBConnectLock) {
-                using (MySqlCommand cmd = new MySqlCommand ()) {
-                    cmd.Connection = getConnection ();
-                    cmd.CommandText = "DELETE FROM ScriptDBs WHERE sdb_key LIKE ?sdbkey";
-                    cmd.Parameters.AddWithValue ("?sdbkey", getPrefix () + keylike);
+            lock (m_Engine.m_ScriptDBLock) {
+                using (MySqlCommand cmd = getCommand ()) {
+                    string pfxkeylike = getPrefix () + keylike;
+
+                    if (pfxkeylike.Contains ("%") || pfxkeylike.Contains ("_")) {
+
+                        // remove any matching entries from cache
+                        LinkedList<ScriptDBCacheEntry> matches = new LinkedList<ScriptDBCacheEntry> ();
+                        foreach (ScriptDBCacheEntry entry in m_Engine.m_ScriptDBCacheEntries.Values) {
+                            if (MatchesLike (entry.sdbkey, pfxkeylike)) {
+                                matches.AddLast (entry);
+                            }
+                        }
+                        foreach (ScriptDBCacheEntry entry in matches) {
+                            m_Engine.RemFromScriptDBCache (entry);
+                        }
+
+                        // remove any matching entries from database
+                        cmd.CommandText = "DELETE FROM ScriptDBs WHERE sdb_key LIKE ?sdbkey";
+                    } else {
+
+                        // remove any matching entry from cache
+                        ScriptDBCacheEntry entry;
+                        m_Engine.m_ScriptDBCacheEntries.TryGetValue (pfxkeylike, out entry);
+                        m_Engine.RemFromScriptDBCache (entry);
+
+                        // remove any matching entry from database
+                        cmd.CommandText = "DELETE FROM ScriptDBs WHERE sdb_key=?sdbkey";
+                    }
+                    cmd.Parameters.AddWithValue ("?sdbkey", pfxkeylike);
                     return cmd.ExecuteNonQuery ();
                 }
             }
+        }
+
+        /**
+         * See if key matches like.
+         */
+        private static bool MatchesLike (string key, string like)
+        {
+            int ki = 0;
+            int kj = key.Length;
+            int li = 0;
+            int lj = like.Length;
+
+            // optimization: trim matching chars off ends
+            if (like.IndexOf ('\\') < 0) {
+                while ((ki < kj) && (li < lj)) {
+                    char kc = key[kj-1];
+                    char lc = like[lj-1];
+                    if (lc == '%') break;
+                    if ((lc != '_') && (kc != lc)) break;
+                    -- kj;
+                    -- lj;
+                }
+            }
+
+            // keep going as long as there are 'like' chars
+            while (li < lj) {
+
+                // get a like char and decode it
+                char lc = like[li++];
+                switch (lc) {
+
+                    // match any number of key chars
+                    case '%': {
+
+                        // optimization: if like was just the '%;", instant match
+                        if (li == lj) return true;
+
+                        // try to match key against remaining like
+                        // trimming one char at a time from front of key
+                        for (int kk = ki; kk < kj; kk ++) {
+                            if (MatchesLike (key.Substring (kk, kj - kk),
+                                            like.Substring (li, lj - li))) return true;
+                        }
+
+                        // that didn't work
+                        return false;
+                    }
+
+                    // match exactly one char from key
+                    case '_': {
+                        if (ki == kj) return false;
+                        ki ++;
+                        break;
+                    }
+
+                    // escape next like char
+                    case '\\': {
+                        if (li == lj) return ki == kj;
+                        lc = like[li++];
+                        if (ki == kj) return false;
+                        char kc = key[ki++];
+                        if (kc != lc) return false;
+                        break;
+                    }
+
+                    // match exact char in key
+                    default: {
+                        if (ki == kj) return false;
+                        char kc = key[ki++];
+                        if (kc != lc) return false;
+                        break;
+                    }
+                }
+            }
+
+            // no more like, key better be all matched up
+            return ki == kj;
         }
     }
 }

@@ -25,6 +25,7 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+using OpenMetaverse;
 using OpenSim.Region.ScriptEngine.Shared.ScriptBase;
 using System;
 using System.Collections.Generic;
@@ -916,6 +917,23 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             return "<" + val.x.ToString (fmt, CultureInfo.InvariantCulture) + "," +
                          val.y.ToString (fmt, CultureInfo.InvariantCulture) + "," +
                          val.z.ToString (fmt, CultureInfo.InvariantCulture) + ">";
+        }
+
+        // convert 36-char uuid string to 22-char base64 string
+        public string xmrUUIDToBase64 (string uuid)
+        {
+            byte[] bytes = new UUID (uuid).GetBytes ();
+            string base64 = System.Convert.ToBase64String (bytes);
+            if ((base64.Length != 24) || !base64.EndsWith ("==")) throw new ApplicationException ("bad uuid->base64");
+            return base64.Substring (0, 22);
+        }
+
+        // convert 22-char base64 string to 32-char uuid string
+        public string xmrBase64ToUUID (string base64)
+        {
+            if (base64.Length != 22) throw new ApplicationException ("bad base64->uuid");
+            byte[] bytes = System.Convert.FromBase64String (base64 + "==");
+            return new UUID (bytes, 0).ToString ();
         }
 
         /**
