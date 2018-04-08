@@ -105,6 +105,10 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         private object m_FrameUpdateLock = new object ();
         private event ThreadStart m_FrameUpdateList = null;
 
+        public  object m_ScriptDBConnectLock;
+        public  string m_ScriptDBConnectString;
+        public  MySql.Data.MySqlClient.MySqlConnection m_ScriptDBConnection;
+
         /*
          * Various instance lists:
          *   m_InstancesDict = all known instances
@@ -260,6 +264,8 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 m_MaintenanceTimer.Elapsed += DoMaintenance;
                 m_MaintenanceTimer.Start();
             }
+
+            m_ScriptDBConnectString = m_Config.GetString ("ScriptDBConnection", "");
 
             MainConsole.Instance.Commands.AddCommand("xmr", false,
                     "xmr",

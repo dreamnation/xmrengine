@@ -412,6 +412,17 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         [xmrMethodIsNoisyAttribute]       // calls Stub<somethingorother>()
         public abstract bool xmrSetObjRegPosRotAsync (LSL_Vector pos, LSL_Rotation rot, int options, int evcode, LSL_List evargs);
 
+        public abstract void xmrScriptDBWriteLines (string key, LSL_List value);
+        public abstract string xmrScriptDBReadLine (string key, int line, string notfound, string endoffile);
+        public abstract int xmrScriptDBNumLines (string key);
+        public abstract LSL_List xmrScriptDBReadLines (string key, LSL_List notfound);
+        public abstract void xmrScriptDBWrite (string key, string value);
+        public abstract string xmrScriptDBReadOne (string key, string notfound);
+        public abstract int xmrScriptDBCount (string keylike);
+        public abstract LSL_List xmrScriptDBList (string keylike, int limit, int offset);
+        public abstract XMR_Array xmrScriptDBReadMany (string keylike, int limit, int offset);
+        public abstract int xmrScriptDBDelete (string keylike);
+
         /************************************\
          *  Constants available to scripts  *
         \************************************/

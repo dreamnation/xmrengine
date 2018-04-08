@@ -1005,6 +1005,231 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         {
             return StubLSLInteger ("xmrSetObjRegPosRotAsync", pos, rot, options, evcode, evargs) != 0;
         }
+
+        /************************************\
+         *  Copied from XMRInstScriptDB.cs  *
+        \************************************/
+
+        /**
+         * Write list, one element per line.
+         *  Input:
+         *   key = object unique key
+         *   value = list of lines to write
+         */
+        public override void xmrScriptDBWriteLines (string key, LSL_List value)
+        {
+            StringBuilder sb = new StringBuilder ();
+            for (int i = 0; i < value.Length; i ++) {
+                sb.Append (value.GetLSLStringItem (i).m_string);
+                sb.Append ('\n');
+            }
+            xmrScriptDBWrite (key, sb.ToString ());
+        }
+
+        /**
+         * Read single line of a particular element.
+         *  Input:
+         *   key = as given to xmrScriptDBWriteList()
+         *   notfound = "ERROR!"
+         *   endoffile = "\n\n\n" (EOF)
+         *  Output:
+         *   returns contents of the line or notfound or endoffile
+         */
+        public override string xmrScriptDBReadLine (string key, int line, string notfound, string endoffile)
+        {
+            int i, j;
+            string whole = xmrScriptDBReadOne (key, null);
+            if (whole == null) return notfound;
+            for (i = 0; (j = whole.IndexOf ('\n', i)) >= 0; i = ++ j) {
+                if (-- line < 0) return whole.Substring (i, j - i);
+            }
+            return endoffile;
+        }
+
+        /**
+         * Get number of lines in notecard.
+         *  Input:
+         *   key = as given to xmrScriptDBWriteList()
+         *  Output:
+         *   returns -1: notecard not found
+         *         else: number of lines
+         */
+        public override int xmrScriptDBNumLines (string key)
+        {
+            int i, j, n;
+            string whole = xmrScriptDBReadOne (key, null);
+            if (whole == null) return -1;
+            n = 0;
+            for (i = 0; (j = whole.IndexOf ('\n', i)) >= 0; i = ++ j) {
+                n ++;
+            }
+            return n;
+        }
+
+        /**
+         * Read all lines of a particular element.
+         *  Input:
+         *   key = as given to xmrScriptDBWriteList()
+         *   notfound = [ "ERROR!" ]
+         *  Output:
+         *   returns contents of the element or notfound
+         */
+        public override LSL_List xmrScriptDBReadLines (string key, LSL_List notfound)
+        {
+            int i, j, n;
+            string whole = xmrScriptDBReadOne (key, null);
+            if (whole == null) return notfound;
+            n = 0;
+            for (i = 0; (j = whole.IndexOf ('\n', i)) >= 0; i = ++ j) {
+                n ++;
+            }
+            object[] array = new object[n];
+            n = 0;
+            for (i = 0; (j = whole.IndexOf ('\n', i)) >= 0; i = ++ j) {
+                array[n++] = new LSL_String (whole.Substring (i, j - i));
+            }
+            return new LSL_List (array);
+        }
+
+        /*********************************************\
+         *  Test implementation of rest of ScriptDB  *
+        \*********************************************/
+
+        private static SortedDictionary<string,string> scriptdb =
+                new SortedDictionary<string,string> ();
+
+        public override void xmrScriptDBWrite (string key, string value)
+        {
+            scriptdb[key] = value;
+        }
+
+        public override string xmrScriptDBReadOne (string key, string notfound)
+        {
+            string value;
+            return scriptdb.TryGetValue (key, out value) ? value : notfound;
+        }
+
+        public override int xmrScriptDBCount (string keylike)
+        {
+            int count = 0;
+            foreach (KeyValuePair<string,string> kvp in scriptdb) {
+                if (MatchesLike (kvp.Key, keylike)) count ++;
+            }
+            return count;
+        }
+
+        public override LSL_List xmrScriptDBList (string keylike, int limit, int offset)
+        {
+            LinkedList<string> list = new LinkedList<string> ();
+            foreach (KeyValuePair<string,string> kvp in scriptdb) {
+                if (MatchesLike (kvp.Key, keylike) && (-- offset < 0)) {
+                    if (-- limit < 0) break;
+                    list.AddLast (kvp.Key);
+                }
+            }
+            object[] array = new object[list.Count];
+            int i = 0;
+            foreach (string key in list) array[i++] = key;
+            return new LSL_List (array);
+        }
+
+        public override XMR_Array xmrScriptDBReadMany (string keylike, int limit, int offset)
+        {
+            XMR_Array array = new XMR_Array (this);
+            foreach (KeyValuePair<string,string> kvp in scriptdb) {
+                if (MatchesLike (kvp.Key, keylike) && (-- offset < 0)) {
+                    if (-- limit < 0) break;
+                    array.SetByKey (kvp.Key, kvp.Value);
+                }
+            }
+            return array;
+        }
+
+        public override int xmrScriptDBDelete (string keylike)
+        {
+            LinkedList<string> list = new LinkedList<string> ();
+            foreach (KeyValuePair<string,string> kvp in scriptdb) {
+                if (MatchesLike (kvp.Key, keylike)) {
+                    list.AddLast (kvp.Key);
+                }
+            }
+            foreach (string key in list) scriptdb.Remove (key);
+            return list.Count;
+        }
+
+        private static bool MatchesLike (string key, string like)
+        {
+            int ki = 0;
+            int kj = key.Length;
+            int li = 0;
+            int lj = like.Length;
+
+            // optimization: trim matching chars off ends
+            if (like.IndexOf ('\\') < 0) {
+                while ((ki < kj) && (li < lj)) {
+                    char kc = key[kj-1];
+                    char lc = like[lj-1];
+                    if (lc == '%') break;
+                    if ((lc != '_') && (kc != lc)) break;
+                    -- kj;
+                    -- lj;
+                }
+            }
+
+            // keep going as long as ttere are 'like' chars
+            while (li < lj) {
+
+                // get a like char and decode it
+                char lc = like[li++];
+                switch (lc) {
+
+                    // match any number of key chars
+                    case '%': {
+
+                        // optimization: if like was just the '%;", instant match
+                        if (li == lj) return true;
+
+                        // try to match key against remaining like
+                        // trimming one char at a time from front of key
+                        for (int kk = ki; kk < kj; kk ++) {
+                            if (MatchesLike (key.Substring (kk, kj - kk),
+                                            like.Substring (li, lj - li))) return true;
+                        }
+
+                        // that didn't work
+                        return false;
+                    }
+
+                    // match exactly one char from key
+                    case '_': {
+                        if (ki == kj) return false;
+                        ki ++;
+                        break;
+                    }
+
+                    // escape next like char
+                    case '\\': {
+                        if (li == lj) return ki == kj;
+                        lc = like[li++];
+                        if (ki == kj) return false;
+                        char kc = key[ki++];
+                        if (kc != lc) return false;
+                        break;
+                    }
+
+                    // match exact char in key
+                    default: {
+                        if (ki == kj) return false;
+                        char kc = key[ki++];
+                        if (kc != lc) return false;
+                        break;
+                    }
+                }
+            }
+
+            // no more like, key better be all matched up
+            return ki == kj;
+        }
     }
 
     public partial class ScriptBaseClass :

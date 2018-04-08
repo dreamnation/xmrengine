@@ -1,0 +1,38 @@
+Compiling...
+Running...
+llGetLinkNumber()
+llGetLinkNumber:5
+llSay(0, "Script running")
+llGetDate()
+llGetDate:"2018-04-05"
+llSay(0, "won value")
+llSay(0, "count=2")
+llSay(0, "0: 5.one")
+llSay(0, "1: 5.two")
+llSay(0, "5.one: won value")
+llSay(0, "5.two: 2018-04-05")
+llSay(0, "5.count=2")
+llSay(0, "0: 5.one")
+llSay(0, "1: 5.two")
+llSay(0, "5.one: won value")
+llSay(0, "5.two: 2018-04-05")
+llOwnerSay: first line
+second line
+third line
+fourth line
+fifth line
+last line
+
+llOwnerSay: nlines=6
+llOwnerSay:   0:first line
+llOwnerSay:   1:second line
+llOwnerSay:   2:third line
+llOwnerSay:   3:fourth line
+llOwnerSay:   4:fifth line
+llOwnerSay:   5:last line
+llOwnerSay:   [0] first line
+llOwnerSay:   [1] second line
+llOwnerSay:   [2] third line
+llOwnerSay:   [3] fourth line
+llOwnerSay:   [4] fifth line
+llOwnerSay:   [5] last line
