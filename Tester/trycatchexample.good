@@ -7,9 +7,9 @@ llOwnerSay:     message: try to catch this!
 llOwnerSay: thrownvalue: try to catch this!
 llOwnerSay:  stacktrace:
   at CallSomethingThatThrows(string) <trycatchexample.lsl(28,4)>
-  at default state_entry <trycatchexample.lsl(10,36)>
+  at default state_entry <trycatchexample.lsl(9,8)>
 llOwnerSay:    typename: NullReferenceException
 llOwnerSay:     message: Object reference not set to an instance of an object
 llOwnerSay:  stacktrace:
-  at OpenSim.Region.ScriptEngine.XMREngine.TypeCast.ObjectToInteger (System.Object x) [0x0005e] in MMRScriptTypeCast.cs:750
-  at default state_entry <trycatchexample.lsl(18,25)>
+  at OpenSim.Region.ScriptEngine.XMREngine.TypeCast.ObjectToInteger (System.Object x) [0x0005d] in MMRScriptTypeCast.cs:750
+  at default state_entry <trycatchexample.lsl(18,34)>

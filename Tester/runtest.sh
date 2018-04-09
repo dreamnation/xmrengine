@@ -66,6 +66,7 @@ fi
 echo runxmrengtest=$runxmrengtest
 
 majorbar
+testit scriptdbtest
 testit misctest
 testit overridevar
 testit melbuttons

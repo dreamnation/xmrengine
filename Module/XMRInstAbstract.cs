@@ -1470,7 +1470,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         // Mono ex.StackTrace:
         //   at OpenSim.Region.ScriptEngine.XMREngine.TypeCast.ObjectToInteger (System.Object x) [0x0005e] in /home/kunta/opensim-0.9/addon-modules/XMREngine/Module/MMRScriptTypeCast.cs:750
-        //   at (wrapper dynamic-method) System.Object:default state_entry (OpenSim.Region.ScriptEngine.XMREngine.XMRInstAbstract) [0x00196]
+        //   at [(wrapper dynamic-method) ]System.Object:default state_entry (OpenSim.Region.ScriptEngine.XMREngine.XMRInstAbstract) [0x00196] in <d5259da6784342e2b0b6d0e3b9ee0014>:0
 
         // Microsoft ex.StackTrace:
         //    at OpenSim.Region.ScriptEngine.XMREngine.TypeCast.ObjectToInteger(Object x) in C:\Users\mrieker\opensim-0.9-source\addon-modules\XMREngine\Module\MMRScriptTypeCast.cs:line 750
@@ -1489,10 +1489,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     stline = stline.Substring (3);
                 }
 
-                // strip '(wrapper ...' off front of line
-                if (stline.StartsWith ("(wrapper dynamic-method) System.Object:") ||
-                    stline.StartsWith ("(wrapper dynamic-method) System.Object.")) {
-                    stline = stline.Substring (39);
+                // strip '(wrapper ...) ' off front of line
+                if (stline.StartsWith ("(wrapper dynamic-method) ")) {
+                    stline = stline.Substring (25);
+                }
+
+                // strip 'System.Object.' off front of line
+                if (stline.StartsWith ("System.Object.") || stline.StartsWith ("System.Object:")) {
+                    stline = stline.Substring (14);
                 }
 
                 // strip the (systemargtypes...) from our dynamic method names cuz it's messy
@@ -1521,11 +1525,14 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                     stline = stline.Substring (0, endFuncName) + stline.Substring (pastCloseParen);
                     kwin   = stline.IndexOf (" in ");
                     br0x   = stline.IndexOf (" [0x");
+
+                    // stline="CallSomethingThatThrows(string) [0x0003e] in <d5259da6784342e2b0b6d0e3b9ee0014>:0"
                 }
 
                 // keyword 'in' is just before filename:linenumber that goes to end of line
+                // but it can also be ' in <' with a garbage hexadecimal number
                 // trim up the corresponding filename (ie, remove useless path info)
-                if (kwin >= 0) {
+                if ((kwin >= 0) && !stline.Substring (kwin + 4).StartsWith ("<")) {
                     int begfn = kwin + 4;
                     int slash = begfn;
                     for (int i = begfn; i < stline.Length; i ++) {
