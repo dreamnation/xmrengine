@@ -131,7 +131,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             Console.WriteLine("    m_StartParam    = " + m_StartParam);
             Console.WriteLine("    m_PostOnRez     = " + m_PostOnRez);
             Console.WriteLine("    m_StateSource   = " + m_StateSource);
-            Console.WriteLine("    m_SuspendCount  = " + m_SuspendCount);
+            Console.WriteLine("    m_Suspended     = " + m_Suspended);
             Console.WriteLine("    m_SleepUntil    = " + m_SleepUntil);
             Console.WriteLine("    m_IState        = " + m_IState.ToString());
             Console.WriteLine("    m_StateCode     = " + GetStateName(stateCode));
@@ -158,7 +158,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 sb.AppendLine("    m_StartParam         = " + m_StartParam);
                 sb.AppendLine("    m_PostOnRez          = " + m_PostOnRez);
                 sb.AppendLine("    m_StateSource        = " + m_StateSource);
-                sb.AppendLine("    m_SuspendCount       = " + m_SuspendCount);
+                sb.AppendLine("    m_Suspended          = " + m_Suspended);
                 sb.AppendLine("    m_SleepUntil         = " + m_SleepUntil);
                 sb.AppendLine("    m_SleepEvMask1       = 0x" + m_SleepEventMask1.ToString("X"));
                 sb.AppendLine("    m_SleepEvMask2       = 0x" + m_SleepEventMask2.ToString("X"));

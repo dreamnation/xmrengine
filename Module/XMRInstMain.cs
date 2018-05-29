@@ -84,7 +84,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
         REMDFROMSLPQ,  // removed from m_SleepQueue but not yet on m_YieldQueue
         ONYIELDQ,      // inserted on m_Engine.m_YieldQueue
         FINISHED,      // just finished handling an event
-        SUSPENDED,     // m_SuspendCount > 0
         RESETTING,     // being reset via external call
         DISPOSED       // has been disposed
     }
@@ -163,9 +162,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
 
         // locked whilst running on the microthread stack (or about to run on it or just ran on it)
         private Object m_RunLock = new Object();
-
-        // script won't step while > 0.  bus-atomic updates only.
-        private int m_SuspendCount = 0;
 
         // don't run any of script until this time
         // or until one of these events are queued

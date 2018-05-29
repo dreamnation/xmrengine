@@ -1634,16 +1634,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                 }
 
                 /*
-                 * Its m_SuspendCount > 0.
-                 * Don't put it on any queue and it won't run.
-                 * Since it's not IDLE, even queuing an event won't start it.
-                 */
-                case XMRInstState.SUSPENDED: {
-                    inst.m_IState = XMRInstState.SUSPENDED;
-                    break;
-                }
-
-                /*
                  * It has been disposed of.
                  * Just set the new state and all refs should theoretically drop off
                  * as the instance is no longer in any list.

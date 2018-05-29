@@ -244,15 +244,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
             }
 
             /*
-             * Also, someone may have called Suspend().
-             */
-            m_RunOnePhase = "check m_SuspendCount";
-            if (m_SuspendCount > 0) {
-                m_RunOnePhase = "return is suspended";
-                return XMRInstState.SUSPENDED;
-            }
-
-            /*
              * Make sure we aren't being migrated in or out and prevent that 
              * whilst we are in here.  If migration has it locked, don't call
              * back right away, delay a bit so we don't get in infinite loop.
