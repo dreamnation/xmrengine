@@ -517,6 +517,7 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
              * script level, so the script is no longer running an event handler.
              */
             eventCode = ScriptEventCode.None;
+            stackFrames = null;
 
             if (e is ScriptDeleteException)
             {
@@ -552,7 +553,6 @@ namespace OpenSim.Region.ScriptEngine.XMREngine
                  */
                 SendErrorMessage(e);
             }
-            return;
         }
 
         /**
